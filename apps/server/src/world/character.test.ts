@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
-import { stepMovement, type WorldCharacter } from './character.js';
+import { applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
 import { EventBus } from './event-bus.js';
 import { Simulation } from './simulation.js';
 
 function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
-  return { id: 't', name: '测试', x: 0, y: 0, path };
+  return { id: 't', name: '测试', x: 0, y: 0, path, energy: 100, happiness: 100, coins: 0 };
 }
 
 describe('stepMovement 逐 tick 移动', () => {
@@ -41,6 +41,32 @@ describe('stepMovement 逐 tick 移动', () => {
     expect(character.x).toBe(2);
     expect(stepMovement(character, 2)).toBe(true); // 第 3 格到达
     expect(character.y).toBe(1);
+  });
+});
+
+describe('applyVitalDecay 数值衰减', () => {
+  it('按游戏分钟衰减体力与幸福', () => {
+    const character = walker([]);
+    applyVitalDecay(character, 60); // 1 游戏小时
+    expect(character.energy).toBeCloseTo(97, 5); // 100 - 0.05*60
+    expect(character.happiness).toBeCloseTo(98.2, 5); // 100 - 0.03*60
+  });
+
+  it('下界夹取 0,不出现负数', () => {
+    const character = walker([]);
+    character.energy = 0.01;
+    character.happiness = 0.01;
+    applyVitalDecay(character, 10);
+    expect(character.energy).toBe(0);
+    expect(character.happiness).toBe(0);
+  });
+
+  it('上限夹取 100(活动增益场景)', () => {
+    const character = walker([]);
+    character.energy = 99.99;
+    character.happiness = 50;
+    applyVitalDecay(character, -1); // 负衰减=增益,夹上界
+    expect(character.energy).toBe(100);
   });
 });
 

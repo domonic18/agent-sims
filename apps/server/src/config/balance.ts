@@ -21,4 +21,9 @@ export const BALANCE = {
   NIGHT_END_MINUTE: 6 * 60,
   /** 步行速度:格/游戏分钟(寻路路径按此逐 tick 推进) */
   WALK_SPEED_TILES_PER_MINUTE: 1,
+  /** 数值系统:角色初始满值与每游戏分钟自然衰减(活动增减 M3 接入) */
+  START_ENERGY: 100,
+  START_HAPPINESS: 100,
+  ENERGY_DECAY_PER_MINUTE: 0.05,
+  HAPPINESS_DECAY_PER_MINUTE: 0.03,
 } as const;

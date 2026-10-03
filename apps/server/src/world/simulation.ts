@@ -1,7 +1,7 @@
 import { BALANCE } from '../config/balance.js';
 import type { CharacterArrivedEvent, WorldEvent } from '@sims/shared';
 import { GameClock } from './clock.js';
-import { stepMovement, type WorldCharacter } from './character.js';
+import { applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
 import { EventBus } from './event-bus.js';
 import { TileMap } from './map.js';
 import { TOWN_MAP } from './map-data.js';
@@ -37,7 +37,16 @@ export class Simulation {
     if (!this.map.isWalkable(x, y)) {
       throw new Error(`出生点不可行走: (${x},${y})`);
     }
-    const character: WorldCharacter = { id, name, x, y, path: [] };
+    const character: WorldCharacter = {
+      id,
+      name,
+      x,
+      y,
+      path: [],
+      energy: BALANCE.START_ENERGY,
+      happiness: BALANCE.START_HAPPINESS,
+      coins: 0,
+    };
     this.characters.set(id, character);
     return character;
   }
@@ -66,6 +75,7 @@ export class Simulation {
 
   private _stepCharacters(): void {
     for (const character of this.characters.values()) {
+      applyVitalDecay(character, 1);
       const arrived = stepMovement(character, BALANCE.WALK_SPEED_TILES_PER_MINUTE);
       if (arrived) {
         const event: CharacterArrivedEvent = {
@@ -109,6 +119,9 @@ export class Simulation {
         x: character.x,
         y: character.y,
         pathRemaining: character.path.length,
+        energy: Math.round(character.energy * 10) / 10,
+        happiness: Math.round(character.happiness * 10) / 10,
+        coins: character.coins,
       })),
     };
   }
@@ -131,5 +144,8 @@ export interface SimulationSnapshot {
     x: number;
     y: number;
     pathRemaining: number;
+    energy: number;
+    happiness: number;
+    coins: number;
   }>;
 }
