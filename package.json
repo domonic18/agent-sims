@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "test": "pnpm -r test",
     "db:migrate": "pnpm --filter @sims/server db:migrate",
-    "db:seed": "pnpm --filter @sims/server db:seed"
+    "db:seed": "pnpm --filter @sims/server db:seed",
+    "spike:llm": "node --env-file-if-exists=.env scripts/spike-llm-connectivity.mjs"
   },
   "devDependencies": {
     "eslint": "^9.17.0",
