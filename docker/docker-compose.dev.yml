@@ -1,4 +1,5 @@
 # 开发: 只起 postgres,前后端本地 pnpm dev(Vite proxy → server)
+# 数据落 workspace/(宿主机持久化,重置=删 workspace/postgres-dev 目录)
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -9,7 +10,4 @@ services:
       POSTGRES_PASSWORD: sims
       POSTGRES_DB: agent_sims
     volumes:
-      - pgdata_dev:/var/lib/postgresql/data
-
-volumes:
-  pgdata_dev:
+      - ../workspace/postgres-dev:/var/lib/postgresql/data

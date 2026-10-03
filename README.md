@@ -45,4 +45,5 @@ packages/shared/ 前后端共享 Zod 协议
 docker/          Dockerfile 与 compose(生产/开发)
 docs/            文档中心(需求基准/架构终态/迭代计划/调研评估)
 scripts/         运维与工具脚本
+workspace/       宿主机持久化数据(postgres 数据卷/备份,不入库)
 ```

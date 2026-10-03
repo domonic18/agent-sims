@@ -1,4 +1,5 @@
 # 生产: app + postgres 两容器;配置走根目录 .env
+# 数据落 workspace/(宿主机持久化,备份=pg_dump → workspace/backups)
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -8,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sims}
       POSTGRES_DB: agent_sims
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - ../workspace/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sims -d agent_sims"]
       interval: 5s
@@ -29,6 +30,3 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
-volumes:
-  pgdata:
