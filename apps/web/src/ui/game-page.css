@@ -1,0 +1,143 @@
+.game-page {
+  font-family: monospace;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.status-bar {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.status-bar .title {
+  font-weight: bold;
+}
+
+.status-bar .connected {
+  color: #2e7d32;
+}
+
+.status-bar .disconnected {
+  color: #c62828;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.controls button {
+  font-family: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+  border: 1px solid #888;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.controls button.active {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #2e7d32;
+}
+
+.controls button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.speed-group {
+  display: flex;
+  gap: 4px;
+}
+
+.paused-badge {
+  color: #c62828;
+  font-weight: bold;
+}
+
+.control-error {
+  color: #c62828;
+  font-size: 12px;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.canvas-host {
+  width: min(90vw, 768px);
+  aspect-ratio: 4 / 3;
+}
+
+.character-strip {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.character-strip .card {
+  border: 1px solid #999;
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-title {
+  font-weight: bold;
+}
+
+.card-title small {
+  color: #666;
+  font-weight: normal;
+}
+
+.vital {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.vital-label {
+  width: 28px;
+}
+
+.vital-track {
+  flex: 1;
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.vital-fill {
+  height: 100%;
+  background: #2e7d32;
+}
+
+.vital-value {
+  width: 30px;
+  text-align: right;
+}
+
+.coins {
+  font-size: 12px;
+  color: #8d6e00;
+}
+
+.last-event {
+  color: #666;
+  font-size: 12px;
+  margin: 0;
+}

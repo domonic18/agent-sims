@@ -12,9 +12,12 @@
   },
   "dependencies": {
     "@sims/shared": "workspace:*",
+    "phaser": "^4.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.4"
+    "react-router-dom": "^7.18.4",
+    "socket.io-client": "^4.8.4",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
