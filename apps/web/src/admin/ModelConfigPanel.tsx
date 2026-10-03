@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
+  MODEL_PROTOCOLS,
+  MODEL_PROTOCOL_LABELS,
   MODEL_SLOTS,
   MODEL_SLOT_LABELS,
   type ModelConfigTestResult,
   type ModelConfigUpdate,
   type ModelConfigView,
+  type ModelProtocol,
   type ModelSlot,
 } from '@sims/shared';
 import { testModelConfig, updateModelConfig } from './api';
@@ -15,6 +18,7 @@ interface SlotCardProps {
 }
 
 function SlotCard({ view, onChanged }: SlotCardProps) {
+  const [protocol, setProtocol] = useState<ModelProtocol>(view.protocol);
   const [baseUrl, setBaseUrl] = useState(view.baseUrl);
   const [model, setModel] = useState(view.model);
   const [apiKey, setApiKey] = useState('');
@@ -25,17 +29,21 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
   const [testResult, setTestResult] = useState<ModelConfigTestResult | null>(null);
 
   useEffect(() => {
+    setProtocol(view.protocol);
     setBaseUrl(view.baseUrl);
     setModel(view.model);
     setEnabled(view.enabled);
     setApiKey('');
   }, [view]);
 
+  const isEmbedding = view.slot === 'embedding';
+
   const handleSave = async () => {
     setSaving(true);
     setMessage(null);
     try {
       const payload: ModelConfigUpdate = { baseUrl, model, enabled };
+      if (!isEmbedding) payload.protocol = protocol;
       if (apiKey) payload.apiKey = apiKey;
       onChanged(await updateModelConfig(view.slot, payload));
       setMessage({ kind: 'ok', text: '已保存' });
@@ -73,8 +81,20 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
           启用
         </label>
       </div>
+      {!isEmbedding && (
+        <label>
+          接入协议
+          <select value={protocol} onChange={(e) => setProtocol(e.target.value as ModelProtocol)}>
+            {MODEL_PROTOCOLS.map((p) => (
+              <option key={p} value={p}>
+                {MODEL_PROTOCOL_LABELS[p]}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
-        Base URL(含 /v1)
+        Base URL(填到 /v1 为止)
         <input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
