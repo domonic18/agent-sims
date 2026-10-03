@@ -1,0 +1,11 @@
+.git
+.env
+node_modules
+**/node_modules
+**/dist
+**/coverage
+docs
+scripts
+*.md
+!README.md
+docker/docker-compose*.yml

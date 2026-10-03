@@ -1,0 +1,20 @@
+# agent-sims 服务端镜像(多阶段;M1 工程基座落地后按实际构建产物微调)
+FROM node:22-alpine AS base
+RUN corepack enable
+WORKDIR /repo
+
+FROM base AS build
+COPY pnpm-workspace.yaml package.json ./
+COPY apps/server/package.json apps/server/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm fetch
+COPY . .
+RUN pnpm -r build \
+  && pnpm --filter @sims/server --prod deploy /out
+
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=build /out ./
+EXPOSE 3100
+CMD ["node", "dist/index.js"]

@@ -1,0 +1,15 @@
+# 开发: 只起 postgres,前后端本地 pnpm dev(Vite proxy → server)
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: sims
+      POSTGRES_PASSWORD: sims
+      POSTGRES_DB: agent_sims
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+
+volumes:
+  pgdata_dev:

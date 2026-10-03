@@ -1,0 +1,15 @@
+{
+  "name": "agent-sims",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter @sims/server --filter @sims/web dev",
+    "build": "pnpm -r build",
+    "check": "pnpm -r check",
+    "db:migrate": "pnpm --filter @sims/server db:migrate",
+    "db:seed": "pnpm --filter @sims/server db:seed"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,34 @@
+# 生产: app + postgres 两容器;配置走根目录 .env
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sims
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sims}
+      POSTGRES_DB: agent_sims
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sims -d agent_sims"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://sims:${POSTGRES_PASSWORD:-sims}@postgres:5432/agent_sims
+    ports:
+      - "${GAME_PORT:-3100}:3100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
