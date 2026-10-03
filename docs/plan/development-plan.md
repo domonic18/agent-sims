@@ -40,13 +40,13 @@
 |--------|------|----------|---------------|
 | M2.1 模拟核心骨架 | S ✅(2026-10-03) | tick 循环(accumulator)+注入式时钟;游戏日历(游戏分钟/日/昼夜判定);暂停/恢复;时间倍率(1x/4x/16x) | vitest 单测(时钟推进/暂停冻结/倍率/昼夜边界);headless 脚本 `sim:run --ticks=N` 输出状态摘要;/debug: `GET /debug/state`、`POST /debug/tick?n=`、`POST /debug/time/scale` |
 | M2.2 地图与场所 | S ✅(2026-10-03) | tile 网格+可行走层;6~8 场所(位置/入口/占地)进 seed(落地调整: 布局代码静态定义,`GET /debug/map` 可核) | 可行走性查询单测;`GET /debug/map`;前端色块渲染对照(移交 M2.3 随移动观察一并做) |
-| M2.3 寻路与移动 | M | A*(可达/绕障/不可达);路径按速度逐游戏分钟推进;到达=离散事件进事件总线 | 寻路单测(正常/绕障/不可达/同格);移动推进单测(整分钟粒度+到达精度);`POST /debug/intent` 下发 move_to 实测(intents 层雏形);前端观察 |
+| M2.3 寻路与移动 | M ✅(2026-10-03) | A*(可达/绕障/不可达);路径按速度逐游戏分钟推进;到达=离散事件进事件总线 | 寻路单测(正常/绕障/不可达/同格);移动推进单测(整分钟粒度+到达精度);`POST /debug/intent` 下发 move_to 实测(intents 层雏形);前端观察(移交 M2.6 渲染一并做) |
 | M2.4 数值系统 | S | 体力/幸福时间衰减(0~100 夹取);金币静态(M3 接活动) | 衰减与边界单测;`sim:run` 跑完整 1 游戏日输出数值曲线,验证衰减幅度合理性 |
 | M2.5 同步层 | M | Socket.IO 首连全量快照+增量(tick 序号)+断线重连重同步;player/spectator 角色标志(参观入口 M8,机制此处具备) | 双窗口一致性;kill 客户端重连后一致;`GET /debug/clients` |
 | M2.6 前端渲染+HUD+素材 | M | WS 层写 Zustand;Phaser 场景+路径插值;昼夜色调 overlay;HUD(时间/昼夜/三数值/暂停/加速);接入 Spike② 素材(tile+角色 sprite+行走动画) | 暂停按钮端到端(前端点→后端停→双端一致);60fps;素材渲染正确 |
 
 - 验收标准(requirement §11): 浏览器看到角色按 tick 平滑移动;暂停立即冻结、恢复无状态丢失;桌面 Chrome/Edge 60fps
-- 状态: **进行中**(2026-10-03)——M2.1 模拟核心骨架已落地(world/ 纯逻辑 Simulation/GameClock/TickDriver 时间注入式,1 tick=1 游戏分钟,实时驱动 accumulator+补跑上限;/debug 端点族 development 生效;sim:run headless 实测通过)
+- 状态: **进行中**(2026-10-03)——M2.1 模拟核心骨架(world/ 纯逻辑 Simulation/GameClock/TickDriver 时间注入式,1 tick=1 游戏分钟);M2.2 地图与场所(32x24 可行走网格+7 场所);M2.3 寻路与移动(A*+逐 tick 推进+character.arrived 事件+intents 层雏形 move_to)均已落地并实测;/debug 端点族+sim:run 就绪;余 M2.4 数值系统、M2.5 同步层、M2.6 前端渲染
 
 ### M3: 核心玩法闭环
 
@@ -123,3 +123,4 @@
 | 2026-10-03 | **M1 完结**: Spike① 实跑 4/4 槽位连通(slow=minimax MiniMax-M2.7 anthropic / light=deepseek-chat / jev=codiv diffusiongemma-26b / embedding=智谱 embedding-3 2048 维);验收标准全部满足 | 后台配置四槽位 Key 后实测通过 |
 | 2026-10-03 | M2 启动,M2.1 落地: world/ 纯逻辑三件套(GameClock 游戏日历/Simulation 固定 tick+暂停+倍率/TickDriver accumulator 实时驱动,时间注入零 I/O);游戏平衡数值入 config/balance.ts;/debug 端点族(state/tick/pause/time/scale)仅 development 注册;headless `sim:run`;world 单测 14 例 | M2 世界模拟 MVP 开工 |
 | 2026-10-03 | M2.2 落地: TileMap 可行走层(默认可行走+障碍覆盖+边界墙)+7 场所(6 建筑+公园)静态定义于 world/map-data.ts+`GET /debug/map`;决策——城镇布局由原计划"进 seed"改为代码静态定义(布局为固定游戏内容,无后台管理需求);前端色块渲染对照移交 M2.3 随移动观察一并做 | 城镇布局无需 DB 化,KISS |
+| 2026-10-03 | M2.3 落地: move_to 意图与 character.arrived 事件入 @sims/shared(协议先行);A* 寻路(4 向)+stepMovement 按速度逐 tick 推进+EventBus 离散事件;intents/execute.ts 为世界状态变更唯一入口;/debug/spawn+/debug/intent 联调端点;前端观察移交 M2.6 随渲染一并做 | M2 核心模拟层就绪,同步层(M2.5)可直接消费 snapshot+事件 |
