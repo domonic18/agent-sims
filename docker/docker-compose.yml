@@ -1,4 +1,4 @@
-# 生产: app + postgres 两容器;配置走根目录 .env
+# 生产: web(9000 对外,frpc 穿透目标) + app + postgres 三容器;配置走根目录 .env
 # 数据落 workspace/(宿主机持久化,备份=pg_dump → workspace/backups)
 services:
   postgres:
@@ -26,7 +26,31 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgres://sims:${POSTGRES_PASSWORD:-sims}@postgres:5432/agent_sims
     ports:
-      - "${GAME_PORT:-3100}:3100"
+      - "${GAME_PORT:-3100}:3100" # 调试/Spike① 脚本直连;常规入口走 web 9000
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      # 127.0.0.1 而非 localhost:node 仅绑 IPv4,容器内 localhost 解析 ::1 会被拒
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s # 首启含 migrate+seed
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-9000}:9000"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
