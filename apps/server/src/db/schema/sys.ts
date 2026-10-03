@@ -1,0 +1,42 @@
+import {
+  boolean,
+  integer,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
+import type { ModelSlot } from '@sims/shared';
+import { characters } from './agent.js';
+
+export const modelConfigs = pgTable('model_configs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slot: text('slot').$type<ModelSlot>().notNull().unique(),
+  baseUrl: text('base_url').notNull().default(''),
+  model: text('model').notNull().default(''),
+  apiKeyEncrypted: text('api_key_encrypted'), // AES-256-GCM 密文,null=未配置
+  enabled: boolean('enabled').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const tokenUsage = pgTable('token_usage', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  slot: text('slot').$type<ModelSlot>().notNull(),
+  characterId: uuid('character_id').references(() => characters.id, {
+    onDelete: 'set null',
+  }),
+  taskType: text('task_type').notNull(),
+  promptTokens: integer('prompt_tokens').notNull().default(0),
+  completionTokens: integer('completion_tokens').notNull().default(0),
+  cost: numeric('cost', { precision: 12, scale: 6 }).notNull().default('0'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const adminUsers = pgTable('admin_users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  username: text('username').notNull().unique(),
+  passwordHash: text('password_hash').notNull(), // scrypt:salt:hash
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
