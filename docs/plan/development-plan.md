@@ -28,7 +28,7 @@
   - **Spike①**: 慢思考 LLM/轻量 LLM/Jev/embedding 各一次真实连通调用(脚本入 scripts/,验证账号与网络)
   - **Spike②**: 像素素材包选型(开源免费,角色/地图 tile),结论记录后供 M2 使用
 - 验收标准: dev 环境 `compose up` 后 migrate+seed 成功、/health 返回 ok;Spike① 四类模型全部调通
-- 状态: **进行中**(2026-10-03)——四包 TS 工程/DB 基座(8 表四域+0000~0001 迁移含 pgvector)/dev compose 全链路(migrate→seed→/health)/质量门禁(check+test+build)已落地;后台登录鉴权+模型配置管理(原 M4 范围)已前置落地(web /admin 四槽位 CRUD+连通测试,Key AES-256-GCM 入库);Spike② 素材选型已定稿(research/03);余 Spike①(后台填 Key 后 `pnpm spike:llm` 实跑)
+- 状态: **已完成**(2026-10-03)——四包 TS 工程/DB 基座(8 表四域+0000~0002 迁移含 pgvector)/dev compose 全链路(migrate→seed→/health)/质量门禁(check+test+build)落地;后台登录鉴权+模型配置管理(原 M4 范围)前置落地(web /admin 四槽位 CRUD+协议感知连通测试,Key AES-256-GCM 入库);Spike② 素材选型定稿(research/03);Spike① 实跑通过(`pnpm spike:llm` 4/4 槽位连通: minimax anthropic/deepseek/codiv Jev/智谱 embedding);生产栈 web 容器化 9000 单端口对外验证通过
 
 ### M2: 世界模拟 MVP
 
@@ -120,3 +120,4 @@
 | 2026-10-03 | Spike② 定稿: 地图 tile 用 Kenney(CC0)、角色用 Universal LPC Spritesheet Generator(research/03);Spike① 脚本就绪(scripts/spike-llm-connectivity.mjs + `pnpm spike:llm`),待 API Key 实跑 | M1 收尾 |
 | 2026-10-03 | 模型配置从 env 改为后台管理(参考 ai-invest-assisstant 实现): /api/admin 登录鉴权(scrypt+HMAC token 12h)+四槽位配置 CRUD(Key AES-256-GCM 只写+掩码回显)+连通测试(结果落库);web /admin 登录+配置页(React.lazy 独立 chunk);Spike① 脚本改走后台 API;登录与模型配置从 M4 前置落地;参考实现确认后保留 0001 迁移(测试结果三字段) | 用户要求模型配置走后台管理 |
 | 2026-10-03 | 模型配置增加接入协议(openai/anthropic, 0002 迁移): 连通测试按协议分流(anthropic→/v1/messages + x-api-key/anthropic-version 头),失败详情附实际探测 URL;embedding 槽位固定 openai;web 槽位卡片加协议下拉(embedding 隐藏);research/02 修正 Jev 实测模型名为 `diffusiongemma-26b`(openjev-* 实测 404) | 实测: minimax anthropic 地址探测 404、Jev 模型名过时 |
+| 2026-10-03 | **M1 完结**: Spike① 实跑 4/4 槽位连通(slow=minimax MiniMax-M2.7 anthropic / light=deepseek-chat / jev=codiv diffusiongemma-26b / embedding=智谱 embedding-3 2048 维);验收标准全部满足 | 后台配置四槽位 Key 后实测通过 |
