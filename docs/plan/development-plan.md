@@ -28,7 +28,7 @@
   - **Spike①**: 慢思考 LLM/轻量 LLM/Jev/embedding 各一次真实连通调用(脚本入 scripts/,验证账号与网络)
   - **Spike②**: 像素素材包选型(开源免费,角色/地图 tile),结论记录后供 M2 使用
 - 验收标准: dev 环境 `compose up` 后 migrate+seed 成功、/health 返回 ok;Spike① 四类模型全部调通
-- 状态: **进行中**(2026-10-03)——四包 TS 工程/DB 基座(8 表四域+0000 迁移含 pgvector)/dev compose 全链路(migrate→seed→/health)/质量门禁(check+test+build)已落地;Spike② 素材选型已定稿(research/03: Kenney tile + LPC 角色);余 Spike①(脚本已就绪 `pnpm spike:llm`,待四类 API Key 实跑)
+- 状态: **进行中**(2026-10-03)——四包 TS 工程/DB 基座(8 表四域+0000~0001 迁移含 pgvector)/dev compose 全链路(migrate→seed→/health)/质量门禁(check+test+build)已落地;后台登录鉴权+模型配置管理(原 M4 范围)已前置落地(web /admin 四槽位 CRUD+连通测试,Key AES-256-GCM 入库);Spike② 素材选型已定稿(research/03);余 Spike①(后台填 Key 后 `pnpm spike:llm` 实跑)
 
 ### M2: 世界模拟 MVP
 
@@ -63,7 +63,7 @@
   - agents: 感知→记忆写入(Jev 打分)→记忆流(pgvector 三因子检索)→日计划(慢思考)→快层执行(规则+Jev)→矛盾重规划
   - llm: ModelRouter(OpenAI 兼容 + Jev /systemone 原生适配)+token 记账
   - 人设访谈(对话式 5~8 问);行动气泡;记忆/日程面板
-  - **最小后台**: React Admin 骨架+登录+模型配置 CRUD(Key AES 加密,前置解决模型配置自举问题)
+  - **最小后台**: React Admin 骨架(登录+模型配置 CRUD 已于 M1 前置落地, plain React 版;本里程碑迁移 react-admin 框架并扩展资源)
   - 托管: 生活方针模式(主)+全托管
 - 验收标准: requirement §11——气泡可见/切换<1s 状态不丢/方针遵守抽查/**高频动作零慢思考调用**/访谈生成人设卡
 - 状态: 未开始
@@ -118,3 +118,4 @@
 | 2026-10-03 | M1 主体落地: 四包 TS 工程(tsconfig/ESLint/check)、shared Zod 包、server Fastify /health、web Vite+React 骨架、DB 基座(8 表四域 schema+0000 迁移含 pgvector+幂等 seed)、dev compose 全链路验证通过 | M1 工程基座启动(develop 分支) |
 | 2026-10-03 | 执行约定改双分支模型: 开发在 develop 小步提交,里程碑验收后合回 main 打 tag | 用户要求建立 develop 开发分支 |
 | 2026-10-03 | Spike② 定稿: 地图 tile 用 Kenney(CC0)、角色用 Universal LPC Spritesheet Generator(research/03);Spike① 脚本就绪(scripts/spike-llm-connectivity.mjs + `pnpm spike:llm`),待 API Key 实跑 | M1 收尾 |
+| 2026-10-03 | 模型配置从 env 改为后台管理(参考 ai-invest-assisstant 实现): /api/admin 登录鉴权(scrypt+HMAC token 12h)+四槽位配置 CRUD(Key AES-256-GCM 只写+掩码回显)+连通测试(结果落库);web /admin 登录+配置页(React.lazy 独立 chunk);Spike① 脚本改走后台 API;登录与模型配置从 M4 前置落地;参考实现确认后保留 0001 迁移(测试结果三字段) | 用户要求模型配置走后台管理 |
