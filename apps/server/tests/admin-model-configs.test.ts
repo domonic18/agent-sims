@@ -45,6 +45,7 @@ afterAll(async () => {
     await handle.db
       .update(modelConfigs)
       .set({
+        protocol: 'openai',
         baseUrl: '',
         model: '',
         apiKeyEncrypted: null,
@@ -112,6 +113,7 @@ describe.skipIf(!dbUp)('admin 登录与模型配置 API', () => {
       url: '/api/admin/model-configs/light',
       headers: { authorization: `Bearer ${token}` },
       payload: {
+        protocol: 'anthropic',
         baseUrl: 'https://api.example.com/v1/',
         model: 'test-model',
         apiKey: 'sk-vitest-12345678',
@@ -121,6 +123,7 @@ describe.skipIf(!dbUp)('admin 登录与模型配置 API', () => {
     expect(put.statusCode).toBe(200);
     const lightView = put.json() as ModelConfigView;
     expect(lightView.baseUrl).toBe('https://api.example.com/v1'); // 尾斜杠归一
+    expect(lightView.protocol).toBe('anthropic');
     expect(lightView.apiKeyConfigured).toBe(true);
     expect(lightView.apiKeyMasked).toBe('sk-v********5678'); // 掩码,永不明文
     expect(lightView.enabled).toBe(true);
@@ -192,6 +195,46 @@ describe.skipIf(!dbUp)('admin 登录与模型配置 API', () => {
     const light = (list.json() as ModelConfigView[]).find((view) => view.slot === 'light');
     expect(light?.lastTestStatus).toBe('failed');
     expect(light?.lastTestError).toBeTruthy();
+    await app.close();
+  });
+
+  it('anthropic 协议探测走 /messages 路径,失败详情含探测 URL', async () => {
+    const app = buildApp();
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/model-configs/slow',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        protocol: 'anthropic',
+        baseUrl: 'http://127.0.0.1:9/v1',
+        model: 'test-anthropic',
+        apiKey: 'sk-vitest-anthropic',
+        enabled: true,
+      },
+    });
+    expect(put.statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/model-configs/slow/test',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: false });
+    // 详情带实际探测 URL,便于自查 Base URL 填法
+    expect((res.json() as { detail: string }).detail).toContain('/v1/messages');
+    await app.close();
+  });
+
+  it('非法 protocol 值 400', async () => {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/admin/model-configs/light',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { protocol: 'grpc' },
+    });
+    expect(res.statusCode).toBe(400);
     await app.close();
   });
 });

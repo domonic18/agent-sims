@@ -1,6 +1,12 @@
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { MODEL_SLOTS, type ModelConfigView, type ModelSlot } from '@sims/shared';
+import {
+  MODEL_PROTOCOLS,
+  MODEL_SLOTS,
+  type ModelConfigView,
+  type ModelProtocol,
+  type ModelSlot,
+} from '@sims/shared';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import type { DbHandle } from '../db/client.js';
@@ -12,6 +18,7 @@ import { requireAdmin } from './auth.js';
 const PROBE_TIMEOUT_MS = 15_000;
 
 const putSchema = z.object({
+  protocol: z.enum(MODEL_PROTOCOLS).optional(),
   baseUrl: z
     .string()
     .url()
@@ -30,6 +37,7 @@ function toView(
   if (!row) {
     return {
       slot,
+      protocol: 'openai',
       baseUrl: '',
       model: '',
       apiKeyMasked: '',
@@ -51,6 +59,7 @@ function toView(
   }
   return {
     slot: row.slot,
+    protocol: row.protocol,
     baseUrl: row.baseUrl,
     model: row.model,
     apiKeyMasked: masked,
@@ -74,32 +83,50 @@ async function loadRow(handle: DbHandle, slot: ModelSlot) {
 
 async function probeModel(config: {
   slot: ModelSlot;
+  protocol: ModelProtocol;
   baseUrl: string;
   model: string;
   apiKey: string;
 }): Promise<{ ok: boolean; detail: string }> {
   const isEmbedding = config.slot === 'embedding';
-  const url = `${config.baseUrl}${isEmbedding ? '/embeddings' : '/chat/completions'}`;
-  const body = isEmbedding
-    ? { model: config.model, input: ['ping'] }
-    : {
-        model: config.model,
-        max_tokens: 1,
-        messages: [{ role: 'user', content: 'ping' }],
-      };
+  // embedding 槽位无 anthropic 形态,固定 openai;其余按协议选路径
+  const protocol: ModelProtocol = isEmbedding ? 'openai' : config.protocol;
+  const url =
+    protocol === 'anthropic'
+      ? `${config.baseUrl}/messages`
+      : `${config.baseUrl}${isEmbedding ? '/embeddings' : '/chat/completions'}`;
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    authorization: `Bearer ${config.apiKey}`,
+  };
+  let body: unknown;
+  if (protocol === 'anthropic') {
+    headers['x-api-key'] = config.apiKey;
+    headers['anthropic-version'] = '2023-06-01';
+    body = {
+      model: config.model,
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'ping' }],
+    };
+  } else if (isEmbedding) {
+    body = { model: config.model, input: ['ping'] };
+  } else {
+    body = {
+      model: config.model,
+      max_tokens: 1,
+      messages: [{ role: 'user', content: 'ping' }],
+    };
+  }
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${config.apiKey}`,
-      },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     const text = await res.text();
     if (!res.ok) {
-      return { ok: false, detail: `HTTP ${res.status}: ${text.slice(0, 200)}` };
+      return { ok: false, detail: `HTTP ${res.status} @ ${url}: ${text.slice(0, 200)}` };
     }
     if (isEmbedding) {
       const data = (JSON.parse(text) as { data?: Array<{ embedding?: unknown[] }> }).data;
@@ -109,9 +136,9 @@ async function probeModel(config: {
       }
       return { ok: true, detail: `模型 ${config.model} 连通正常(${dims} 维)` };
     }
-    return { ok: true, detail: `模型 ${config.model} 连通正常` };
+    return { ok: true, detail: `模型 ${config.model} 连通正常(${protocol})` };
   } catch (err) {
-    return { ok: false, detail: String(err).slice(0, 300) };
+    return { ok: false, detail: `${String(err).slice(0, 240)} @ ${url}` };
   }
 }
 
@@ -122,7 +149,13 @@ async function testSlot(handle: DbHandle, slot: ModelSlot): Promise<{ ok: boolea
   }
   try {
     const apiKey = decryptSecret(row.apiKeyEncrypted, env.MASTER_KEY);
-    return await probeModel({ slot, baseUrl: row.baseUrl, model: row.model, apiKey });
+    return await probeModel({
+      slot,
+      protocol: row.protocol,
+      baseUrl: row.baseUrl,
+      model: row.model,
+      apiKey,
+    });
   } catch {
     return { ok: false, detail: '密钥解密失败(MASTER_KEY 与密文不匹配)' };
   }
@@ -168,6 +201,9 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
     }
     const target = params.slot as ModelSlot;
     const data = parsed.data;
+    // embedding 槽位只支持 OpenAI 兼容(/embeddings),协议选择器对其隐藏
+    const protocol: ModelProtocol =
+      target === 'embedding' ? 'openai' : (data.protocol ?? 'openai');
     const existing = await loadRow(handle, target);
     if (!existing && !data.baseUrl && !data.model && !data.apiKey) {
       return await reply.code(400).send({ error: '槽位不存在且未提供任何配置字段' });
@@ -176,6 +212,7 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
       .insert(modelConfigs)
       .values({
         slot: target,
+        protocol,
         baseUrl: data.baseUrl ?? '',
         model: data.model ?? '',
         apiKeyEncrypted: data.apiKey ? encryptSecret(data.apiKey, env.MASTER_KEY) : null,
@@ -185,6 +222,7 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
       .onConflictDoUpdate({
         target: modelConfigs.slot,
         set: {
+          ...(data.protocol !== undefined ? { protocol } : {}),
           ...(data.baseUrl !== undefined ? { baseUrl: data.baseUrl } : {}),
           ...(data.model !== undefined ? { model: data.model } : {}),
           ...(data.apiKey
