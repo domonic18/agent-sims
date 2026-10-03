@@ -17,3 +17,19 @@ export {
   type ModelProtocol,
   type ModelSlot,
 } from './admin.js';
+
+export {
+  INTENT_TYPES,
+  intentSchema,
+  moveToIntentSchema,
+  type Intent,
+  type IntentType,
+  type MoveToIntent,
+} from './intents.js';
+
+export {
+  characterArrivedEventSchema,
+  worldEventSchema,
+  type CharacterArrivedEvent,
+  type WorldEvent,
+} from './events.js';

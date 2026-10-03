@@ -19,4 +19,6 @@ export const BALANCE = {
   /** 昼夜判定:22:00~次日 06:00 为夜 */
   NIGHT_START_MINUTE: 22 * 60,
   NIGHT_END_MINUTE: 6 * 60,
+  /** 步行速度:格/游戏分钟(寻路路径按此逐 tick 推进) */
+  WALK_SPEED_TILES_PER_MINUTE: 1,
 } as const;

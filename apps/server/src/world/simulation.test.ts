@@ -42,6 +42,7 @@ describe('Simulation 模拟核心', () => {
       paused: false,
       timeScale: 4,
       clock: { gameMinutes: 540, day: 1, time: '09:00', isNight: false },
+      characters: [],
     });
   });
 });

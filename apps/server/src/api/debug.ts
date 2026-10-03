@@ -1,6 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { intentSchema } from '@sims/shared';
 import { z } from 'zod';
 import { BALANCE } from '../config/balance.js';
+import { executeIntent } from '../intents/execute.js';
 import type { Simulation } from '../world/simulation.js';
 
 /** 单次手动推进上限,防止误操作打爆 tick */
@@ -20,6 +22,13 @@ const scaleBodySchema = z.object({
       (BALANCE.TIME_SCALES as readonly number[]).includes(value), {
       message: `可用档位: ${BALANCE.TIME_SCALES.join('/')}`,
     }),
+});
+
+const spawnBodySchema = z.object({
+  id: z.string().min(1),
+  x: z.number().int(),
+  y: z.number().int(),
+  name: z.string().min(1).optional(),
 });
 
 function parseError(reply: FastifyReply, message: string) {
@@ -68,5 +77,35 @@ export function registerDebugRoutes(app: FastifyInstance, sim: Simulation): void
     }
     sim.setTimeScale(parsed.data.scale);
     return await reply.send(sim.snapshot());
+  });
+
+  // 调试辅助:生成运行时角色(出生点须可行走);正式角色创建走 DB 层,后置
+  app.post('/debug/spawn', async (request, reply) => {
+    const parsed = spawnBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return parseError(reply, issue ? `${issue.path.join('.')}: ${issue.message}` : '请求体不合法');
+    }
+    try {
+      sim.spawnCharacter(parsed.data.id, parsed.data.x, parsed.data.y, parsed.data.name);
+    } catch (err) {
+      return parseError(reply, err instanceof Error ? err.message : '生成角色失败');
+    }
+    return await reply.send(sim.snapshot());
+  });
+
+  // intents 层雏形:经共享协议校验后执行(异常映射 400)
+  app.post('/debug/intent', async (request, reply) => {
+    const parsed = intentSchema.safeParse(request.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return parseError(reply, issue ? `intent: ${issue.message}` : '意图不合法');
+    }
+    try {
+      const result = executeIntent(sim, parsed.data);
+      return await reply.send({ ...result, state: sim.snapshot() });
+    } catch (err) {
+      return parseError(reply, err instanceof Error ? err.message : '意图执行失败');
+    }
   });
 }
