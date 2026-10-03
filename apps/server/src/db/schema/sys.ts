@@ -17,6 +17,9 @@ export const modelConfigs = pgTable('model_configs', {
   model: text('model').notNull().default(''),
   apiKeyEncrypted: text('api_key_encrypted'), // AES-256-GCM 密文,null=未配置
   enabled: boolean('enabled').notNull().default(false),
+  lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
+  lastTestStatus: text('last_test_status').$type<'success' | 'failed'>(),
+  lastTestError: text('last_test_error'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

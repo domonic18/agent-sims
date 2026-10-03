@@ -3,4 +3,14 @@
  */
 export const SHARED_PROTOCOL_VERSION = '0.1.0' as const;
 
-export { MODEL_SLOTS, type ModelSlot } from './admin.js';
+export {
+  ADMIN_API,
+  MODEL_SLOTS,
+  MODEL_SLOT_LABELS,
+  type AdminLoginRequest,
+  type AdminLoginResponse,
+  type ModelConfigTestResult,
+  type ModelConfigUpdate,
+  type ModelConfigView,
+  type ModelSlot,
+} from './admin.js';
