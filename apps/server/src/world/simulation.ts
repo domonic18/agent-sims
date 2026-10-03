@@ -1,5 +1,7 @@
 import { BALANCE } from '../config/balance.js';
 import { GameClock } from './clock.js';
+import { TileMap } from './map.js';
+import { TOWN_MAP } from './map-data.js';
 
 /**
  * 世界模拟核心:固定 tick(1 tick = 1 游戏分钟),纯逻辑零 I/O。
@@ -8,6 +10,7 @@ import { GameClock } from './clock.js';
  */
 export class Simulation {
   readonly clock = new GameClock();
+  readonly map: TileMap = TileMap.fromDefinition(TOWN_MAP);
   tick = 0;
   paused = false;
   timeScale: number = BALANCE.DEFAULT_TIME_SCALE;

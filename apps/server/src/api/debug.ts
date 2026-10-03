@@ -33,6 +33,13 @@ function parseError(reply: FastifyReply, message: string) {
 export function registerDebugRoutes(app: FastifyInstance, sim: Simulation): void {
   app.get('/debug/state', async () => sim.snapshot());
 
+  app.get('/debug/map', async () => ({
+    width: sim.map.width,
+    height: sim.map.height,
+    ascii: sim.map.toAscii(),
+    places: sim.map.places,
+  }));
+
   app.post('/debug/tick', async (request, reply) => {
     const parsed = tickQuerySchema.safeParse(request.query);
     if (!parsed.success) {
