@@ -5,7 +5,8 @@
 
 ## 执行约定(2026-10-03 定稿)
 
-- **串行验收推进**: M1→M8 顺序执行,每个里程碑跑对应验收清单 → 更新本文件状态 → 打 tag(`v0.x.0-mN`) → 再进下一个;单人仓库 main 小步提交
+- **串行验收推进**: M1→M8 顺序执行,每个里程碑跑对应验收清单 → 更新本文件状态 → 打 tag(`v0.x.0-mN`) → 再进下一个
+- **分支模型**: 开发在 `develop` 分支小步提交;里程碑验收通过后合回 `main` 并打 tag,`main` 始终可运行
 - **每轮迭代 CodeReview**: 静态检查/单测之外,每轮迭代收尾前按根 CLAUDE.md §3 执行 CodeReview(规范性/封装性/架构合理性),问题清零后收尾
 - **资源准备时间点**: M4 开始前提供各家 API Key(慢思考LLM/轻量LLM/Jev/embedding,后台填写);M7 开始前提供飞书个人群+自定义机器人 webhook
 - 规模图例: S(半个工作日内) / M(1~2 个工作日) / L(3~5 个工作日)
@@ -27,7 +28,7 @@
   - **Spike①**: 慢思考 LLM/轻量 LLM/Jev/embedding 各一次真实连通调用(脚本入 scripts/,验证账号与网络)
   - **Spike②**: 像素素材包选型(开源免费,角色/地图 tile),结论记录后供 M2 使用
 - 验收标准: dev 环境 `compose up` 后 migrate+seed 成功、/health 返回 ok;Spike① 四类模型全部调通
-- 状态: 未开始
+- 状态: **进行中**(2026-10-03)——四包 TS 工程/DB 基座(8 表四域+0000 迁移含 pgvector)/dev compose 全链路(migrate→seed→/health)/质量门禁(check+test+build)已落地;Spike② 素材选型已定稿(research/03: Kenney tile + LPC 角色);余 Spike①(脚本已就绪 `pnpm spike:llm`,待四类 API Key 实跑)
 
 ### M2: 世界模拟 MVP
 
@@ -114,3 +115,6 @@
 | 2026-10-03 | 建立分目录 CLAUDE.md(apps/server、apps/web、packages/shared);开发流程增加每轮迭代 CodeReview 环节 | 规范完善 |
 | 2026-10-03 | 目录规划增加 workspace/(宿主机持久化数据);dev/prod compose 由 named volume 改为 workspace bind mount | 数据落点统一到宿主机目录,便于备份与重置 |
 | 2026-10-03 | 明确测试目录分层: 单测就近(`*.test.ts` 同置)/集成测试放包内 `tests/`/E2E 后置建 `e2e/`;不设顶层 tests/ | 测试组织按 JS/TS 生态就近派实践确认 |
+| 2026-10-03 | M1 主体落地: 四包 TS 工程(tsconfig/ESLint/check)、shared Zod 包、server Fastify /health、web Vite+React 骨架、DB 基座(8 表四域 schema+0000 迁移含 pgvector+幂等 seed)、dev compose 全链路验证通过 | M1 工程基座启动(develop 分支) |
+| 2026-10-03 | 执行约定改双分支模型: 开发在 develop 小步提交,里程碑验收后合回 main 打 tag | 用户要求建立 develop 开发分支 |
+| 2026-10-03 | Spike② 定稿: 地图 tile 用 Kenney(CC0)、角色用 Universal LPC Spritesheet Generator(research/03);Spike① 脚本就绪(scripts/spike-llm-connectivity.mjs + `pnpm spike:llm`),待 API Key 实跑 | M1 收尾 |
