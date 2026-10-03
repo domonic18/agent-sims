@@ -14,7 +14,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
-    "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed/index.ts"
+    "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed/index.ts",
+    "sim:run": "tsx src/world/sim-run.ts"
   },
   "dependencies": {
     "@sims/shared": "workspace:*",

@@ -38,7 +38,7 @@
 
 | 子阶段 | 规模 | 实现内容 | 测试/调试手段 |
 |--------|------|----------|---------------|
-| M2.1 模拟核心骨架 | S | tick 循环(accumulator)+注入式时钟;游戏日历(游戏分钟/日/昼夜判定);暂停/恢复;时间倍率(1x/4x/16x) | vitest 单测(时钟推进/暂停冻结/倍率/昼夜边界);headless 脚本 `sim:run --ticks=N` 输出状态摘要;/debug: `GET /debug/state`、`POST /debug/tick?n=`、`POST /debug/time/scale` |
+| M2.1 模拟核心骨架 | S ✅(2026-10-03) | tick 循环(accumulator)+注入式时钟;游戏日历(游戏分钟/日/昼夜判定);暂停/恢复;时间倍率(1x/4x/16x) | vitest 单测(时钟推进/暂停冻结/倍率/昼夜边界);headless 脚本 `sim:run --ticks=N` 输出状态摘要;/debug: `GET /debug/state`、`POST /debug/tick?n=`、`POST /debug/time/scale` |
 | M2.2 地图与场所 | S | tile 网格+可行走层;6~8 场所(位置/入口/占地)进 seed | 可行走性查询单测;`GET /debug/map`;前端色块渲染对照 |
 | M2.3 寻路与移动 | M | A*(可达/绕障/不可达);路径按速度逐游戏分钟推进;到达=离散事件进事件总线 | 寻路单测(正常/绕障/不可达/同格);移动推进单测(整分钟粒度+到达精度);`POST /debug/intent` 下发 move_to 实测(intents 层雏形);前端观察 |
 | M2.4 数值系统 | S | 体力/幸福时间衰减(0~100 夹取);金币静态(M3 接活动) | 衰减与边界单测;`sim:run` 跑完整 1 游戏日输出数值曲线,验证衰减幅度合理性 |
@@ -46,7 +46,7 @@
 | M2.6 前端渲染+HUD+素材 | M | WS 层写 Zustand;Phaser 场景+路径插值;昼夜色调 overlay;HUD(时间/昼夜/三数值/暂停/加速);接入 Spike② 素材(tile+角色 sprite+行走动画) | 暂停按钮端到端(前端点→后端停→双端一致);60fps;素材渲染正确 |
 
 - 验收标准(requirement §11): 浏览器看到角色按 tick 平滑移动;暂停立即冻结、恢复无状态丢失;桌面 Chrome/Edge 60fps
-- 状态: 未开始
+- 状态: **进行中**(2026-10-03)——M2.1 模拟核心骨架已落地(world/ 纯逻辑 Simulation/GameClock/TickDriver 时间注入式,1 tick=1 游戏分钟,实时驱动 accumulator+补跑上限;/debug 端点族 development 生效;sim:run headless 实测通过)
 
 ### M3: 核心玩法闭环
 
@@ -121,3 +121,4 @@
 | 2026-10-03 | 模型配置从 env 改为后台管理(参考 ai-invest-assisstant 实现): /api/admin 登录鉴权(scrypt+HMAC token 12h)+四槽位配置 CRUD(Key AES-256-GCM 只写+掩码回显)+连通测试(结果落库);web /admin 登录+配置页(React.lazy 独立 chunk);Spike① 脚本改走后台 API;登录与模型配置从 M4 前置落地;参考实现确认后保留 0001 迁移(测试结果三字段) | 用户要求模型配置走后台管理 |
 | 2026-10-03 | 模型配置增加接入协议(openai/anthropic, 0002 迁移): 连通测试按协议分流(anthropic→/v1/messages + x-api-key/anthropic-version 头),失败详情附实际探测 URL;embedding 槽位固定 openai;web 槽位卡片加协议下拉(embedding 隐藏);research/02 修正 Jev 实测模型名为 `diffusiongemma-26b`(openjev-* 实测 404) | 实测: minimax anthropic 地址探测 404、Jev 模型名过时 |
 | 2026-10-03 | **M1 完结**: Spike① 实跑 4/4 槽位连通(slow=minimax MiniMax-M2.7 anthropic / light=deepseek-chat / jev=codiv diffusiongemma-26b / embedding=智谱 embedding-3 2048 维);验收标准全部满足 | 后台配置四槽位 Key 后实测通过 |
+| 2026-10-03 | M2 启动,M2.1 落地: world/ 纯逻辑三件套(GameClock 游戏日历/Simulation 固定 tick+暂停+倍率/TickDriver accumulator 实时驱动,时间注入零 I/O);游戏平衡数值入 config/balance.ts;/debug 端点族(state/tick/pause/time/scale)仅 development 注册;headless `sim:run`;world 单测 14 例 | M2 世界模拟 MVP 开工 |
