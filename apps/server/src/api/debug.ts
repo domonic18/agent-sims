@@ -3,6 +3,7 @@ import { intentSchema } from '@sims/shared';
 import { z } from 'zod';
 import { BALANCE } from '../config/balance.js';
 import { executeIntent } from '../intents/execute.js';
+import type { ClientRegistry } from '../socket/clients.js';
 import type { Simulation } from '../world/simulation.js';
 
 /** 单次手动推进上限,防止误操作打爆 tick */
@@ -39,8 +40,17 @@ function parseError(reply: FastifyReply, message: string) {
  * /debug/* 端点族:仅在 NODE_ENV=development 注册(app.ts 控制),生产自动关闭。
  * 全部直接读写 Simulation,供联调与 headless 对照。
  */
-export function registerDebugRoutes(app: FastifyInstance, sim: Simulation): void {
+export function registerDebugRoutes(
+  app: FastifyInstance,
+  sim: Simulation,
+  clients: ClientRegistry,
+): void {
   app.get('/debug/state', async () => sim.snapshot());
+
+  app.get('/debug/clients', async () => {
+    const list = clients.list();
+    return { total: list.length, clients: list };
+  });
 
   app.get('/debug/map', async () => ({
     width: sim.map.width,

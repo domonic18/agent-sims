@@ -1,5 +1,10 @@
+import type {
+  CharacterArrivedEvent,
+  WorldControlEvent,
+  WorldEvent,
+  WorldSnapshotMessage,
+} from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
-import type { CharacterArrivedEvent, WorldEvent } from '@sims/shared';
 import { GameClock } from './clock.js';
 import { applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
 import { EventBus } from './event-bus.js';
@@ -16,7 +21,7 @@ export class Simulation {
   readonly clock = new GameClock();
   readonly map: TileMap = TileMap.fromDefinition(TOWN_MAP);
   readonly characters = new Map<string, WorldCharacter>();
-  /** 世界事件总线:离散事件(到达等)即时分发,感知层后续订阅 */
+  /** 世界事件总线:离散事件与控制变更即时分发,感知/同步层订阅 */
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
   paused = false;
@@ -73,25 +78,9 @@ export class Simulation {
     return character;
   }
 
-  private _stepCharacters(): void {
-    for (const character of this.characters.values()) {
-      applyVitalDecay(character, 1);
-      const arrived = stepMovement(character, BALANCE.WALK_SPEED_TILES_PER_MINUTE);
-      if (arrived) {
-        const event: CharacterArrivedEvent = {
-          type: 'character.arrived',
-          characterId: character.id,
-          tick: this.tick,
-          x: character.x,
-          y: character.y,
-        };
-        this.events.emit(event);
-      }
-    }
-  }
-
   setPaused(paused: boolean): void {
     this.paused = paused;
+    this._emitControl();
   }
 
   setTimeScale(scale: number): void {
@@ -99,10 +88,11 @@ export class Simulation {
       throw new RangeError(`非法时间倍率: ${scale}(可用档位: ${BALANCE.TIME_SCALES.join('/')})`);
     }
     this.timeScale = scale;
+    this._emitControl();
   }
 
-  /** 状态快照:调试端点与后续同步层共用的对外形态 */
-  snapshot(): SimulationSnapshot {
+  /** 状态快照:调试端点与同步层共用的对外形态(协议面在 @sims/shared) */
+  snapshot(): WorldSnapshotMessage {
     return {
       tick: this.tick,
       paused: this.paused,
@@ -125,27 +115,31 @@ export class Simulation {
       })),
     };
   }
-}
 
-export interface SimulationSnapshot {
-  tick: number;
-  paused: boolean;
-  timeScale: number;
-  clock: {
-    gameMinutes: number;
-    day: number;
-    /** HH:mm */
-    time: string;
-    isNight: boolean;
-  };
-  characters: Array<{
-    id: string;
-    name: string;
-    x: number;
-    y: number;
-    pathRemaining: number;
-    energy: number;
-    happiness: number;
-    coins: number;
-  }>;
+  private _emitControl(): void {
+    const event: WorldControlEvent = {
+      type: 'world.control',
+      tick: this.tick,
+      paused: this.paused,
+      timeScale: this.timeScale,
+    };
+    this.events.emit(event);
+  }
+
+  private _stepCharacters(): void {
+    for (const character of this.characters.values()) {
+      applyVitalDecay(character, 1);
+      const arrived = stepMovement(character, BALANCE.WALK_SPEED_TILES_PER_MINUTE);
+      if (arrived) {
+        const event: CharacterArrivedEvent = {
+          type: 'character.arrived',
+          characterId: character.id,
+          tick: this.tick,
+          x: character.x,
+          y: character.y,
+        };
+        this.events.emit(event);
+      }
+    }
+  }
 }

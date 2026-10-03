@@ -6,6 +6,8 @@ export interface TickDriverOptions {
   now?: () => number;
   /** 单次泵最大补跑 tick 数,默认取 BALANCE.MAX_CATCHUP_TICKS */
   maxCatchupTicks?: number;
+  /** 每 tick 推进后回调(同步层广播增量用) */
+  onTick?: (tick: number) => void;
 }
 
 /**
@@ -19,11 +21,13 @@ export class TickDriver {
   private readonly _sim: Simulation;
   private readonly _now: () => number;
   private readonly _maxCatchupTicks: number;
+  private readonly _onTick: ((tick: number) => void) | undefined;
 
   constructor(sim: Simulation, options: TickDriverOptions = {}) {
     this._sim = sim;
     this._now = options.now ?? Date.now;
     this._maxCatchupTicks = options.maxCatchupTicks ?? BALANCE.MAX_CATCHUP_TICKS;
+    this._onTick = options.onTick;
     this._last = this._now();
   }
 
@@ -42,6 +46,7 @@ export class TickDriver {
       this._sim.advanceTicks(1);
       this._acc -= stepMs;
       steps += 1;
+      this._onTick?.(this._sim.tick);
     }
     if (steps >= this._maxCatchupTicks) {
       this._acc = 0;
