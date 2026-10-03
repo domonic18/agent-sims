@@ -1,0 +1,140 @@
+.admin-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  font-family: system-ui, -apple-system, 'PingFang SC', sans-serif;
+  color: #1f2328;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.admin-header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.admin-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, -apple-system, 'PingFang SC', sans-serif;
+}
+
+.admin-login-card {
+  width: 320px;
+  padding: 28px;
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: #fff;
+}
+
+.admin-login-card h1 {
+  font-size: 18px;
+  text-align: center;
+  margin: 0 0 4px;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+  gap: 16px;
+}
+
+.slot-card {
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+}
+
+.slot-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.slot-card h2 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.slot-card label,
+.admin-login-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #57606a;
+}
+
+.slot-card input:not([type='checkbox']),
+.admin-login-card input {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.slot-enabled {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px !important;
+  font-size: 13px;
+}
+
+.slot-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  border: 1px solid #1f883d;
+  background: #1f883d;
+  color: #fff;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.admin-secondary {
+  background: #f6f8fa;
+  color: #1f2328;
+  border-color: #d0d7de;
+}
+
+.admin-ok {
+  color: #1a7f37;
+  font-size: 13px;
+  margin: 0;
+}
+
+.admin-error {
+  color: #cf222e;
+  font-size: 13px;
+  margin: 0;
+}
+
+.admin-muted {
+  color: #6e7781;
+  font-size: 12px;
+  margin: 0;
+  word-break: break-all;
+}

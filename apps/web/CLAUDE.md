@@ -67,6 +67,7 @@ WS 增量 → net/ 写入 → Zustand store → Phaser.update() 读(插值渲染
 ### admin
 
 - React Admin 经 React.lazy 路由级懒加载,不得进主 bundle 关键路径
+- 当前 /admin 为最小实现(plain React: 登录门+模型配置四槽位);M4 迁移 react-admin 框架,迁移时保留懒加载边界与 `@sims/shared` 协议类型
 
 ## 5. 测试规范
 
