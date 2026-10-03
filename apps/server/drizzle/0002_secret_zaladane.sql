@@ -1,0 +1,1 @@
+ALTER TABLE "model_configs" ADD COLUMN "protocol" text DEFAULT 'openai' NOT NULL;

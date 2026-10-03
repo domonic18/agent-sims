@@ -7,12 +7,13 @@ import {
   timestamp,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { ModelSlot } from '@sims/shared';
+import type { ModelProtocol, ModelSlot } from '@sims/shared';
 import { characters } from './agent.js';
 
 export const modelConfigs = pgTable('model_configs', {
   id: uuid('id').primaryKey().defaultRandom(),
   slot: text('slot').$type<ModelSlot>().notNull().unique(),
+  protocol: text('protocol').$type<ModelProtocol>().notNull().default('openai'),
   baseUrl: text('base_url').notNull().default(''),
   model: text('model').notNull().default(''),
   apiKeyEncrypted: text('api_key_encrypted'), // AES-256-GCM 密文,null=未配置

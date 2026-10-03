@@ -13,9 +13,29 @@ export const MODEL_SLOT_LABELS: Record<ModelSlot, string> = {
   embedding: 'Embedding',
 };
 
+/**
+ * 模型接入协议:openai=OpenAI 兼容(/chat/completions、/embeddings),
+ * anthropic=Anthropic Messages(/v1/messages)。embedding 槽位固定 openai。
+ */
+export const MODEL_PROTOCOLS = ['openai', 'anthropic'] as const;
+
+export type ModelProtocol = (typeof MODEL_PROTOCOLS)[number];
+
+export const MODEL_PROTOCOL_LABELS: Record<ModelProtocol, string> = {
+  openai: 'OpenAI 兼容',
+  anthropic: 'Anthropic',
+};
+
+/** Base URL 约定:填到版本段为止,探测路径由协议决定 */
+export const MODEL_PROTOCOL_BASE_URL_HINT: Record<ModelProtocol, string> = {
+  openai: '填到 /v1 为止,如 https://api.example.com/v1',
+  anthropic: '填到 /v1 为止,如 https://api.minimax.io/v1',
+};
+
 /** GET /api/admin/model-configs 响应条目(apiKey 只回掩码,密文永不外发) */
 export interface ModelConfigView {
   slot: ModelSlot;
+  protocol: ModelProtocol;
   baseUrl: string;
   model: string;
   apiKeyMasked: string;
@@ -29,6 +49,7 @@ export interface ModelConfigView {
 
 /** PUT /api/admin/model-configs/:slot 请求(apiKey 只写:空/缺省=保留原值) */
 export interface ModelConfigUpdate {
+  protocol?: ModelProtocol;
   baseUrl?: string;
   model?: string;
   apiKey?: string;

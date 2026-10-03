@@ -5,6 +5,8 @@ export const SHARED_PROTOCOL_VERSION = '0.1.0' as const;
 
 export {
   ADMIN_API,
+  MODEL_PROTOCOLS,
+  MODEL_PROTOCOL_LABELS,
   MODEL_SLOTS,
   MODEL_SLOT_LABELS,
   type AdminLoginRequest,
@@ -12,5 +14,6 @@ export {
   type ModelConfigTestResult,
   type ModelConfigUpdate,
   type ModelConfigView,
+  type ModelProtocol,
   type ModelSlot,
 } from './admin.js';
