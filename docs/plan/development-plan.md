@@ -43,10 +43,10 @@
 | M2.3 寻路与移动 | M ✅(2026-10-03) | A*(可达/绕障/不可达);路径按速度逐游戏分钟推进;到达=离散事件进事件总线 | 寻路单测(正常/绕障/不可达/同格);移动推进单测(整分钟粒度+到达精度);`POST /debug/intent` 下发 move_to 实测(intents 层雏形);前端观察(移交 M2.6 渲染一并做) |
 | M2.4 数值系统 | S ✅(2026-10-03) | 体力/幸福时间衰减(0~100 夹取);金币静态(M3 接活动) | 衰减与边界单测;`sim:run` 跑完整 1 游戏日输出数值曲线,验证衰减幅度合理性 |
 | M2.5 同步层 | M ✅(2026-10-03) | Socket.IO 首连全量快照+增量(tick 序号)+断线重连重同步;player/spectator 角色标志(参观入口 M8,机制此处具备) | 双窗口一致性;kill 客户端重连后一致;`GET /debug/clients` |
-| M2.6 前端渲染+HUD+素材 | M | WS 层写 Zustand;Phaser 场景+路径插值;昼夜色调 overlay;HUD(时间/昼夜/三数值/暂停/加速);接入 Spike② 素材(tile+角色 sprite+行走动画) | 暂停按钮端到端(前端点→后端停→双端一致);60fps;素材渲染正确 |
+| M2.6 前端渲染+HUD+素材 | M ✅(2026-10-04) | WS 层写 Zustand;Phaser 场景+路径插值;昼夜色调 overlay;HUD(时间/昼夜/三数值/暂停/加速);接入 Spike② 素材(tile+角色 sprite+行走动画) | 暂停按钮端到端(前端点→后端停→双端一致);60fps;素材渲染正确 |
 
 - 验收标准(requirement §11): 浏览器看到角色按 tick 平滑移动;暂停立即冻结、恢复无状态丢失;桌面 Chrome/Edge 60fps
-- 状态: **进行中**(2026-10-03)——M2.1~M2.5 均已落地并实测(模拟核心+Socket.IO 同步层就绪: 连接即快照/每 tick 广播/事件转发/在线注册表,69 测试);余 M2.6 前端渲染+HUD+素材
+- 状态: **已完成**(2026-10-04)——M2.1~M2.6 全部落地并实测(模拟核心+Socket.IO 同步层+前端 Phaser 渲染/HUD/昼夜/素材动画,69 测试);验收项逐条过: 插值平滑移动/暂停即冻结/素材渲染正确
 
 ### M3: 核心玩法闭环
 
@@ -126,3 +126,4 @@
 | 2026-10-03 | M2.3 落地: move_to 意图与 character.arrived 事件入 @sims/shared(协议先行);A* 寻路(4 向)+stepMovement 按速度逐 tick 推进+EventBus 离散事件;intents/execute.ts 为世界状态变更唯一入口;/debug/spawn+/debug/intent 联调端点;前端观察移交 M2.6 随渲染一并做 | M2 核心模拟层就绪,同步层(M2.5)可直接消费 snapshot+事件 |
 | 2026-10-03 | M2.4 落地: 体力/幸福每游戏分钟自然衰减 0.05/0.03(0~100 夹取,上界供活动增益)+金币静态;完整游戏日 sim:run 曲线体力 100→28/幸福 100→56.8,作为 M3 活动数值设计基线 | 数值基线定稿需实测幅度支撑 |
 | 2026-10-03 | M2.5 落地: @sims/shared 增 sync.ts(SOCKET_EVENTS/world.snapshot 全量快照协议/SOCKET_ROLES)+world.control 控制事件入事件联合(协议先行);socket/gateway(连接即快照+离散事件转发,无 client→server 监听=spectator 只读)+clients 注册表+TickDriver onTick 回调;io 装配入 buildApp(app.io 装饰器,onClose 先 await io.close 再关 pg,消除双路 close 竞态);`GET /debug/clients`;tests/sync 集成测试 4 例(快照/注册表/tick 广播+到达事件/控制事件)。决策——每 tick 增量暂用全量快照(状态小,tick 序号天然防乱序,M4 感知层复用);坑——socket.io 快照帧与 connect 同轮同步到达,客户端监听必须先于 connect 注册,否则错过首帧 | 同步层就绪,M2.6 前端直接消费 |
+| 2026-10-04 | M2.6 落地+**M2 里程碑完结**: net/socket(socket.io-client,监听先于 connect)+zustand worldStore(status/snapshot/lastEvent,world.control 就地 patch 快照);Phaser WorldScene+HUD(时间/昼夜/tick/暂停/1x4x16x);TOWN_MAP 下沉 @sims/shared 双端共用防漂移;素材接入——Kenney tile 13 格条带(松林边界/六建筑屋顶+墙身/入口泥路/水/公园)+LPC 角色 walk 四向 9 帧缩 32px,裁切产物入 public/assets(原始包不入库,授权文件归档,帧配置集中在 game/assets.ts),角色按插值方向切 walk 动画、静止定格 frame0、步频随 timeScale;昼夜 overlay lerp。决策——每角色分离快照目标与渲染浮点坐标,偏差>4 格视为瞬移吸附;暂停冻结=快照停更自然达成,前端零特殊处理;坑——Phaser overlay fillAlpha=0 与对象 alpha 相乘恒 0(fillAlpha=1+setAlpha(lerp))。门禁 69 测试+浏览器端到端(暂停冻结 tick 21117/16x 实测/夜间压暗/行走动画转向切换) | M2 世界模拟 MVP 全量就绪,M3 玩法闭环开工 |
