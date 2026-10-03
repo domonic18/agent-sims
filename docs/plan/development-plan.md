@@ -119,3 +119,4 @@
 | 2026-10-03 | 执行约定改双分支模型: 开发在 develop 小步提交,里程碑验收后合回 main 打 tag | 用户要求建立 develop 开发分支 |
 | 2026-10-03 | Spike② 定稿: 地图 tile 用 Kenney(CC0)、角色用 Universal LPC Spritesheet Generator(research/03);Spike① 脚本就绪(scripts/spike-llm-connectivity.mjs + `pnpm spike:llm`),待 API Key 实跑 | M1 收尾 |
 | 2026-10-03 | 模型配置从 env 改为后台管理(参考 ai-invest-assisstant 实现): /api/admin 登录鉴权(scrypt+HMAC token 12h)+四槽位配置 CRUD(Key AES-256-GCM 只写+掩码回显)+连通测试(结果落库);web /admin 登录+配置页(React.lazy 独立 chunk);Spike① 脚本改走后台 API;登录与模型配置从 M4 前置落地;参考实现确认后保留 0001 迁移(测试结果三字段) | 用户要求模型配置走后台管理 |
+| 2026-10-03 | 模型配置增加接入协议(openai/anthropic, 0002 迁移): 连通测试按协议分流(anthropic→/v1/messages + x-api-key/anthropic-version 头),失败详情附实际探测 URL;embedding 槽位固定 openai;web 槽位卡片加协议下拉(embedding 隐藏);research/02 修正 Jev 实测模型名为 `diffusiongemma-26b`(openjev-* 实测 404) | 实测: minimax anthropic 地址探测 404、Jev 模型名过时 |
