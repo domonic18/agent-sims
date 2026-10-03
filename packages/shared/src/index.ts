@@ -29,7 +29,18 @@ export {
 
 export {
   characterArrivedEventSchema,
+  worldControlEventSchema,
   worldEventSchema,
   type CharacterArrivedEvent,
+  type WorldControlEvent,
   type WorldEvent,
 } from './events.js';
+
+export {
+  SOCKET_EVENTS,
+  SOCKET_ROLES,
+  type SocketEventName,
+  type SocketRole,
+  type WorldEventMessage,
+  type WorldSnapshotMessage,
+} from './sync.js';

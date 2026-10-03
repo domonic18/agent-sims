@@ -15,6 +15,19 @@ export const characterArrivedEventSchema = z.object({
 
 export type CharacterArrivedEvent = z.infer<typeof characterArrivedEventSchema>;
 
-export const worldEventSchema = z.discriminatedUnion('type', [characterArrivedEventSchema]);
+/** 暂停/倍率变更广播:多端 HUD 状态对齐 */
+export const worldControlEventSchema = z.object({
+  type: z.literal('world.control'),
+  tick: z.number().int(),
+  paused: z.boolean(),
+  timeScale: z.number(),
+});
+
+export type WorldControlEvent = z.infer<typeof worldControlEventSchema>;
+
+export const worldEventSchema = z.discriminatedUnion('type', [
+  characterArrivedEventSchema,
+  worldControlEventSchema,
+]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;
