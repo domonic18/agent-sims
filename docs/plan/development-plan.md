@@ -39,7 +39,7 @@
 | 子阶段 | 规模 | 实现内容 | 测试/调试手段 |
 |--------|------|----------|---------------|
 | M2.1 模拟核心骨架 | S ✅(2026-10-03) | tick 循环(accumulator)+注入式时钟;游戏日历(游戏分钟/日/昼夜判定);暂停/恢复;时间倍率(1x/4x/16x) | vitest 单测(时钟推进/暂停冻结/倍率/昼夜边界);headless 脚本 `sim:run --ticks=N` 输出状态摘要;/debug: `GET /debug/state`、`POST /debug/tick?n=`、`POST /debug/time/scale` |
-| M2.2 地图与场所 | S | tile 网格+可行走层;6~8 场所(位置/入口/占地)进 seed | 可行走性查询单测;`GET /debug/map`;前端色块渲染对照 |
+| M2.2 地图与场所 | S ✅(2026-10-03) | tile 网格+可行走层;6~8 场所(位置/入口/占地)进 seed(落地调整: 布局代码静态定义,`GET /debug/map` 可核) | 可行走性查询单测;`GET /debug/map`;前端色块渲染对照(移交 M2.3 随移动观察一并做) |
 | M2.3 寻路与移动 | M | A*(可达/绕障/不可达);路径按速度逐游戏分钟推进;到达=离散事件进事件总线 | 寻路单测(正常/绕障/不可达/同格);移动推进单测(整分钟粒度+到达精度);`POST /debug/intent` 下发 move_to 实测(intents 层雏形);前端观察 |
 | M2.4 数值系统 | S | 体力/幸福时间衰减(0~100 夹取);金币静态(M3 接活动) | 衰减与边界单测;`sim:run` 跑完整 1 游戏日输出数值曲线,验证衰减幅度合理性 |
 | M2.5 同步层 | M | Socket.IO 首连全量快照+增量(tick 序号)+断线重连重同步;player/spectator 角色标志(参观入口 M8,机制此处具备) | 双窗口一致性;kill 客户端重连后一致;`GET /debug/clients` |
@@ -122,3 +122,4 @@
 | 2026-10-03 | 模型配置增加接入协议(openai/anthropic, 0002 迁移): 连通测试按协议分流(anthropic→/v1/messages + x-api-key/anthropic-version 头),失败详情附实际探测 URL;embedding 槽位固定 openai;web 槽位卡片加协议下拉(embedding 隐藏);research/02 修正 Jev 实测模型名为 `diffusiongemma-26b`(openjev-* 实测 404) | 实测: minimax anthropic 地址探测 404、Jev 模型名过时 |
 | 2026-10-03 | **M1 完结**: Spike① 实跑 4/4 槽位连通(slow=minimax MiniMax-M2.7 anthropic / light=deepseek-chat / jev=codiv diffusiongemma-26b / embedding=智谱 embedding-3 2048 维);验收标准全部满足 | 后台配置四槽位 Key 后实测通过 |
 | 2026-10-03 | M2 启动,M2.1 落地: world/ 纯逻辑三件套(GameClock 游戏日历/Simulation 固定 tick+暂停+倍率/TickDriver accumulator 实时驱动,时间注入零 I/O);游戏平衡数值入 config/balance.ts;/debug 端点族(state/tick/pause/time/scale)仅 development 注册;headless `sim:run`;world 单测 14 例 | M2 世界模拟 MVP 开工 |
+| 2026-10-03 | M2.2 落地: TileMap 可行走层(默认可行走+障碍覆盖+边界墙)+7 场所(6 建筑+公园)静态定义于 world/map-data.ts+`GET /debug/map`;决策——城镇布局由原计划"进 seed"改为代码静态定义(布局为固定游戏内容,无后台管理需求);前端色块渲染对照移交 M2.3 随移动观察一并做 | 城镇布局无需 DB 化,KISS |
