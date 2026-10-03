@@ -42,11 +42,11 @@
 | M2.2 地图与场所 | S ✅(2026-10-03) | tile 网格+可行走层;6~8 场所(位置/入口/占地)进 seed(落地调整: 布局代码静态定义,`GET /debug/map` 可核) | 可行走性查询单测;`GET /debug/map`;前端色块渲染对照(移交 M2.3 随移动观察一并做) |
 | M2.3 寻路与移动 | M ✅(2026-10-03) | A*(可达/绕障/不可达);路径按速度逐游戏分钟推进;到达=离散事件进事件总线 | 寻路单测(正常/绕障/不可达/同格);移动推进单测(整分钟粒度+到达精度);`POST /debug/intent` 下发 move_to 实测(intents 层雏形);前端观察(移交 M2.6 渲染一并做) |
 | M2.4 数值系统 | S ✅(2026-10-03) | 体力/幸福时间衰减(0~100 夹取);金币静态(M3 接活动) | 衰减与边界单测;`sim:run` 跑完整 1 游戏日输出数值曲线,验证衰减幅度合理性 |
-| M2.5 同步层 | M | Socket.IO 首连全量快照+增量(tick 序号)+断线重连重同步;player/spectator 角色标志(参观入口 M8,机制此处具备) | 双窗口一致性;kill 客户端重连后一致;`GET /debug/clients` |
+| M2.5 同步层 | M ✅(2026-10-03) | Socket.IO 首连全量快照+增量(tick 序号)+断线重连重同步;player/spectator 角色标志(参观入口 M8,机制此处具备) | 双窗口一致性;kill 客户端重连后一致;`GET /debug/clients` |
 | M2.6 前端渲染+HUD+素材 | M | WS 层写 Zustand;Phaser 场景+路径插值;昼夜色调 overlay;HUD(时间/昼夜/三数值/暂停/加速);接入 Spike② 素材(tile+角色 sprite+行走动画) | 暂停按钮端到端(前端点→后端停→双端一致);60fps;素材渲染正确 |
 
 - 验收标准(requirement §11): 浏览器看到角色按 tick 平滑移动;暂停立即冻结、恢复无状态丢失;桌面 Chrome/Edge 60fps
-- 状态: **进行中**(2026-10-03)——M2.1 模拟核心骨架、M2.2 地图与场所、M2.3 寻路与移动、M2.4 数值系统均已落地并实测(服务端模拟核心全部就绪: 32x24 城镇/A* 寻路移动/到达事件/数值衰减,65 单测);余 M2.5 同步层、M2.6 前端渲染+HUD+素材
+- 状态: **进行中**(2026-10-03)——M2.1~M2.5 均已落地并实测(模拟核心+Socket.IO 同步层就绪: 连接即快照/每 tick 广播/事件转发/在线注册表,69 测试);余 M2.6 前端渲染+HUD+素材
 
 ### M3: 核心玩法闭环
 
@@ -125,3 +125,4 @@
 | 2026-10-03 | M2.2 落地: TileMap 可行走层(默认可行走+障碍覆盖+边界墙)+7 场所(6 建筑+公园)静态定义于 world/map-data.ts+`GET /debug/map`;决策——城镇布局由原计划"进 seed"改为代码静态定义(布局为固定游戏内容,无后台管理需求);前端色块渲染对照移交 M2.3 随移动观察一并做 | 城镇布局无需 DB 化,KISS |
 | 2026-10-03 | M2.3 落地: move_to 意图与 character.arrived 事件入 @sims/shared(协议先行);A* 寻路(4 向)+stepMovement 按速度逐 tick 推进+EventBus 离散事件;intents/execute.ts 为世界状态变更唯一入口;/debug/spawn+/debug/intent 联调端点;前端观察移交 M2.6 随渲染一并做 | M2 核心模拟层就绪,同步层(M2.5)可直接消费 snapshot+事件 |
 | 2026-10-03 | M2.4 落地: 体力/幸福每游戏分钟自然衰减 0.05/0.03(0~100 夹取,上界供活动增益)+金币静态;完整游戏日 sim:run 曲线体力 100→28/幸福 100→56.8,作为 M3 活动数值设计基线 | 数值基线定稿需实测幅度支撑 |
+| 2026-10-03 | M2.5 落地: @sims/shared 增 sync.ts(SOCKET_EVENTS/world.snapshot 全量快照协议/SOCKET_ROLES)+world.control 控制事件入事件联合(协议先行);socket/gateway(连接即快照+离散事件转发,无 client→server 监听=spectator 只读)+clients 注册表+TickDriver onTick 回调;io 装配入 buildApp(app.io 装饰器,onClose 先 await io.close 再关 pg,消除双路 close 竞态);`GET /debug/clients`;tests/sync 集成测试 4 例(快照/注册表/tick 广播+到达事件/控制事件)。决策——每 tick 增量暂用全量快照(状态小,tick 序号天然防乱序,M4 感知层复用);坑——socket.io 快照帧与 connect 同轮同步到达,客户端监听必须先于 connect 注册,否则错过首帧 | 同步层就绪,M2.6 前端直接消费 |
