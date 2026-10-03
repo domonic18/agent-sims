@@ -4,12 +4,12 @@ import type {
   WorldEvent,
   WorldSnapshotMessage,
 } from '@sims/shared';
+import { TOWN_MAP } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import { GameClock } from './clock.js';
 import { applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
 import { EventBus } from './event-bus.js';
 import { TileMap } from './map.js';
-import { TOWN_MAP } from './map-data.js';
 import { findPath } from './pathfinding.js';
 
 /**

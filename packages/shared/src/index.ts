@@ -44,3 +44,10 @@ export {
   type WorldEventMessage,
   type WorldSnapshotMessage,
 } from './sync.js';
+
+export {
+  TOWN_MAP,
+  type BlockedRect,
+  type PlaceDefinition,
+  type TileMapDefinition,
+} from './world.js';

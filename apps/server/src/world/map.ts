@@ -1,28 +1,4 @@
-/** 场所定义:占地矩形 + 入口格(入口必须在占地外且可行走) */
-export interface PlaceDefinition {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  entrance: { x: number; y: number };
-}
-
-export interface BlockedRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
-/** 地图定义:网格尺寸 + 障碍占地(建筑/装饰,默认全图可行走) + 场所 */
-export interface TileMapDefinition {
-  width: number;
-  height: number;
-  blockedRects: BlockedRect[];
-  places: PlaceDefinition[];
-}
+import type { BlockedRect, PlaceDefinition, TileMapDefinition } from '@sims/shared';
 
 const inRect = (x: number, y: number, rect: { x: number; y: number; w: number; h: number }): boolean =>
   x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;

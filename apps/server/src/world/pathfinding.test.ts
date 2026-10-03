@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TileMap, type TileMapDefinition } from './map.js';
+import type { TileMapDefinition } from '@sims/shared';
+import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
 
 const miniMap: TileMapDefinition = {

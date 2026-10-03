@@ -1,4 +1,33 @@
-import type { TileMapDefinition } from './map.js';
+/**
+ * 世界静态内容:地图定义与城镇布局。协议面一部分——服务端模拟与
+ * 客户端渲染共用同一份定义,避免双端漂移。
+ */
+
+/** 场所定义:占地矩形 + 入口格(入口必须在占地外且可行走) */
+export interface PlaceDefinition {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  entrance: { x: number; y: number };
+}
+
+export interface BlockedRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** 地图定义:网格尺寸 + 障碍占地(建筑/装饰,默认全图可行走) + 场所 */
+export interface TileMapDefinition {
+  width: number;
+  height: number;
+  blockedRects: BlockedRect[];
+  places: PlaceDefinition[];
+}
 
 /**
  * 城镇布局(M2.2):32x24 网格,7 场所。

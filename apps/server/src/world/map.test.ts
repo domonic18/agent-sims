@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { TileMap, type TileMapDefinition } from './map.js';
-import { TOWN_MAP } from './map-data.js';
+import { TOWN_MAP, type TileMapDefinition } from '@sims/shared';
+import { TileMap } from './map.js';
 import { Simulation } from './simulation.js';
 
 const miniMap: TileMapDefinition = {
