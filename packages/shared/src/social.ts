@@ -16,14 +16,14 @@ export interface SocialRelationView {
   affinity: number;
 }
 
-/** 关系称号阈值(派生函数唯一依据,双端同源) */
+/** 关系称号阈值(派生函数唯一依据,双端同源;数值文档 §6.4) */
 export const RELATION_THRESHOLDS = {
   /** affinity ≤ 该值 → 嫌弃(优先判定) */
   dislike: -30,
   /** familiarity < 该值 → 陌生人 */
-  stranger: 15,
+  stranger: 10,
   /** familiarity < 该值(且非陌生) → 点头之交 */
-  acquaintance: 40,
+  acquaintance: 30,
   /** affinity ≥ 该值且 familiarity ≥ 点头之交线 → 挚友 */
   closeFriend: 65,
 } as const;

@@ -50,15 +50,15 @@ describe('relationTitle 称号派生(阈值:嫌弃/陌生/点头/挚友)', () =>
     expect(relationTitle(80, -30)).toBe('嫌弃');
     expect(relationTitle(0, -100)).toBe('嫌弃');
   });
-  it('familiarity < 15 陌生人,< 40 点头之交', () => {
-    expect(relationTitle(14.9, 0)).toBe('陌生人');
-    expect(relationTitle(15, 0)).toBe('点头之交');
-    expect(relationTitle(39, 0)).toBe('点头之交');
+  it('familiarity < 10 陌生人,< 30 点头之交', () => {
+    expect(relationTitle(9.9, 0)).toBe('陌生人');
+    expect(relationTitle(10, 0)).toBe('点头之交');
+    expect(relationTitle(29, 0)).toBe('点头之交');
   });
   it('挚友需 affinity ≥ 65 且熟悉度达标,其余为朋友', () => {
-    expect(relationTitle(40, 64.9)).toBe('朋友');
-    expect(relationTitle(40, 65)).toBe('挚友');
-    expect(relationTitle(39, 90)).toBe('点头之交'); // 熟悉度不够不封挚友
+    expect(relationTitle(30, 64.9)).toBe('朋友');
+    expect(relationTitle(30, 65)).toBe('挚友');
+    expect(relationTitle(29, 90)).toBe('点头之交'); // 熟悉度不够不封挚友
   });
 });
 
@@ -96,20 +96,18 @@ describe('chat 闲聊全链', () => {
     ]);
   });
 
-  it('防刷递减 1/0.6/0.3,同日第 4 次拒绝,跨日重置', () => {
+  it('防刷递减六档(Σ2.6),同日第 7 次拒绝,跨日重置', () => {
     const sim = socialSim();
-    chat(sim, 'a', 'b');
-    chat(sim, 'a', 'b');
-    chat(sim, 'a', 'b');
+    for (let i = 0; i < 6; i += 1) chat(sim, 'a', 'b');
     const forward = sim.socials.get(relationKey('a', 'b'))!;
-    expect(forward.familiarity).toBeCloseTo(6 * (1 + 0.6 + 0.3), 5);
-    expect(forward.chatCount).toBe(3);
-    expect(() => chat(sim, 'a', 'b')).toThrow(/聊过 3 次/);
+    expect(forward.familiarity).toBeCloseTo(6 * 2.6, 5); // 递减 1/0.6/0.4/0.3/0.2/0.1
+    expect(forward.chatCount).toBe(6);
+    expect(() => chat(sim, 'a', 'b')).toThrow(/聊过 6 次/);
 
     sim.advanceTicks(960); // 08:00 → 次日 00:00(日翻转含熟悉度衰减 -1)
-    expect(forward.familiarity).toBeCloseTo(6 * 1.9 - 1, 5);
+    expect(forward.familiarity).toBeCloseTo(6 * 2.6 - 1, 5);
     chat(sim, 'a', 'b'); // 新的一天重新计数,衰减从头
-    expect(forward.familiarity).toBeCloseTo(6 * 1.9 - 1 + 6, 5);
+    expect(forward.familiarity).toBeCloseTo(6 * 2.6 - 1 + 6, 5);
   });
 
   it('距离太远拒绝(曼哈顿 > SOCIAL_PRESENCE_DISTANCE),不产生关系变化', () => {
@@ -130,14 +128,14 @@ describe('chat 闲聊全链', () => {
 });
 
 describe('首次结成朋友/挚友发一次性事件', () => {
-  it('跨过 40 线发 friendship.formed 一次,formedNotified 后不再发', () => {
+  it('跨过 30 线发 friendship.formed 一次,formedNotified 后不再发', () => {
     const sim = socialSim();
     const [forward] = ensureRelations(sim, 'a', 'b');
-    forward.familiarity = 35; // 预置到临界,一次闲聊跨线
+    forward.familiarity = 25; // 预置到临界,一次闲聊跨线
     const events: WorldEvent[] = [];
     sim.events.subscribe((event) => events.push(event));
 
-    chat(sim, 'a', 'b'); // 35 + 6 = 41 ≥ 40 → 朋友
+    chat(sim, 'a', 'b'); // 25 + 6 = 31 ≥ 30 → 朋友
     chat(sim, 'a', 'b'); // 已通知过,不再发
     const formed = events.filter((event) => event.type === 'friendship.formed');
     expect(formed).toHaveLength(1);
