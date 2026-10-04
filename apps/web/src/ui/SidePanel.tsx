@@ -92,10 +92,19 @@ export function SidePanel() {
       await run({ type: 'start_activity', characterId: character.id, activityId: def.id });
       return;
     }
-    // 未在位:锚点活动去首个使用格,无锚点活动(散步)去首选场所入口
-    const target =
+    // 未在位:锚点活动去最近使用格,无锚点活动(散步)去首选场所入口
+    const nearest =
       anchors.length > 0
-        ? { x: anchors[0]!.x, y: anchors[0]!.y }
+        ? anchors.reduce((best, a) =>
+            Math.abs(a.x - character.x) + Math.abs(a.y - character.y) <
+            Math.abs(best.x - character.x) + Math.abs(best.y - character.y)
+              ? a
+              : best,
+          )
+        : null;
+    const target =
+      nearest !== null
+        ? { x: nearest.x, y: nearest.y }
         : (() => {
             const place = TOWN_MAP.places.find((p) => p.id === def.placeIds[0]);
             return place !== undefined ? { x: place.entrance.x, y: place.entrance.y } : null;
