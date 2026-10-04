@@ -44,6 +44,11 @@ export class GameClock {
     this._minutes += gameMinutes;
   }
 
+  /** 回到起始时刻(M3.6k 世界重置) */
+  reset(): void {
+    this._minutes = BALANCE.START_MINUTE_OF_DAY;
+  }
+
   /** 当日 HH:mm(24 小时制) */
   formatTime(): string {
     const hh = String(this.hour).padStart(2, '0');

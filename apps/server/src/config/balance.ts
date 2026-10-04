@@ -51,4 +51,19 @@ export const BALANCE = {
   REVIVE_HAPPINESS: 80,
   /** 繁荣分死亡扣减(M3.6j,goal-design §7 方案B): 死亡时 lifeScore ×= (1 - 该值) */
   LIFE_SCORE_DEATH_DEDUCTION: 0.2,
+  /** 世界创建批量出生点(M3.6k):公寓门前广场开阔带,按序轮询;不可行走时跳过 */
+  SPAWN_SPOTS: [
+    { x: 8, y: 12 },
+    { x: 9, y: 12 },
+    { x: 10, y: 12 },
+    { x: 11, y: 12 },
+    { x: 8, y: 13 },
+    { x: 9, y: 13 },
+    { x: 10, y: 13 },
+    { x: 11, y: 13 },
+    { x: 12, y: 14 },
+    { x: 13, y: 14 },
+    { x: 12, y: 15 },
+    { x: 13, y: 15 },
+  ] as const,
 } as const;

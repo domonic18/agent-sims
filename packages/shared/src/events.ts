@@ -75,6 +75,14 @@ export const worldControlEventSchema = z.object({
 
 export type WorldControlEvent = z.infer<typeof worldControlEventSchema>;
 
+/** 世界重置(M3.6k 后台创建/删除世界):所有角色清场,快照流自动收敛 */
+export const worldResetEventSchema = z.object({
+  type: z.literal('world.reset'),
+  tick: z.number().int(),
+});
+
+export type WorldResetEvent = z.infer<typeof worldResetEventSchema>;
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -82,6 +90,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   characterDiedEventSchema,
   characterRevivedEventSchema,
   worldControlEventSchema,
+  worldResetEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;

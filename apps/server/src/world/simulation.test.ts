@@ -47,6 +47,28 @@ describe('Simulation 模拟核心', () => {
   });
 });
 
+describe('世界重置(M3.6k 后台生命周期)', () => {
+  it('reset 清空角色/时钟归零/倍率与暂停复位,并广播 world.reset', () => {
+    const sim = new Simulation();
+    const events: { type: string }[] = [];
+    sim.events.subscribe((event) => events.push(event));
+    sim.spawnCharacter('a', 8, 12);
+    sim.advanceTicks(90);
+    sim.setTimeScale(16);
+    sim.setPaused(true);
+    sim.reset();
+    expect(sim.characters.size).toBe(0);
+    expect(sim.tick).toBe(0);
+    expect(sim.clock.formatTime()).toBe('08:00');
+    expect(sim.timeScale).toBe(1);
+    expect(sim.paused).toBe(false);
+    expect(events.some((e) => e.type === 'world.reset')).toBe(true);
+    // 重置后可正常重建世界
+    sim.spawnCharacter('b', 9, 12);
+    expect(sim.character('b').housing?.propertyId).toBeTruthy();
+  });
+});
+
 describe('生死机制(M3.6f 体力区段)', () => {
   function simWithMort(): { sim: Simulation; events: { type: string; characterId?: string }[] } {
     const sim = new Simulation();

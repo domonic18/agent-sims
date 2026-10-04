@@ -4,6 +4,7 @@ import type {
   CharacterRevivedEvent,
   WorldControlEvent,
   WorldEvent,
+  WorldResetEvent,
   WorldSnapshotMessage,
 } from '@sims/shared';
 import { PROPERTY_IDS, TOWN_MAP, getActivityDefinition } from '@sims/shared';
@@ -46,6 +47,22 @@ export class Simulation {
       this.clock.advance(1);
       this._stepCharacters();
     }
+  }
+
+  /**
+   * 世界重置(M3.6k 后台创建世界时调用):清空全部角色、时钟与控制面回到
+   * 初始;保留实例与事件总线订阅(socket 网关/驱动器持本实例引用,不可替换),
+   * 快照流经 world.reset 事件与后续全量快照自动收敛。
+   */
+  reset(): void {
+    this.characters.clear();
+    this.tick = 0;
+    this.clock.reset();
+    this.paused = false;
+    this.timeScale = BALANCE.DEFAULT_TIME_SCALE;
+    const event: WorldResetEvent = { type: 'world.reset', tick: this.tick };
+    this.events.emit(event);
+    this._emitControl();
   }
 
   spawnCharacter(id: string, x: number, y: number, name = id): WorldCharacter {
