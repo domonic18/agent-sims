@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ACTIVITY_DEFINITIONS,
   PROPERTY_DEFINITIONS,
@@ -39,6 +39,7 @@ export function SidePanel() {
   const focusPlaceId = useWorldStore((state) => state.focusPlaceId);
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [pendingActivityId, setPendingActivityId] = useState<string | null>(null);
+  const pendingArrivalRef = useRef(false);
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
 
@@ -68,6 +69,7 @@ export function SidePanel() {
     });
     setFeedback(ack);
     pushToast(ack.ok, ack.message);
+    pendingArrivalRef.current = false;
     setPendingActivityId(ack.ok ? def.id : null);
   };
 
@@ -78,13 +80,28 @@ export function SidePanel() {
   // 前往途中随每 tick 快照检查:到达目的地后自动接续开始;途中改道/被打断则放弃
   useEffect(() => {
     if (pendingActivityId === null || character === null || snapshot === null) return;
-    if (character.activity !== null || character.pathRemaining > 0) return;
-    const def = pendingActivityId !== null ? getActivityDefinition(pendingActivityId) : null;
-    const at = findPlaceAt(snapshot, character.x, character.y);
-    setPendingActivityId(null);
-    if (def !== null && at?.id === def.placeId) {
-      void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
+    if (character.activity !== null) {
+      pendingArrivalRef.current = false;
+      setPendingActivityId(null);
+      return;
     }
+    if (character.pathRemaining > 0) {
+      pendingArrivalRef.current = true;
+      return;
+    }
+    const def = getActivityDefinition(pendingActivityId);
+    const at = findPlaceAt(snapshot, character.x, character.y);
+    if (def !== null && at?.id === def.placeId) {
+      pendingArrivalRef.current = false;
+      setPendingActivityId(null);
+      void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
+      return;
+    }
+    if (pendingArrivalRef.current) {
+      pendingArrivalRef.current = false;
+      setPendingActivityId(null);
+    }
+    // 其余情形:move_to 刚下发,快照尚未反映移动,继续等待而非误判放弃
   }, [pendingActivityId, character, snapshot]);
 
   useEffect(() => {
