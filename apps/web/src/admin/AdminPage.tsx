@@ -75,6 +75,11 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
+    // 挂载即探测 token 有效性(401 统一回登录页),模型 tab 激活时再刷新
+    if (authed) void load();
+  }, [authed, load]);
+
+  useEffect(() => {
     if (authed && tab === 'models') void load();
   }, [authed, tab, load]);
 
