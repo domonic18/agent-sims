@@ -24,6 +24,11 @@ const ZOOM_DEFAULT = 2;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 
+/** 方向键步进:两次下发最小间隔(ms),步进节奏实际由快照 pathRemaining 门控 */
+const KEY_STEP_MIN_INTERVAL_MS = 180;
+/** 长按朝不可行走方向时,拒绝 toast 的最小重复间隔(ms) */
+const KEY_BLOCKED_TOAST_INTERVAL_MS = 1200;
+
 const inRect = (x: number, y: number, rect: { x: number; y: number; w: number; h: number }): boolean =>
   x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
 
@@ -121,6 +126,9 @@ export class WorldScene extends Phaser.Scene {
   private _nightOverlay: Phaser.GameObjects.Rectangle | null = null;
   /** 当前相机跟随的角色 id,null = 全图概览 */
   private _followId: string | null = null;
+  private _keyControls: Record<string, Phaser.Input.Keyboard.Key> | null = null;
+  private _lastKeyStepAt = 0;
+  private _lastBlockedToastAt = 0;
 
   constructor() {
     super('world');
@@ -158,6 +166,12 @@ export class WorldScene extends Phaser.Scene {
     cam.setBounds(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE);
     cam.setZoom(ZOOM_DEFAULT);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this._handleMapClick(pointer));
+    const keyboard = this.input.keyboard;
+    if (keyboard !== null) {
+      this._keyControls = keyboard.addKeys(
+        'UP,DOWN,LEFT,RIGHT,W,A,S,D',
+      ) as Record<string, Phaser.Input.Keyboard.Key>;
+    }
     this.input.on(
       'wheel',
       (
@@ -218,6 +232,42 @@ export class WorldScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * 方向键/WASD 步进移动(验收反馈②): 人类输入层便利功能,客户端合成为一格
+   * move_to,协议零改动——Agent 动作空间仍以 move_to 坐标为原语(设计点⑦,M3.6d 定稿)。
+   * 行走中(pathRemaining>0)不重复下发,到达后才走下一步;焦点在表单控件时忽略按键。
+   */
+  private _handleKeyboardStep(time: number): void {
+    const keys = this._keyControls;
+    if (keys === null) return;
+    const active = document.activeElement;
+    if (active !== null && ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName)) return;
+    const dir =
+      keys.UP?.isDown || keys.W?.isDown ? { dx: 0, dy: -1 }
+      : keys.DOWN?.isDown || keys.S?.isDown ? { dx: 0, dy: 1 }
+      : keys.LEFT?.isDown || keys.A?.isDown ? { dx: -1, dy: 0 }
+      : keys.RIGHT?.isDown || keys.D?.isDown ? { dx: 1, dy: 0 }
+      : null;
+    if (dir === null) return;
+    if (time - this._lastKeyStepAt < KEY_STEP_MIN_INTERVAL_MS) return;
+    const { snapshot, selectedCharacterId } = useWorldStore.getState();
+    if (snapshot === null || snapshot.paused || selectedCharacterId === null) return;
+    const character = snapshot.characters.find((c) => c.id === selectedCharacterId);
+    if (character === undefined || character.pathRemaining > 0) return;
+    this._lastKeyStepAt = time;
+    void sendIntent({
+      type: 'move_to',
+      characterId: character.id,
+      x: character.x + dir.dx,
+      y: character.y + dir.dy,
+    }).then((ack) => {
+      if (!ack.ok && time - this._lastBlockedToastAt > KEY_BLOCKED_TOAST_INTERVAL_MS) {
+        this._lastBlockedToastAt = time;
+        pushToast(false, ack.message);
+      }
+    });
+  }
+
   private _updateCamera(selectedId: string | null): void {
     const cam = this.cameras.main;
     const desired = cam.zoom > ZOOM_MIN && selectedId !== null ? selectedId : null;
@@ -233,11 +283,12 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  override update(_time: number, delta: number): void {
+  override update(time: number, delta: number): void {
     const { snapshot, selectedCharacterId } = useWorldStore.getState();
     this._syncCharacterNodes(snapshot?.characters ?? []);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;
     this._updateCamera(selectedCharacterId);
+    this._handleKeyboardStep(time);
     if (this._nightOverlay !== null) {
       // 昼夜色调平滑过渡
       const target = (snapshot?.clock.isNight ?? false) ? 0.38 : 0;
