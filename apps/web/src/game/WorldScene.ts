@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import {
   TOWN_MAP,
+  furnitureRectsOf,
   getActivityDefinition,
+  wallRectsOf,
   type FurnitureDefinition,
   type PlaceDefinition,
   type TileMapDefinition,
@@ -12,7 +14,7 @@ import { pushToast } from '../store/toastStore';
 import { CHARACTER, characterVariant, PROP_TREES, TILE_FRAME, TILESET } from './assets';
 
 const TILE = 16;
-/** 与服务端 BALANCE.WALK_SPEED_TILES_PER_MINUTE 对应的移动契约:每 tick 1 格 */
+/** 与服务端 BALANCE.WALK_SPEED_TILES_PER_MINUTE 对应的移动契约:每 tick 2 格 */
 const TILES_PER_TICK = 2;
 /** 目标偏差超过该格数视为瞬移(重连/重生),直接吸附 */
 const SNAP_DISTANCE_TILES = 4;
@@ -44,8 +46,12 @@ const ZOOM_DEFAULT = 2;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
 
-/** 方向键步进:两次下发最小间隔(ms),步进节奏实际由快照 pathRemaining 门控 */
-const KEY_STEP_MIN_INTERVAL_MS = 180;
+/** WASD 连续行进(M3.6g 验收反馈①): 按住时前瞻整段下发,路径余量 ≤ 该值即提前续路 */
+const WASD_EXTEND_TILES = 3;
+/** WASD 单次下发的前瞻格数(松手由 stop_move 急停,前瞻只影响连续手感) */
+const WASD_LOOKAHEAD_TILES = 6;
+/** 连续续路时两次下发的最小间隔(ms);起步/转向不受此限 */
+const KEY_STEP_MIN_INTERVAL_MS = 100;
 /** 长按朝不可行走方向时,拒绝 toast 的最小重复间隔(ms) */
 const KEY_BLOCKED_TOAST_INTERVAL_MS = 1200;
 
@@ -207,6 +213,12 @@ export class WorldScene extends Phaser.Scene {
   private _keyControls: Record<string, Phaser.Input.Keyboard.Key> | null = null;
   private _lastKeyStepAt = 0;
   private _lastBlockedToastAt = 0;
+  /** WASD 当前按住方向(松手置 null,用于转向判定与急停) */
+  private _wasdDir: { dx: number; dy: number } | null = null;
+  /** WASD 作用中的角色 id(切角色重置方向状态) */
+  private _wasdCharacterId: string | null = null;
+  /** 不可行走格集合(懒建,内容静态):与 server TileMap 同源——blockedRects+边界墙+墙体展开+家具占地 */
+  private _blockedTiles: Set<string> | null = null;
   /** 交互开关: 主页面纯观看(仅点选角色/缩放),/lab 调试台全量操控(地图移动/方向键) */
   private _interactive = true;
 
@@ -321,9 +333,42 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * 方向键/WASD 步进移动(验收反馈②): 人类输入层便利功能,客户端合成为一格
-   * move_to,协议零改动——Agent 动作空间仍以 move_to 坐标为原语(设计点⑦,M3.6d 定稿)。
-   * 行走中(pathRemaining>0)不重复下发,到达后才走下一步;焦点在表单控件时忽略按键。
+   * 可行走判定(与服务端 TileMap 同源): 边界内 且 不在
+   * blockedRects/边界墙/建筑墙体展开(wallRectsOf)/家具占地(furnitureRectsOf)内。
+   */
+  private _walkable(x: number, y: number): boolean {
+    if (this._blockedTiles === null) {
+      const blocked = new Set<string>();
+      const add = (rect: { x: number; y: number; w: number; h: number }): void => {
+        for (let ry = rect.y; ry < rect.y + rect.h; ry += 1) {
+          for (let rx = rect.x; rx < rect.x + rect.w; rx += 1) blocked.add(`${rx},${ry}`);
+        }
+      };
+      for (const rect of TOWN_MAP.blockedRects) add(rect);
+      add({ x: 0, y: 0, w: TOWN_MAP.width, h: 1 });
+      add({ x: 0, y: TOWN_MAP.height - 1, w: TOWN_MAP.width, h: 1 });
+      add({ x: 0, y: 0, w: 1, h: TOWN_MAP.height });
+      add({ x: TOWN_MAP.width - 1, y: 0, w: 1, h: TOWN_MAP.height });
+      for (const place of TOWN_MAP.places) {
+        for (const rect of [...wallRectsOf(place), ...furnitureRectsOf(place)]) add(rect);
+      }
+      this._blockedTiles = blocked;
+    }
+    return (
+      x >= 0 &&
+      y >= 0 &&
+      x < TOWN_MAP.width &&
+      y < TOWN_MAP.height &&
+      !this._blockedTiles.has(`${x},${y}`)
+    );
+  }
+
+  /**
+   * 方向键/WASD 连续移动(验收反馈: 修复一顿一顿)——按住时沿方向前瞻
+   * 最远连续可行走格整段下发 move_to,路径余量 ≤ WASD_EXTEND_TILES 提前续路,
+   * 服务端路径不空转、角色连贯行进;松手下发 stop_move 即停(协议 9→10)。
+   * 原实现每格一等快照确认再走下一格,行进被 tick 节拍切碎即卡顿根因。
+   * 撞墙时向不可行走格下发以获得服务端拒绝提示(toast 节流);焦点在表单控件时忽略。
    */
   private _handleKeyboardStep(time: number): void {
     const keys = this._keyControls;
@@ -336,18 +381,47 @@ export class WorldScene extends Phaser.Scene {
       : keys.LEFT?.isDown || keys.A?.isDown ? { dx: -1, dy: 0 }
       : keys.RIGHT?.isDown || keys.D?.isDown ? { dx: 1, dy: 0 }
       : null;
-    if (dir === null) return;
-    if (time - this._lastKeyStepAt < KEY_STEP_MIN_INTERVAL_MS) return;
     const { snapshot, selectedCharacterId } = useWorldStore.getState();
-    if (snapshot === null || snapshot.paused || selectedCharacterId === null) return;
+    if (snapshot === null || selectedCharacterId === null) return;
     const character = snapshot.characters.find((c) => c.id === selectedCharacterId);
-    if (character === undefined || character.pathRemaining > 0) return;
+    if (character === undefined) return;
+    if (this._wasdCharacterId !== character.id) {
+      this._wasdCharacterId = character.id;
+      this._wasdDir = null;
+    }
+
+    if (dir === null) {
+      const wasHolding = this._wasdDir !== null;
+      this._wasdDir = null;
+      if (wasHolding && character.pathRemaining > 0) {
+        void sendIntent({ type: 'stop_move', characterId: character.id });
+      }
+      return;
+    }
+    if (snapshot.paused) return;
+    const turned =
+      this._wasdDir === null || this._wasdDir.dx !== dir.dx || this._wasdDir.dy !== dir.dy;
+    if (!turned) {
+      if (time - this._lastKeyStepAt < KEY_STEP_MIN_INTERVAL_MS) return;
+      if (character.pathRemaining > WASD_EXTEND_TILES) return;
+    }
+
+    let tx = character.x;
+    let ty = character.y;
+    for (let i = 0; i < WASD_LOOKAHEAD_TILES; i += 1) {
+      if (!this._walkable(tx + dir.dx, ty + dir.dy)) break;
+      tx += dir.dx;
+      ty += dir.dy;
+    }
+    // 紧邻即墙: 向不可行走格下发换取服务端拒绝文案(反馈撞墙)
+    const blockedAhead = tx === character.x && ty === character.y;
     this._lastKeyStepAt = time;
+    this._wasdDir = dir;
     void sendIntent({
       type: 'move_to',
       characterId: character.id,
-      x: character.x + dir.dx,
-      y: character.y + dir.dy,
+      x: blockedAhead ? character.x + dir.dx : tx,
+      y: blockedAhead ? character.y + dir.dy : ty,
     }).then((ack) => {
       if (!ack.ok && time - this._lastBlockedToastAt > KEY_BLOCKED_TOAST_INTERVAL_MS) {
         this._lastBlockedToastAt = time;

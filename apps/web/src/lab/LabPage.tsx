@@ -156,7 +156,7 @@ export default function LabPage() {
         <SidePanel />
         {character !== null && (
           <section className="lab-panel">
-            <h3>意图操作台(9 意图全量)</h3>
+            <h3>意图操作台(10 意图全量)</h3>
             <IntentForms key={character.id} character={character} onRun={run} />
           </section>
         )}
@@ -231,7 +231,7 @@ export default function LabPage() {
   );
 }
 
-/** 9 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
+/** 10 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
 function IntentForms({
   character,
   onRun,
@@ -242,7 +242,7 @@ function IntentForms({
   return (
     <div className="intent-groups">
       <div className="intent-group">
-        <span className="intent-name">move_to</span>
+        <span className="intent-name">move_to/stop_move</span>
         <MoveToForm character={character} onRun={onRun} />
       </div>
       <div className="intent-group">
@@ -278,6 +278,12 @@ function MoveToForm({ character, onRun }: { character: CharacterSnapshot; onRun:
       <input type="number" value={y} onChange={(e) => setY(e.target.value)} />
       <button type="button" onClick={submit}>
         移动
+      </button>
+      <button
+        type="button"
+        onClick={() => void onRun({ type: 'stop_move', characterId: character.id }, 'stop_move')}
+      >
+        停止
       </button>
     </span>
   );
