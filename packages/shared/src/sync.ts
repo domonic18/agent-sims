@@ -37,6 +37,8 @@ export interface WorldSnapshotMessage {
     energy: number;
     happiness: number;
     coins: number;
+    /** 进行中活动(null=空闲);前端活动面板与气泡消费 */
+    activity: { activityId: string; elapsedMinutes: number } | null;
   }>;
 }
 

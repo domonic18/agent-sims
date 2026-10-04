@@ -22,19 +22,38 @@ export {
   INTENT_TYPES,
   intentSchema,
   moveToIntentSchema,
+  startActivityIntentSchema,
+  stopActivityIntentSchema,
   type Intent,
   type IntentType,
   type MoveToIntent,
+  type StartActivityIntent,
+  type StopActivityIntent,
 } from './intents.js';
 
 export {
+  ACTIVITY_FINISH_REASONS,
+  activityFinishedEventSchema,
+  activityStartedEventSchema,
   characterArrivedEventSchema,
   worldControlEventSchema,
   worldEventSchema,
+  type ActivityFinishReason,
+  type ActivityFinishedEvent,
+  type ActivityStartedEvent,
   type CharacterArrivedEvent,
   type WorldControlEvent,
   type WorldEvent,
 } from './events.js';
+
+export {
+  ACTIVITY_DEFINITIONS,
+  ACTIVITY_IDS,
+  getActivityDefinition,
+  type ActivityDefinition,
+  type ActivityEffects,
+  type ActivityId,
+} from './activities.js';
 
 export {
   SOCKET_EVENTS,
