@@ -84,7 +84,7 @@ describe('socket 同步层', () => {
 
     player.disconnect();
     spectator.disconnect();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await until(() => app.clients.list().length === 0);
     expect(app.clients.list()).toHaveLength(0);
   });
 

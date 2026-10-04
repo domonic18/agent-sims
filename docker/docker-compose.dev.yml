@@ -1,5 +1,6 @@
 # 开发: 只起 postgres,前后端本地 pnpm dev(Vite proxy → server)
 # 数据落 workspace/(宿主机持久化,重置=删 workspace/postgres-dev 目录)
+# 项目名固定用 -p agent-sims-dev:根 .env 的 COMPOSE_PROJECT_NAME=agent-sims 归生产栈,勿混用
 services:
   postgres:
     image: pgvector/pgvector:pg16
