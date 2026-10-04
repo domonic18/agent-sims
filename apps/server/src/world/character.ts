@@ -42,6 +42,13 @@ export interface WorldCharacter {
 export const clampVital = (value: number): number =>
   Math.max(0, Math.min(BALANCE.VITAL_MAX, value));
 
+/** 幽灵态拒绝一切意图(M3.6f 死亡机制) */
+export function ensureAlive(character: WorldCharacter): void {
+  if (!character.alive) {
+    throw new Error(`${character.name} 已死亡(幽灵态),等待复活`);
+  }
+}
+
 /**
  * 按速度沿路径推进 n 格(1 tick 调 1 次,tiles=速度 格/游戏分钟)。
  * 返回本步是否恰好到达终点(离散事件触发点)。

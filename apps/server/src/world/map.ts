@@ -61,6 +61,18 @@ export class TileMap {
     return this.places.find((place) => place.id === id) ?? null;
   }
 
+  /** 位置判定: 位于场所矩形内(内景建筑含室内)或其入口格 */
+  contains(placeId: string, x: number, y: number): boolean {
+    const place = this.placeById(placeId);
+    if (place === null) {
+      return false;
+    }
+    if (inRect(x, y, place)) {
+      return true;
+    }
+    return x === place.entrance.x && y === place.entrance.y;
+  }
+
   /** 活动锚点使用格全集:各场所锚点家具的 use 格(无锚点活动返回空) */
   activityAnchors(activityId: string): Array<{ x: number; y: number; placeId: string; kind: FurnitureKind }> {
     const anchors: Array<{ x: number; y: number; placeId: string; kind: FurnitureKind }> = [];
