@@ -19,6 +19,10 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
         message: `${character.name} 前往 (${intent.x},${intent.y}),路径 ${character.path.length} 格`,
       };
     }
+    case 'stop_move': {
+      const character = sim.requestStopMove(intent.characterId);
+      return { ok: true, message: `${character.name} 停止移动` };
+    }
     case 'start_activity': {
       const character = sim.requestStartActivity(intent.characterId, intent.activityId);
       const name = getActivityDefinition(intent.activityId)?.name ?? intent.activityId;

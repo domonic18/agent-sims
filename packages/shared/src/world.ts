@@ -103,6 +103,39 @@ export interface TileMapDefinition {
 }
 
 /**
+ * 有门洞场所的墙体展开:占地边缘一圈细矩形,门洞格留豁口(寻路即自然穿门)。
+ * 服务端 TileMap 与客户端 WASD 前瞻共用同一展开,防双端可行走判定漂移(M3.6g)。
+ */
+export function wallRectsOf(place: PlaceDefinition): BlockedRect[] {
+  const door = place.door;
+  if (door === undefined) return [];
+  const right = place.x + place.w - 1;
+  const bottom = place.y + place.h - 1;
+  const seg = (x: number, y: number, w: number, h: number): BlockedRect[] =>
+    w > 0 && h > 0 ? [{ x, y, w, h }] : [];
+  const rowSegs = (row: number): BlockedRect[] => {
+    if (door.y === row) {
+      return [
+        ...seg(place.x, row, door.x - place.x, 1),
+        ...seg(door.x + 1, row, right - door.x, 1),
+      ];
+    }
+    return seg(place.x, row, place.w, 1);
+  };
+  return [
+    ...rowSegs(place.y),
+    ...rowSegs(bottom),
+    ...seg(place.x, place.y + 1, 1, place.h - 2),
+    ...seg(right, place.y + 1, 1, place.h - 2),
+  ];
+}
+
+/** 家具占地矩形(锚点/装饰统一按格阻塞) */
+export function furnitureRectsOf(place: PlaceDefinition): BlockedRect[] {
+  return (place.furniture ?? []).map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h }));
+}
+
+/**
  * 城镇布局(M3.5b 定版;M3.6e 内景化;M3.6f 扩容 64x48 四公寓+喷泉):
  * 中央广场(含喷泉)+ 十字主街;居住簇(四公寓 A/B/C/D+公园,环绕西侧与南部)、
  * 文教簇(图书馆/办公楼,东北)、商业簇(商店/餐厅/健身房,沿广场南缘一线排开);公园含水系收边。

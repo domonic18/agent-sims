@@ -1,8 +1,10 @@
-import type {
-  BlockedRect,
-  FurnitureKind,
-  PlaceDefinition,
-  TileMapDefinition,
+import {
+  furnitureRectsOf,
+  wallRectsOf,
+  type BlockedRect,
+  type FurnitureKind,
+  type PlaceDefinition,
+  type TileMapDefinition,
 } from '@sims/shared';
 
 const inRect = (x: number, y: number, rect: { x: number; y: number; w: number; h: number }): boolean =>
@@ -10,36 +12,6 @@ const inRect = (x: number, y: number, rect: { x: number; y: number; w: number; h
 
 const manhattan = (a: { x: number; y: number }, b: { x: number; y: number }): number =>
   Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-
-/** 有门洞场所的墙体展开:占地边缘一圈细矩形,门洞格留豁口(寻路即自然穿门) */
-function wallRectsOf(place: PlaceDefinition): BlockedRect[] {
-  const door = place.door;
-  if (door === undefined) return [];
-  const right = place.x + place.w - 1;
-  const bottom = place.y + place.h - 1;
-  const seg = (x: number, y: number, w: number, h: number): BlockedRect[] =>
-    w > 0 && h > 0 ? [{ x, y, w, h }] : [];
-  const rowSegs = (row: number): BlockedRect[] => {
-    if (door.y === row) {
-      return [
-        ...seg(place.x, row, door.x - place.x, 1),
-        ...seg(door.x + 1, row, right - door.x, 1),
-      ];
-    }
-    return seg(place.x, row, place.w, 1);
-  };
-  return [
-    ...rowSegs(place.y),
-    ...rowSegs(bottom),
-    ...seg(place.x, place.y + 1, 1, place.h - 2),
-    ...seg(right, place.y + 1, 1, place.h - 2),
-  ];
-}
-
-/** 家具占地矩形(锚点/装饰统一按格阻塞) */
-function furnitureRectsOf(place: PlaceDefinition): BlockedRect[] {
-  return (place.furniture ?? []).map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h }));
-}
 
 /**
  * tile 网格与可行走层(纯逻辑):网格默认可行走,障碍占地覆盖为不可行走;

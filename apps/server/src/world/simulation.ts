@@ -314,6 +314,14 @@ export class Simulation {
     return character;
   }
 
+  /** 停止移动(M3.6g 验收反馈):清空剩余路径下一 tick 起静止;不干预活动、不发到达事件 */
+  requestStopMove(characterId: string): WorldCharacter {
+    const character = this.character(characterId);
+    this._ensureAlive(character);
+    character.path = [];
+    return character;
+  }
+
   /** 复活(debug 通道):幽灵态解除,恢复满状态 */
   revive(characterId: string): WorldCharacter {
     const character = this.character(characterId);

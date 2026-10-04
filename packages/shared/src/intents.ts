@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 export const INTENT_TYPES = [
   'move_to',
+  'stop_move',
   'start_activity',
   'stop_activity',
   'buy_item',
@@ -24,6 +25,14 @@ export const moveToIntentSchema = z.object({
 });
 
 export type MoveToIntent = z.infer<typeof moveToIntentSchema>;
+
+/** 停止移动(M3.6g 验收反馈):清空剩余路径下一 tick 起静止,不干预活动;WASD 松手/主动急停共用 */
+export const stopMoveIntentSchema = z.object({
+  type: z.literal('stop_move'),
+  characterId: z.string().min(1),
+});
+
+export type StopMoveIntent = z.infer<typeof stopMoveIntentSchema>;
 
 export const startActivityIntentSchema = z.object({
   type: z.literal('start_activity'),
@@ -94,6 +103,7 @@ export type BuyPropertyIntent = z.infer<typeof buyPropertyIntentSchema>;
 
 export const intentSchema = z.discriminatedUnion('type', [
   moveToIntentSchema,
+  stopMoveIntentSchema,
   startActivityIntentSchema,
   stopActivityIntentSchema,
   buyItemIntentSchema,
