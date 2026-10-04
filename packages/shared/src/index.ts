@@ -46,6 +46,14 @@ export {
 } from './intents.js';
 
 export {
+  BACKPACK_VOLUME_LIMIT,
+  FRIDGE_VOLUME_LIMIT,
+  LOW_ENERGY_THRESHOLD,
+  WALK_SPEED_TILES_PER_TICK,
+  inventoryVolume,
+} from './balances.js';
+
+export {
   ACTIVITY_FINISH_REASONS,
   activityFinishedEventSchema,
   activityStartedEventSchema,

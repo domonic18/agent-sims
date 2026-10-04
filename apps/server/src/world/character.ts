@@ -39,7 +39,8 @@ export interface WorldCharacter {
   fridge: Record<string, number>;
 }
 
-export const clampVital = (value: number): number => Math.max(0, Math.min(100, value));
+export const clampVital = (value: number): number =>
+  Math.max(0, Math.min(BALANCE.VITAL_MAX, value));
 
 /**
  * 按速度沿路径推进 n 格(1 tick 调 1 次,tiles=速度 格/游戏分钟)。

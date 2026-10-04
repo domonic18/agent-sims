@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import {
+  LOW_ENERGY_THRESHOLD,
   TOWN_MAP,
+  WALK_SPEED_TILES_PER_TICK,
   furnitureRectsOf,
   getActivityDefinition,
   wallRectsOf,
@@ -14,8 +16,6 @@ import { pushToast } from '../store/toastStore';
 import { CHARACTER, characterVariant, PROP_TREES, TILE_FRAME, TILESET } from './assets';
 
 const TILE = 16;
-/** 与服务端 BALANCE.WALK_SPEED_TILES_PER_MINUTE 对应的移动契约:每 tick 2 格 */
-const TILES_PER_TICK = 2;
 /** 目标偏差超过该格数视为瞬移(重连/重生),直接吸附 */
 const SNAP_DISTANCE_TILES = 4;
 
@@ -182,7 +182,7 @@ interface CharacterRender {
   animKey: string | null;
   /** 存活状态(false=幽灵态: 半透明+飘浮+👻) */
   alive: boolean;
-  /** 最新体力值(≤20 低体力警示) */
+  /** 最新体力值(≤LOW_ENERGY_THRESHOLD 低体力警示) */
   energy: number;
   /** rest 到位后横躺于床/长椅(吸附锚点中心+旋转 90°) */
   resting: boolean;
@@ -463,7 +463,7 @@ export class WorldScene extends Phaser.Scene {
     }
     // 1 tick = 1 游戏分钟,倍率加快 tick 频率 → 插值与步频随 timeScale 放大
     const now = this.time.now;
-    const step = (delta / 1000) * (snapshot?.timeScale ?? 1) * TILES_PER_TICK;
+    const step = (delta / 1000) * (snapshot?.timeScale ?? 1) * WALK_SPEED_TILES_PER_TICK;
     for (const render of this._characters.values()) {
       const dx = render.targetX - render.x;
       const dy = render.targetY - render.y;
@@ -554,7 +554,9 @@ export class WorldScene extends Phaser.Scene {
         .setStroke('rgba(0,0,0,0.5)', 2);
       render.node.add(render.warnBadge);
     }
-    render.warnBadge.setVisible(render.alive && render.energy <= 20 && Math.floor(now / 400) % 2 === 0);
+    render.warnBadge.setVisible(
+      render.alive && render.energy <= LOW_ENERGY_THRESHOLD && Math.floor(now / 400) % 2 === 0,
+    );
   }
 
   /** 选中角色脚下呼吸椭圆环 */

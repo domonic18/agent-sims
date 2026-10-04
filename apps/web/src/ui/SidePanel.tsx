@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ACTIVITY_DEFINITIONS,
+  BACKPACK_VOLUME_LIMIT,
   FURNITURE_LABELS,
+  FRIDGE_VOLUME_LIMIT,
+  LOW_ENERGY_THRESHOLD,
   PROPERTY_DEFINITIONS,
   SHOP_ITEMS,
   TOWN_MAP,
   getActivityDefinition,
+  inventoryVolume,
   type ActivityDefinition,
   type Intent,
   type PlaceDefinition,
@@ -16,9 +20,8 @@ import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
 import './side-panel.css';
 
-/** 容积上限(与服务端 BALANCE 对应,数值文档 §3.2): 背包 8 / 冰箱 30 */
-const BACKPACK_VOLUME_LIMIT = 8;
-const FRIDGE_VOLUME_LIMIT = 30;
+/** 体力危急值(红档配色): ≤该值红,≤LOW_ENERGY_THRESHOLD 橙 */
+const CRITICAL_ENERGY_LEVEL = 5;
 
 /** 与服务端 _atPlace 同规则: 位于场所矩形内或入口格即"在场所" */
 function findPlaceAt(snapshot: WorldSnapshotMessage, x: number, y: number): PlaceDefinition | null {
@@ -30,14 +33,6 @@ function findPlaceAt(snapshot: WorldSnapshotMessage, x: number, y: number): Plac
     }
   }
   return null;
-}
-
-/** 库存体积(count × 商品 volume 求和,与服务端 _inventoryVolume 同规则) */
-function volumeOf(record: Record<string, number>): number {
-  return Object.entries(record).reduce(
-    (sum, [itemId, count]) => sum + (SHOP_ITEMS.find((item) => item.id === itemId)?.volume ?? 0) * count,
-    0,
-  );
 }
 
 interface ActivityAnchor {
@@ -238,8 +233,8 @@ export function SidePanel() {
   // 容积上限(与服务端 BALANCE 对应,数值文档 §3.2): 背包 8 / 冰箱 30
   const backpackEntries = Object.entries(character?.backpack ?? {}).filter(([, count]) => count > 0);
   const fridgeEntries = Object.entries(character?.fridge ?? {}).filter(([, count]) => count > 0);
-  const backpackUsed = volumeOf(character?.backpack ?? {});
-  const fridgeUsed = volumeOf(character?.fridge ?? {});
+  const backpackUsed = inventoryVolume(character?.backpack ?? {});
+  const fridgeUsed = inventoryVolume(character?.fridge ?? {});
 
   return (
     <aside className="side-panel">
@@ -577,8 +572,9 @@ export function SidePanel() {
 
 function VitalBar({ label, value }: { label: string; value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
-  // 体力区段配色(M3.6f): >20 绿 / ≤20 橙 / ≤5 红
-  const level = value <= 5 ? 'critical' : value <= 20 ? 'warn' : 'ok';
+  // 体力区段配色(M3.6f): >低体力阈值 绿 / ≤阈值 橙 / ≤危急值 红
+  const level =
+    value <= CRITICAL_ENERGY_LEVEL ? 'critical' : value <= LOW_ENERGY_THRESHOLD ? 'warn' : 'ok';
   return (
     <div className="vital">
       <span className="vital-label">{label}</span>

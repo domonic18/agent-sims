@@ -2,21 +2,6 @@ import { z } from 'zod';
 
 /** 意图指令集(arch §5):玩家输入与 Agent 规划器共用的同一指令层 */
 
-export const INTENT_TYPES = [
-  'move_to',
-  'stop_move',
-  'start_activity',
-  'stop_activity',
-  'buy_item',
-  'eat_item',
-  'store_item',
-  'take_item',
-  'rent_property',
-  'buy_property',
-] as const;
-
-export type IntentType = (typeof INTENT_TYPES)[number];
-
 export const moveToIntentSchema = z.object({
   type: z.literal('move_to'),
   characterId: z.string().min(1),
@@ -115,3 +100,10 @@ export const intentSchema = z.discriminatedUnion('type', [
 ]);
 
 export type Intent = z.infer<typeof intentSchema>;
+
+export type IntentType = Intent['type'];
+
+/** 意图类型全集:从 intentSchema 选项派生,与 union 定义单源(新增意图零双写) */
+export const INTENT_TYPES = intentSchema.options.map(
+  (option) => option.shape.type.value,
+) as unknown as [IntentType, ...IntentType[]];

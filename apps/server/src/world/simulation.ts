@@ -15,6 +15,7 @@ import {
   getActivityDefinition,
   getPropertyDefinition,
   getShopItem,
+  inventoryVolume,
   TOWN_MAP,
   type ActivityFinishReason,
 } from '@sims/shared';
@@ -64,13 +65,13 @@ export class Simulation {
       path: [],
       energy: BALANCE.START_ENERGY,
       happiness: BALANCE.START_HAPPINESS,
-      coins: 0,
+      coins: BALANCE.START_COINS,
       activity: null,
       housing: {
-        // 出生自动分房(M3.6f): 按已有角色数对 4 栋公寓轮询,预付当日+次日租
+        // 出生自动分房(M3.6f): 按已有角色数对 4 栋公寓轮询,预付租金入 BALANCE
         propertyId: PROPERTY_IDS[this.characters.size % PROPERTY_IDS.length]!,
         ownership: 'rent',
-        paidThroughDay: this.clock.day + 1,
+        paidThroughDay: this.clock.day + BALANCE.SPAWN_PREPAID_DAYS,
       },
       alive: true,
       backpack: {},
@@ -164,7 +165,7 @@ export class Simulation {
     if (!this._atPlace(character, 'shop')) {
       throw new Error(`${character.name} 须在商店内购买(先移动到商店)`);
     }
-    const used = this._inventoryVolume(character.backpack);
+    const used = inventoryVolume(character.backpack);
     if (used + item.volume > BALANCE.BACKPACK_VOLUME_LIMIT) {
       throw new Error(
         `背包已满(${used}/${BALANCE.BACKPACK_VOLUME_LIMIT}),装不下「${item.name}」(体积 ${item.volume});先吃点或回家存冰箱`,
@@ -209,7 +210,7 @@ export class Simulation {
     if ((character.backpack[itemId] ?? 0) < count) {
       throw new Error(`${character.name} 背包里「${item.name}」不足 ${count} 个`);
     }
-    const used = this._inventoryVolume(character.fridge);
+    const used = inventoryVolume(character.fridge);
     if (used + item.volume * count > BALANCE.FRIDGE_VOLUME_LIMIT) {
       throw new Error(
         `冰箱已满(${used}/${BALANCE.FRIDGE_VOLUME_LIMIT}),放不下 ${count} 个「${item.name}」(余 ${BALANCE.FRIDGE_VOLUME_LIMIT - used} 体积)`,
@@ -232,7 +233,7 @@ export class Simulation {
     if ((character.fridge[itemId] ?? 0) < count) {
       throw new Error(`${character.name} 冰箱里「${item.name}」不足 ${count} 个`);
     }
-    const used = this._inventoryVolume(character.backpack);
+    const used = inventoryVolume(character.backpack);
     if (used + item.volume * count > BALANCE.BACKPACK_VOLUME_LIMIT) {
       throw new Error(
         `背包已满(${used}/${BALANCE.BACKPACK_VOLUME_LIMIT}),装不下 ${count} 个「${item.name}」(余 ${BALANCE.BACKPACK_VOLUME_LIMIT - used} 体积)`,
@@ -355,6 +356,10 @@ export class Simulation {
 
   /** 状态快照:调试端点与同步层共用的对外形态(协议面在 @sims/shared) */
   snapshot(): WorldSnapshotMessage {
+    const round = (value: number): number => {
+      const f = 10 ** BALANCE.SNAPSHOT_DECIMALS;
+      return Math.round(value * f) / f;
+    };
     return {
       tick: this.tick,
       paused: this.paused,
@@ -371,8 +376,8 @@ export class Simulation {
         x: character.x,
         y: character.y,
         pathRemaining: character.path.length,
-        energy: Math.round(character.energy * 10) / 10,
-        happiness: Math.round(character.happiness * 10) / 10,
+        energy: round(character.energy),
+        happiness: round(character.happiness),
         coins: character.coins,
         alive: character.alive,
         backpack: { ...character.backpack },
@@ -438,18 +443,6 @@ export class Simulation {
       throw new Error(`${character.name} 须回到${placeName}才能${action}`);
     }
     this._ensureHousingLease(character, action);
-  }
-
-  /** 库存体积:count × 商品 volume 求和(未知 itemId 忽略,防御手工改档) */
-  private _inventoryVolume(record: Record<string, number>): number {
-    let volume = 0;
-    for (const [itemId, count] of Object.entries(record)) {
-      const item = getShopItem(itemId);
-      if (item !== null) {
-        volume += item.volume * count;
-      }
-    }
-    return volume;
   }
 
   /** 存取意图商品校验:存在性 + count 为正整数 */
