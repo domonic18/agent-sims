@@ -1,6 +1,9 @@
 # 生产: web(9000 对外,frpc 穿透目标) + app + postgres 三容器;配置走根目录 .env
-# 项目名固定 agent-sims(根 .env COMPOSE_PROJECT_NAME);dev 库用 docker-compose.dev.yml -p agent-sims-dev,勿混用
+# 项目名固定 agent-sims;dev 库用 docker-compose.dev.yml -p agent-sims-dev,勿混用
 # 数据落 workspace/(宿主机持久化,备份=pg_dump → workspace/backups)
+# 调用须在仓库根目录且显式传根 .env(compose 默认只找 compose 文件所在目录,变量插值与项目名均依赖它):
+#   docker compose -f docker/docker-compose.yml -p agent-sims --env-file .env build && \
+#   docker compose -f docker/docker-compose.yml -p agent-sims --env-file .env up -d
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -24,7 +27,8 @@ services:
     restart: unless-stopped
     env_file: ../.env
     environment:
-      NODE_ENV: production
+      # 默认 production(关闭 /debug/*);本地验证栈可在根 .env 置 development 打开调试端点
+      NODE_ENV: ${NODE_ENV:-production}
       DATABASE_URL: postgres://sims:${POSTGRES_PASSWORD:-sims}@postgres:5432/agent_sims
     ports:
       - "${GAME_PORT:-3100}:3100" # 调试/Spike① 脚本直连;常规入口走 web 9000
