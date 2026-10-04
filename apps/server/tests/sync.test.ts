@@ -2,7 +2,9 @@ import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  CLIENT_EVENTS,
   SOCKET_EVENTS,
+  type IntentAck,
   type SocketRole,
   type WorldEventMessage,
   type WorldSnapshotMessage,
@@ -146,5 +148,47 @@ describe('socket 同步层', () => {
 
     socket.disconnect();
     app.simulation.setTimeScale(BALANCE.DEFAULT_TIME_SCALE);
+  });
+
+  it('意图通道: player 指令执行并 ack,spectator 指令丢弃,非法意图拒绝', async () => {
+    app.simulation.spawnCharacter('bill', 5, 7, '比尔');
+    const emitIntent = (socket: Socket, payload: unknown): Promise<IntentAck> =>
+      new Promise((resolve) => {
+        socket.emit(CLIENT_EVENTS.intent, payload, (ack: IntentAck) => resolve(ack));
+      });
+
+    const player = openSocket('player');
+    await connected(player);
+    const moved = await emitIntent(
+      player,
+      { type: 'move_to', characterId: 'bill', x: 6, y: 7 },
+    );
+    expect(moved.ok).toBe(true);
+    expect(moved.message).toContain('路径');
+    expect(app.simulation.character('bill').path).toHaveLength(1);
+
+    const businessError = await emitIntent(
+      player,
+      { type: 'move_to', characterId: 'bill', x: 0, y: 0 },
+    );
+    expect(businessError).toMatchObject({ ok: false });
+    expect(businessError.message).toContain('不可行走');
+
+    const invalid = await emitIntent(player, { type: 'teleport', characterId: 'bill' });
+    expect(invalid).toMatchObject({ ok: false, message: expect.stringContaining('意图不合法') });
+
+    const spectator = openSocket('spectator');
+    await connected(spectator);
+    const rejected = await emitIntent(
+      spectator,
+      { type: 'move_to', characterId: 'bill', x: 7, y: 7 },
+    );
+    expect(rejected).toMatchObject({ ok: false, message: expect.stringContaining('只读') });
+    expect(app.simulation.character('bill').path).toHaveLength(1); // 未被执行
+
+    player.disconnect();
+    spectator.disconnect();
+    await until(() => app.clients.list().length === 0);
+    app.simulation.characters.delete('bill');
   });
 });
