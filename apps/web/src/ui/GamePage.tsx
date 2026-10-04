@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import Phaser from 'phaser';
-import { TOWN_MAP } from '@sims/shared';
-import { WorldScene } from '../game/WorldScene';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { setPaused, setTimeScale } from '../net/debugApi';
 import { connectWorld } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
+import { WorldCanvas } from '../game/WorldCanvas';
 import { SidePanel } from './SidePanel';
 import { Toasts } from './Toasts';
 import './game-page.css';
@@ -22,31 +21,12 @@ export default function GamePage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
   const lastEvent = useWorldStore((state) => state.lastEvent);
-  const canvasHostRef = useRef<HTMLDivElement>(null);
   const [controlError, setControlError] = useState<string | null>(null);
 
   useEffect(() => {
     const socket = connectWorld();
     return () => {
       socket.disconnect();
-    };
-  }, []);
-
-  useEffect(() => {
-    const host = canvasHostRef.current;
-    if (!host) return;
-    const game = new Phaser.Game({
-      type: Phaser.AUTO,
-      parent: host,
-      width: TOWN_MAP.width * 16,
-      height: TOWN_MAP.height * 16,
-      pixelArt: true,
-      backgroundColor: '#8fc978',
-      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-      scene: [WorldScene],
-    });
-    return () => {
-      game.destroy(true);
     };
   }, []);
 
@@ -72,7 +52,9 @@ export default function GamePage() {
   return (
     <main className="game-page">
       <div className="status-bar">
-        <span className="title">agent-sims</span>
+        <span className="title">
+          agent-sims<Link className="lab-link" to="/lab">lab 调试台</Link>
+        </span>
         {snapshot !== null ? (
           <span>
             第 {snapshot.clock.day} 天 {snapshot.clock.time} {snapshot.clock.isNight ? '🌙' : '☀️'} ·
@@ -107,7 +89,7 @@ export default function GamePage() {
 
       <div className="game-main">
         <div className="canvas-wrap">
-          <div ref={canvasHostRef} className="canvas-host" />
+          <WorldCanvas />
           <Toasts />
         </div>
         <SidePanel />

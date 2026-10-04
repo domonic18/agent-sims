@@ -1,0 +1,226 @@
+.lab-page {
+  font-family: monospace;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.lab-page .status-bar {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.lab-page .status-bar .title {
+  font-weight: bold;
+}
+
+.lab-page .status-bar .title a {
+  font-size: 12px;
+  font-weight: normal;
+  margin-left: 8px;
+}
+
+.lab-page .status-bar .connected {
+  color: #2e7d32;
+}
+
+.lab-page .status-bar .disconnected {
+  color: #c62828;
+}
+
+/* 画布宿主定宽与层叠上下文(与主页面同规格) */
+.canvas-wrap {
+  position: relative;
+  width: min(90vw, 768px);
+  aspect-ratio: 4 / 3;
+  flex-shrink: 0;
+}
+
+.canvas-host {
+  width: 100%;
+  height: 100%;
+}
+
+.lab-main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .lab-main {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+.lab-panel {
+  width: 320px;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid #999;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  background: #fafafa;
+}
+
+.panel-section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 2px;
+}
+
+.lab-panel select {
+  width: 100%;
+  font-family: inherit;
+  margin-bottom: 6px;
+}
+
+.hint {
+  color: #666;
+  margin: 4px 0 0;
+}
+
+.intent-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.intent-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.intent-name {
+  font-weight: bold;
+  color: #455a64;
+}
+
+.intent-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.intent-controls input {
+  width: 56px;
+  font-family: inherit;
+}
+
+.intent-controls select {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.lab-panel button,
+.lab-log button {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+  border: 1px solid #888;
+  border-radius: 5px;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.lab-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.world-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.world-table th,
+.world-table td {
+  border: 1px solid #e0e0e0;
+  padding: 2px 4px;
+  text-align: left;
+}
+
+.world-table th {
+  background: #f0f0f0;
+  font-weight: normal;
+  color: #555;
+}
+
+.world-table tr.selected td {
+  background: #e8f5e9;
+}
+
+.lab-log {
+  width: min(90vw, 1100px);
+  border: 1px solid #999;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  background: #fafafa;
+}
+
+.lab-log h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 2px;
+}
+
+.lab-log ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lab-log li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.lab-log li .meta {
+  color: #888;
+  flex-shrink: 0;
+}
+
+.lab-log li code {
+  flex-shrink: 0;
+  background: #eee;
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.lab-log li.ok .message {
+  color: #2e7d32;
+}
+
+.lab-log li.err .message {
+  color: #c62828;
+}

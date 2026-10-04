@@ -18,6 +18,12 @@
   font-weight: bold;
 }
 
+.status-bar .title .lab-link {
+  font-size: 12px;
+  font-weight: normal;
+  margin-left: 8px;
+}
+
 .status-bar .connected {
   color: #2e7d32;
 }
