@@ -46,3 +46,44 @@ describe('Simulation 模拟核心', () => {
     });
   });
 });
+
+describe('生死机制(M3.6f 体力区段)', () => {
+  function simWithMort(): { sim: Simulation; events: { type: string; characterId?: string }[] } {
+    const sim = new Simulation();
+    const events: { type: string; characterId?: string }[] = [];
+    sim.events.subscribe((event) => events.push(event));
+    sim.spawnCharacter('mort', 8, 12, '莫特');
+    return { sim, events };
+  }
+
+  it('体力耗尽死亡: 转幽灵态,清路径,发出 character.died', () => {
+    const { sim, events } = simWithMort();
+    sim.character('mort').energy = 0.5;
+    sim.requestMoveTo('mort', 12, 12); // 挂一条路径验证死亡清空
+    sim.advanceTicks(20); // 0.5 - 20*0.03 < 0 → 途中死亡
+    const mort = sim.character('mort');
+    expect(mort.alive).toBe(false);
+    expect(mort.path).toHaveLength(0);
+    expect(events.some((e) => e.type === 'character.died' && e.characterId === 'mort')).toBe(true);
+  });
+
+  it('幽灵态拒绝一切意图,复活恢复满状态并发 character.revived', () => {
+    const { sim, events } = simWithMort();
+    sim.character('mort').energy = 0.1;
+    sim.advanceTicks(5);
+    expect(sim.character('mort').alive).toBe(false);
+    expect(() => sim.requestMoveTo('mort', 9, 12)).toThrow(/幽灵态/);
+    expect(() => sim.requestStartActivity('mort', 'stroll')).toThrow(/幽灵态/);
+    expect(() => sim.requestBuyItem('mort', 'bread')).toThrow(/幽灵态/);
+    sim.advanceTicks(3);
+    const revived = sim.revive('mort');
+    expect(revived.alive).toBe(true);
+    expect(revived.energy).toBe(100);
+    expect(revived.happiness).toBe(80);
+    expect(events.some((e) => e.type === 'character.revived')).toBe(true);
+    expect(() => sim.revive('mort')).toThrow(/尚存活/);
+    // 复活后可正常行动
+    sim.requestMoveTo('mort', 9, 12);
+    expect(sim.character('mort').path.length).toBeGreaterThan(0);
+  });
+});

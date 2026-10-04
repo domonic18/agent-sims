@@ -8,6 +8,12 @@ export const ACTIVITY_IDS = ['study', 'work', 'rest', 'workout', 'stroll', 'meal
 
 export type ActivityId = (typeof ACTIVITY_IDS)[number];
 
+/**
+ * 基础活动集合(M3.6f 体力区段):低体力(≤阈值)时仅可执行,
+ * 高强度活动(学习/打工/健身)被拒绝。
+ */
+export const BASIC_ACTIVITY_IDS = ['rest', 'stroll', 'meal'] as const;
+
 export interface ActivityEffects {
   energy: number;
   happiness: number;
@@ -28,7 +34,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
   {
     id: 'study',
     name: '学习',
-    placeIds: ['library', 'home'],
+    placeIds: ['library', 'home-a'],
     durationMinutes: 60,
     effects: { energy: -0.15, happiness: -0.05, coins: 0 },
   },
@@ -42,7 +48,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
   {
     id: 'rest',
     name: '休息',
-    placeIds: ['home'],
+    placeIds: ['home-a', 'home-b', 'home-c', 'home-d', 'park'],
     durationMinutes: 60,
     effects: { energy: 0.5, happiness: 0.1, coins: 0 },
   },

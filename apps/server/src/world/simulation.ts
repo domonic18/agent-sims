@@ -2,12 +2,16 @@ import type {
   ActivityFinishedEvent,
   ActivityStartedEvent,
   CharacterArrivedEvent,
+  CharacterDiedEvent,
+  CharacterRevivedEvent,
   WorldControlEvent,
   WorldEvent,
   WorldSnapshotMessage,
 } from '@sims/shared';
 import {
+  BASIC_ACTIVITY_IDS,
   FURNITURE_LABELS,
+  PROPERTY_IDS,
   getActivityDefinition,
   getPropertyDefinition,
   getShopItem,
@@ -63,10 +67,13 @@ export class Simulation {
       coins: 0,
       activity: null,
       housing: {
-        propertyId: 'home', // 初始租房: 公寓,预付当日+次日租
+        // 出生自动分房(M3.6f): 按已有角色数对 4 栋公寓轮询,预付当日+次日租
+        propertyId: PROPERTY_IDS[this.characters.size % PROPERTY_IDS.length]!,
         ownership: 'rent',
         paidThroughDay: this.clock.day + 1,
       },
+      alive: true,
+      foodInventory: {},
     };
     this.characters.set(id, character);
     return character;
@@ -83,6 +90,7 @@ export class Simulation {
   /**
    * 开始活动:有锚点家具的活动须站在其使用格上(M3.6e 内景化,如书桌/床);
    * 无锚点活动(散步)沿用场所范围判定。已有进行中活动则拒绝(先显式 stop 或移动打断)。
+   * M3.6f 体力区段: 体力≤阈值仅允许基础活动;rest 使用住宅床铺须本人租约有效(公园长椅放行)。
    */
   requestStartActivity(characterId: string, activityId: string): WorldCharacter {
     const definition = getActivityDefinition(activityId);
@@ -90,21 +98,31 @@ export class Simulation {
       throw new Error(`未知活动: ${activityId}`);
     }
     const character = this.character(characterId);
+    this._ensureAlive(character);
     if (character.activity !== null) {
       throw new Error(`${character.name} 已在进行活动: ${character.activity.activityId}`);
     }
     if (character.path.length > 0) {
       throw new Error(`${character.name} 移动中,到达后再开始活动`);
     }
+    const isBasic = (BASIC_ACTIVITY_IDS as readonly string[]).includes(activityId);
+    if (character.energy <= BALANCE.LOW_ENERGY_THRESHOLD && !isBasic) {
+      throw new Error(
+        `${character.name} 体力过低(${Math.floor(character.energy)}≤${BALANCE.LOW_ENERGY_THRESHOLD}),只能进行基础活动(${BASIC_ACTIVITY_IDS.join('/')})`,
+      );
+    }
     const anchors = this.map.activityAnchors(activityId);
     if (anchors.length > 0) {
-      const onAnchor = anchors.some((anchor) => character.x === anchor.x && character.y === anchor.y);
-      if (!onAnchor) {
-        const spots = anchors.map((anchor) => `(${anchor.x},${anchor.y})`).join('/');
+      const anchor = anchors.find(
+        (candidate) => character.x === candidate.x && character.y === candidate.y,
+      );
+      if (anchor === undefined) {
+        const spots = anchors.map((item) => `(${item.x},${item.y})`).join('/');
         throw new Error(
           `${definition.name} 须站在${FURNITURE_LABELS[anchors[0]!.kind]}使用格: ${spots}`,
         );
       }
+      this._ensureRestAccess(character, anchor.placeId);
     } else if (!definition.placeIds.some((placeId) => this._atPlace(character, placeId))) {
       throw new Error(`${definition.name} 须在场所 ${definition.placeIds.join('、')} 入口或范围内`);
     }
@@ -121,6 +139,7 @@ export class Simulation {
 
   requestStopActivity(characterId: string): WorldCharacter {
     const character = this.character(characterId);
+    this._ensureAlive(character);
     if (character.activity === null) {
       throw new Error(`${character.name} 当前没有进行中的活动`);
     }
@@ -129,7 +148,8 @@ export class Simulation {
   }
 
   /**
-   * 购买商品(M3.6e 收敛为食物):结算前判定余额(不透支),买入即结算一次性效果。
+   * 购买商品(M3.6f 囤粮制):须在商店内;买入存入角色冰箱库存,
+   * 经 eat_item 意图进食时才结算效果。
    */
   requestBuyItem(characterId: string, itemId: string): WorldCharacter {
     const item = getShopItem(itemId);
@@ -137,12 +157,41 @@ export class Simulation {
       throw new Error(`未知商品: ${itemId}`);
     }
     const character = this.character(characterId);
+    this._ensureAlive(character);
+    if (!this._atPlace(character, 'shop')) {
+      throw new Error(`${character.name} 须在商店内购买(先移动到商店)`);
+    }
     if (character.coins < item.price) {
       throw new Error(
         `${character.name} 金币不足: 「${item.name}」需 ${item.price},现有 ${Math.floor(character.coins)}`,
       );
     }
     character.coins -= item.price;
+    character.foodInventory[itemId] = (character.foodInventory[itemId] ?? 0) + 1;
+    return character;
+  }
+
+  /** 吃冰箱食物:须在自己住房场所内且租约有效;扣库存并结算一次性效果 */
+  requestEatItem(characterId: string, itemId: string): WorldCharacter {
+    const item = getShopItem(itemId);
+    if (item === null) {
+      throw new Error(`未知商品: ${itemId}`);
+    }
+    const character = this.character(characterId);
+    this._ensureAlive(character);
+    if ((character.foodInventory[itemId] ?? 0) <= 0) {
+      throw new Error(`${character.name} 冰箱里没有「${item.name}」(先到商店购买)`);
+    }
+    const housing = character.housing;
+    if (housing === null || !this._atPlace(character, housing.propertyId)) {
+      const placeName = housing ? (this.map.placeById(housing.propertyId)?.name ?? housing.propertyId) : '住所';
+      throw new Error(`${character.name} 须回到${placeName}才能吃东西`);
+    }
+    this._ensureHousingLease(character, '吃东西');
+    character.foodInventory[itemId] = (character.foodInventory[itemId] ?? 0) - 1;
+    if (character.foodInventory[itemId]! <= 0) {
+      delete character.foodInventory[itemId];
+    }
     character.energy = clampVital(character.energy + item.effects.energy);
     character.happiness = clampVital(character.happiness + item.effects.happiness);
     return character;
@@ -155,6 +204,7 @@ export class Simulation {
       throw new Error(`未知房产: ${propertyId}`);
     }
     const character = this.character(characterId);
+    this._ensureAlive(character);
     if (character.housing?.ownership === 'owned') {
       throw new Error(`${character.name} 已拥有 ${property.name},无需续租`);
     }
@@ -179,6 +229,7 @@ export class Simulation {
       throw new Error(`未知房产: ${propertyId}`);
     }
     const character = this.character(characterId);
+    this._ensureAlive(character);
     if (character.housing?.ownership === 'owned') {
       throw new Error(`${character.name} 已拥有 ${property.name}`);
     }
@@ -199,6 +250,7 @@ export class Simulation {
   /** 重新规划到目标的路径(意图指令层校验后调用);移动打断进行中活动 */
   requestMoveTo(characterId: string, x: number, y: number): WorldCharacter {
     const character = this.character(characterId);
+    this._ensureAlive(character);
     if (!this.map.isWalkable(x, y)) {
       throw new Error(`目标不可行走: (${x},${y})`);
     }
@@ -210,6 +262,24 @@ export class Simulation {
       this._finishActivity(character, 'interrupted');
     }
     character.path = path;
+    return character;
+  }
+
+  /** 复活(debug 通道):幽灵态解除,恢复满状态 */
+  revive(characterId: string): WorldCharacter {
+    const character = this.character(characterId);
+    if (character.alive) {
+      throw new Error(`${character.name} 尚存活,无需复活`);
+    }
+    character.alive = true;
+    character.energy = BALANCE.REVIVE_ENERGY;
+    character.happiness = BALANCE.REVIVE_HAPPINESS;
+    const event: CharacterRevivedEvent = {
+      type: 'character.revived',
+      characterId: character.id,
+      tick: this.tick,
+    };
+    this.events.emit(event);
     return character;
   }
 
@@ -247,6 +317,8 @@ export class Simulation {
         energy: Math.round(character.energy * 10) / 10,
         happiness: Math.round(character.happiness * 10) / 10,
         coins: character.coins,
+        alive: character.alive,
+        foodInventory: { ...character.foodInventory },
         activity: character.activity
           ? { activityId: character.activity.activityId, elapsedMinutes: character.activity.elapsed }
           : null,
@@ -259,6 +331,39 @@ export class Simulation {
           : null,
       })),
     };
+  }
+
+  /** 幽灵态拒绝一切意图(M3.6f 死亡机制) */
+  private _ensureAlive(character: WorldCharacter): void {
+    if (!character.alive) {
+      throw new Error(`${character.name} 已死亡(幽灵态),等待复活`);
+    }
+  }
+
+  /** rest 锚点在住宅时:须为本人住房且租约有效(owned 或未过期);公园等场所放行 */
+  private _ensureRestAccess(character: WorldCharacter, anchorPlaceId: string): void {
+    if (!(PROPERTY_IDS as readonly string[]).includes(anchorPlaceId)) {
+      return;
+    }
+    const housing = character.housing;
+    const placeName = this.map.placeById(anchorPlaceId)?.name ?? anchorPlaceId;
+    if (housing === null || housing.propertyId !== anchorPlaceId) {
+      throw new Error(`${placeName} 的床不是你的床位(须租住或拥有该公寓)`);
+    }
+    this._ensureHousingLease(character, '使用床铺');
+  }
+
+  /** 租约有效性:自有产权放行;租赁须 paidThroughDay ≥ 今日 */
+  private _ensureHousingLease(character: WorldCharacter, action: string): void {
+    const housing = character.housing;
+    if (housing === null || housing.ownership === 'owned') {
+      return;
+    }
+    if (housing.paidThroughDay < this.clock.day) {
+      throw new Error(
+        `${character.name} 租约已过期(付至第 ${housing.paidThroughDay} 日,今日第 ${this.clock.day} 日),无法${action}(先续租或买断)`,
+      );
+    }
   }
 
   private _emitControl(): void {
@@ -328,6 +433,23 @@ export class Simulation {
           }
         }
       }
+      this._checkDeath(character);
     }
+  }
+
+  /** 体力耗尽即死亡(M3.6f):转幽灵态,清路径/打断活动,等待 Lab 复活 */
+  private _checkDeath(character: WorldCharacter): void {
+    if (!character.alive || character.energy > 0) {
+      return;
+    }
+    character.alive = false;
+    character.path = [];
+    this._finishActivity(character, 'died');
+    const event: CharacterDiedEvent = {
+      type: 'character.died',
+      characterId: character.id,
+      tick: this.tick,
+    };
+    this.events.emit(event);
   }
 }

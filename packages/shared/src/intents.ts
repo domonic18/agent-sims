@@ -7,6 +7,7 @@ export const INTENT_TYPES = [
   'start_activity',
   'stop_activity',
   'buy_item',
+  'eat_item',
   'rent_property',
   'buy_property',
 ] as const;
@@ -45,6 +46,14 @@ export const buyItemIntentSchema = z.object({
 
 export type BuyItemIntent = z.infer<typeof buyItemIntentSchema>;
 
+export const eatItemIntentSchema = z.object({
+  type: z.literal('eat_item'),
+  characterId: z.string().min(1),
+  itemId: z.string().min(1),
+});
+
+export type EatItemIntent = z.infer<typeof eatItemIntentSchema>;
+
 const propertyIntentShape = { characterId: z.string().min(1), propertyId: z.string().min(1) };
 
 export const rentPropertyIntentSchema = z.object({
@@ -66,6 +75,7 @@ export const intentSchema = z.discriminatedUnion('type', [
   startActivityIntentSchema,
   stopActivityIntentSchema,
   buyItemIntentSchema,
+  eatItemIntentSchema,
   rentPropertyIntentSchema,
   buyPropertyIntentSchema,
 ]);

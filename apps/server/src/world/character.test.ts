@@ -16,6 +16,8 @@ function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
     coins: 0,
     activity: null,
     housing: null,
+    alive: true,
+    foodInventory: {},
   };
 }
 
@@ -59,7 +61,7 @@ describe('applyVitalDecay 数值衰减', () => {
   it('按游戏分钟衰减体力与幸福', () => {
     const character = walker([]);
     applyVitalDecay(character, 60); // 1 游戏小时
-    expect(character.energy).toBeCloseTo(97, 5); // 100 - 0.05*60
+    expect(character.energy).toBeCloseTo(98.2, 5); // 100 - 0.03*60
     expect(character.happiness).toBeCloseTo(98.2, 5); // 100 - 0.03*60
   });
 
@@ -112,7 +114,7 @@ describe('Simulation 移动集成', () => {
   it('requestMoveTo 拒绝不可行走目标/未知角色', () => {
     const sim = new Simulation();
     sim.spawnCharacter('a', 8, 12);
-    expect(() => sim.requestMoveTo('a', 5, 6)).toThrow(/不可行走/); // 公寓屋顶
+    expect(() => sim.requestMoveTo('a', 5, 6)).toThrow(/不可行走/); // 公寓床占地
     expect(() => sim.requestMoveTo('ghost', 13, 12)).toThrow(/角色不存在/);
   });
 
@@ -129,7 +131,7 @@ describe('Simulation 移动集成', () => {
     sim.requestMoveTo('a', 13, 12);
     sim.advanceTicks(2);
     expect(sim.character('a').x).toBe(10);
-    sim.requestMoveTo('a', 12, 15); // 商店占地 x20..26,选广场西侧草地避开
+    sim.requestMoveTo('a', 12, 15); // 公寓南侧开阔草地,避开广场
     const path = sim.character('a').path;
     const first = path[0]!;
     expect(Math.abs(first.x - 10) + Math.abs(first.y - 12)).toBe(1); // 首步从当前位置相邻格起算

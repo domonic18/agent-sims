@@ -4,7 +4,7 @@
  */
 import type { ActivityId } from './activities.js';
 
-/** 室内家具/设施类型(M3.6e 内景化):世界内置内容,不可购买 */
+/** 室内家具/设施类型(M3.6e 内景化;M3.6f 增电器与户外长椅):世界内置内容,不可购买 */
 export const FURNITURE_KINDS = [
   'bed',
   'desk',
@@ -16,6 +16,10 @@ export const FURNITURE_KINDS = [
   'counter',
   'sofa',
   'plant',
+  'fridge',
+  'tv',
+  'wardrobe',
+  'bench',
 ] as const;
 
 export type FurnitureKind = (typeof FURNITURE_KINDS)[number];
@@ -31,6 +35,10 @@ export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
   counter: '柜台',
   sofa: '沙发',
   plant: '盆栽',
+  fridge: '冰箱',
+  tv: '电视',
+  wardrobe: '衣柜',
+  bench: '长椅',
 };
 
 /**
@@ -84,35 +92,40 @@ export interface TileMapDefinition {
 }
 
 /**
- * 城镇布局(M3.5b 定版;M3.6e 内景化):56x40 网格,7 场所。
- * 中央广场 + 十字主街;居住簇(公寓/公园,西南)、文教簇(图书馆/办公楼,东北)、
- * 商业簇(商店/餐厅/健身房,沿广场南缘一线排开);公园含水系收边。
- * 六建筑为有墙内景:door 门洞 + furniture 家具锚点,角色经门入内在家具上执行活动。
+ * 城镇布局(M3.5b 定版;M3.6e 内景化;M3.6f 扩容 64x48 四公寓+喷泉):
+ * 中央广场(含喷泉)+ 十字主街;居住簇(四公寓 A/B/C/D+公园,环绕西侧与南部)、
+ * 文教簇(图书馆/办公楼,东北)、商业簇(商店/餐厅/健身房,沿广场南缘一线排开);公园含水系收边。
+ * 有墙建筑为内景:door 门洞 + furniture 家具锚点,角色经门入内在家具上执行活动;
+ * 公园无墙,长椅为户外 rest 锚点(doorless 家具)。
  * 布局为固定游戏内容,代码静态定义(非 DB 数据);
  * 调整布局后跑 `GET /debug/map` 或 map 单测核对口(TileMap 构造即校验门洞/家具/连通)。
  */
 export const TOWN_MAP: TileMapDefinition = {
-  width: 56,
-  height: 40,
+  width: 64,
+  height: 48,
   blockedRects: [
     // 装饰障碍(建筑墙体由场所 door 展开为细墙矩形,不再整栋封死)
     { x: 4, y: 30, w: 4, h: 4 }, // 池塘(公园西缘水系)
+    { x: 30, y: 18, w: 3, h: 3 }, // 广场喷泉(石砌水池,不可行走)
   ],
   paths: [
-    { x: 2, y: 19, w: 52, h: 2 }, // 东西主街
-    { x: 27, y: 2, w: 2, h: 35 }, // 南北主街
+    { x: 2, y: 19, w: 60, h: 2 }, // 东西主街
+    { x: 27, y: 2, w: 2, h: 42 }, // 南北主街
     { x: 22, y: 15, w: 12, h: 11 }, // 中央广场
     // 门前小路:入口 → 主街/广场
-    { x: 8, y: 12, w: 1, h: 7 }, // 公寓
+    { x: 8, y: 12, w: 1, h: 7 }, // 公寓 A
+    { x: 20, y: 12, w: 1, h: 7 }, // 公寓 B
+    { x: 58, y: 12, w: 1, h: 7 }, // 公寓 C
     { x: 36, y: 12, w: 1, h: 7 }, // 图书馆
     { x: 49, y: 12, w: 1, h: 7 }, // 办公楼
     { x: 9, y: 21, w: 1, h: 5 }, // 公园
     { x: 47, y: 21, w: 1, h: 5 }, // 健身房
+    { x: 28, y: 44, w: 8, h: 1 }, // 公寓 D(门前横路 → 南北主街)
   ],
   places: [
     {
-      id: 'home',
-      name: '公寓',
+      id: 'home-a',
+      name: '公寓 A',
       x: 3,
       y: 4,
       w: 12,
@@ -124,8 +137,43 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'bookshelf', x: 7, y: 5, w: 2, h: 1 },
         { kind: 'desk', x: 11, y: 5, w: 2, h: 1, activityId: 'study', use: { x: 11, y: 6 } },
         { kind: 'table', x: 8, y: 7, w: 2, h: 1 },
+        { kind: 'fridge', x: 7, y: 8, w: 1, h: 1 },
         { kind: 'sofa', x: 4, y: 9, w: 3, h: 1 },
-        { kind: 'plant', x: 13, y: 10, w: 1, h: 1 },
+        { kind: 'wardrobe', x: 10, y: 9, w: 1, h: 2 },
+        { kind: 'bed', x: 12, y: 8, w: 2, h: 3, activityId: 'rest', use: { x: 11, y: 8 } },
+      ],
+    },
+    {
+      id: 'home-b',
+      name: '公寓 B',
+      x: 16,
+      y: 4,
+      w: 9,
+      h: 8,
+      entrance: { x: 20, y: 12 },
+      door: { x: 20, y: 11 },
+      furniture: [
+        { kind: 'bed', x: 17, y: 5, w: 2, h: 3, activityId: 'rest', use: { x: 17, y: 8 } },
+        { kind: 'fridge', x: 19, y: 5, w: 1, h: 1 },
+        { kind: 'bed', x: 21, y: 5, w: 2, h: 3, activityId: 'rest', use: { x: 21, y: 8 } },
+        { kind: 'tv', x: 17, y: 9, w: 2, h: 1 },
+        { kind: 'plant', x: 23, y: 9, w: 1, h: 1 },
+      ],
+    },
+    {
+      id: 'home-c',
+      name: '公寓 C',
+      x: 55,
+      y: 4,
+      w: 8,
+      h: 7,
+      entrance: { x: 58, y: 11 },
+      door: { x: 58, y: 10 },
+      furniture: [
+        { kind: 'bed', x: 56, y: 5, w: 2, h: 3, activityId: 'rest', use: { x: 56, y: 8 } },
+        { kind: 'fridge', x: 60, y: 5, w: 1, h: 1 },
+        { kind: 'wardrobe', x: 56, y: 9, w: 2, h: 1 },
+        { kind: 'table', x: 59, y: 9, w: 2, h: 1 },
       ],
     },
     {
@@ -140,6 +188,7 @@ export const TOWN_MAP: TileMapDefinition = {
       furniture: [
         { kind: 'bookshelf', x: 32, y: 5, w: 4, h: 1 },
         { kind: 'bookshelf', x: 38, y: 5, w: 3, h: 1 },
+        { kind: 'sofa', x: 32, y: 7, w: 2, h: 1 },
         { kind: 'desk', x: 33, y: 8, w: 2, h: 1, activityId: 'study', use: { x: 33, y: 9 } },
         { kind: 'desk', x: 37, y: 8, w: 2, h: 1, activityId: 'study', use: { x: 37, y: 9 } },
         { kind: 'plant', x: 32, y: 10, w: 1, h: 1 },
@@ -160,6 +209,7 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'workstation', x: 51, y: 5, w: 2, h: 1, activityId: 'work', use: { x: 51, y: 6 } },
         { kind: 'table', x: 47, y: 8, w: 3, h: 1 },
         { kind: 'counter', x: 45, y: 10, w: 2, h: 1 },
+        { kind: 'fridge', x: 48, y: 10, w: 1, h: 1 },
         { kind: 'plant', x: 52, y: 10, w: 1, h: 1 },
       ],
     },
@@ -174,6 +224,7 @@ export const TOWN_MAP: TileMapDefinition = {
       door: { x: 23, y: 26 },
       furniture: [
         { kind: 'counter', x: 21, y: 27, w: 2, h: 1 },
+        { kind: 'fridge', x: 24, y: 27, w: 1, h: 1 },
         { kind: 'shelf', x: 21, y: 29, w: 1, h: 3 },
         { kind: 'shelf', x: 25, y: 29, w: 1, h: 3 },
         { kind: 'plant', x: 21, y: 32, w: 1, h: 1 },
@@ -190,6 +241,7 @@ export const TOWN_MAP: TileMapDefinition = {
       door: { x: 33, y: 26 },
       furniture: [
         { kind: 'counter', x: 31, y: 27, w: 2, h: 1 },
+        { kind: 'tv', x: 35, y: 27, w: 2, h: 1 },
         { kind: 'table', x: 32, y: 30, w: 2, h: 1, activityId: 'meal', use: { x: 32, y: 31 } },
         { kind: 'table', x: 35, y: 30, w: 2, h: 1, activityId: 'meal', use: { x: 36, y: 31 } },
         { kind: 'plant', x: 37, y: 32, w: 1, h: 1 },
@@ -209,11 +261,41 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'treadmill', x: 44, y: 27, w: 1, h: 2, activityId: 'workout', use: { x: 45, y: 27 } },
         { kind: 'treadmill', x: 48, y: 27, w: 1, h: 2, activityId: 'workout', use: { x: 47, y: 27 } },
         { kind: 'sofa', x: 50, y: 29, w: 2, h: 1 },
+        { kind: 'tv', x: 45, y: 31, w: 2, h: 1 },
         { kind: 'shelf', x: 43, y: 31, w: 2, h: 1 },
         { kind: 'shelf', x: 50, y: 31, w: 2, h: 1 },
       ],
     },
-    // 公园=可行走场所(休闲活动区),无墙无内景(池塘除外)
-    { id: 'park', name: '公园', x: 3, y: 26, w: 15, h: 10, entrance: { x: 9, y: 25 } },
+    {
+      id: 'home-d',
+      name: '公寓 D',
+      x: 32,
+      y: 36,
+      w: 9,
+      h: 8,
+      entrance: { x: 36, y: 44 },
+      door: { x: 36, y: 43 },
+      furniture: [
+        { kind: 'bed', x: 33, y: 37, w: 2, h: 3, activityId: 'rest', use: { x: 33, y: 40 } },
+        { kind: 'fridge', x: 35, y: 37, w: 1, h: 1 },
+        { kind: 'bed', x: 37, y: 37, w: 2, h: 3, activityId: 'rest', use: { x: 37, y: 40 } },
+        { kind: 'tv', x: 33, y: 41, w: 2, h: 1 },
+        { kind: 'bookshelf', x: 38, y: 40, w: 1, h: 2 },
+      ],
+    },
+    // 公园=可行走场所(休闲活动区),无墙;长椅为户外 rest 锚点(doorless 家具)
+    {
+      id: 'park',
+      name: '公园',
+      x: 3,
+      y: 26,
+      w: 15,
+      h: 10,
+      entrance: { x: 9, y: 25 },
+      furniture: [
+        { kind: 'bench', x: 8, y: 31, w: 1, h: 1, activityId: 'rest', use: { x: 9, y: 31 } },
+        { kind: 'bench', x: 8, y: 32, w: 1, h: 1, activityId: 'rest', use: { x: 9, y: 32 } },
+      ],
+    },
   ],
 };

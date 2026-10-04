@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buyItemIntentSchema,
   buyPropertyIntentSchema,
+  eatItemIntentSchema,
   moveToIntentSchema,
   rentPropertyIntentSchema,
 } from '@sims/shared';
@@ -35,27 +36,44 @@ describe('executeIntent 意图执行', () => {
     ).toThrow(/角色不存在/);
   });
 
-  it('buy_item: 食物即买即食,余额不足拒绝', () => {
+  it('buy_item: 店内购买入库存(不即食),余额不足拒绝', () => {
     const sim = new Simulation();
-    sim.spawnCharacter('jev', 8, 12);
+    sim.spawnCharacter('jev', 23, 28); // 商店内部
     sim.character('jev').coins = 30;
     const bought = executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'coffee' }));
     expect(bought.ok).toBe(true);
-    expect(bought.message).toContain('购买并食用');
+    expect(bought.message).toContain('存入冰箱');
     expect(sim.character('jev').coins).toBe(24);
+    expect(sim.character('jev').foodInventory).toEqual({ coffee: 1 });
     sim.character('jev').coins = 5;
     expect(() =>
       executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'cake' })),
     ).toThrow(/金币不足/);
   });
 
+  it('eat_item: 回家进食结算并清库存', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('jev', 23, 28); // 首个生成 → home-a
+    sim.character('jev').coins = 30;
+    executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'coffee' }));
+    sim.character('jev').x = 11;
+    sim.character('jev').y = 7; // home-a 室内
+    sim.character('jev').energy = 90; // 留出增益空间(上限 100 夹取)
+    const energy = sim.character('jev').energy;
+    const eaten = executeIntent(sim, eatItemIntentSchema.parse({ type: 'eat_item', characterId: 'jev', itemId: 'coffee' }));
+    expect(eaten.ok).toBe(true);
+    expect(eaten.message).toContain('吃掉');
+    expect(sim.character('jev').energy).toBeCloseTo(energy + 10, 5);
+    expect(sim.character('jev').foodInventory).toEqual({});
+  });
+
   it('rent/buy_property: 返回摘要消息', () => {
     const sim = new Simulation();
     sim.spawnCharacter('jev', 8, 12);
     sim.character('jev').coins = 600;
-    const rented = executeIntent(sim, rentPropertyIntentSchema.parse({ type: 'rent_property', characterId: 'jev', propertyId: 'home' }));
+    const rented = executeIntent(sim, rentPropertyIntentSchema.parse({ type: 'rent_property', characterId: 'jev', propertyId: 'home-a' }));
     expect(rented.message).toContain('租约付至第');
-    const bought = executeIntent(sim, buyPropertyIntentSchema.parse({ type: 'buy_property', characterId: 'jev', propertyId: 'home' }));
+    const bought = executeIntent(sim, buyPropertyIntentSchema.parse({ type: 'buy_property', characterId: 'jev', propertyId: 'home-a' }));
     expect(bought.message).toContain('买下');
   });
 });

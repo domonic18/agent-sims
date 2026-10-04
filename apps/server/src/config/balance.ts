@@ -24,6 +24,11 @@ export const BALANCE = {
   /** 数值系统:角色初始满值与每游戏分钟自然衰减(活动增减 M3 接入) */
   START_ENERGY: 100,
   START_HAPPINESS: 100,
-  ENERGY_DECAY_PER_MINUTE: 0.05,
+  ENERGY_DECAY_PER_MINUTE: 0.03,
   HAPPINESS_DECAY_PER_MINUTE: 0.03,
+  /** 体力区段(M3.6f):≤阈值只允许基础活动(rest/stroll/meal),≤0 死亡转幽灵态 */
+  LOW_ENERGY_THRESHOLD: 20,
+  /** Lab 复活(debug 通道)恢复的满状态数值 */
+  REVIVE_ENERGY: 100,
+  REVIVE_HAPPINESS: 80,
 } as const;

@@ -32,6 +32,8 @@ const spawnBodySchema = z.object({
   name: z.string().min(1).optional(),
 });
 
+const reviveBodySchema = z.object({ characterId: z.string().min(1) });
+
 function parseError(reply: FastifyReply, message: string) {
   return reply.code(400).send({ error: message });
 }
@@ -102,6 +104,25 @@ export function registerDebugRoutes(
       return parseError(reply, err instanceof Error ? err.message : '生成角色失败');
     }
     return await reply.send(sim.snapshot());
+  });
+
+  // 复活(M3.6f):幽灵态角色满状态回归,供 Lab 页按钮调用
+  app.post('/debug/revive', async (request, reply) => {
+    const parsed = reviveBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return parseError(reply, issue ? `characterId: ${issue.message}` : '请求体不合法');
+    }
+    try {
+      const character = sim.revive(parsed.data.characterId);
+      return await reply.send({
+        ok: true,
+        message: `${character.name} 已复活`,
+        state: sim.snapshot(),
+      });
+    } catch (err) {
+      return parseError(reply, err instanceof Error ? err.message : '复活失败');
+    }
   });
 
   // intents 层雏形:经共享协议校验后执行(异常映射 400)

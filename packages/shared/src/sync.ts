@@ -50,6 +50,10 @@ export interface WorldSnapshotMessage {
     energy: number;
     happiness: number;
     coins: number;
+    /** 存活状态(false=幽灵态,拒绝一切意图,等待复活) */
+    alive: boolean;
+    /** 冰箱食物库存(itemId→数量,仅 >0 项);eat_item 消耗 */
+    foodInventory: Record<string, number>;
     /** 进行中活动(null=空闲);前端活动面板与气泡消费 */
     activity: { activityId: string; elapsedMinutes: number } | null;
     /** 住宿状态(null=无住宿): 租约付到日/自有 */

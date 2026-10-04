@@ -128,10 +128,11 @@ export class TileMap {
       this._validateEntrance(place);
       if (place.door !== undefined) {
         this._validateDoor(place);
-        this._validateFurniture(place);
+        this._validateFurniture(place, true);
         this._validateInteriorReachability(place);
       } else if ((place.furniture ?? []).length > 0) {
-        throw new Error(`场所 ${place.id} 无门洞却有家具: 内景家具须配 door 门洞`);
+        // 无墙场所(公园)家具: 户外长椅等锚点,仅校验矩形内+使用格紧邻可行走(无室内圈/门/连通约束)
+        this._validateFurniture(place, false);
       }
     }
   }
@@ -166,21 +167,25 @@ export class TileMap {
     }
   }
 
-  private _validateFurniture(place: PlaceDefinition): void {
+  private _validateFurniture(place: PlaceDefinition, indoor: boolean): void {
     const interior = (v: number, base: number, size: number): boolean =>
       v > base && v < base + size - 1;
     for (const f of place.furniture ?? []) {
       if (f.w < 1 || f.h < 1) {
         throw new Error(`场所 ${place.id} 家具 ${f.kind} 占地非法: w/h 须 ≥1`);
       }
-      const inside =
-        interior(f.x, place.x, place.w) &&
-        interior(f.x + f.w - 1, place.x, place.w) &&
-        interior(f.y, place.y, place.h) &&
-        interior(f.y + f.h - 1, place.y, place.h);
+      const inside = indoor
+        ? interior(f.x, place.x, place.w) &&
+          interior(f.x + f.w - 1, place.x, place.w) &&
+          interior(f.y, place.y, place.h) &&
+          interior(f.y + f.h - 1, place.y, place.h)
+        : f.x >= place.x &&
+          f.y >= place.y &&
+          f.x + f.w <= place.x + place.w &&
+          f.y + f.h <= place.y + place.h;
       if (!inside) {
         throw new Error(
-          `场所 ${place.id} 家具 ${f.kind} 位置非法: 占地须在室内(墙内圈)`,
+          `场所 ${place.id} 家具 ${f.kind} 位置非法: 占地须在${indoor ? '室内(墙内圈)' : '场所矩形内'}`,
         );
       }
       if ((f.activityId === undefined) !== (f.use === undefined)) {

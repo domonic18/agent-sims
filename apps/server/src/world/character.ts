@@ -30,6 +30,10 @@ export interface WorldCharacter {
   activity: CharacterActivity | null;
   /** 住宿状态(null=无住宿) */
   housing: CharacterHousing | null;
+  /** 存活状态(false=幽灵态 M3.6f:拒绝一切意图,等待 Lab 复活) */
+  alive: boolean;
+  /** 冰箱食物库存(itemId→数量):buy_item 入库,eat_item 消耗 */
+  foodInventory: Record<string, number>;
 }
 
 export const clampVital = (value: number): number => Math.max(0, Math.min(100, value));

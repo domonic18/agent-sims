@@ -57,7 +57,7 @@ describe('TileMap 可行走层', () => {
 
   it('placeAt 命中场所占地,含可行走场所(公园)', () => {
     const map = TileMap.fromDefinition(TOWN_MAP);
-    expect(map.placeAt(5, 5)?.id).toBe('home');
+    expect(map.placeAt(5, 5)?.id).toBe('home-a');
     expect(map.placeAt(10, 30)?.id).toBe('park');
     expect(map.placeAt(49, 12)).toBeNull(); // 入口格不算场所内
     expect(map.placeAt(54, 38)).toBeNull();
@@ -95,11 +95,19 @@ describe('TileMap 可行走层', () => {
     expect(rows[3]?.charAt(4)).toBe('E');
   });
 
-  it('Simulation 持有城镇地图且 7 场所入口全部合法', () => {
+  it('Simulation 持有城镇地图且 10 场所入口全部合法', () => {
     const sim = new Simulation();
-    expect(sim.map.width).toBe(56);
-    expect(sim.map.height).toBe(40);
-    expect(sim.map.places).toHaveLength(7); // 构造已验证全部入口
+    expect(sim.map.width).toBe(64);
+    expect(sim.map.height).toBe(48);
+    expect(sim.map.places).toHaveLength(10); // 构造已验证全部入口
+  });
+
+  it('广场喷泉不可行走,广场其余区域可行走', () => {
+    const map = TileMap.fromDefinition(TOWN_MAP);
+    expect(map.isWalkable(30, 19)).toBe(false); // 喷泉池心
+    expect(map.isWalkable(31, 20)).toBe(false);
+    expect(map.isWalkable(29, 19)).toBe(true); // 喷泉西侧环道
+    expect(map.isWalkable(33, 18)).toBe(true);
   });
 });
 
@@ -117,8 +125,11 @@ describe('TileMap 内景层(M3.6e)', () => {
 
   it('门洞在 ASCII 图标注为 D', () => {
     const rows = TileMap.fromDefinition(TOWN_MAP).toAscii().split('\n');
-    expect(rows[11]?.charAt(8)).toBe('D'); // 公寓门洞
+    expect(rows[11]?.charAt(8)).toBe('D'); // 公寓 A 门洞
     expect(rows[11]?.charAt(7)).toBe('#'); // 同排墙体
+    expect(rows[11]?.charAt(20)).toBe('D'); // 公寓 B 门洞
+    expect(rows[10]?.charAt(58)).toBe('D'); // 公寓 C 门洞
+    expect(rows[43]?.charAt(36)).toBe('D'); // 公寓 D 门洞
   });
 
   it('activityAnchors: 汇总各场所锚点使用格,无锚点活动返回空', () => {
@@ -126,7 +137,14 @@ describe('TileMap 内景层(M3.6e)', () => {
     expect(map.activityAnchors('study')).toEqual(
       expect.arrayContaining([
         { x: 33, y: 9, placeId: 'library', kind: 'desk' },
-        { x: 11, y: 6, placeId: 'home', kind: 'desk' },
+        { x: 11, y: 6, placeId: 'home-a', kind: 'desk' },
+      ]),
+    );
+    expect(map.activityAnchors('rest')).toEqual(
+      expect.arrayContaining([
+        { x: 9, y: 31, placeId: 'park', kind: 'bench' },
+        { x: 17, y: 8, placeId: 'home-b', kind: 'bed' },
+        { x: 37, y: 40, placeId: 'home-d', kind: 'bed' },
       ]),
     );
     expect(map.activityAnchors('stroll')).toEqual([]);
@@ -175,14 +193,19 @@ describe('TileMap 内景层(M3.6e)', () => {
     ).toThrow(/被阻塞/); // 使用格被定制障碍压住
   });
 
-  it('无门洞却有家具/室内被割裂致使用格不可达均抛错', () => {
-    const base = roomMap.places[0]!;
+  it('无墙场所家具合法(公园长椅),越界非法;室内割裂仍抛错', () => {
+    // TOWN_MAP 公园长椅即 doorless 锚点家具,构造通过且进锚点表
+    const town = TileMap.fromDefinition(TOWN_MAP);
+    expect(town.isWalkable(8, 31)).toBe(false); // 长椅占地阻塞
+    expect(town.isWalkable(9, 31)).toBe(true); // 使用格可行走
     expect(() =>
       TileMap.fromDefinition({
         ...roomMap,
-        places: [{ ...base, door: undefined, furniture: base.furniture! }],
+        places: [
+          { id: 'yard', name: '院子', x: 3, y: 2, w: 5, h: 4, entrance: { x: 5, y: 6 }, furniture: [{ kind: 'bench', x: 2, y: 3, w: 1, h: 1 }] },
+        ],
       }),
-    ).toThrow(/门洞/);
+    ).toThrow(/矩形内/); // doorless 家具越出场所占地
     // 横贯室内的柜台把床的使用格隔在门洞不可达侧
     const hall: TileMapDefinition = {
       width: 12,

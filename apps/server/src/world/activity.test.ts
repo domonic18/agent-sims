@@ -20,7 +20,7 @@ function simWith(id: string, x: number, y: number): { sim: Simulation; events: W
   return { sim, events };
 }
 
-describe('活动执行(M3.1;M3.6e 锚点语义)', () => {
+describe('活动执行(M3.1;M3.6e 锚点语义;M3.6f 体力区段/床权属)', () => {
   it('学习完整 60 分钟(图书馆书桌): 体力/幸福按衰减+效果结算,自动完成', () => {
     const desk = anchorUse('library', 'study');
     const { sim, events } = simWith('alice', desk.x, desk.y);
@@ -28,7 +28,7 @@ describe('活动执行(M3.1;M3.6e 锚点语义)', () => {
     sim.advanceTicks(60);
     const alice = sim.character('alice');
     expect(alice.activity).toBeNull();
-    expect(alice.energy).toBeCloseTo(100 - 60 * 0.05 - 60 * 0.15, 5);
+    expect(alice.energy).toBeCloseTo(100 - 60 * 0.03 - 60 * 0.15, 5);
     expect(alice.happiness).toBeCloseTo(100 - 60 * 0.03 - 60 * 0.05, 5);
     const finished = events.find((e) => e.type === 'activity.finished');
     expect(finished).toMatchObject({
@@ -40,8 +40,8 @@ describe('活动执行(M3.1;M3.6e 锚点语义)', () => {
     });
   });
 
-  it('学习支持家中书桌: home 锚点同效(placeIds 多场所)', () => {
-    const desk = anchorUse('home', 'study');
+  it('学习支持家中书桌: home-a 锚点同效(placeIds 多场所)', () => {
+    const desk = anchorUse('home-a', 'study');
     const { sim } = simWith('bob', desk.x, desk.y);
     sim.requestStartActivity('bob', 'study');
     expect(sim.character('bob').activity).toMatchObject({ activityId: 'study' });
@@ -54,7 +54,7 @@ describe('活动执行(M3.1;M3.6e 锚点语义)', () => {
     sim.advanceTicks(120);
     const carl = sim.character('carl');
     expect(carl.coins).toBe(60);
-    expect(carl.energy).toBeCloseTo(100 - 120 * 0.05 - 120 * 0.25, 5);
+    expect(carl.energy).toBeCloseTo(100 - 120 * 0.03 - 120 * 0.25, 5);
     expect(carl.happiness).toBeCloseTo(100 - 120 * 0.03 - 120 * 0.1, 5);
   });
 
@@ -94,8 +94,8 @@ describe('活动执行(M3.1;M3.6e 锚点语义)', () => {
     });
   });
 
-  it('手动 stop(家中床铺休息): 即时结束并结算已进行部分', () => {
-    const bed = anchorUse('home', 'rest');
+  it('手动 stop(本人公寓床铺休息): 即时结束并结算已进行部分', () => {
+    const bed = anchorUse('home-a', 'rest'); // 首个生成角色分到 home-a
     const { sim, events } = simWith('frank', bed.x, bed.y);
     sim.character('frank').energy = 40;
     sim.requestStartActivity('frank', 'rest');
@@ -103,20 +103,50 @@ describe('活动执行(M3.1;M3.6e 锚点语义)', () => {
     sim.requestStopActivity('frank');
     const frank = sim.character('frank');
     expect(frank.activity).toBeNull();
-    expect(frank.energy).toBeCloseTo(40 - 10 * 0.05 + 10 * 0.5, 5);
+    expect(frank.energy).toBeCloseTo(40 - 10 * 0.03 + 10 * 0.5, 5);
     const finished = events.find((e) => e.type === 'activity.finished') as ActivityFinishedEvent;
     expect(finished).toMatchObject({ reason: 'stopped', elapsedMinutes: 10 });
+  });
+
+  it('低体力区段(≤20): 高强度活动拒绝,基础活动(rest)放行', () => {
+    const treadmill = anchorUse('gym', 'workout');
+    const { sim } = simWith('kate', treadmill.x, treadmill.y);
+    sim.character('kate').energy = 15;
+    expect(() => sim.requestStartActivity('kate', 'workout')).toThrow(/体力过低/);
+    const bed = anchorUse('home-b', 'rest'); // 第二个生成角色分到 home-b
+    sim.spawnCharacter('leon', bed.x, bed.y, 'leon');
+    sim.character('leon').energy = 15;
+    sim.requestStartActivity('leon', 'rest'); // 基础活动不受区段限制
+    expect(sim.character('leon').activity).toMatchObject({ activityId: 'rest' });
+  });
+
+  it('rest 床权属: 本人公寓放行,他人公寓拒绝,公园长椅放行,租约过期拒绝', () => {
+    const bedA = anchorUse('home-a', 'rest');
+    const { sim } = simWith('mary', bedA.x, bedA.y); // 首个生成 → home-a
+    sim.requestStartActivity('mary', 'rest');
+    expect(sim.character('mary').activity).toMatchObject({ activityId: 'rest' });
+    sim.requestStopActivity('mary');
+    const bedB = anchorUse('home-b', 'rest');
+    sim.spawnCharacter('nick', 20, 12, 'nick'); // 第二个生成 → home-b
+    sim.spawnCharacter('owen', bedB.x, bedB.y, 'owen'); // 第三个生成 → home-c,却站 home-b 的床
+    expect(() => sim.requestStartActivity('owen', 'rest')).toThrow(/不是你的床位/);
+    const bench = anchorUse('park', 'rest'); // 户外长椅无权属
+    sim.spawnCharacter('paula', bench.x, bench.y, 'paula');
+    sim.requestStartActivity('paula', 'rest');
+    expect(sim.character('paula').activity).toMatchObject({ activityId: 'rest' });
+    sim.character('mary').housing!.paidThroughDay = 0; // 模拟欠租跨日
+    expect(() => sim.requestStartActivity('mary', 'rest')).toThrow(/租约已过期/);
   });
 
   it('校验: 不在锚点/不在场所/移动中/重复开始/未知活动/无活动停止均拒绝', () => {
     const { sim } = simWith('gina', 8, 12); // 公寓入口(非书桌/床使用格)
     expect(() => sim.requestStartActivity('gina', 'study')).toThrow(/使用格/);
     expect(() => sim.requestStartActivity('gina', 'rest')).toThrow(/使用格/);
-    sim.spawnCharacter('henry', 20, 13, 'henry'); // 广场,不在公园
+    sim.spawnCharacter('henry', 20, 13, 'henry'); // 门前路,不在公园
     expect(() => sim.requestStartActivity('henry', 'stroll')).toThrow(/场所/);
     sim.requestMoveTo('henry', 21, 13);
     expect(() => sim.requestStartActivity('henry', 'stroll')).toThrow(/移动中/);
-    const bed = anchorUse('home', 'rest');
+    const bed = anchorUse('home-c', 'rest'); // iris 是第三个生成 → 轮询分到 home-c
     sim.spawnCharacter('iris', bed.x, bed.y, 'iris');
     sim.requestStartActivity('iris', 'rest');
     expect(() => sim.requestStartActivity('iris', 'rest')).toThrow(/已在进行/);

@@ -15,12 +15,13 @@ export const characterArrivedEventSchema = z.object({
 
 export type CharacterArrivedEvent = z.infer<typeof characterArrivedEventSchema>;
 
-/** 活动结束原因: 按时长完成/手动停止/被移动打断/就餐余额不足 */
+/** 活动结束原因: 按时长完成/手动停止/被移动打断/就餐余额不足/体力耗尽死亡 */
 export const ACTIVITY_FINISH_REASONS = [
   'completed',
   'stopped',
   'interrupted',
   'insufficient_coins',
+  'died',
 ] as const;
 
 export type ActivityFinishReason = (typeof ACTIVITY_FINISH_REASONS)[number];
@@ -46,6 +47,24 @@ export const activityFinishedEventSchema = z.object({
 
 export type ActivityFinishedEvent = z.infer<typeof activityFinishedEventSchema>;
 
+/** 体力耗尽死亡:角色转幽灵态(M3.6f 生存机制) */
+export const characterDiedEventSchema = z.object({
+  type: z.literal('character.died'),
+  characterId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type CharacterDiedEvent = z.infer<typeof characterDiedEventSchema>;
+
+/** 复活(debug 通道):幽灵态解除,满状态回归 */
+export const characterRevivedEventSchema = z.object({
+  type: z.literal('character.revived'),
+  characterId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type CharacterRevivedEvent = z.infer<typeof characterRevivedEventSchema>;
+
 /** 暂停/倍率变更广播:多端 HUD 状态对齐 */
 export const worldControlEventSchema = z.object({
   type: z.literal('world.control'),
@@ -60,6 +79,8 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
   activityFinishedEventSchema,
+  characterDiedEventSchema,
+  characterRevivedEventSchema,
   worldControlEventSchema,
 ]);
 
