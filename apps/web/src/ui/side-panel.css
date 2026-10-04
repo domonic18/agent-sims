@@ -76,6 +76,12 @@
   margin-left: 4px;
 }
 
+/* 背包行内按钮组(吃/存入冰箱)不被 span flex:1 拉伸(M3.6g) */
+.shop-list li .housing-actions {
+  flex: 0;
+  margin: 0;
+}
+
 /* 地图点击建筑 → 侧栏对应条目/区块高亮定位(M3.6a 联动) */
 .activity-list li.focused {
   margin: -2px -6px;

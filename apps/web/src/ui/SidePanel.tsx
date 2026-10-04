@@ -16,6 +16,10 @@ import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
 import './side-panel.css';
 
+/** 容积上限(与服务端 BALANCE 对应,数值文档 §3.2): 背包 8 / 冰箱 30 */
+const BACKPACK_VOLUME_LIMIT = 8;
+const FRIDGE_VOLUME_LIMIT = 30;
+
 /** 与服务端 _atPlace 同规则: 位于场所矩形内或入口格即"在场所" */
 function findPlaceAt(snapshot: WorldSnapshotMessage, x: number, y: number): PlaceDefinition | null {
   for (const place of TOWN_MAP.places) {
@@ -26,6 +30,14 @@ function findPlaceAt(snapshot: WorldSnapshotMessage, x: number, y: number): Plac
     }
   }
   return null;
+}
+
+/** 库存体积(count × 商品 volume 求和,与服务端 _inventoryVolume 同规则) */
+function volumeOf(record: Record<string, number>): number {
+  return Object.entries(record).reduce(
+    (sum, [itemId, count]) => sum + (SHOP_ITEMS.find((item) => item.id === itemId)?.volume ?? 0) * count,
+    0,
+  );
 }
 
 interface ActivityAnchor {
@@ -220,12 +232,14 @@ export function SidePanel() {
   const moving = character !== null && character.pathRemaining > 0;
   const inShop = atPlace?.id === 'shop';
   const day = snapshot.clock.day;
-  // 冰箱进食前提: 位于自己住房且(自有或租约未过期)
+  // 冰箱存取前提: 位于自己住房且(自有或租约未过期)
   const atHome = housing !== null && atPlace?.id === housing.propertyId;
   const leaseValid = housing === null || housing.ownership === 'owned' || housing.paidThroughDay >= day;
-  const inventoryEntries = Object.entries(character?.foodInventory ?? {}).filter(
-    ([, count]) => count > 0,
-  );
+  // 容积上限(与服务端 BALANCE 对应,数值文档 §3.2): 背包 8 / 冰箱 30
+  const backpackEntries = Object.entries(character?.backpack ?? {}).filter(([, count]) => count > 0);
+  const fridgeEntries = Object.entries(character?.fridge ?? {}).filter(([, count]) => count > 0);
+  const backpackUsed = volumeOf(character?.backpack ?? {});
+  const fridgeUsed = volumeOf(character?.fridge ?? {});
 
   return (
     <aside className="side-panel">
@@ -345,7 +359,10 @@ export function SidePanel() {
                       <button
                         type="button"
                         disabled={moving || dead}
-                        title={here ? undefined : `自动前往 ${targetLabel} 并开始`}
+                        title={
+                          (here ? '' : `自动前往 ${targetLabel} 并开始`) +
+                          (def.id === 'rest' ? '恢复速率: 床最快/沙发次之/长椅最慢' : '')
+                        }
                         onClick={() => void startActivity(def)}
                       >
                         {enRoute ? '途中…' : '开始'}
@@ -377,7 +394,11 @@ export function SidePanel() {
                       {current && !owned && (
                         <small>
                           {' '}· 付至第 {housing?.paidThroughDay} 日
-                          {expired ? ' ⚠已过期' : ''}
+                          {expired
+                            ? ' ⚠已过期'
+                            : (housing?.paidThroughDay ?? 0) === day
+                              ? ' · 今日到期'
+                              : ` · 剩 ${(housing?.paidThroughDay ?? 0) - day} 天`}
                         </small>
                       )}
                       <small>
@@ -427,14 +448,14 @@ export function SidePanel() {
                     <span>
                       {item.name}
                       <small>
-                        {item.price}币 体力+{item.effects.energy}
+                        {item.price}币 体积{item.volume} 体力+{item.effects.energy}
                         {item.effects.happiness > 0 ? ` 幸福+${item.effects.happiness}` : ''}
                       </small>
                     </span>
                     <button
                       type="button"
                       disabled={moving || dead}
-                      title={inShop ? '购入冰箱存库存' : '自动前往商店并购入'}
+                      title={inShop ? '购入放入背包(随身可吃)' : '自动前往商店并购入背包'}
                       onClick={() => void buyItem(item.id)}
                     >
                       {pendingBuy ? '途中…' : inShop ? '购入' : '到店购买'}
@@ -446,14 +467,72 @@ export function SidePanel() {
           </section>
 
           <section className="panel-section">
-            <h3>冰箱(回自家吃)</h3>
-            {inventoryEntries.length === 0 ? (
-              <p className="hint">空空如也——到商店购入食物囤进冰箱</p>
+            <h3>
+              背包(随身) · 体积 {backpackUsed}/{BACKPACK_VOLUME_LIMIT}
+            </h3>
+            {backpackEntries.length === 0 ? (
+              <p className="hint">空空如也——到商店购入食物随身携带</p>
             ) : (
               <ul className="shop-list">
-                {inventoryEntries.map(([itemId, count]) => {
+                {backpackEntries.map(([itemId, count]) => {
                   const item = SHOP_ITEMS.find((i) => i.id === itemId);
-                  const canEat = !dead && atHome && leaseValid;
+                  return (
+                    <li key={itemId}>
+                      <span>
+                        {item?.name ?? itemId}
+                        <small>
+                          ×{count} 体积{backpackUsed}/{BACKPACK_VOLUME_LIMIT}
+                        </small>
+                      </span>
+                      <span className="housing-actions">
+                        <button
+                          type="button"
+                          disabled={dead}
+                          title={`体力+${item?.effects.energy ?? 0}(任意地点可吃)`}
+                          onClick={() =>
+                            void run({ type: 'eat_item', characterId: character.id, itemId })
+                          }
+                        >
+                          吃
+                        </button>
+                        <button
+                          type="button"
+                          disabled={dead || !atHome || !leaseValid}
+                          title={
+                            !atHome
+                              ? '须回到自己的住房才能存入冰箱'
+                              : !leaseValid
+                                ? '租约已过期,先续租或买断'
+                                : '存入家中冰箱(腾出背包空间)'
+                          }
+                          onClick={() =>
+                            void run({ type: 'store_item', characterId: character.id, itemId, count: 1 })
+                          }
+                        >
+                          存入冰箱
+                        </button>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {backpackUsed >= BACKPACK_VOLUME_LIMIT && (
+              <p className="hint err">背包已满——先吃点,或回家存入冰箱</p>
+            )}
+          </section>
+
+          <section className="panel-section">
+            <h3>
+              冰箱(家中仓储) · 体积 {fridgeUsed}/{FRIDGE_VOLUME_LIMIT}
+            </h3>
+            {fridgeEntries.length === 0 ? (
+              <p className="hint">空空如也——把背包食物存进来囤粮</p>
+            ) : (
+              <ul className="shop-list">
+                {fridgeEntries.map(([itemId, count]) => {
+                  const item = SHOP_ITEMS.find((i) => i.id === itemId);
+                  const canTake = !dead && atHome && leaseValid;
                   return (
                     <li key={itemId}>
                       <span>
@@ -462,29 +541,27 @@ export function SidePanel() {
                       </span>
                       <button
                         type="button"
-                        disabled={!canEat}
+                        disabled={!canTake}
                         title={
                           !atHome
-                            ? '须回到自己的住房才能吃'
+                            ? '须回到自己的住房才能取出'
                             : !leaseValid
                               ? '租约已过期,先续租或买断'
-                              : `体力+${item?.effects.energy ?? 0}`
+                              : '取出到背包(之后随时可吃)'
                         }
                         onClick={() =>
-                          void run({ type: 'eat_item', characterId: character.id, itemId })
+                          void run({ type: 'take_item', characterId: character.id, itemId, count: 1 })
                         }
                       >
-                        吃
+                        取出
                       </button>
                     </li>
                   );
                 })}
               </ul>
             )}
-            {!atHome && inventoryEntries.length > 0 && (
-              <p className="hint">不在自家:吃之前先回家(入口或室内)</p>
-            )}
-            {atHome && !leaseValid && <p className="hint err">租约已过期,无法进食——先续租或买断</p>}
+            {fridgeEntries.length > 0 && !atHome && <p className="hint">不在自家:存取冰箱先回家(入口或室内)</p>}
+            {atHome && !leaseValid && <p className="hint err">租约已过期,无法存取——先续租或买断</p>}
           </section>
         </>
       )}

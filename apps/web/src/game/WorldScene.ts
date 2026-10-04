@@ -13,7 +13,7 @@ import { CHARACTER, characterVariant, PROP_TREES, TILE_FRAME, TILESET } from './
 
 const TILE = 16;
 /** 与服务端 BALANCE.WALK_SPEED_TILES_PER_MINUTE 对应的移动契约:每 tick 1 格 */
-const TILES_PER_TICK = 1;
+const TILES_PER_TICK = 2;
 /** 目标偏差超过该格数视为瞬移(重连/重生),直接吸附 */
 const SNAP_DISTANCE_TILES = 4;
 
@@ -162,6 +162,8 @@ interface CharacterRender {
   inActivity: boolean;
   /** 进行中活动 id(快照),null = 空闲 */
   activityId: string | null;
+  /** rest 档位锚点家具 kind(快照,床/沙发/长椅吸附判定用) */
+  anchorKind: string | null;
   /** 活动已进行分钟数(快照,驱动进度环) */
   elapsedMinutes: number;
   /** 头顶活动气泡(图标+环形进度),随 node 移动 */
@@ -193,7 +195,7 @@ interface CharacterRender {
 export class WorldScene extends Phaser.Scene {
   private readonly _characters = new Map<string, CharacterRender>();
   private _nightOverlay: Phaser.GameObjects.Rectangle | null = null;
-  /** 夜间灯光层(ADD 混合同心光晕: 路灯/窗光/室内暖光),alpha 随 isNight 插值 */
+  /** 夜间灯光层(户外光圈+整屋暖光矩形),alpha 随 isNight 插值 */
   private _lightLayer: Phaser.GameObjects.Container | null = null;
   /** 选中角色脚下呼吸椭圆环 */
   private _selectionRing: Phaser.GameObjects.Graphics | null = null;
@@ -408,10 +410,11 @@ export class WorldScene extends Phaser.Scene {
         } else {
           this._playAnim(render, 'idle');
         }
-        // M3.6f 躺床: rest 到位后吸附最近床/长椅占地中心,纯视觉横躺
+        // M3.6f 躺床: rest 到位后吸附锚点家具占地中心,纯视觉横躺
+        // (M3.6g 按 anchorKind 匹配档位家具,沙发不再吸附到床)
         const anchor =
           render.inActivity && render.activityId === 'rest'
-            ? this._nearestRestAnchor(render.x, render.y)
+            ? this._nearestRestAnchor(render.x, render.y, render.anchorKind)
             : null;
         render.resting = anchor !== null;
         if (anchor !== null) {
@@ -435,13 +438,18 @@ export class WorldScene extends Phaser.Scene {
     this._updateFountain(now);
   }
 
-  /** rest 锚点全集(床/长椅占地中心,格坐标),取距角色最近者 */
-  private _nearestRestAnchor(x: number, y: number): { cx: number; cy: number } | null {
+  /** rest 锚点全集(床/沙发/长椅占地中心,格坐标),按档位 kind 过滤后取距角色最近者 */
+  private _nearestRestAnchor(
+    x: number,
+    y: number,
+    kind: string | null,
+  ): { cx: number; cy: number } | null {
     let best: { cx: number; cy: number } | null = null;
     let bestDist = Number.POSITIVE_INFINITY;
     for (const place of TOWN_MAP.places) {
       for (const f of place.furniture ?? []) {
         if (f.activityId !== 'rest') continue;
+        if (kind !== null && f.kind !== kind) continue;
         const cx = f.x + f.w / 2;
         const cy = f.y + f.h / 2;
         const dist = Math.abs(cx - x) + Math.abs(cy - y);
@@ -521,7 +529,10 @@ export class WorldScene extends Phaser.Scene {
     g.fillEllipse(cx, cy - 4, 9, 3); // 盆中水
   }
 
-  /** 夜间灯光层: 路灯/围栏灯/窗光/室内暖光,ADD 混合三层同心光晕 */
+  /**
+   * 夜间灯光层(M3.6g 重做): 圆形光圈只留户外(路灯/围栏灯/公园/广场);
+   * 有门建筑改为整屋暖色矩形(整间亮),仅门口保留小光圈透光。
+   */
   private _buildLightLayer(): void {
     const layer = this.add.container(0, 0).setDepth(101);
     this._lightLayer = layer;
@@ -544,12 +555,13 @@ export class WorldScene extends Phaser.Scene {
     }
     for (const place of TOWN_MAP.places) {
       if (place.door === undefined) continue;
-      // 窗光: 顶墙 2-3 扇窗位
-      const right = place.x + place.w - 1;
-      const xs = [...new Set([place.x + 2, place.x + Math.floor(place.w / 2), right - 2])];
-      for (const wx of xs) glow(wx, place.y, 0.8, 0.8);
-      // 室内暖光: 建筑中心大范围低强度
-      glow(place.x + place.w / 2 - 0.5, place.y + place.h / 2 - 0.5, place.w / 9, 0.3);
+      // 整屋暖光: 覆盖场所占地的低强度矩形,ADD 混合随夜显隐
+      const room = this.add.graphics();
+      room.fillStyle(0xffd27a, 0.2);
+      room.fillRect(place.x * TILE, place.y * TILE, place.w * TILE, place.h * TILE);
+      room.blendMode = Phaser.BlendModes.ADD;
+      layer.add(room);
+      glow(place.door.x, place.door.y, 0.7, 0.9); // 门口透光
     }
     layer.alpha = 0;
   }
@@ -918,7 +930,7 @@ export class WorldScene extends Phaser.Scene {
       y: number;
       energy: number;
       alive: boolean;
-      activity: { activityId: string; elapsedMinutes: number } | null;
+      activity: { activityId: string; elapsedMinutes: number; anchorKind: string | null } | null;
     }[],
   ): void {
     const seen = new Set<string>();
@@ -935,6 +947,7 @@ export class WorldScene extends Phaser.Scene {
           dir: 'down',
           inActivity: character.activity !== null,
           activityId: character.activity?.activityId ?? null,
+          anchorKind: character.activity?.anchorKind ?? null,
           elapsedMinutes: character.activity?.elapsedMinutes ?? 0,
           bubble: null,
           bubbleRing: null,
@@ -954,6 +967,7 @@ export class WorldScene extends Phaser.Scene {
       render.targetY = character.y;
       render.inActivity = character.activity !== null;
       render.activityId = character.activity?.activityId ?? null;
+      render.anchorKind = character.activity?.anchorKind ?? null;
       render.elapsedMinutes = character.activity?.elapsedMinutes ?? 0;
       render.alive = character.alive;
       render.energy = character.energy;

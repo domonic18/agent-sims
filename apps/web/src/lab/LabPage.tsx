@@ -156,7 +156,7 @@ export default function LabPage() {
         <SidePanel />
         {character !== null && (
           <section className="lab-panel">
-            <h3>意图操作台(7 意图全量)</h3>
+            <h3>意图操作台(9 意图全量)</h3>
             <IntentForms key={character.id} character={character} onRun={run} />
           </section>
         )}
@@ -231,7 +231,7 @@ export default function LabPage() {
   );
 }
 
-/** 7 意图分组表单(buy_item/eat_item 同组);key=character.id 挂载,切角色时表单自动重置 */
+/** 9 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
 function IntentForms({
   character,
   onRun,
@@ -250,7 +250,7 @@ function IntentForms({
         <ActivityForm character={character} onRun={onRun} />
       </div>
       <div className="intent-group">
-        <span className="intent-name">buy_item / eat_item</span>
+        <span className="intent-name">buy/eat/store/take_item</span>
         <ShopForm character={character} onRun={onRun} />
       </div>
       <div className="intent-group">
@@ -319,15 +319,27 @@ function ActivityForm({ character, onRun }: { character: CharacterSnapshot; onRu
 
 function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: RunFn }) {
   const [itemId, setItemId] = useState(SHOP_ITEMS[0]?.id ?? '');
+  const [count, setCount] = useState('1');
+  const countNum = (): number => {
+    const parsed = Number.parseInt(count, 10);
+    return Number.isInteger(parsed) && parsed >= 1 ? parsed : 0;
+  };
   return (
     <span className="intent-controls">
       <select value={itemId} onChange={(e) => setItemId(e.target.value)}>
         {SHOP_ITEMS.map((item) => (
           <option key={item.id} value={item.id}>
-            {item.name}·{item.price}币
+            {item.name}·{item.price}币·体积{item.volume}
           </option>
         ))}
       </select>
+      <input
+        type="number"
+        min={1}
+        value={count}
+        onChange={(e) => setCount(e.target.value)}
+        title="存取数量(store/take 用)"
+      />
       <button
         type="button"
         disabled={itemId === ''}
@@ -347,6 +359,36 @@ function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: R
         }
       >
         吃
+      </button>
+      <button
+        type="button"
+        disabled={itemId === '' || countNum() < 1}
+        onClick={() => {
+          const n = countNum();
+          if (itemId !== '' && n >= 1) {
+            void onRun(
+              { type: 'store_item', characterId: character.id, itemId, count: n },
+              `store_item(${itemId},${n})`,
+            );
+          }
+        }}
+      >
+        存
+      </button>
+      <button
+        type="button"
+        disabled={itemId === '' || countNum() < 1}
+        onClick={() => {
+          const n = countNum();
+          if (itemId !== '' && n >= 1) {
+            void onRun(
+              { type: 'take_item', characterId: character.id, itemId, count: n },
+              `take_item(${itemId},${n})`,
+            );
+          }
+        }}
+      >
+        取
       </button>
     </span>
   );
