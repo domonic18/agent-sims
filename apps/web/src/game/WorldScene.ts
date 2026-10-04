@@ -129,6 +129,8 @@ export class WorldScene extends Phaser.Scene {
   private _keyControls: Record<string, Phaser.Input.Keyboard.Key> | null = null;
   private _lastKeyStepAt = 0;
   private _lastBlockedToastAt = 0;
+  /** 交互开关: 主页面纯观看(仅点选角色/缩放),/lab 调试台全量操控(地图移动/方向键) */
+  private _interactive = true;
 
   constructor() {
     super('world');
@@ -165,12 +167,15 @@ export class WorldScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE);
     cam.setZoom(ZOOM_DEFAULT);
+    this._interactive = this.registry.get('interactive') !== false;
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this._handleMapClick(pointer));
-    const keyboard = this.input.keyboard;
-    if (keyboard !== null) {
-      this._keyControls = keyboard.addKeys(
-        'UP,DOWN,LEFT,RIGHT,W,A,S,D',
-      ) as Record<string, Phaser.Input.Keyboard.Key>;
+    if (this._interactive) {
+      const keyboard = this.input.keyboard;
+      if (keyboard !== null) {
+        this._keyControls = keyboard.addKeys(
+          'UP,DOWN,LEFT,RIGHT,W,A,S,D',
+        ) as Record<string, Phaser.Input.Keyboard.Key>;
+      }
     }
     this.input.on(
       'wheel',
@@ -213,6 +218,9 @@ export class WorldScene extends Phaser.Scene {
         return;
       }
     }
+
+    // 纯观看页(主页面): 点选角色跟随即可,不下发移动/定位
+    if (!this._interactive) return;
 
     const place = TOWN_MAP.places.find((p) => p.id !== 'park' && inRect(tx, ty, p));
     if (place !== undefined) {

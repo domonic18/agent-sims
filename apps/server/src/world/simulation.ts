@@ -97,8 +97,8 @@ export class Simulation {
     if (character.path.length > 0) {
       throw new Error(`${character.name} 移动中,到达后再开始活动`);
     }
-    if (!this._atPlace(character, definition.placeId)) {
-      throw new Error(`${definition.name} 须在场所 ${definition.placeId} 入口或范围内`);
+    if (!definition.placeIds.some((placeId) => this._atPlace(character, placeId))) {
+      throw new Error(`${definition.name} 须在场所 ${definition.placeIds.join('、')} 入口或范围内`);
     }
     character.activity = { activityId, elapsed: 0 };
     const event: ActivityStartedEvent = {

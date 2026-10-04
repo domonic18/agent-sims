@@ -4,7 +4,7 @@ import { TOWN_MAP } from '@sims/shared';
 import { WorldScene } from './WorldScene';
 
 /** Phaser 画布宿主:创建/销毁世界场景(主页面与 /lab 调试台复用同一 WorldScene) */
-export function WorldCanvas() {
+export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -19,9 +19,11 @@ export function WorldCanvas() {
       scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
       scene: [WorldScene],
     });
+    // create() 在 boot 后异步执行,先写入再启动不会丢
+    game.registry.set('interactive', interactive);
     return () => {
       game.destroy(true);
     };
-  }, []);
+  }, [interactive]);
   return <div ref={hostRef} className="canvas-host" />;
 }

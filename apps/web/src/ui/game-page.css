@@ -41,58 +41,6 @@
   color: #ff8a80;
 }
 
-.controls {
-  position: absolute;
-  top: 46px;
-  left: 12px;
-  z-index: 10;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 6px 10px;
-  background: rgba(15, 18, 26, 0.78);
-  border-radius: 8px;
-}
-
-.controls button {
-  font-family: inherit;
-  padding: 4px 12px;
-  cursor: pointer;
-  border: 1px solid #888;
-  border-radius: 6px;
-  background: #fff;
-}
-
-.controls button.active {
-  background: #2e7d32;
-  color: #fff;
-  border-color: #2e7d32;
-}
-
-.controls button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.speed-group {
-  display: flex;
-  gap: 4px;
-}
-
-.paused-badge {
-  color: #ff8a80;
-  font-weight: bold;
-}
-
-.control-error {
-  color: #ff8a80;
-  font-size: 12px;
-  max-width: 420px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* 画布铺满视口,Phaser Scale.FIT 在其内等比缩放并 letterbox(底色与页面一致) */
 .game-main {
   display: contents;

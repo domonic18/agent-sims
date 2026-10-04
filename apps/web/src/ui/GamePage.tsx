@@ -1,14 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { setPaused, setTimeScale } from '../net/debugApi';
 import { connectWorld } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
 import { WorldCanvas } from '../game/WorldCanvas';
-import { SidePanel } from './SidePanel';
-import { Toasts } from './Toasts';
 import './game-page.css';
-
-const TIME_SCALES = [1, 4, 16] as const;
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: '连接中…',
@@ -16,12 +11,14 @@ const STATUS_LABEL: Record<string, string> = {
   disconnected: '已断开,自动重连中',
 };
 
-/** 世界观察页:Phaser 渲染 + HUD(暂停/加速经 /debug 联调通道,M4 换正式指令) */
+/**
+ * 世界观察页(纯观看): 画布+状态栏+角色条,交互操控全量收口到 /lab 调试台。
+ * 画布仅支持点选角色跟随与滚轮缩放,不下发任何意图。
+ */
 export default function GamePage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
   const lastEvent = useWorldStore((state) => state.lastEvent);
-  const [controlError, setControlError] = useState<string | null>(null);
 
   useEffect(() => {
     const socket = connectWorld();
@@ -29,25 +26,6 @@ export default function GamePage() {
       socket.disconnect();
     };
   }, []);
-
-  const togglePause = async (): Promise<void> => {
-    if (snapshot === null) return;
-    try {
-      await setPaused(!snapshot.paused);
-      setControlError(null);
-    } catch (error) {
-      setControlError(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const changeScale = async (scale: number): Promise<void> => {
-    try {
-      await setTimeScale(scale);
-      setControlError(null);
-    } catch (error) {
-      setControlError(error instanceof Error ? error.message : String(error));
-    }
-  };
 
   return (
     <main className="game-page">
@@ -66,33 +44,10 @@ export default function GamePage() {
         <span className={status}>{STATUS_LABEL[status] ?? status}</span>
       </div>
 
-      <div className="controls">
-        <button type="button" onClick={() => void togglePause()} disabled={snapshot === null}>
-          {snapshot?.paused ? '▶ 继续' : '⏸ 暂停'}
-        </button>
-        <span className="speed-group">
-          {TIME_SCALES.map((scale) => (
-            <button
-              key={scale}
-              type="button"
-              className={snapshot?.timeScale === scale ? 'active' : ''}
-              onClick={() => void changeScale(scale)}
-              disabled={snapshot === null}
-            >
-              {scale}x
-            </button>
-          ))}
-        </span>
-        {snapshot?.paused === true && <span className="paused-badge">已暂停</span>}
-        {controlError !== null && <span className="control-error">{controlError}</span>}
-      </div>
-
       <div className="game-main">
         <div className="canvas-wrap">
-          <WorldCanvas />
-          <Toasts />
+          <WorldCanvas interactive={false} />
         </div>
-        <SidePanel />
       </div>
 
       {snapshot !== null && snapshot.characters.length > 0 && (

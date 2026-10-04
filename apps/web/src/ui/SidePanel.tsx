@@ -50,13 +50,13 @@ export function SidePanel() {
   };
 
   /**
-   * 开始活动:在场直接开始;不在场先前往,到达后自动接续开始。
+   * 开始活动:在任一可执行场所直接开始;否则先前往首选场所,到达后自动接续开始。
    * 协议仍是两步显式语义,此处仅为客户端 UI 合成(move_to → start_activity)。
    */
   const startActivity = async (def: ActivityDefinition): Promise<void> => {
     if (character === null) return;
-    const place = TOWN_MAP.places.find((p) => p.id === def.placeId);
-    if (atPlace?.id === def.placeId) {
+    const place = TOWN_MAP.places.find((p) => p.id === def.placeIds[0]);
+    if (def.placeIds.includes(atPlace?.id ?? '')) {
       await run({ type: 'start_activity', characterId: character.id, activityId: def.id });
       return;
     }
@@ -77,7 +77,7 @@ export function SidePanel() {
     setPendingActivityId(null);
   }, [selectedId]);
 
-  // 前往途中随每 tick 快照检查:到达目的地后自动接续开始;途中改道/被打断则放弃
+  // 前往途中随每 tick 快照检查:到达任一可执行场所后自动接续开始;途中改道/被打断则放弃
   useEffect(() => {
     if (pendingActivityId === null || character === null || snapshot === null) return;
     if (character.activity !== null) {
@@ -91,7 +91,7 @@ export function SidePanel() {
     }
     const def = getActivityDefinition(pendingActivityId);
     const at = findPlaceAt(snapshot, character.x, character.y);
-    if (def !== null && at?.id === def.placeId) {
+    if (def !== null && def.placeIds.includes(at?.id ?? '')) {
       pendingArrivalRef.current = false;
       setPendingActivityId(null);
       void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
@@ -155,6 +155,42 @@ export function SidePanel() {
       {character !== null && (
         <>
           <section className="panel-section">
+            <h3>前往</h3>
+            <ul className="activity-list">
+              {TOWN_MAP.places.map((place) => {
+                const moving = character.pathRemaining > 0;
+                const here = atPlace?.id === place.id;
+                return (
+                  <li
+                    key={place.id}
+                    id={`place-row-${place.id}`}
+                    className={focusPlaceId === place.id ? 'focused' : ''}
+                  >
+                    <span>
+                      {place.name}
+                      {here && <small> · 在此</small>}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={moving || here}
+                      onClick={() =>
+                        void run({
+                          type: 'move_to',
+                          characterId: character.id,
+                          x: place.entrance.x,
+                          y: place.entrance.y,
+                        })
+                      }
+                    >
+                      前往
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
+          <section className="panel-section">
             <h3>活动{atPlace !== null ? ` · ${atPlace.name}` : ' · 野外'}</h3>
             {activity !== null && activityDef !== null ? (
               <div className="activity-running">
@@ -172,47 +208,32 @@ export function SidePanel() {
             ) : (
               <ul className="activity-list">
                 {ACTIVITY_DEFINITIONS.map((def) => {
-                  const place = TOWN_MAP.places.find((p) => p.id === def.placeId);
-                  const here = atPlace?.id === def.placeId;
+                  const placeNames = def.placeIds
+                    .map((id) => TOWN_MAP.places.find((p) => p.id === id)?.name ?? id)
+                    .join('/');
+                  const here = def.placeIds.includes(atPlace?.id ?? '');
                   const moving = character.pathRemaining > 0;
                   const pending = pendingActivityId === def.id;
                   return (
                     <li
                       key={def.id}
-                      id={`place-row-${def.placeId}`}
-                      className={focusPlaceId === def.placeId || pending ? 'focused' : ''}
+                      id={`activity-row-${def.id}`}
+                      className={pending ? 'focused' : ''}
                     >
                       <span>
-                        {def.name}·{place?.name ?? def.placeId}
+                        {def.name}
                         <small>
-                          {def.durationMinutes}分
+                          {placeNames} {def.durationMinutes}分
                           {def.effects.coins !== 0 &&
                             (def.effects.coins > 0
                               ? ` +${def.effects.coins}/分`
                               : ` ${def.effects.coins}/分`)}
                         </small>
                       </span>
-                      {!here && (
-                        <button
-                          type="button"
-                          disabled={moving || place === undefined}
-                          onClick={() =>
-                            place !== undefined &&
-                            void run({
-                              type: 'move_to',
-                              characterId: character.id,
-                              x: place.entrance.x,
-                              y: place.entrance.y,
-                            })
-                          }
-                        >
-                          前往
-                        </button>
-                      )}
                       <button
                         type="button"
                         disabled={moving}
-                        title={here ? undefined : '自动前往,到达后开始'}
+                        title={here ? undefined : `自动前往 ${placeNames} 并开始`}
                         onClick={() => void startActivity(def)}
                       >
                         {pending ? '途中…' : '开始'}

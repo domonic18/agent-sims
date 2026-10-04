@@ -17,8 +17,8 @@ export interface ActivityEffects {
 export interface ActivityDefinition {
   id: ActivityId;
   name: string;
-  /** 执行场所: 角色须位于该场所入口格或矩形内 */
-  placeId: string;
+  /** 可执行场所集合: 角色须位于其一的入口格或矩形内(场所与活动解耦,如学习=图书馆/家中书桌) */
+  placeIds: readonly string[];
   /** 达到时长自动完成(游戏分钟) */
   durationMinutes: number;
   effects: ActivityEffects;
@@ -28,42 +28,42 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
   {
     id: 'study',
     name: '学习',
-    placeId: 'library',
+    placeIds: ['library'],
     durationMinutes: 60,
     effects: { energy: -0.15, happiness: -0.05, coins: 0 },
   },
   {
     id: 'work',
     name: '打工',
-    placeId: 'office',
+    placeIds: ['office'],
     durationMinutes: 120,
     effects: { energy: -0.25, happiness: -0.1, coins: 0.5 },
   },
   {
     id: 'rest',
     name: '休息',
-    placeId: 'home',
+    placeIds: ['home'],
     durationMinutes: 60,
     effects: { energy: 0.5, happiness: 0.1, coins: 0 },
   },
   {
     id: 'workout',
     name: '健身',
-    placeId: 'gym',
+    placeIds: ['gym'],
     durationMinutes: 40,
     effects: { energy: -0.3, happiness: 0.35, coins: 0 },
   },
   {
     id: 'stroll',
     name: '散步',
-    placeId: 'park',
+    placeIds: ['park'],
     durationMinutes: 20,
     effects: { energy: -0.05, happiness: 0.15, coins: 0 },
   },
   {
     id: 'meal',
     name: '就餐',
-    placeId: 'restaurant',
+    placeIds: ['restaurant'],
     durationMinutes: 30,
     effects: { energy: 0.3, happiness: 0.2, coins: -0.4 },
   },

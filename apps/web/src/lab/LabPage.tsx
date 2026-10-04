@@ -9,8 +9,10 @@ import {
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { WorldCanvas } from '../game/WorldCanvas';
+import { setPaused, setTimeScale } from '../net/debugApi';
 import { connectWorld, sendIntent } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
+import { SidePanel } from '../ui/SidePanel';
 import { Toasts } from '../ui/Toasts';
 import './lab.css';
 
@@ -26,18 +28,20 @@ interface LogEntry {
 }
 
 const LOG_MAX = 100;
+const TIME_SCALES = [1, 4, 16] as const;
 
 /**
- * /lab 独立调试台(M3.6b):7 意图分组参数表单+执行按钮,回执日志逐条留痕,
- * 世界状态只读区;地图复用 WorldScene,协议层与主页面同一套 socket/worldStore。
- * M3.6c 行动清单走查的执行载体,亦是 M4 Agent 动作空间的持续调试器。
+ * /lab 独立调试台(M3.6b;M3.6d 全屏化+操作收口): 全屏画布+悬浮 HUD,
+ * 右列=快捷操作面板(前往/活动/资产/商店)+7 意图协议表单+世界状态只读表,
+ * 左下=回执日志。暂停/倍率经 /debug 联调通道(M4 换正式指令)。
+ * 地图全量操控(点击移动/方向键步进)仅此页开启,主页面纯观看。
  */
 export default function LabPage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedId = useWorldStore((state) => state.selectedCharacterId);
-  const selectCharacter = useWorldStore((state) => state.selectCharacter);
   const [log, setLog] = useState<LogEntry[]>([]);
+  const [controlError, setControlError] = useState<string | null>(null);
   const nextLogIdRef = useRef(1);
 
   useEffect(() => {
@@ -68,6 +72,25 @@ export default function LabPage() {
     );
   };
 
+  const togglePause = async (): Promise<void> => {
+    if (snapshot === null) return;
+    try {
+      await setPaused(!snapshot.paused);
+      setControlError(null);
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const changeScale = async (scale: number): Promise<void> => {
+    try {
+      await setTimeScale(scale);
+      setControlError(null);
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
     <main className="lab-page">
       <div className="status-bar">
@@ -87,73 +110,74 @@ export default function LabPage() {
         </span>
       </div>
 
-      <div className="lab-main">
-        <div className="canvas-wrap">
-          <WorldCanvas />
-          <Toasts />
-        </div>
-
-        <aside className="lab-panel">
-          <section className="panel-section">
-            <h3>操控角色</h3>
-            {snapshot === null || snapshot.characters.length === 0 ? (
-              <p className="hint">世界暂无角色</p>
-            ) : (
-              <select
-                value={selectedId ?? ''}
-                onChange={(event) => selectCharacter(event.target.value)}
-              >
-                {snapshot.characters.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </section>
-
-          {character !== null && (
-            <section className="panel-section">
-              <h3>意图操作台(7 意图全量)</h3>
-              <IntentForms key={character.id} character={character} onRun={run} />
-            </section>
-          )}
-
-          <section className="panel-section">
-            <h3>世界状态(只读)</h3>
-            {snapshot === null ? (
-              <p className="hint">等待快照…</p>
-            ) : (
-              <table className="world-table">
-                <thead>
-                  <tr>
-                    <th>角色</th>
-                    <th>坐标</th>
-                    <th>体力</th>
-                    <th>幸福</th>
-                    <th>金币</th>
-                    <th>活动</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {snapshot.characters.map((c) => (
-                    <tr key={c.id} className={c.id === selectedId ? 'selected' : ''}>
-                      <td>{c.name}</td>
-                      <td>
-                        {c.x},{c.y}
-                      </td>
-                      <td>{Math.round(c.energy)}</td>
-                      <td>{Math.round(c.happiness)}</td>
-                      <td>{Math.round(c.coins)}</td>
-                      <td>{c.activity?.activityId ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-        </aside>
+      <div className="controls">
+        <button type="button" onClick={() => void togglePause()} disabled={snapshot === null}>
+          {snapshot?.paused ? '▶ 继续' : '⏸ 暂停'}
+        </button>
+        <span className="speed-group">
+          {TIME_SCALES.map((scale) => (
+            <button
+              key={scale}
+              type="button"
+              className={snapshot?.timeScale === scale ? 'active' : ''}
+              onClick={() => void changeScale(scale)}
+              disabled={snapshot === null}
+            >
+              {scale}x
+            </button>
+          ))}
+        </span>
+        {snapshot?.paused === true && <span className="paused-badge">已暂停</span>}
+        {controlError !== null && <span className="control-error">{controlError}</span>}
       </div>
+
+      <div className="canvas-wrap">
+        <WorldCanvas />
+        <Toasts />
+      </div>
+
+      <aside className="lab-side">
+        <SidePanel />
+        {character !== null && (
+          <section className="lab-panel">
+            <h3>意图操作台(7 意图全量)</h3>
+            <IntentForms key={character.id} character={character} onRun={run} />
+          </section>
+        )}
+        <section className="lab-panel">
+          <h3>世界状态(只读)</h3>
+          {snapshot === null ? (
+            <p className="hint">等待快照…</p>
+          ) : (
+            <table className="world-table">
+              <thead>
+                <tr>
+                  <th>角色</th>
+                  <th>坐标</th>
+                  <th>体力</th>
+                  <th>幸福</th>
+                  <th>金币</th>
+                  <th>活动</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshot.characters.map((c) => (
+                  <tr key={c.id} className={c.id === selectedId ? 'selected' : ''}>
+                    <td>{c.name}</td>
+                    <td>
+                      {c.x},{c.y}
+                    </td>
+                    <td>{Math.round(c.energy)}</td>
+                    <td>{Math.round(c.happiness)}</td>
+                    <td>{Math.round(c.coins)}</td>
+                    <td>{c.activity?.activityId ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </aside>
 
       <section className="lab-log">
         <h3>回执日志(最新在上)</h3>
