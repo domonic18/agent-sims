@@ -28,6 +28,8 @@ export {
   rentPropertyIntentSchema,
   startActivityIntentSchema,
   stopActivityIntentSchema,
+  storeItemIntentSchema,
+  takeItemIntentSchema,
   type BuyItemIntent,
   type BuyPropertyIntent,
   type EatItemIntent,
@@ -37,6 +39,8 @@ export {
   type RentPropertyIntent,
   type StartActivityIntent,
   type StopActivityIntent,
+  type StoreItemIntent,
+  type TakeItemIntent,
 } from './intents.js';
 
 export {
@@ -102,6 +106,7 @@ export {
 export {
   FURNITURE_KINDS,
   FURNITURE_LABELS,
+  REST_RATES_BY_KIND,
   TOWN_MAP,
   type BlockedRect,
   type FurnitureDefinition,

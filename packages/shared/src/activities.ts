@@ -1,6 +1,9 @@
 /**
  * 活动目录(游戏内容,双端共用): 六类活动的数值公式在此定稿
- * (关闭 requirement §10-5)。效果为"每游戏分钟"净增量,与自然衰减叠加;
+ * (关闭 requirement §10-5;M3.6g 净速率模型重定稿,数值文档 §2.1)。
+ * 效果为"每游戏分钟"**净速率**(已含活动期间代谢,活动中不再叠加自然衰减;
+ * 仅待机走基础代谢衰减)。rest 的体力/幸福实际按锚点家具档位
+ * (world.ts REST_RATES_BY_KIND: 床/沙发/长椅)结算,此处 effects 置 0 占位。
  * 金币可为负(就餐花销),下限夹 0,余额不足时活动中断(insufficient_coins)。
  */
 
@@ -36,42 +39,42 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '学习',
     placeIds: ['library', 'home-a'],
     durationMinutes: 60,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.12, happiness: -0.02, coins: 0 },
   },
   {
     id: 'work',
     name: '打工',
     placeIds: ['office'],
     durationMinutes: 120,
-    effects: { energy: -0.25, happiness: -0.1, coins: 0.5 },
+    effects: { energy: -0.18, happiness: -0.05, coins: 0.5 },
   },
   {
     id: 'rest',
     name: '休息',
     placeIds: ['home-a', 'home-b', 'home-c', 'home-d', 'park'],
     durationMinutes: 60,
-    effects: { energy: 0.5, happiness: 0.1, coins: 0 },
+    effects: { energy: 0, happiness: 0, coins: 0 },
   },
   {
     id: 'workout',
     name: '健身',
     placeIds: ['gym'],
     durationMinutes: 40,
-    effects: { energy: -0.3, happiness: 0.35, coins: 0 },
+    effects: { energy: -0.4, happiness: 0.35, coins: 0 },
   },
   {
     id: 'stroll',
     name: '散步',
     placeIds: ['park'],
     durationMinutes: 20,
-    effects: { energy: -0.05, happiness: 0.15, coins: 0 },
+    effects: { energy: -0.04, happiness: 0.15, coins: 0 },
   },
   {
     id: 'meal',
     name: '就餐',
     placeIds: ['restaurant'],
     durationMinutes: 30,
-    effects: { energy: 0.3, happiness: 0.2, coins: -0.4 },
+    effects: { energy: 0.05, happiness: 0.2, coins: -0.4 },
   },
 ];
 

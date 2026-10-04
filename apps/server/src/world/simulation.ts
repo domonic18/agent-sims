@@ -73,7 +73,8 @@ export class Simulation {
         paidThroughDay: this.clock.day + 1,
       },
       alive: true,
-      foodInventory: {},
+      backpack: {},
+      fridge: {},
     };
     this.characters.set(id, character);
     return character;
@@ -112,6 +113,7 @@ export class Simulation {
       );
     }
     const anchors = this.map.activityAnchors(activityId);
+    let anchorKind: string | null = null;
     if (anchors.length > 0) {
       const anchor = anchors.find(
         (candidate) => character.x === candidate.x && character.y === candidate.y,
@@ -122,11 +124,12 @@ export class Simulation {
           `${definition.name} 须站在${FURNITURE_LABELS[anchors[0]!.kind]}使用格: ${spots}`,
         );
       }
+      anchorKind = anchor.kind;
       this._ensureRestAccess(character, anchor.placeId);
     } else if (!definition.placeIds.some((placeId) => this._atPlace(character, placeId))) {
       throw new Error(`${definition.name} 须在场所 ${definition.placeIds.join('、')} 入口或范围内`);
     }
-    character.activity = { activityId, elapsed: 0 };
+    character.activity = { activityId, elapsed: 0, anchorKind };
     const event: ActivityStartedEvent = {
       type: 'activity.started',
       characterId: character.id,
@@ -148,8 +151,8 @@ export class Simulation {
   }
 
   /**
-   * 购买商品(M3.6f 囤粮制):须在商店内;买入存入角色冰箱库存,
-   * 经 eat_item 意图进食时才结算效果。
+   * 购买商品(M3.6g 背包制):须在商店内;买入入随身背包,
+   * 体积超限拒绝;经 eat_item 意图随时进食(任意地点)。
    */
   requestBuyItem(characterId: string, itemId: string): WorldCharacter {
     const item = getShopItem(itemId);
@@ -161,17 +164,23 @@ export class Simulation {
     if (!this._atPlace(character, 'shop')) {
       throw new Error(`${character.name} 须在商店内购买(先移动到商店)`);
     }
+    const used = this._inventoryVolume(character.backpack);
+    if (used + item.volume > BALANCE.BACKPACK_VOLUME_LIMIT) {
+      throw new Error(
+        `背包已满(${used}/${BALANCE.BACKPACK_VOLUME_LIMIT}),装不下「${item.name}」(体积 ${item.volume});先吃点或回家存冰箱`,
+      );
+    }
     if (character.coins < item.price) {
       throw new Error(
         `${character.name} 金币不足: 「${item.name}」需 ${item.price},现有 ${Math.floor(character.coins)}`,
       );
     }
     character.coins -= item.price;
-    character.foodInventory[itemId] = (character.foodInventory[itemId] ?? 0) + 1;
+    character.backpack[itemId] = (character.backpack[itemId] ?? 0) + 1;
     return character;
   }
 
-  /** 吃冰箱食物:须在自己住房场所内且租约有效;扣库存并结算一次性效果 */
+  /** 吃背包食物(M3.6g):任意地点可吃;扣背包并结算一次性效果 */
   requestEatItem(characterId: string, itemId: string): WorldCharacter {
     const item = getShopItem(itemId);
     if (item === null) {
@@ -179,21 +188,61 @@ export class Simulation {
     }
     const character = this.character(characterId);
     this._ensureAlive(character);
-    if ((character.foodInventory[itemId] ?? 0) <= 0) {
-      throw new Error(`${character.name} 冰箱里没有「${item.name}」(先到商店购买)`);
+    if ((character.backpack[itemId] ?? 0) <= 0) {
+      throw new Error(`${character.name} 背包里没有「${item.name}」(先到商店购买)`);
     }
-    const housing = character.housing;
-    if (housing === null || !this._atPlace(character, housing.propertyId)) {
-      const placeName = housing ? (this.map.placeById(housing.propertyId)?.name ?? housing.propertyId) : '住所';
-      throw new Error(`${character.name} 须回到${placeName}才能吃东西`);
-    }
-    this._ensureHousingLease(character, '吃东西');
-    character.foodInventory[itemId] = (character.foodInventory[itemId] ?? 0) - 1;
-    if (character.foodInventory[itemId]! <= 0) {
-      delete character.foodInventory[itemId];
+    character.backpack[itemId] = (character.backpack[itemId] ?? 0) - 1;
+    if (character.backpack[itemId]! <= 0) {
+      delete character.backpack[itemId];
     }
     character.energy = clampVital(character.energy + item.effects.energy);
     character.happiness = clampVital(character.happiness + item.effects.happiness);
+    return character;
+  }
+
+  /** 背包→家中冰箱:须在自己住所且租约有效,目标容积足够 */
+  requestStoreItem(characterId: string, itemId: string, count: number): WorldCharacter {
+    const item = this._ensureTransferItem(itemId);
+    const character = this.character(characterId);
+    this._ensureAlive(character);
+    this._ensureAtOwnHome(character, '存入冰箱');
+    if ((character.backpack[itemId] ?? 0) < count) {
+      throw new Error(`${character.name} 背包里「${item.name}」不足 ${count} 个`);
+    }
+    const used = this._inventoryVolume(character.fridge);
+    if (used + item.volume * count > BALANCE.FRIDGE_VOLUME_LIMIT) {
+      throw new Error(
+        `冰箱已满(${used}/${BALANCE.FRIDGE_VOLUME_LIMIT}),放不下 ${count} 个「${item.name}」(余 ${BALANCE.FRIDGE_VOLUME_LIMIT - used} 体积)`,
+      );
+    }
+    character.backpack[itemId] = character.backpack[itemId]! - count;
+    if (character.backpack[itemId]! <= 0) {
+      delete character.backpack[itemId];
+    }
+    character.fridge[itemId] = (character.fridge[itemId] ?? 0) + count;
+    return character;
+  }
+
+  /** 家中冰箱→背包:须在自己住所且租约有效,背包容积足够 */
+  requestTakeItem(characterId: string, itemId: string, count: number): WorldCharacter {
+    const item = this._ensureTransferItem(itemId);
+    const character = this.character(characterId);
+    this._ensureAlive(character);
+    this._ensureAtOwnHome(character, '从冰箱取出');
+    if ((character.fridge[itemId] ?? 0) < count) {
+      throw new Error(`${character.name} 冰箱里「${item.name}」不足 ${count} 个`);
+    }
+    const used = this._inventoryVolume(character.backpack);
+    if (used + item.volume * count > BALANCE.BACKPACK_VOLUME_LIMIT) {
+      throw new Error(
+        `背包已满(${used}/${BALANCE.BACKPACK_VOLUME_LIMIT}),装不下 ${count} 个「${item.name}」(余 ${BALANCE.BACKPACK_VOLUME_LIMIT - used} 体积)`,
+      );
+    }
+    character.fridge[itemId] = character.fridge[itemId]! - count;
+    if (character.fridge[itemId]! <= 0) {
+      delete character.fridge[itemId];
+    }
+    character.backpack[itemId] = (character.backpack[itemId] ?? 0) + count;
     return character;
   }
 
@@ -318,9 +367,14 @@ export class Simulation {
         happiness: Math.round(character.happiness * 10) / 10,
         coins: character.coins,
         alive: character.alive,
-        foodInventory: { ...character.foodInventory },
+        backpack: { ...character.backpack },
+        fridge: { ...character.fridge },
         activity: character.activity
-          ? { activityId: character.activity.activityId, elapsedMinutes: character.activity.elapsed }
+          ? {
+              activityId: character.activity.activityId,
+              elapsedMinutes: character.activity.elapsed,
+              anchorKind: character.activity.anchorKind,
+            }
           : null,
         housing: character.housing
           ? {
@@ -366,6 +420,39 @@ export class Simulation {
     }
   }
 
+  /** 存取冰箱位置校验:须位于本人住房场所内且租约有效 */
+  private _ensureAtOwnHome(character: WorldCharacter, action: string): void {
+    const housing = character.housing;
+    if (housing === null || !this._atPlace(character, housing.propertyId)) {
+      const placeName = housing
+        ? (this.map.placeById(housing.propertyId)?.name ?? housing.propertyId)
+        : '住所';
+      throw new Error(`${character.name} 须回到${placeName}才能${action}`);
+    }
+    this._ensureHousingLease(character, action);
+  }
+
+  /** 库存体积:count × 商品 volume 求和(未知 itemId 忽略,防御手工改档) */
+  private _inventoryVolume(record: Record<string, number>): number {
+    let volume = 0;
+    for (const [itemId, count] of Object.entries(record)) {
+      const item = getShopItem(itemId);
+      if (item !== null) {
+        volume += item.volume * count;
+      }
+    }
+    return volume;
+  }
+
+  /** 存取意图商品校验:存在性 + count 为正整数 */
+  private _ensureTransferItem(itemId: string) {
+    const item = getShopItem(itemId);
+    if (item === null) {
+      throw new Error(`未知商品: ${itemId}`);
+    }
+    return item;
+  }
+
   private _emitControl(): void {
     const event: WorldControlEvent = {
       type: 'world.control',
@@ -409,7 +496,10 @@ export class Simulation {
 
   private _stepCharacters(): void {
     for (const character of this.characters.values()) {
-      applyVitalDecay(character, 1);
+      // 净速率模型(M3.6g):活动数值已含代谢,仅待机走基础代谢衰减
+      if (character.activity === null) {
+        applyVitalDecay(character, 1);
+      }
       const arrived = stepMovement(character, BALANCE.WALK_SPEED_TILES_PER_MINUTE);
       if (arrived) {
         const event: CharacterArrivedEvent = {

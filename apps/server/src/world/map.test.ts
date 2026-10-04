@@ -145,6 +145,10 @@ describe('TileMap 内景层(M3.6e)', () => {
         { x: 9, y: 31, placeId: 'park', kind: 'bench' },
         { x: 17, y: 8, placeId: 'home-b', kind: 'bed' },
         { x: 37, y: 40, placeId: 'home-d', kind: 'bed' },
+        // M3.6g 沙发升 rest 锚点(三档: 床>沙发>长椅)
+        { x: 5, y: 10, placeId: 'home-a', kind: 'sofa' },
+        { x: 32, y: 8, placeId: 'library', kind: 'sofa' },
+        { x: 50, y: 30, placeId: 'gym', kind: 'sofa' },
       ]),
     );
     expect(map.activityAnchors('stroll')).toEqual([]);

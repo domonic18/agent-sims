@@ -17,7 +17,8 @@ function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
     activity: null,
     housing: null,
     alive: true,
-    foodInventory: {},
+    backpack: {},
+    fridge: {},
   };
 }
 
@@ -57,12 +58,12 @@ describe('stepMovement 逐 tick 移动', () => {
   });
 });
 
-describe('applyVitalDecay 数值衰减', () => {
-  it('按游戏分钟衰减体力与幸福', () => {
+describe('applyVitalDecay 待机基础代谢衰减(M3.6g 净速率模型)', () => {
+  it('按游戏分钟衰减体力与幸福(仅待机时由 _stepCharacters 调用)', () => {
     const character = walker([]);
     applyVitalDecay(character, 60); // 1 游戏小时
-    expect(character.energy).toBeCloseTo(98.2, 5); // 100 - 0.03*60
-    expect(character.happiness).toBeCloseTo(98.2, 5); // 100 - 0.03*60
+    expect(character.energy).toBeCloseTo(98.8, 5); // 100 - 0.02*60
+    expect(character.happiness).toBeCloseTo(99.1, 5); // 100 - 0.015*60
   });
 
   it('下界夹取 0,不出现负数', () => {
@@ -95,7 +96,7 @@ describe('EventBus', () => {
   });
 });
 
-describe('Simulation 移动集成', () => {
+describe('Simulation 移动集成(M3.6g 速度 2 格/分)', () => {
   it('advanceTicks 驱动移动,到达触发 character.arrived 事件', () => {
     const sim = new Simulation();
     const events: WorldEvent[] = [];
@@ -103,11 +104,11 @@ describe('Simulation 移动集成', () => {
     sim.spawnCharacter('jev', 8, 12, '杰夫'); // home 入口
     sim.requestMoveTo('jev', 11, 12);
     expect(sim.character('jev').path.length).toBe(3);
-    sim.advanceTicks(3);
+    sim.advanceTicks(2); // 3 格 @2格/分 → 第 2 tick 到达
     expect(sim.character('jev').x).toBe(11);
     expect(sim.character('jev').path).toHaveLength(0);
     expect(events).toEqual([
-      { type: 'character.arrived', characterId: 'jev', tick: 3, x: 11, y: 12 },
+      { type: 'character.arrived', characterId: 'jev', tick: 2, x: 11, y: 12 },
     ]);
   });
 
@@ -129,12 +130,12 @@ describe('Simulation 移动集成', () => {
     const sim = new Simulation();
     sim.spawnCharacter('a', 8, 12);
     sim.requestMoveTo('a', 13, 12);
-    sim.advanceTicks(2);
-    expect(sim.character('a').x).toBe(10);
+    sim.advanceTicks(2); // 2 tick × 2 格 = 4 格(路径共 5 格)
+    expect(sim.character('a').x).toBe(12);
     sim.requestMoveTo('a', 12, 15); // 公寓南侧开阔草地,避开广场
     const path = sim.character('a').path;
     const first = path[0]!;
-    expect(Math.abs(first.x - 10) + Math.abs(first.y - 12)).toBe(1); // 首步从当前位置相邻格起算
+    expect(Math.abs(first.x - 12) + Math.abs(first.y - 12)).toBe(1); // 首步从当前位置相邻格起算
     sim.advanceTicks(path.length);
     const final = sim.character('a');
     expect(final.x).toBe(12);

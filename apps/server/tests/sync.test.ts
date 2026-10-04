@@ -121,7 +121,7 @@ describe('socket 同步层', () => {
     expect(tickMessages[2]?.characters[0]?.pathRemaining).toBe(0);
 
     const arrived = events.find((message) => message.event.type === 'character.arrived');
-    expect(arrived?.event).toMatchObject({ characterId: 'alice', tick: 2, x: 10, y: 12 });
+    expect(arrived?.event).toMatchObject({ characterId: 'alice', tick: 1, x: 10, y: 12 }); // 2 格 @2格/分 → 第 1 tick 到达
     socket.disconnect();
     app.simulation.characters.delete('alice');
   });

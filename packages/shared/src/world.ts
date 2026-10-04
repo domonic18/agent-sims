@@ -59,6 +59,17 @@ export interface FurnitureDefinition {
   use?: { x: number; y: number };
 }
 
+/**
+ * 休息档位速率(M3.6g,数值文档 §2.1):同一 rest 活动按锚点家具 kind
+ * 决定恢复速率——床(睡眠)最快、沙发(小憩)次之、长椅(打盹)最慢。
+ * 其余家具 kind 不在此表(不可作 rest 锚点)。
+ */
+export const REST_RATES_BY_KIND: Record<'bed' | 'sofa' | 'bench', { energy: number; happiness: number }> = {
+  bed: { energy: 0.35, happiness: 0.05 },
+  sofa: { energy: 0.22, happiness: 0.07 },
+  bench: { energy: 0.12, happiness: 0.05 },
+};
+
 /** 场所定义:占地矩形 + 入口格(入口必须在占地外且可行走) */
 export interface PlaceDefinition {
   id: string;
@@ -138,7 +149,7 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'desk', x: 11, y: 5, w: 2, h: 1, activityId: 'study', use: { x: 11, y: 6 } },
         { kind: 'table', x: 8, y: 7, w: 2, h: 1 },
         { kind: 'fridge', x: 7, y: 8, w: 1, h: 1 },
-        { kind: 'sofa', x: 4, y: 9, w: 3, h: 1 },
+        { kind: 'sofa', x: 4, y: 9, w: 3, h: 1, activityId: 'rest', use: { x: 5, y: 10 } },
         { kind: 'wardrobe', x: 10, y: 9, w: 1, h: 2 },
         { kind: 'bed', x: 12, y: 8, w: 2, h: 3, activityId: 'rest', use: { x: 11, y: 8 } },
       ],
@@ -188,7 +199,7 @@ export const TOWN_MAP: TileMapDefinition = {
       furniture: [
         { kind: 'bookshelf', x: 32, y: 5, w: 4, h: 1 },
         { kind: 'bookshelf', x: 38, y: 5, w: 3, h: 1 },
-        { kind: 'sofa', x: 32, y: 7, w: 2, h: 1 },
+        { kind: 'sofa', x: 32, y: 7, w: 2, h: 1, activityId: 'rest', use: { x: 32, y: 8 } },
         { kind: 'desk', x: 33, y: 8, w: 2, h: 1, activityId: 'study', use: { x: 33, y: 9 } },
         { kind: 'desk', x: 37, y: 8, w: 2, h: 1, activityId: 'study', use: { x: 37, y: 9 } },
         { kind: 'plant', x: 32, y: 10, w: 1, h: 1 },
@@ -260,7 +271,7 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'plant', x: 43, y: 27, w: 1, h: 1 },
         { kind: 'treadmill', x: 44, y: 27, w: 1, h: 2, activityId: 'workout', use: { x: 45, y: 27 } },
         { kind: 'treadmill', x: 48, y: 27, w: 1, h: 2, activityId: 'workout', use: { x: 47, y: 27 } },
-        { kind: 'sofa', x: 50, y: 29, w: 2, h: 1 },
+        { kind: 'sofa', x: 50, y: 29, w: 2, h: 1, activityId: 'rest', use: { x: 50, y: 30 } },
         { kind: 'tv', x: 45, y: 31, w: 2, h: 1 },
         { kind: 'shelf', x: 43, y: 31, w: 2, h: 1 },
         { kind: 'shelf', x: 50, y: 31, w: 2, h: 1 },

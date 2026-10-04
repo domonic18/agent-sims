@@ -12,6 +12,15 @@ const anchorUse = (placeId: string, activityId: string): { x: number; y: number 
   return furniture.use;
 };
 
+/** 场所内指定 kind 锚点的使用格(M3.6g rest 三档) */
+const anchorUseKind = (placeId: string, kind: string): { x: number; y: number } => {
+  const furniture = TOWN_MAP.places
+    .find((p) => p.id === placeId)
+    ?.furniture?.find((f) => f.kind === kind && f.activityId === 'rest' && f.use !== undefined);
+  if (furniture?.use === undefined) throw new Error(`无 ${kind} 锚点: ${placeId}`);
+  return furniture.use;
+};
+
 function simWith(id: string, x: number, y: number): { sim: Simulation; events: WorldEvent[] } {
   const sim = new Simulation();
   const events: WorldEvent[] = [];
@@ -20,16 +29,16 @@ function simWith(id: string, x: number, y: number): { sim: Simulation; events: W
   return { sim, events };
 }
 
-describe('活动执行(M3.1;M3.6e 锚点语义;M3.6f 体力区段/床权属)', () => {
-  it('学习完整 60 分钟(图书馆书桌): 体力/幸福按衰减+效果结算,自动完成', () => {
+describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休息三档)', () => {
+  it('学习完整 60 分钟(图书馆书桌): 净速率结算无待机叠加,自动完成', () => {
     const desk = anchorUse('library', 'study');
     const { sim, events } = simWith('alice', desk.x, desk.y);
     sim.requestStartActivity('alice', 'study');
     sim.advanceTicks(60);
     const alice = sim.character('alice');
     expect(alice.activity).toBeNull();
-    expect(alice.energy).toBeCloseTo(100 - 60 * 0.03 - 60 * 0.15, 5);
-    expect(alice.happiness).toBeCloseTo(100 - 60 * 0.03 - 60 * 0.05, 5);
+    expect(alice.energy).toBeCloseTo(100 - 60 * 0.12, 5); // 仅活动净速率,无叠加待机衰减
+    expect(alice.happiness).toBeCloseTo(100 - 60 * 0.02, 5);
     const finished = events.find((e) => e.type === 'activity.finished');
     expect(finished).toMatchObject({
       type: 'activity.finished',
@@ -44,7 +53,7 @@ describe('活动执行(M3.1;M3.6e 锚点语义;M3.6f 体力区段/床权属)', (
     const desk = anchorUse('home-a', 'study');
     const { sim } = simWith('bob', desk.x, desk.y);
     sim.requestStartActivity('bob', 'study');
-    expect(sim.character('bob').activity).toMatchObject({ activityId: 'study' });
+    expect(sim.character('bob').activity).toMatchObject({ activityId: 'study', anchorKind: 'desk' });
   });
 
   it('打工 120 分钟(办公楼工位): 赚 60 金币,数值净消耗', () => {
@@ -54,8 +63,8 @@ describe('活动执行(M3.1;M3.6e 锚点语义;M3.6f 体力区段/床权属)', (
     sim.advanceTicks(120);
     const carl = sim.character('carl');
     expect(carl.coins).toBe(60);
-    expect(carl.energy).toBeCloseTo(100 - 120 * 0.03 - 120 * 0.25, 5);
-    expect(carl.happiness).toBeCloseTo(100 - 120 * 0.03 - 120 * 0.1, 5);
+    expect(carl.energy).toBeCloseTo(100 - 120 * 0.18, 5);
+    expect(carl.happiness).toBeCloseTo(100 - 120 * 0.05, 5);
   });
 
   it('就餐余额不足(餐厅餐桌): 结算前判定,不透支,提前中断', () => {
@@ -77,9 +86,10 @@ describe('活动执行(M3.1;M3.6e 锚点语义;M3.6f 体力区段/床权属)', (
     });
   });
 
-  it('散步无锚点: 场所范围判定照旧(公园)', () => {
+  it('散步无锚点: anchorKind 为空,移动打断即时中断', () => {
     const { sim, events } = simWith('erin', 9, 25); // 公园入口
     sim.requestStartActivity('erin', 'stroll');
+    expect(sim.character('erin').activity).toMatchObject({ activityId: 'stroll', anchorKind: null });
     sim.advanceTicks(5);
     sim.requestMoveTo('erin', 10, 28); // 公园内部目标
     const erin = sim.character('erin');
@@ -94,7 +104,27 @@ describe('活动执行(M3.1;M3.6e 锚点语义;M3.6f 体力区段/床权属)', (
     });
   });
 
-  it('手动 stop(本人公寓床铺休息): 即时结束并结算已进行部分', () => {
+  it('休息三档速率(M3.6g): 床>沙发>长椅,同起点同 durations 拉开差距', () => {
+    const bed = anchorUseKind('home-a', 'bed'); // 首个生成角色 → home-a
+    const sofa = anchorUseKind('library', 'sofa'); // 图书馆沙发(非住宅,无权属限制)
+    const bench = anchorUseKind('park', 'bench');
+    const { sim } = simWith('frank', bed.x, bed.y);
+    sim.spawnCharacter('oscar', sofa.x, sofa.y, 'oscar'); // 第二个生成 → home-b,图书馆沙发放行
+    sim.spawnCharacter('pete', bench.x, bench.y, 'pete'); // 第三个生成 → home-c,公园长椅放行
+    for (const id of ['frank', 'oscar', 'pete']) {
+      sim.character(id).energy = 50;
+      sim.requestStartActivity(id, 'rest');
+    }
+    expect(sim.character('frank').activity).toMatchObject({ anchorKind: 'bed' });
+    expect(sim.character('oscar').activity).toMatchObject({ anchorKind: 'sofa' });
+    expect(sim.character('pete').activity).toMatchObject({ anchorKind: 'bench' });
+    sim.advanceTicks(10);
+    expect(sim.character('frank').energy).toBeCloseTo(50 + 10 * 0.35, 5);
+    expect(sim.character('oscar').energy).toBeCloseTo(50 + 10 * 0.22, 5);
+    expect(sim.character('pete').energy).toBeCloseTo(50 + 10 * 0.12, 5);
+  });
+
+  it('手动 stop(本人公寓床铺休息): 按床位速率结算已进行部分', () => {
     const bed = anchorUse('home-a', 'rest'); // 首个生成角色分到 home-a
     const { sim, events } = simWith('frank', bed.x, bed.y);
     sim.character('frank').energy = 40;
@@ -103,7 +133,7 @@ describe('活动执行(M3.1;M3.6e 锚点语义;M3.6f 体力区段/床权属)', (
     sim.requestStopActivity('frank');
     const frank = sim.character('frank');
     expect(frank.activity).toBeNull();
-    expect(frank.energy).toBeCloseTo(40 - 10 * 0.03 + 10 * 0.5, 5);
+    expect(frank.energy).toBeCloseTo(40 + 10 * 0.35, 5); // 床档 +0.35/分
     const finished = events.find((e) => e.type === 'activity.finished') as ActivityFinishedEvent;
     expect(finished).toMatchObject({ reason: 'stopped', elapsedMinutes: 10 });
   });

@@ -19,13 +19,17 @@ export const BALANCE = {
   /** 昼夜判定:22:00~次日 06:00 为夜 */
   NIGHT_START_MINUTE: 22 * 60,
   NIGHT_END_MINUTE: 6 * 60,
-  /** 步行速度:格/游戏分钟(寻路路径按此逐 tick 推进) */
-  WALK_SPEED_TILES_PER_MINUTE: 1,
-  /** 数值系统:角色初始满值与每游戏分钟自然衰减(活动增减 M3 接入) */
+  /** 步行速度:格/游戏分钟(寻路路径按此逐 tick 推进;M3.6g 提速 1→2) */
+  WALK_SPEED_TILES_PER_MINUTE: 2,
+  /** 数值系统:角色初始满值;M3.6g 净速率模型——仅待机走基础代谢衰减,
+   * 活动期间走活动净速率(shared activities.ts / REST_RATES_BY_KIND),两者不叠加 */
   START_ENERGY: 100,
   START_HAPPINESS: 100,
-  ENERGY_DECAY_PER_MINUTE: 0.03,
-  HAPPINESS_DECAY_PER_MINUTE: 0.03,
+  IDLE_ENERGY_DECAY: 0.02,
+  IDLE_HAPPINESS_DECAY: 0.015,
+  /** 携带/囤粮体积上限(M3.6g,数值文档 §3.2):背包随身,冰箱家中存取 */
+  BACKPACK_VOLUME_LIMIT: 8,
+  FRIDGE_VOLUME_LIMIT: 30,
   /** 体力区段(M3.6f):≤阈值只允许基础活动(rest/stroll/meal),≤0 死亡转幽灵态 */
   LOW_ENERGY_THRESHOLD: 20,
   /** Lab 复活(debug 通道)恢复的满状态数值 */

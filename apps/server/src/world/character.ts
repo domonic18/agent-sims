@@ -1,10 +1,11 @@
 import { BALANCE } from '../config/balance.js';
 import type { Point } from './pathfinding.js';
 
-/** 角色进行中活动(elapsed 为已进行游戏分钟) */
+/** 角色进行中活动(elapsed 为已进行游戏分钟;anchorKind=rest 档位家具 kind) */
 export interface CharacterActivity {
   activityId: string;
   elapsed: number;
+  anchorKind: string | null;
 }
 
 /** 住宿状态: 租约付到日(含)或自有 */
@@ -32,8 +33,10 @@ export interface WorldCharacter {
   housing: CharacterHousing | null;
   /** 存活状态(false=幽灵态 M3.6f:拒绝一切意图,等待 Lab 复活) */
   alive: boolean;
-  /** 冰箱食物库存(itemId→数量):buy_item 入库,eat_item 消耗 */
-  foodInventory: Record<string, number>;
+  /** 随身背包(itemId→数量):买入入库,任意地点 eat_item 消耗;体积受 BACKPACK_VOLUME_LIMIT */
+  backpack: Record<string, number>;
+  /** 家中冰箱库存(itemId→数量):store_item/take_item 在家存取;体积受 FRIDGE_VOLUME_LIMIT */
+  fridge: Record<string, number>;
 }
 
 export const clampVital = (value: number): number => Math.max(0, Math.min(100, value));
@@ -55,10 +58,10 @@ export function stepMovement(character: WorldCharacter, tiles: number): boolean 
   return moved > 0 && character.path.length === 0;
 }
 
-/** 数值自然衰减(每游戏分钟;上限 100 供活动增益夹取) */
+/** 待机基础代谢衰减(M3.6g 净速率模型:仅无活动时调用;上限 100 供活动增益夹取) */
 export function applyVitalDecay(character: WorldCharacter, gameMinutes: number): void {
-  character.energy = clampVital(character.energy - BALANCE.ENERGY_DECAY_PER_MINUTE * gameMinutes);
+  character.energy = clampVital(character.energy - BALANCE.IDLE_ENERGY_DECAY * gameMinutes);
   character.happiness = clampVital(
-    character.happiness - BALANCE.HAPPINESS_DECAY_PER_MINUTE * gameMinutes,
+    character.happiness - BALANCE.IDLE_HAPPINESS_DECAY * gameMinutes,
   );
 }

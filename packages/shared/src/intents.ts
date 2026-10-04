@@ -8,6 +8,8 @@ export const INTENT_TYPES = [
   'stop_activity',
   'buy_item',
   'eat_item',
+  'store_item',
+  'take_item',
   'rent_property',
   'buy_property',
 ] as const;
@@ -54,6 +56,26 @@ export const eatItemIntentSchema = z.object({
 
 export type EatItemIntent = z.infer<typeof eatItemIntentSchema>;
 
+/** 存入冰箱(M3.6g):背包→家中冰箱,须在自家住房内且租约有效 */
+export const storeItemIntentSchema = z.object({
+  type: z.literal('store_item'),
+  characterId: z.string().min(1),
+  itemId: z.string().min(1),
+  count: z.number().int().min(1),
+});
+
+export type StoreItemIntent = z.infer<typeof storeItemIntentSchema>;
+
+/** 取出(M3.6g):家中冰箱→背包,须在自家住房内且租约有效 */
+export const takeItemIntentSchema = z.object({
+  type: z.literal('take_item'),
+  characterId: z.string().min(1),
+  itemId: z.string().min(1),
+  count: z.number().int().min(1),
+});
+
+export type TakeItemIntent = z.infer<typeof takeItemIntentSchema>;
+
 const propertyIntentShape = { characterId: z.string().min(1), propertyId: z.string().min(1) };
 
 export const rentPropertyIntentSchema = z.object({
@@ -76,6 +98,8 @@ export const intentSchema = z.discriminatedUnion('type', [
   stopActivityIntentSchema,
   buyItemIntentSchema,
   eatItemIntentSchema,
+  storeItemIntentSchema,
+  takeItemIntentSchema,
   rentPropertyIntentSchema,
   buyPropertyIntentSchema,
 ]);

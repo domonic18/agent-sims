@@ -60,7 +60,7 @@ describe('生死机制(M3.6f 体力区段)', () => {
     const { sim, events } = simWithMort();
     sim.character('mort').energy = 0.5;
     sim.requestMoveTo('mort', 12, 12); // 挂一条路径验证死亡清空
-    sim.advanceTicks(20); // 0.5 - 20*0.03 < 0 → 途中死亡
+    sim.advanceTicks(30); // 0.5 - 30*0.02 < 0 → 途中死亡(待机代谢 0.02/分)
     const mort = sim.character('mort');
     expect(mort.alive).toBe(false);
     expect(mort.path).toHaveLength(0);
@@ -70,7 +70,7 @@ describe('生死机制(M3.6f 体力区段)', () => {
   it('幽灵态拒绝一切意图,复活恢复满状态并发 character.revived', () => {
     const { sim, events } = simWithMort();
     sim.character('mort').energy = 0.1;
-    sim.advanceTicks(5);
+    sim.advanceTicks(6); // 0.1 - 6*0.02 < 0 → 死亡
     expect(sim.character('mort').alive).toBe(false);
     expect(() => sim.requestMoveTo('mort', 9, 12)).toThrow(/幽灵态/);
     expect(() => sim.requestStartActivity('mort', 'stroll')).toThrow(/幽灵态/);
@@ -85,5 +85,18 @@ describe('生死机制(M3.6f 体力区段)', () => {
     // 复活后可正常行动
     sim.requestMoveTo('mort', 9, 12);
     expect(sim.character('mort').path.length).toBeGreaterThan(0);
+  });
+
+  it('净速率模型(M3.6g): 活动期间只走活动速率,待机走基础代谢', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('ivy', 9, 25); // 公园入口
+    sim.requestStartActivity('ivy', 'stroll'); // 散步 20 分,-0.04/分
+    sim.advanceTicks(10);
+    expect(sim.character('ivy').energy).toBeCloseTo(100 - 10 * 0.04, 5); // 无叠加待机衰减
+    sim.advanceTicks(10); // 散步完成
+    expect(sim.character('ivy').activity).toBeNull();
+    const idleEnergy = sim.character('ivy').energy;
+    sim.advanceTicks(5);
+    expect(sim.character('ivy').energy).toBeCloseTo(idleEnergy - 5 * 0.02, 5); // 待机基础代谢
   });
 });
