@@ -16,8 +16,9 @@ const TIME_SCALES = [1, 4, 16] as const;
 
 /**
  * /lab 独立调试台(M3.6b;M3.6d 全屏化+操作收口;M3.6e 六意图;M3.6h 拆分
- * IntentForms/LogPanel):全屏画布+悬浮 HUD,右列=快捷操作面板(前往/活动/
- * 资产/商店)+10 意图协议表单+世界状态只读表,左下=回执日志。
+ * IntentForms/LogPanel;社交 v1 增 11 意图与事件日志流):全屏画布+悬浮 HUD,
+ * 右列=快捷操作面板(前往/活动/社交/资产/商店)+11 意图协议表单+世界状态只读表,
+ * 左下=回执与社交事件日志。
  * 暂停/倍率经 /debug 联调通道(M4 换正式指令)。
  * 地图全量操控(点击移动/方向键步进)仅此页开启,主页面纯观看。
  */
@@ -25,10 +26,12 @@ export default function LabPage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedId = useWorldStore((state) => state.selectedCharacterId);
+  const events = useWorldStore((state) => state.events);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [controlError, setControlError] = useState<string | null>(null);
   const [sideCollapsed, setSideCollapsed] = useState(false);
   const nextLogIdRef = useRef(1);
+  const lastEventSeqRef = useRef(0);
 
   useEffect(() => {
     const socket = connectWorld();
@@ -36,6 +39,42 @@ export default function LabPage() {
       socket.disconnect();
     };
   }, []);
+
+  // 社交事件流(social v1): 闲聊对话与结成友谊进左下角日志,与意图回执同流展示
+  useEffect(() => {
+    const fresh = events.filter((entry) => entry.seq > lastEventSeqRef.current);
+    if (fresh.length === 0) return;
+    lastEventSeqRef.current = fresh[fresh.length - 1]!.seq;
+    const names = useWorldStore.getState().snapshot?.characters ?? [];
+    const nameOf = (id: string): string => names.find((c) => c.id === id)?.name ?? id;
+    const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const entries: LogEntry[] = [];
+    for (const { event } of fresh) {
+      if (event.type === 'social.chat') {
+        const sign = event.affinityDelta >= 0 ? '+' : '';
+        entries.push({
+          id: nextLogIdRef.current++,
+          time: now,
+          tick: event.tick,
+          summary: 'chat',
+          ok: true,
+          message: `💬 ${nameOf(event.fromId)} → ${nameOf(event.toId)}:「${event.content}」(好感 ${sign}${event.affinityDelta})`,
+        });
+      } else if (event.type === 'friendship.formed') {
+        entries.push({
+          id: nextLogIdRef.current++,
+          time: now,
+          tick: event.tick,
+          summary: 'friendship',
+          ok: true,
+          message: `🎉 ${nameOf(event.aId)} 和 ${nameOf(event.bId)} 成了「${event.title}」`,
+        });
+      }
+    }
+    if (entries.length > 0) {
+      setLog((prev) => [...entries.reverse(), ...prev].slice(0, LOG_MAX));
+    }
+  }, [events]);
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
 
@@ -141,8 +180,13 @@ export default function LabPage() {
         <SidePanel />
         {character !== null && (
           <section className="lab-panel">
-            <h3>意图操作台(10 意图全量)</h3>
-            <IntentForms key={character.id} character={character} onRun={run} />
+            <h3>意图操作台(11 意图全量)</h3>
+            <IntentForms
+              key={character.id}
+              character={character}
+              snapshot={snapshot}
+              onRun={run}
+            />
           </section>
         )}
         <section className="lab-panel">

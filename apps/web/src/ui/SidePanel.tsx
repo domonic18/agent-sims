@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useWorldStore } from '../store/worldStore';
-import { ActivitySection, CharactersSection, GoSection } from './side-panel/sections';
+import {
+  ActivitySection,
+  CharactersSection,
+  GoSection,
+  SocialSection,
+} from './side-panel/sections';
 import { AssetsSection, BackpackSection, FridgeSection, ShopSection } from './side-panel/shop';
 import { findPlaceAt } from './side-panel/place';
 import { useGoAndDo } from './side-panel/useGoAndDo';
 import './side-panel.css';
 
-/** 面板分页: 行动(前往/活动) · 物品(商店/背包/冰箱) · 资产(住房) */
+/** 面板分页: 行动(前往/活动/社交) · 物品(商店/背包/冰箱) · 资产(住房) */
 type PanelTab = 'actions' | 'items' | 'assets';
 
 const TABS: ReadonlyArray<{ id: PanelTab; label: string }> = [
@@ -16,7 +21,7 @@ const TABS: ReadonlyArray<{ id: PanelTab; label: string }> = [
 ];
 
 /**
- * 玩家侧边面板(M3.4;M3.6e 锚点语义;M3.6h 拆分;M3.6i 分页重构):
+ * 玩家侧边面板(M3.4;M3.6e 锚点语义;M3.6h 拆分;M3.6i 分页重构;社交 v1 行动页增社交小节):
  * 顶部角色状态常驻,正文按「行动/物品/资产」三页收纳,底部操作反馈常驻,
  * 免长滚动且菜单结构一目了然。活动开始目标为室内家具使用格(书桌/床/跑步机…),
  * 无锚点活动(散步)仍按场所;全部操作经 socket 意图通道下发,状态随每 tick 快照刷新。
@@ -86,6 +91,7 @@ export function SidePanel() {
             run={run}
             startActivity={startActivity}
           />
+          <SocialSection snapshot={snapshot} character={character} run={run} />
         </>
       )}
 

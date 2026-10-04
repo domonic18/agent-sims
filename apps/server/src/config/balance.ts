@@ -7,6 +7,7 @@ import {
   BACKPACK_VOLUME_LIMIT,
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
+  SOCIAL_PRESENCE_DISTANCE,
   WALK_SPEED_TILES_PER_TICK,
 } from '@sims/shared';
 
@@ -73,8 +74,8 @@ export const BALANCE = {
   /** 同对角色每游戏日限次;第 n 次收益 ×STEPS[n-1] */
   CHAT_DAILY_LIMIT: 3,
   CHAT_DECAY_STEPS: [1, 0.6, 0.3] as const,
-  /** 同场增益: 曼哈顿 ≤ 距离且双方都在活动,按人数给幸福/分(封顶计人数) */
-  SOCIAL_PRESENCE_DISTANCE: 2,
+  /** 同场增益: 曼哈顿 ≤ 距离且双方都在活动,按人数给幸福/分(封顶计人数;距离常量双端同源) */
+  SOCIAL_PRESENCE_DISTANCE,
   SOCIAL_PRESENCE_CAP: 3,
   SOCIAL_PRESENCE_BONUS: 0.05,
   /** 熟悉度每日衰减(世界日翻转时结算) */

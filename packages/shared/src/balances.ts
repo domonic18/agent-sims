@@ -14,6 +14,8 @@ export const BACKPACK_VOLUME_LIMIT = 8;
 export const FRIDGE_VOLUME_LIMIT = 30;
 /** 低体力阈值:≤该值仅允许基础活动(rest/stroll/meal),UI 同步亮警示 */
 export const LOW_ENERGY_THRESHOLD = 20;
+/** 社交同场距离(曼哈顿):chat 与同场增益的"同处一地"判定,UI 聊天按钮同源禁用 */
+export const SOCIAL_PRESENCE_DISTANCE = 2;
 
 /** 库存体积求和(Σ份数×单件体积);未知商品按 0 计(调用方保证 id 合法) */
 export function inventoryVolume(record: Record<string, number>): number {

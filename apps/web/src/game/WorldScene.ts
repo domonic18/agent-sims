@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TOWN_MAP, WALK_SPEED_TILES_PER_TICK } from '@sims/shared';
+import { TOWN_MAP, WALK_SPEED_TILES_PER_TICK, type WorldEvent } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
 import { TILE, TILESET, CHARACTER } from './assets';
 import {
@@ -12,6 +12,7 @@ import {
 import { buildLightLayer, drawSelectionRing, FountainFx } from './effects';
 import { handleMapClick, KeyboardController } from './input';
 import { drawTownMap } from './terrain';
+import { showSpeechBubble } from './speech';
 
 /** 相机:默认 2x 跟随选中角色,滚轮在 1x~4x 间缩放,1x 为全图概览 */
 const ZOOM_DEFAULT = 2;
@@ -38,6 +39,8 @@ export class WorldScene extends Phaser.Scene {
   private _followId: string | null = null;
   /** 交互开关: 主页面纯观看(仅点选角色/缩放),/lab 调试台全量操控(地图移动/方向键) */
   private _interactive = true;
+  /** 已消费的事件序号(事件队列增量拉取,同 tick 多事件不丢) */
+  private _lastEventSeq = 0;
 
   constructor() {
     super('world');
@@ -101,8 +104,9 @@ export class WorldScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    const { snapshot, selectedCharacterId } = useWorldStore.getState();
+    const { snapshot, selectedCharacterId, events } = useWorldStore.getState();
     syncCharacterViews(this, this._views, snapshot?.characters ?? []);
+    this._drainSocialEvents(events);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;
     this._updateCamera(selectedCharacterId);
     this._keyboard?.step(time);
@@ -126,6 +130,21 @@ export class WorldScene extends Phaser.Scene {
       drawSelectionRing(this._selectionRing, now, selectedCharacterId, this._views);
     }
     this._fountain.update(this, now);
+  }
+
+  /** 闲聊事件 → 双方头顶对话气泡(社交 v1;幽灵不显示) */
+  private _drainSocialEvents(queue: Array<{ seq: number; event: WorldEvent }>): void {
+    for (const { seq, event } of queue) {
+      if (seq <= this._lastEventSeq) continue;
+      this._lastEventSeq = seq;
+      if (event.type !== 'social.chat') continue;
+      for (const id of new Set([event.fromId, event.toId])) {
+        const view = this._views.get(id);
+        if (view !== undefined && view.alive) {
+          showSpeechBubble(this, view.node, event.content);
+        }
+      }
+    }
   }
 
   private _updateCamera(selectedId: string | null): void {

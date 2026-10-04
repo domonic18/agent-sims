@@ -11,12 +11,14 @@ type CharacterSnapshot = WorldSnapshotMessage['characters'][number];
 
 export type RunFn = (intent: Intent, summary: string) => void;
 
-/** 10 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
+/** 11 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
 export function IntentForms({
   character,
+  snapshot,
   onRun,
 }: {
   character: CharacterSnapshot;
+  snapshot: WorldSnapshotMessage | null;
   onRun: RunFn;
 }) {
   return (
@@ -28,6 +30,10 @@ export function IntentForms({
       <div className="intent-group">
         <span className="intent-name">start/stop_activity</span>
         <ActivityForm character={character} onRun={onRun} />
+      </div>
+      <div className="intent-group">
+        <span className="intent-name">chat</span>
+        <ChatForm character={character} snapshot={snapshot} onRun={onRun} />
       </div>
       <div className="intent-group">
         <span className="intent-name">buy/eat/store/take_item</span>
@@ -96,6 +102,46 @@ function ActivityForm({ character, onRun }: { character: CharacterSnapshot; onRu
         onClick={() => void onRun({ type: 'stop_activity', characterId: character.id }, 'stop_activity')}
       >
         停止
+      </button>
+    </span>
+  );
+}
+
+function ChatForm({
+  character,
+  snapshot,
+  onRun,
+}: {
+  character: CharacterSnapshot;
+  snapshot: WorldSnapshotMessage | null;
+  onRun: RunFn;
+}) {
+  const others = (snapshot?.characters ?? []).filter((c) => c.id !== character.id);
+  const [targetId, setTargetId] = useState('');
+  const target = others.some((c) => c.id === targetId) ? targetId : (others[0]?.id ?? '');
+  return (
+    <span className="intent-controls">
+      <select value={target} onChange={(e) => setTargetId(e.target.value)}>
+        {others.length === 0 && <option value="">世界暂无其他角色</option>}
+        {others.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        disabled={target === '' || !character.alive}
+        title="须双方存活且同处一地(曼哈顿 ≤ 2);每日同对限 3 次"
+        onClick={() =>
+          target !== '' &&
+          void onRun(
+            { type: 'chat', characterId: character.id, targetId: target },
+            `chat(${target})`,
+          )
+        }
+      >
+        聊天
       </button>
     </span>
   );

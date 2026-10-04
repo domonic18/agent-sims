@@ -3,6 +3,14 @@ import type { WorldEvent, WorldSnapshotMessage } from '@sims/shared';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
+/** 带递增序号的事件条目:消费者按 seq 增量拉取,同 tick 多事件不丢 */
+export interface SequencedEvent {
+  seq: number;
+  event: WorldEvent;
+}
+
+const EVENT_QUEUE_MAX = 64;
+
 /**
  * 世界状态仓:同步层(net/socket)写入,React HUD 与 Phaser 场景读取。
  * 快照每 tick 全量覆盖(tick 序号天然防乱序);Phaser 在 update 轮询 getState 做插值。
@@ -11,6 +19,9 @@ export interface WorldStore {
   status: ConnectionStatus;
   snapshot: WorldSnapshotMessage | null;
   lastEvent: WorldEvent | null;
+  /** 离散事件环形队列(社交 v1:气泡/日志按 seq 增量消费,同 tick 多事件不互相覆盖) */
+  events: SequencedEvent[];
+  eventSeq: number;
   /** 面板当前操作的角色(null=未选,快照到位后自动选首个) */
   selectedCharacterId: string | null;
   /** 地图点击定位的场所(null=无高亮),侧栏滚动联动 */
@@ -28,6 +39,8 @@ export const useWorldStore = create<WorldStore>((set) => ({
   status: 'connecting',
   snapshot: null,
   lastEvent: null,
+  events: [],
+  eventSeq: 0,
   selectedCharacterId: null,
   focusPlaceId: null,
   setStatus: (status) => set({ status }),
@@ -40,7 +53,12 @@ export const useWorldStore = create<WorldStore>((set) => ({
           : (ids[0] ?? null);
       return { snapshot, selectedCharacterId: selected };
     }),
-  applyEvent: (event) => set({ lastEvent: event }),
+  applyEvent: (event) =>
+    set((state) => ({
+      lastEvent: event,
+      events: [...state.events, { seq: state.eventSeq + 1, event }].slice(-EVENT_QUEUE_MAX),
+      eventSeq: state.eventSeq + 1,
+    })),
   selectCharacter: (id) => set({ selectedCharacterId: id }),
   focusPlace: (id) => set({ focusPlaceId: id }),
   applyControl: (paused, timeScale) =>

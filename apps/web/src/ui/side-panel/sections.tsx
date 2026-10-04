@@ -1,9 +1,11 @@
 import {
   ACTIVITY_DEFINITIONS,
   LOW_ENERGY_THRESHOLD,
+  SOCIAL_PRESENCE_DISTANCE,
   TOWN_MAP,
   findActivityAnchorAt,
   getActivityDefinition,
+  relationTitle,
   type ActivityDefinition,
   type PlaceDefinition,
   type WorldSnapshotMessage,
@@ -124,6 +126,68 @@ export function GoSection({
           );
         })}
       </ul>
+    </section>
+  );
+}
+
+export function SocialSection({
+  snapshot,
+  character,
+  run,
+}: {
+  snapshot: WorldSnapshotMessage;
+  character: CharacterView;
+  run: RunIntent;
+}) {
+  const dead = !character.alive;
+  const moving = character.pathRemaining > 0;
+  const others = snapshot.characters.filter((c) => c.id !== character.id);
+  return (
+    <section className="panel-section">
+      <h3>社交 · 同处一地可闲聊</h3>
+      {others.length === 0 ? (
+        <p className="hint">世界暂无其他角色</p>
+      ) : (
+        <ul className="activity-list">
+          {others.map((other) => {
+            const distance = Math.abs(other.x - character.x) + Math.abs(other.y - character.y);
+            const near = distance <= SOCIAL_PRESENCE_DISTANCE;
+            const relation = snapshot.socials.find(
+              (s) => s.fromId === character.id && s.toId === other.id,
+            );
+            const title = relationTitle(relation?.familiarity ?? 0, relation?.affinity ?? 0);
+            return (
+              <li key={other.id}>
+                <span>
+                  {other.name}
+                  <small>
+                    · {title} · {near ? '在身旁' : `距离 ${distance}`}
+                    {!other.alive && ' · ☠️'}
+                  </small>
+                </span>
+                <button
+                  type="button"
+                  disabled={moving || dead || !near || !other.alive}
+                  title={
+                    near
+                      ? `与 ${other.name} 闲聊(每日同对限 3 次)`
+                      : `距离太远,走近点再聊(曼哈顿 ≤ ${SOCIAL_PRESENCE_DISTANCE})`
+                  }
+                  onClick={() =>
+                    void run({
+                      type: 'chat',
+                      characterId: character.id,
+                      targetId: other.id,
+                    })
+                  }
+                >
+                  聊天
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }
