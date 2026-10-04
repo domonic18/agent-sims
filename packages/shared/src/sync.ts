@@ -16,6 +16,19 @@ export const SOCKET_EVENTS = {
 
 export type SocketEventName = (typeof SOCKET_EVENTS)[keyof typeof SOCKET_EVENTS];
 
+/** client→server 意图通道(M3.4):player 可发,spectator 服务端丢弃 */
+export const CLIENT_EVENTS = {
+  intent: 'player.intent',
+} as const;
+
+export type ClientEventName = (typeof CLIENT_EVENTS)[keyof typeof CLIENT_EVENTS];
+
+/** 意图执行回执(socket ack 协议面) */
+export interface IntentAck {
+  ok: boolean;
+  message: string;
+}
+
 /** 快照/tick 消息共用形态(server SimulationSnapshot 的协议面) */
 export interface WorldSnapshotMessage {
   tick: number;

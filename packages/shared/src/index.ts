@@ -84,8 +84,11 @@ export {
 } from './property.js';
 
 export {
+  CLIENT_EVENTS,
   SOCKET_EVENTS,
   SOCKET_ROLES,
+  type ClientEventName,
+  type IntentAck,
   type SocketEventName,
   type SocketRole,
   type WorldEventMessage,
