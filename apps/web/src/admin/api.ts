@@ -3,6 +3,7 @@ import {
   type AdminLoginRequest,
   type AdminLoginResponse,
   type CreateWorldRequest,
+  type ModelConfigInvokeResult,
   type ModelConfigTestResult,
   type ModelConfigUpdate,
   type ModelConfigView,
@@ -80,6 +81,16 @@ export async function updateModelConfig(
 export async function testModelConfig(slot: ModelSlot): Promise<ModelConfigTestResult> {
   return await adminFetch<ModelConfigTestResult>(ADMIN_API.modelConfigTest(slot), {
     method: 'POST',
+  });
+}
+
+export async function invokeModelConfig(
+  slot: ModelSlot,
+  prompt?: string,
+): Promise<ModelConfigInvokeResult> {
+  return await adminFetch<ModelConfigInvokeResult>(ADMIN_API.modelConfigInvoke(slot), {
+    method: 'POST',
+    body: JSON.stringify(prompt ? { prompt } : {}),
   });
 }
 
