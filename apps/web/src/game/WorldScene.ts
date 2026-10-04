@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { TOWN_MAP, type PlaceDefinition, type TileMapDefinition } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
-import { CHARACTER, characterVariant, ROOF_FRAME, TILE_FRAME, TILESET } from './assets';
+import { CHARACTER, characterVariant, PROP_TREES, ROOF_FRAME, TILE_FRAME, TILESET } from './assets';
 
 const TILE = 16;
 /** 与服务端 BALANCE.WALK_SPEED_TILES_PER_MINUTE 对应的移动契约:每 tick 1 格 */
@@ -10,11 +10,17 @@ const TILES_PER_TICK = 1;
 const SNAP_DISTANCE_TILES = 4;
 
 const POND_RECT = { x: 4, y: 30, w: 4, h: 4 };
+/** 广场铺装(paths 内矩形默认砂路,该矩形单独用灰石) */
+const PLAZA_RECT = { x: 22, y: 15, w: 12, h: 11 };
+/** 相机:默认 2x 跟随选中角色,滚轮在 1x~4x 间缩放,1x 为全图概览 */
+const ZOOM_DEFAULT = 2;
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 4;
 
 const inRect = (x: number, y: number, rect: { x: number; y: number; w: number; h: number }): boolean =>
   x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
 
-/** 公园内点缀的圆树(格坐标,纯视觉,不参与寻路,避开池塘与门前小路) */
+/** 公园内点缀的树 [x, y](格坐标,纯视觉,不参与寻路,避开池塘与入口小路) */
 const PARK_TREES: ReadonlyArray<readonly [number, number]> = [
   [5, 27],
   [11, 28],
@@ -22,6 +28,28 @@ const PARK_TREES: ReadonlyArray<readonly [number, number]> = [
   [6, 34],
   [12, 34],
   [16, 27],
+];
+/** 公园灌木/池塘边野餐桌/园灯与街灯(纯视觉) */
+const PARK_BUSHES: ReadonlyArray<readonly [number, number]> = [
+  [10, 27],
+  [15, 33],
+];
+const PARK_BENCHES: ReadonlyArray<readonly [number, number]> = [
+  [8, 31],
+  [8, 32],
+];
+const PARK_LAMPS: ReadonlyArray<readonly [number, number]> = [
+  [6, 28],
+  [14, 28],
+];
+const STREET_LAMPS: ReadonlyArray<readonly [number, number]> = [
+  [6, 18],
+  [34, 18],
+  [46, 18],
+];
+const PLAZA_LAMPS: ReadonlyArray<readonly [number, number]> = [
+  [21, 14],
+  [34, 14],
 ];
 
 type Direction = keyof typeof CHARACTER.rows;
@@ -46,13 +74,15 @@ interface CharacterRender {
 }
 
 /**
- * 世界渲染场景:Kenney tile 地图 + LPC 穿衣角色(walk/idle/sit 三组四向动画,见 game/assets.ts),
- * 角色向快照位置按 tick 速率插值移动——快照暂停时自然冻结,步频随 timeScale 放大。
+ * 世界渲染场景:Kenney tile 地图(建筑立面/水岸/装饰分层)+ LPC 穿衣角色(walk/idle/sit 三组四向动画),
+ * 角色向快照位置按 tick 速率插值移动。相机默认 2x 跟随选中角色,滚轮 1x~4x 缩放;
  * 数据源轮询 worldStore(避免与 React 渲染耦合),HUD 走 React 侧。
  */
 export class WorldScene extends Phaser.Scene {
   private readonly _characters = new Map<string, CharacterRender>();
   private _nightOverlay: Phaser.GameObjects.Rectangle | null = null;
+  /** 当前相机跟随的角色 id,null = 全图概览 */
+  private _followId: string | null = null;
 
   constructor() {
     super('world');
@@ -85,12 +115,51 @@ export class WorldScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setAlpha(0)
       .setDepth(100);
+
+    const cam = this.cameras.main;
+    cam.setBounds(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE);
+    cam.setZoom(ZOOM_DEFAULT);
+    this.input.on(
+      'wheel',
+      (
+        pointer: Phaser.Input.Pointer,
+        _over: Phaser.GameObjects.GameObject[],
+        _dx: number,
+        dy: number,
+      ) => {
+        const anchor = cam.getWorldPoint(pointer.x, pointer.y);
+        const factor = dy > 0 ? 0.85 : 1.18;
+        cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, ZOOM_MIN, ZOOM_MAX));
+        if (cam.zoom <= ZOOM_MIN) {
+          cam.centerOn((TOWN_MAP.width * TILE) / 2, (TOWN_MAP.height * TILE) / 2);
+        } else {
+          // 保持指针下的世界坐标不动(围绕指针缩放)
+          cam.setScroll(anchor.x - pointer.x / cam.zoom, anchor.y - pointer.y / cam.zoom);
+        }
+      },
+    );
+  }
+
+  private _updateCamera(selectedId: string | null): void {
+    const cam = this.cameras.main;
+    const desired = cam.zoom > ZOOM_MIN && selectedId !== null ? selectedId : null;
+    if (desired === this._followId) return;
+    const render = desired !== null ? this._characters.get(desired) : undefined;
+    if (desired === null) {
+      cam.stopFollow();
+      cam.centerOn((TOWN_MAP.width * TILE) / 2, (TOWN_MAP.height * TILE) / 2);
+      this._followId = null;
+    } else if (render !== undefined) {
+      cam.startFollow(render.node, true, 0.15, 0.15);
+      this._followId = desired;
+    }
   }
 
   override update(_time: number, delta: number): void {
-    const { snapshot } = useWorldStore.getState();
+    const { snapshot, selectedCharacterId } = useWorldStore.getState();
     this._syncCharacterNodes(snapshot?.characters ?? []);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;
+    this._updateCamera(selectedCharacterId);
     if (this._nightOverlay !== null) {
       // 昼夜色调平滑过渡
       const target = (snapshot?.clock.isNight ?? false) ? 0.38 : 0;
@@ -132,18 +201,23 @@ export class WorldScene extends Phaser.Scene {
         const rect = map.blockedRects.find((r) => inRect(x, y, r));
         if (rect !== undefined) {
           if (inRect(x, y, POND_RECT)) {
-            this._ground(x, y, TILE_FRAME.water);
+            this._pondTile(x, y);
             continue;
           }
-          // 建筑:底行为墙身,其余铺所属场所的屋顶
-          const bottom = y === rect.y + rect.h - 1;
+          // 建筑立面:上侧铺所属场所的屋顶色,底部两行墙身(门窗在场所遍历时叠加)
           const place = map.places.find((p) => inRect(x, y, p));
           const frame =
-            place !== undefined ? ROOF_FRAME[place.id] ?? TILE_FRAME.wall : TILE_FRAME.wall;
-          this._ground(x, y, bottom ? TILE_FRAME.wall : frame);
+            place !== undefined && y < rect.y + rect.h - 2
+              ? ROOF_FRAME[place.id] ?? TILE_FRAME.wall
+              : TILE_FRAME.wall;
+          this._ground(x, y, frame);
           continue;
         }
         this._ground(x, y, TILE_FRAME.grass);
+        if (inRect(x, y, PLAZA_RECT)) {
+          this._ground(x, y, TILE_FRAME.plaza);
+          continue;
+        }
         if (map.paths.some((r) => inRect(x, y, r))) {
           this._ground(x, y, TILE_FRAME.path);
           continue;
@@ -154,10 +228,9 @@ export class WorldScene extends Phaser.Scene {
 
     for (const place of map.places) {
       if (place.id === 'park') {
-        this._fillPlace(map, place, TILE_FRAME.parkGrass);
-        for (const [tx, ty] of PARK_TREES) this._prop(tx, ty, TILE_FRAME.tree);
+        this._drawPark(map, place);
       } else {
-        this._ground(place.entrance.x, place.entrance.y, TILE_FRAME.path);
+        this._drawFacade(place);
       }
       this.add
         .text(place.x * TILE + (place.w * TILE) / 2, place.y * TILE + 2, place.name, {
@@ -167,6 +240,67 @@ export class WorldScene extends Phaser.Scene {
         .setOrigin(0.5, 0)
         .setDepth(20)
         .setStroke('rgba(0,0,0,0.6)', 3);
+    }
+
+    for (const [lx, ly] of [...STREET_LAMPS, ...PLAZA_LAMPS]) {
+      this._prop(lx, ly, TILE_FRAME.lamp);
+    }
+  }
+
+  /** 池塘:按格位铺 8 向水岸 + 中心水面 */
+  private _pondTile(x: number, y: number): void {
+    const f = TILE_FRAME;
+    const west = x === POND_RECT.x;
+    const east = x === POND_RECT.x + POND_RECT.w - 1;
+    const north = y === POND_RECT.y;
+    const south = y === POND_RECT.y + POND_RECT.h - 1;
+    const frame = north && west ? f.shoreNW
+      : north && east ? f.shoreNE
+      : south && west ? f.shoreSW
+      : south && east ? f.shoreSE
+      : north ? f.shoreN
+      : south ? f.shoreS
+      : west ? f.shoreW
+      : east ? f.shoreE
+      : f.water;
+    this._ground(x, y, frame);
+  }
+
+  /** 建筑立面:上层窗、底层入口列门;shop/restaurant 门上加密色遮阳篷作招牌 */
+  private _drawFacade(place: PlaceDefinition): void {
+    const doorRow = place.y + place.h - 1;
+    const winRow = doorRow - 1;
+    for (let x = place.x + 1; x < place.x + place.w - 1; x += 1) {
+      if ((x - place.x) % 2 === 1) {
+        const frame = (x + place.y) % 2 === 0 ? TILE_FRAME.windowBrown : TILE_FRAME.windowWhite;
+        this._overlay(x, winRow, frame);
+      }
+    }
+    if (place.id === 'shop') this._overlay(place.entrance.x, winRow, TILE_FRAME.awningOrange);
+    if (place.id === 'restaurant') this._overlay(place.entrance.x, winRow, TILE_FRAME.awningGreen);
+    this._overlay(place.entrance.x, doorRow, TILE_FRAME.door);
+    this._ground(place.entrance.x, place.entrance.y, TILE_FRAME.path);
+  }
+
+  /** 公园:草皮 + 稀疏花丛 + 树/灌木/野餐桌/园灯 + 北缘栅栏(入口列留豁) */
+  private _drawPark(map: TileMapDefinition, place: PlaceDefinition): void {
+    this._fillPlace(map, place, TILE_FRAME.parkGrass);
+    const flowers = [TILE_FRAME.flowerPurple, TILE_FRAME.flowerYellow, TILE_FRAME.flowerOrange];
+    for (let y = place.y; y < place.y + place.h; y += 1) {
+      for (let x = place.x; x < place.x + place.w; x += 1) {
+        if (inRect(x, y, POND_RECT)) continue;
+        if ((x * 7 + y * 5) % 13 === 0) this._overlay(x, y, flowers[(x + y) % flowers.length]!);
+      }
+    }
+    for (const [tx, ty] of PARK_TREES) {
+      this._prop(tx, ty, PROP_TREES[(tx + ty) % PROP_TREES.length]!);
+    }
+    for (const [bx, by] of PARK_BUSHES) this._prop(bx, by, TILE_FRAME.bush);
+    for (const [bx, by] of PARK_BENCHES) this._prop(bx, by, TILE_FRAME.bench);
+    for (const [lx, ly] of PARK_LAMPS) this._prop(lx, ly, TILE_FRAME.lamp);
+    for (let x = place.x; x < place.x + place.w; x += 1) {
+      if (x === place.entrance.x) continue;
+      this._prop(x, place.y, TILE_FRAME.fence);
     }
   }
 
@@ -178,7 +312,12 @@ export class WorldScene extends Phaser.Scene {
     this.add.image(x * TILE, y * TILE, TILESET.key, frame).setOrigin(0, 0).setDepth(5);
   }
 
-  /** 可行走场所整块铺装;障碍格(如公园内的池塘)跳过,保留主循环已画的水面 */
+  /** 立面门窗/花丛等覆盖在底瓦之上的装饰 */
+  private _overlay(x: number, y: number, frame: number): void {
+    this.add.image(x * TILE, y * TILE, TILESET.key, frame).setOrigin(0, 0).setDepth(6);
+  }
+
+  /** 可行走场所整块铺装;障碍格(如公园内的池塘)跳过,保留主循环已画的水岸 */
   private _fillPlace(map: TileMapDefinition, place: PlaceDefinition, frame: number): void {
     for (let y = place.y; y < place.y + place.h; y += 1) {
       for (let x = place.x; x < place.x + place.w; x += 1) {
