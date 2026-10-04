@@ -12,7 +12,9 @@ import { isWalkable } from './walkability';
 const WASD_EXTEND_TILES = 3;
 /** WASD 单次下发的前瞻格数(松手由 stop_move 急停,前瞻只影响连续手感) */
 const WASD_LOOKAHEAD_TILES = 6;
-/** 连续续路时两次下发的最小间隔(ms);起步/转向不受此限 */
+/** 单击保护窗(ms): 起步后该时间内即使按住也不续路,保证单击恰好 1 格(快照余量滞后,不能依赖 pathRemaining 判定) */
+const KEY_TAP_GUARD_MS = 250;
+/** 按住续路时两次下发的最小间隔(ms);起步/转向不受此限 */
 const KEY_STEP_MIN_INTERVAL_MS = 100;
 /** 长按朝不可行走方向时,拒绝 toast 的最小重复间隔(ms) */
 const KEY_BLOCKED_TOAST_INTERVAL_MS = 1200;
@@ -65,10 +67,10 @@ export function handleMapClick(
 }
 
 /**
- * 方向键/WASD 连续移动控制器(验收反馈: 修复一顿一顿)——按住时沿方向前瞻
- * 最远连续可行走格整段下发 move_to,路径余量 ≤ WASD_EXTEND_TILES 提前续路,
- * 服务端路径不空转、角色连贯行进;松手下发 stop_move 即停(协议 9→10)。
- * 原实现每格一等快照确认再走下一格,行进被 tick 节拍切碎即卡顿根因。
+ * 方向键/WASD 移动控制器(tap-vs-hold 语义)——单击/起步仅下发 1 格;
+ * 持住时先经单击保护窗(KEY_TAP_GUARD_MS,快照余量滞后,不能依赖 pathRemaining
+ * 区分点按与长按),之后余量 ≤ WASD_EXTEND_TILES 即前瞻整段续路,连贯行进;
+ * 持住转向立即前瞻。松手仅当发过前瞻段才 stop_move 急停(单击步不回收)。
  * 撞墙时向不可行走格下发以获得服务端拒绝提示(toast 节流);焦点在表单控件时忽略。
  */
 export class KeyboardController {
@@ -79,6 +81,10 @@ export class KeyboardController {
   private _dir: { dx: number; dy: number } | null = null;
   /** WASD 作用中的角色 id(切角色重置方向状态) */
   private _characterId: string | null = null;
+  /** 本次按下起始时刻(单击保护窗用) */
+  private _pressedAt = 0;
+  /** 持住续路是否发过前瞻段(松手急停仅据此判定,快照余量滞后不可依赖) */
+  private _hasHoldPath = false;
 
   constructor(scene: Phaser.Scene) {
     const keyboard = scene.input.keyboard;
@@ -114,14 +120,41 @@ export class KeyboardController {
     if (dir === null) {
       const wasHolding = this._dir !== null;
       this._dir = null;
-      if (wasHolding && character.pathRemaining > 0) {
+      // 仅持住续路过(发过前瞻段)才急停;单击只发 1 格,不 stop_move 免清掉该步
+      if (wasHolding && this._hasHoldPath) {
+        this._hasHoldPath = false;
         void sendIntent({ type: 'stop_move', characterId: character.id });
       }
       return;
     }
     if (snapshot.paused) return;
-    const turned = this._dir === null || this._dir.dx !== dir.dx || this._dir.dy !== dir.dy;
-    if (!turned) {
+    const prev = this._dir;
+    const fresh = prev === null;
+    const turned = fresh || prev.dx !== dir.dx || prev.dy !== dir.dy;
+    if (turned) {
+      this._lastStepAt = time;
+      this._pressedAt = time;
+      this._hasHoldPath = false;
+      this._dir = dir;
+      if (fresh) {
+        // 单击/起步: 只下发 1 格(按住才有连续步),不可行走也照发换服务端拒绝提示
+        void sendIntent({
+          type: 'move_to',
+          characterId: character.id,
+          x: character.x + dir.dx,
+          y: character.y + dir.dy,
+        }).then((ack) => {
+          if (!ack.ok && time - this._lastBlockedToastAt > KEY_BLOCKED_TOAST_INTERVAL_MS) {
+            this._lastBlockedToastAt = time;
+            pushToast(false, ack.message);
+          }
+        });
+        return;
+      }
+      // 持住转向: 立即前瞻整段(落入下方前瞻逻辑),转向即时响应
+    } else {
+      // 持住同向续路: 单击保护窗内不续路,余量充足不重发,余量 ≤ 阈值时前瞻补足
+      if (time - this._pressedAt < KEY_TAP_GUARD_MS) return;
       if (time - this._lastStepAt < KEY_STEP_MIN_INTERVAL_MS) return;
       if (character.pathRemaining > WASD_EXTEND_TILES) return;
     }
@@ -137,6 +170,7 @@ export class KeyboardController {
     const blockedAhead = tx === character.x && ty === character.y;
     this._lastStepAt = time;
     this._dir = dir;
+    this._hasHoldPath = true;
     void sendIntent({
       type: 'move_to',
       characterId: character.id,
