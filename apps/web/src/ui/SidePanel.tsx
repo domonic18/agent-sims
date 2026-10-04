@@ -6,6 +6,7 @@ import {
   TOWN_MAP,
   getActivityDefinition,
   getShopItem,
+  type ActivityDefinition,
   type Intent,
   type PlaceDefinition,
   type WorldSnapshotMessage,
@@ -37,6 +38,7 @@ export function SidePanel() {
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
   const focusPlaceId = useWorldStore((state) => state.focusPlaceId);
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
+  const [pendingActivityId, setPendingActivityId] = useState<string | null>(null);
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
 
@@ -45,6 +47,45 @@ export function SidePanel() {
     setFeedback(ack);
     pushToast(ack.ok, ack.message);
   };
+
+  /**
+   * 开始活动:在场直接开始;不在场先前往,到达后自动接续开始。
+   * 协议仍是两步显式语义,此处仅为客户端 UI 合成(move_to → start_activity)。
+   */
+  const startActivity = async (def: ActivityDefinition): Promise<void> => {
+    if (character === null) return;
+    const place = TOWN_MAP.places.find((p) => p.id === def.placeId);
+    if (atPlace?.id === def.placeId) {
+      await run({ type: 'start_activity', characterId: character.id, activityId: def.id });
+      return;
+    }
+    if (place === undefined) return;
+    const ack = await sendIntent({
+      type: 'move_to',
+      characterId: character.id,
+      x: place.entrance.x,
+      y: place.entrance.y,
+    });
+    setFeedback(ack);
+    pushToast(ack.ok, ack.message);
+    setPendingActivityId(ack.ok ? def.id : null);
+  };
+
+  useEffect(() => {
+    setPendingActivityId(null);
+  }, [selectedId]);
+
+  // 前往途中随每 tick 快照检查:到达目的地后自动接续开始;途中改道/被打断则放弃
+  useEffect(() => {
+    if (pendingActivityId === null || character === null || snapshot === null) return;
+    if (character.activity !== null || character.pathRemaining > 0) return;
+    const def = pendingActivityId !== null ? getActivityDefinition(pendingActivityId) : null;
+    const at = findPlaceAt(snapshot, character.x, character.y);
+    setPendingActivityId(null);
+    if (def !== null && at?.id === def.placeId) {
+      void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
+    }
+  }, [pendingActivityId, character, snapshot]);
 
   useEffect(() => {
     if (focusPlaceId === null) return;
@@ -117,11 +158,12 @@ export function SidePanel() {
                   const place = TOWN_MAP.places.find((p) => p.id === def.placeId);
                   const here = atPlace?.id === def.placeId;
                   const moving = character.pathRemaining > 0;
+                  const pending = pendingActivityId === def.id;
                   return (
                     <li
                       key={def.id}
                       id={`place-row-${def.placeId}`}
-                      className={focusPlaceId === def.placeId ? 'focused' : ''}
+                      className={focusPlaceId === def.placeId || pending ? 'focused' : ''}
                     >
                       <span>
                         {def.name}·{place?.name ?? def.placeId}
@@ -133,15 +175,7 @@ export function SidePanel() {
                               : ` ${def.effects.coins}/分`)}
                         </small>
                       </span>
-                      {here ? (
-                        <button
-                          type="button"
-                          disabled={moving}
-                          onClick={() => void run({ type: 'start_activity', characterId: character.id, activityId: def.id })}
-                        >
-                          开始
-                        </button>
-                      ) : (
+                      {!here && (
                         <button
                           type="button"
                           disabled={moving || place === undefined}
@@ -158,6 +192,14 @@ export function SidePanel() {
                           前往
                         </button>
                       )}
+                      <button
+                        type="button"
+                        disabled={moving}
+                        title={here ? undefined : '自动前往,到达后开始'}
+                        onClick={() => void startActivity(def)}
+                      >
+                        {pending ? '途中…' : '开始'}
+                      </button>
                     </li>
                   );
                 })}

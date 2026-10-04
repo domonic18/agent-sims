@@ -59,6 +59,17 @@
   gap: 6px;
 }
 
+.activity-list li span,
+.shop-list li span {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-list li button,
+.shop-list li button {
+  flex-shrink: 0;
+}
+
 .activity-list small,
 .shop-list small {
   color: #666;
