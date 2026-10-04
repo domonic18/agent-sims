@@ -95,10 +95,7 @@ export function ShopSection({
   const moving = character.pathRemaining > 0;
   const inShop = atPlace?.id === 'shop';
   return (
-    <section
-      id="place-row-shop"
-      className={atPlace?.id === 'shop' ? 'panel-section focused' : 'panel-section'}
-    >
+    <section className="panel-section">
       <h3>商店{inShop ? ' · 在店内' : ''}</h3>
       <ul className="shop-list">
         {SHOP_ITEMS.map((item) => {
