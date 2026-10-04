@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
-import { TOWN_MAP, type PlaceDefinition, type TileMapDefinition } from '@sims/shared';
+import {
+  TOWN_MAP,
+  getActivityDefinition,
+  type PlaceDefinition,
+  type TileMapDefinition,
+} from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
 import { CHARACTER, characterVariant, PROP_TREES, ROOF_FRAME, TILE_FRAME, TILESET } from './assets';
 
@@ -52,6 +57,27 @@ const PLAZA_LAMPS: ReadonlyArray<readonly [number, number]> = [
   [34, 14],
 ];
 
+/** 活动 → 头顶气泡图标(emoji,M4 决策气泡复用此形态) */
+const ACTIVITY_EMOJI: Record<string, string> = {
+  study: '📖',
+  work: '🔨',
+  rest: '💤',
+  workout: '💪',
+  stroll: '🚶',
+  meal: '🍽️',
+};
+/** 活动 → 静止姿态:坐(sit)/原地跑(run)/站立(idle) */
+const ACTIVITY_POSES: Record<string, 'sit' | 'run' | 'idle'> = {
+  study: 'sit',
+  work: 'sit',
+  rest: 'sit',
+  meal: 'sit',
+  workout: 'run',
+  stroll: 'idle',
+};
+const BUBBLE_RADIUS = 8;
+const BUBBLE_Y = -38;
+
 type Direction = keyof typeof CHARACTER.rows;
 type AnimGroup = keyof typeof CHARACTER.groups;
 
@@ -67,8 +93,18 @@ interface CharacterRender {
   targetX: number;
   targetY: number;
   dir: Direction;
-  /** 是否处于活动中(坐姿指示) */
+  /** 是否处于活动中(姿态与气泡指示) */
   inActivity: boolean;
+  /** 进行中活动 id(快照),null = 空闲 */
+  activityId: string | null;
+  /** 活动已进行分钟数(快照,驱动进度环) */
+  elapsedMinutes: number;
+  /** 头顶活动气泡(图标+环形进度),随 node 移动 */
+  bubble: Phaser.GameObjects.Container | null;
+  bubbleRing: Phaser.GameObjects.Graphics | null;
+  bubbleText: Phaser.GameObjects.Text | null;
+  /** 上次重绘进度环时的 elapsed(防逐帧重绘) */
+  bubbleElapsed: number;
   /** 当前播放的动画 key,null = 从未播放 */
   animKey: string | null;
 }
@@ -170,6 +206,7 @@ export class WorldScene extends Phaser.Scene {
       );
     }
     // 1 tick = 1 游戏分钟,倍率加快 tick 频率 → 插值与步频随 timeScale 放大
+    const now = this.time.now;
     const step = (delta / 1000) * (snapshot?.timeScale ?? 1) * TILES_PER_TICK;
     for (const render of this._characters.values()) {
       const dx = render.targetX - render.x;
@@ -178,8 +215,14 @@ export class WorldScene extends Phaser.Scene {
       if (distance <= step || distance > SNAP_DISTANCE_TILES) {
         render.x = render.targetX;
         render.y = render.targetY;
-        if (render.inActivity) {
-          this._playAnim(render, 'sit');
+        // 活动姿态映射:健身=原地跑(walk 动画不位移),散步=站立,其余=坐
+        if (render.inActivity && render.activityId !== null) {
+          const pose = ACTIVITY_POSES[render.activityId] ?? 'sit';
+          if (pose === 'run') {
+            this._playAnim(render, 'walk');
+          } else {
+            this._playAnim(render, pose);
+          }
         } else {
           this._playAnim(render, 'idle');
         }
@@ -189,7 +232,66 @@ export class WorldScene extends Phaser.Scene {
         this._playWalk(render, dx, dy);
       }
       render.node.setPosition(render.x * TILE + TILE / 2, render.y * TILE + TILE / 2);
+      this._updateBubble(render, now);
     }
+  }
+
+  /** 头顶活动气泡:活动开始挂载/结束销毁,进度环仅在 elapsed 变化时重绘,悬浮呼吸 */
+  private _updateBubble(render: CharacterRender, now: number): void {
+    if (render.activityId === null || !render.inActivity) {
+      if (render.bubble !== null) {
+        render.bubble.destroy();
+        render.bubble = null;
+        render.bubbleRing = null;
+        render.bubbleText = null;
+      }
+      return;
+    }
+    if (render.bubble === null) {
+      const ring = this.add.graphics();
+      const emoji = ACTIVITY_EMOJI[render.activityId] ?? '❓';
+      const text = this.add
+        .text(0, 0, emoji, { fontSize: '9px', color: '#222222' })
+        .setOrigin(0.5, 0.5);
+      const bubble = this.add.container(0, BUBBLE_Y, [ring, text]);
+      render.node.add(bubble);
+      render.bubble = bubble;
+      render.bubbleRing = ring;
+      render.bubbleText = text;
+      render.bubbleElapsed = -1;
+    }
+    const phase = (render.targetX + render.targetY) * 0.7;
+    render.bubble.y = BUBBLE_Y + Math.sin(now / 400 + phase) * 1.5;
+    const emoji = ACTIVITY_EMOJI[render.activityId] ?? '❓';
+    if (render.bubbleText !== null && render.bubbleText.text !== emoji) {
+      render.bubbleText.setText(emoji);
+    }
+    if (render.bubbleElapsed !== render.elapsedMinutes) {
+      this._drawBubbleRing(render);
+    }
+  }
+
+  /** 进度环:白底圆+图标,外圈绿色弧线自顶部顺时针随 elapsed/duration 增长 */
+  private _drawBubbleRing(render: CharacterRender): void {
+    const ring = render.bubbleRing;
+    if (ring === null || render.activityId === null) return;
+    const def = getActivityDefinition(render.activityId);
+    const progress =
+      def !== null && def.durationMinutes > 0
+        ? Math.min(1, render.elapsedMinutes / def.durationMinutes)
+        : 0;
+    ring.clear();
+    ring.fillStyle(0xffffff, 0.92);
+    ring.fillCircle(0, 0, BUBBLE_RADIUS);
+    ring.lineStyle(1, 0x444444, 0.9);
+    ring.strokeCircle(0, 0, BUBBLE_RADIUS);
+    if (progress > 0.02) {
+      ring.lineStyle(2, 0x2fa042, 1);
+      ring.beginPath();
+      ring.arc(0, 0, BUBBLE_RADIUS + 2.5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+      ring.strokePath();
+    }
+    render.bubbleElapsed = render.elapsedMinutes;
   }
 
   private _drawMap(map: TileMapDefinition): void {
@@ -356,7 +458,7 @@ export class WorldScene extends Phaser.Scene {
       name: string;
       x: number;
       y: number;
-      activity: { activityId: string } | null;
+      activity: { activityId: string; elapsedMinutes: number } | null;
     }[],
   ): void {
     const seen = new Set<string>();
@@ -372,6 +474,12 @@ export class WorldScene extends Phaser.Scene {
           targetY: character.y,
           dir: 'down',
           inActivity: character.activity !== null,
+          activityId: character.activity?.activityId ?? null,
+          elapsedMinutes: character.activity?.elapsedMinutes ?? 0,
+          bubble: null,
+          bubbleRing: null,
+          bubbleText: null,
+          bubbleElapsed: -1,
           animKey: null,
         };
         this._characters.set(character.id, render);
@@ -380,6 +488,8 @@ export class WorldScene extends Phaser.Scene {
       render.targetX = character.x;
       render.targetY = character.y;
       render.inActivity = character.activity !== null;
+      render.activityId = character.activity?.activityId ?? null;
+      render.elapsedMinutes = character.activity?.elapsedMinutes ?? 0;
     }
     for (const [id, render] of this._characters) {
       if (!seen.has(id)) {
