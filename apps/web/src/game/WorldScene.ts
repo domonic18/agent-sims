@@ -5,7 +5,9 @@ import {
   type PlaceDefinition,
   type TileMapDefinition,
 } from '@sims/shared';
+import { sendIntent } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
+import { pushToast } from '../store/toastStore';
 import { CHARACTER, characterVariant, PROP_TREES, ROOF_FRAME, TILE_FRAME, TILESET } from './assets';
 
 const TILE = 16;
@@ -155,6 +157,7 @@ export class WorldScene extends Phaser.Scene {
     const cam = this.cameras.main;
     cam.setBounds(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE);
     cam.setZoom(ZOOM_DEFAULT);
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => this._handleMapClick(pointer));
     this.input.on(
       'wheel',
       (
@@ -173,6 +176,45 @@ export class WorldScene extends Phaser.Scene {
           cam.setScroll(anchor.x - pointer.x / cam.zoom, anchor.y - pointer.y / cam.zoom);
         }
       },
+    );
+  }
+
+  /**
+   * 地图点击三分支(M3.6a): 点角色=选中;点建筑=侧栏定位联动;
+   * 其余空地=下发 move_to 由服务端裁决(不可行走/不可达拒绝信息经 toast 展示)。
+   */
+  private _handleMapClick(pointer: Phaser.Input.Pointer): void {
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const tx = Math.floor(world.x / TILE);
+    const ty = Math.floor(world.y / TILE);
+    if (tx < 0 || ty < 0 || tx >= TOWN_MAP.width || ty >= TOWN_MAP.height) return;
+
+    for (const [id, render] of this._characters) {
+      const hit =
+        Math.abs(world.x - render.node.x) <= 10 &&
+        world.y >= render.node.y - 28 &&
+        world.y <= render.node.y + 8;
+      if (hit) {
+        useWorldStore.getState().selectCharacter(id);
+        return;
+      }
+    }
+
+    const place = TOWN_MAP.places.find((p) => p.id !== 'park' && inRect(tx, ty, p));
+    if (place !== undefined) {
+      useWorldStore.getState().focusPlace(place.id);
+      pushToast(true, `已定位「${place.name}」`);
+      return;
+    }
+
+    useWorldStore.getState().focusPlace(null);
+    const { selectedCharacterId } = useWorldStore.getState();
+    if (selectedCharacterId === null) {
+      pushToast(false, '先点击角色选中,再下达移动指令');
+      return;
+    }
+    void sendIntent({ type: 'move_to', characterId: selectedCharacterId, x: tx, y: ty }).then(
+      (ack) => pushToast(ack.ok, ack.message),
     );
   }
 

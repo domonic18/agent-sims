@@ -13,10 +13,13 @@ export interface WorldStore {
   lastEvent: WorldEvent | null;
   /** 面板当前操作的角色(null=未选,快照到位后自动选首个) */
   selectedCharacterId: string | null;
+  /** 地图点击定位的场所(null=无高亮),侧栏滚动联动 */
+  focusPlaceId: string | null;
   setStatus: (status: ConnectionStatus) => void;
   applySnapshot: (snapshot: WorldSnapshotMessage) => void;
   applyEvent: (event: WorldEvent) => void;
   selectCharacter: (id: string | null) => void;
+  focusPlace: (id: string | null) => void;
   /** 控制事件就地修正快照(暂停期间无 tick 广播) */
   applyControl: (paused: boolean, timeScale: number) => void;
 }
@@ -26,6 +29,7 @@ export const useWorldStore = create<WorldStore>((set) => ({
   snapshot: null,
   lastEvent: null,
   selectedCharacterId: null,
+  focusPlaceId: null,
   setStatus: (status) => set({ status }),
   applySnapshot: (snapshot) =>
     set((state) => {
@@ -38,6 +42,7 @@ export const useWorldStore = create<WorldStore>((set) => ({
     }),
   applyEvent: (event) => set({ lastEvent: event }),
   selectCharacter: (id) => set({ selectedCharacterId: id }),
+  focusPlace: (id) => set({ focusPlaceId: id }),
   applyControl: (paused, timeScale) =>
     set((state) => ({
       snapshot:

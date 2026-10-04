@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ACTIVITY_DEFINITIONS,
   PROPERTY_DEFINITIONS,
@@ -11,6 +11,7 @@ import {
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { sendIntent } from '../net/socket';
+import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
 import './side-panel.css';
 
@@ -34,13 +35,23 @@ export function SidePanel() {
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedId = useWorldStore((state) => state.selectedCharacterId);
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
+  const focusPlaceId = useWorldStore((state) => state.focusPlaceId);
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
 
   const run = async (intent: Intent): Promise<void> => {
-    setFeedback(await sendIntent(intent));
+    const ack = await sendIntent(intent);
+    setFeedback(ack);
+    pushToast(ack.ok, ack.message);
   };
+
+  useEffect(() => {
+    if (focusPlaceId === null) return;
+    document
+      .getElementById(`place-row-${focusPlaceId}`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [focusPlaceId]);
 
   if (snapshot === null) {
     return <aside className="side-panel">等待世界快照…</aside>;
@@ -107,7 +118,11 @@ export function SidePanel() {
                   const here = atPlace?.id === def.placeId;
                   const moving = character.pathRemaining > 0;
                   return (
-                    <li key={def.id}>
+                    <li
+                      key={def.id}
+                      id={`place-row-${def.placeId}`}
+                      className={focusPlaceId === def.placeId ? 'focused' : ''}
+                    >
                       <span>
                         {def.name}·{place?.name ?? def.placeId}
                         <small>
@@ -207,7 +222,10 @@ export function SidePanel() {
             )}
           </section>
 
-          <section className="panel-section">
+          <section
+            id="place-row-shop"
+            className={focusPlaceId === 'shop' ? 'panel-section focused' : 'panel-section'}
+          >
             <h3>商店</h3>
             <ul className="shop-list">
               {SHOP_ITEMS.map((item) => (

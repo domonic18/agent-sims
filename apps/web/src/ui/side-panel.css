@@ -59,6 +59,23 @@
   margin-left: 4px;
 }
 
+/* 地图点击建筑 → 侧栏对应条目/区块高亮定位(M3.6a 联动) */
+.activity-list li.focused {
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: #fff8e1;
+  outline: 1px solid #f0c040;
+}
+
+.panel-section.focused {
+  margin: -4px -8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #fff8e1;
+  outline: 1px solid #f0c040;
+}
+
 .activity-running {
   display: flex;
   flex-direction: column;

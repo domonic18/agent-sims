@@ -1,0 +1,48 @@
+/* 轻提示层:悬浮于画布底部居中,不挡侧栏操作 */
+.toasts {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  max-width: 420px;
+  padding: 5px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line, #3a4a5a);
+  background: rgba(20, 28, 38, 0.88);
+  color: #e8eef4;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  animation: toast-in 160ms ease-out;
+}
+
+.toast.ok {
+  border-color: #4d8f5c;
+}
+
+.toast.err {
+  border-color: #b05656;
+  color: #ffd9d9;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

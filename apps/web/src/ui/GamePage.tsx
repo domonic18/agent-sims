@@ -6,6 +6,7 @@ import { setPaused, setTimeScale } from '../net/debugApi';
 import { connectWorld } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
 import { SidePanel } from './SidePanel';
+import { Toasts } from './Toasts';
 import './game-page.css';
 
 const TIME_SCALES = [1, 4, 16] as const;
@@ -105,7 +106,10 @@ export default function GamePage() {
       </div>
 
       <div className="game-main">
-        <div ref={canvasHostRef} className="canvas-host" />
+        <div className="canvas-wrap">
+          <div ref={canvasHostRef} className="canvas-host" />
+          <Toasts />
+        </div>
         <SidePanel />
       </div>
 
