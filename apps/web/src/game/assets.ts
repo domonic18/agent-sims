@@ -3,6 +3,9 @@
  * 索引与裁切脚本中的条带顺序一一对应,调整时需同步重新裁切。
  */
 
+/** 像素格边长(tile→px 换算,渲染层通用) */
+export const TILE = 16;
+
 export const TILESET = {
   key: 'town-tiles',
   url: '/assets/tiles/tiles.png',
@@ -77,6 +80,26 @@ export const CHARACTER = {
 } as const;
 
 export type CharacterVariant = (typeof CHARACTER.variants)[number];
+
+/** 活动 → 头顶气泡图标(emoji,M4 决策气泡复用此形态) */
+export const ACTIVITY_EMOJI: Record<string, string> = {
+  study: '📖',
+  work: '🔨',
+  rest: '💤',
+  workout: '💪',
+  stroll: '🚶',
+  meal: '🍽️',
+};
+
+/** 活动 → 静止姿态:坐(sit)/原地跑(run)/站立(idle) */
+export const ACTIVITY_POSES: Record<string, 'sit' | 'run' | 'idle'> = {
+  study: 'sit',
+  work: 'sit',
+  rest: 'sit',
+  meal: 'sit',
+  workout: 'run',
+  stroll: 'idle',
+};
 
 /** 角色 id → 配色变体(稳定哈希,同一角色始终同一套衣服) */
 export function characterVariant(id: string): CharacterVariant {

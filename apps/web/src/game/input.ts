@@ -1,0 +1,152 @@
+import Phaser from 'phaser';
+import { TOWN_MAP } from '@sims/shared';
+import { sendIntent } from '../net/socket';
+import { pushToast } from '../store/toastStore';
+import { useWorldStore } from '../store/worldStore';
+import { TILE } from './assets';
+import type { CharacterRender } from './character-view';
+import { inRect } from './terrain';
+import { isWalkable } from './walkability';
+
+/** WASD 连续行进(M3.6g 验收反馈①): 按住时前瞻整段下发,路径余量 ≤ 该值即提前续路 */
+const WASD_EXTEND_TILES = 3;
+/** WASD 单次下发的前瞻格数(松手由 stop_move 急停,前瞻只影响连续手感) */
+const WASD_LOOKAHEAD_TILES = 6;
+/** 连续续路时两次下发的最小间隔(ms);起步/转向不受此限 */
+const KEY_STEP_MIN_INTERVAL_MS = 100;
+/** 长按朝不可行走方向时,拒绝 toast 的最小重复间隔(ms) */
+const KEY_BLOCKED_TOAST_INTERVAL_MS = 1200;
+
+/**
+ * 地图点击三分支(M3.6a): 点角色=选中;点建筑=侧栏定位联动;
+ * 其余空地=下发 move_to 由服务端裁决(不可行走/不可达拒绝信息经 toast 展示)。
+ */
+export function handleMapClick(
+  scene: Phaser.Scene,
+  pointer: Phaser.Input.Pointer,
+  views: Map<string, CharacterRender>,
+  interactive: boolean,
+): void {
+  const world = scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
+  const tx = Math.floor(world.x / TILE);
+  const ty = Math.floor(world.y / TILE);
+  if (tx < 0 || ty < 0 || tx >= TOWN_MAP.width || ty >= TOWN_MAP.height) return;
+
+  for (const [id, view] of views) {
+    const hit =
+      Math.abs(world.x - view.node.x) <= 10 &&
+      world.y >= view.node.y - 28 &&
+      world.y <= view.node.y + 8;
+    if (hit) {
+      useWorldStore.getState().selectCharacter(id);
+      return;
+    }
+  }
+
+  // 纯观看页(主页面): 点选角色跟随即可,不下发移动/定位
+  if (!interactive) return;
+
+  const place = TOWN_MAP.places.find((p) => p.id !== 'park' && inRect(tx, ty, p));
+  if (place !== undefined) {
+    useWorldStore.getState().focusPlace(place.id);
+    pushToast(true, `已定位「${place.name}」`);
+    return;
+  }
+
+  useWorldStore.getState().focusPlace(null);
+  const { selectedCharacterId } = useWorldStore.getState();
+  if (selectedCharacterId === null) {
+    pushToast(false, '先点击角色选中,再下达移动指令');
+    return;
+  }
+  void sendIntent({ type: 'move_to', characterId: selectedCharacterId, x: tx, y: ty }).then(
+    (ack) => pushToast(ack.ok, ack.message),
+  );
+}
+
+/**
+ * 方向键/WASD 连续移动控制器(验收反馈: 修复一顿一顿)——按住时沿方向前瞻
+ * 最远连续可行走格整段下发 move_to,路径余量 ≤ WASD_EXTEND_TILES 提前续路,
+ * 服务端路径不空转、角色连贯行进;松手下发 stop_move 即停(协议 9→10)。
+ * 原实现每格一等快照确认再走下一格,行进被 tick 节拍切碎即卡顿根因。
+ * 撞墙时向不可行走格下发以获得服务端拒绝提示(toast 节流);焦点在表单控件时忽略。
+ */
+export class KeyboardController {
+  private readonly _keys: Record<string, Phaser.Input.Keyboard.Key> | null;
+  private _lastStepAt = 0;
+  private _lastBlockedToastAt = 0;
+  /** WASD 当前按住方向(松手置 null,用于转向判定与急停) */
+  private _dir: { dx: number; dy: number } | null = null;
+  /** WASD 作用中的角色 id(切角色重置方向状态) */
+  private _characterId: string | null = null;
+
+  constructor(scene: Phaser.Scene) {
+    const keyboard = scene.input.keyboard;
+    this._keys =
+      keyboard !== null
+        ? (keyboard.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D') as Record<
+            string,
+            Phaser.Input.Keyboard.Key
+          >)
+        : null;
+  }
+
+  step(time: number): void {
+    const keys = this._keys;
+    if (keys === null) return;
+    const active = document.activeElement;
+    if (active !== null && ['INPUT', 'SELECT', 'TEXTAREA'].includes(active.tagName)) return;
+    const dir =
+      keys.UP?.isDown || keys.W?.isDown ? { dx: 0, dy: -1 }
+      : keys.DOWN?.isDown || keys.S?.isDown ? { dx: 0, dy: 1 }
+      : keys.LEFT?.isDown || keys.A?.isDown ? { dx: -1, dy: 0 }
+      : keys.RIGHT?.isDown || keys.D?.isDown ? { dx: 1, dy: 0 }
+      : null;
+    const { snapshot, selectedCharacterId } = useWorldStore.getState();
+    if (snapshot === null || selectedCharacterId === null) return;
+    const character = snapshot.characters.find((c) => c.id === selectedCharacterId);
+    if (character === undefined) return;
+    if (this._characterId !== character.id) {
+      this._characterId = character.id;
+      this._dir = null;
+    }
+
+    if (dir === null) {
+      const wasHolding = this._dir !== null;
+      this._dir = null;
+      if (wasHolding && character.pathRemaining > 0) {
+        void sendIntent({ type: 'stop_move', characterId: character.id });
+      }
+      return;
+    }
+    if (snapshot.paused) return;
+    const turned = this._dir === null || this._dir.dx !== dir.dx || this._dir.dy !== dir.dy;
+    if (!turned) {
+      if (time - this._lastStepAt < KEY_STEP_MIN_INTERVAL_MS) return;
+      if (character.pathRemaining > WASD_EXTEND_TILES) return;
+    }
+
+    let tx = character.x;
+    let ty = character.y;
+    for (let i = 0; i < WASD_LOOKAHEAD_TILES; i += 1) {
+      if (!isWalkable(tx + dir.dx, ty + dir.dy)) break;
+      tx += dir.dx;
+      ty += dir.dy;
+    }
+    // 紧邻即墙: 向不可行走格下发换取服务端拒绝文案(反馈撞墙)
+    const blockedAhead = tx === character.x && ty === character.y;
+    this._lastStepAt = time;
+    this._dir = dir;
+    void sendIntent({
+      type: 'move_to',
+      characterId: character.id,
+      x: blockedAhead ? character.x + dir.dx : tx,
+      y: blockedAhead ? character.y + dir.dy : ty,
+    }).then((ack) => {
+      if (!ack.ok && time - this._lastBlockedToastAt > KEY_BLOCKED_TOAST_INTERVAL_MS) {
+        this._lastBlockedToastAt = time;
+        pushToast(false, ack.message);
+      }
+    });
+  }
+}
