@@ -53,7 +53,14 @@
 - 规模: M
 - 任务: 活动定义化(学习/工作/生活,数值增减公式在此定稿=关闭 requirement §10-5);经济: 打工赚币/商店/租房/买房/家具购买摆放;活动面板/资产面板/数值反馈
 - 验收标准: requirement §11「核心循环闭环」条通过
-- 状态: 未开始
+- 状态: **进行中**(2026-10-04)
+
+| 子阶段 | 状态 | 范围 | 验收 |
+|--------|------|------|------|
+| M3.1 活动定义与执行 | M ✅(2026-10-04) | 活动目录入 shared(六类活动,数值公式定稿=关闭 §10-5);start/stop_activity 意图;逐分钟结算+按时长自动完成;move_to 打断进行中活动;activity.started/finished 事件 | 单测: 数值增减/自动完成/打断/破产中断(6 例);debug intent 实测(16x 下学习 60 分钟自动完成,数值按公式结算) |
+| M3.2 经济·商店 | S | 商品目录(家具/食物)入 shared;buy_item 意图(金币一次性扣减);库存入角色状态与快照 | 单测: 扣币/库存/余额不足拒绝;目录双端共用 |
+| M3.3 房产与家具摆放 | M | 初始租房,rent/buy_property 意图;家具摆放=抽象槽位+数值加成(不渲染具体位置,M3.4 面板可见) | 单测: 租/买扣币与状态、家具加成生效;核心循环单测串接: 学习→工作→赚币→买家具→摆放生效 |
+| M3.4 活动面板+资产面板+数值反馈 | M | 活动面板(场所可用活动/进行中进度/取消);资产面板(金币/房产/家具);数值变化即时反馈 | 浏览器端到端走通核心循环闭环(§11 验收条);面板操作与状态一致 |
 
 ### M4: Agent 内核与托管 ★关键里程碑
 
@@ -127,3 +134,5 @@
 | 2026-10-03 | M2.4 落地: 体力/幸福每游戏分钟自然衰减 0.05/0.03(0~100 夹取,上界供活动增益)+金币静态;完整游戏日 sim:run 曲线体力 100→28/幸福 100→56.8,作为 M3 活动数值设计基线 | 数值基线定稿需实测幅度支撑 |
 | 2026-10-03 | M2.5 落地: @sims/shared 增 sync.ts(SOCKET_EVENTS/world.snapshot 全量快照协议/SOCKET_ROLES)+world.control 控制事件入事件联合(协议先行);socket/gateway(连接即快照+离散事件转发,无 client→server 监听=spectator 只读)+clients 注册表+TickDriver onTick 回调;io 装配入 buildApp(app.io 装饰器,onClose 先 await io.close 再关 pg,消除双路 close 竞态);`GET /debug/clients`;tests/sync 集成测试 4 例(快照/注册表/tick 广播+到达事件/控制事件)。决策——每 tick 增量暂用全量快照(状态小,tick 序号天然防乱序,M4 感知层复用);坑——socket.io 快照帧与 connect 同轮同步到达,客户端监听必须先于 connect 注册,否则错过首帧 | 同步层就绪,M2.6 前端直接消费 |
 | 2026-10-04 | M2.6 落地+**M2 里程碑完结**: net/socket(socket.io-client,监听先于 connect)+zustand worldStore(status/snapshot/lastEvent,world.control 就地 patch 快照);Phaser WorldScene+HUD(时间/昼夜/tick/暂停/1x4x16x);TOWN_MAP 下沉 @sims/shared 双端共用防漂移;素材接入——Kenney tile 13 格条带(松林边界/六建筑屋顶+墙身/入口泥路/水/公园)+LPC 角色 walk 四向 9 帧缩 32px,裁切产物入 public/assets(原始包不入库,授权文件归档,帧配置集中在 game/assets.ts),角色按插值方向切 walk 动画、静止定格 frame0、步频随 timeScale;昼夜 overlay lerp。决策——每角色分离快照目标与渲染浮点坐标,偏差>4 格视为瞬移吸附;暂停冻结=快照停更自然达成,前端零特殊处理;坑——Phaser overlay fillAlpha=0 与对象 alpha 相乘恒 0(fillAlpha=1+setAlpha(lerp))。门禁 69 测试+浏览器端到端(暂停冻结 tick 21117/16x 实测/夜间压暗/行走动画转向切换) | M2 世界模拟 MVP 全量就绪,M3 玩法闭环开工 |
+| 2026-10-04 | M3 启动,细化为 M3.1~M3.4 四个子阶段;活动数值公式定稿(关闭 requirement §10-5): 六类活动(学习/打工/休息/健身/散步/就餐)按"每游戏分钟净增量"定义体力/幸福/金币效果,与自然衰减叠加,打工 0.5 币/分、就餐 0.4 币/分;决策——活动目录随 TOWN_MAP 先例入 @sims/shared 双端共用;move_to 自动打断进行中活动;角色位于场所入口格或矩形内即可开始活动;金币下限夹 0,净负金币活动(就餐)余额不足自动中断(insufficient_coins);活动达 durationMinutes 自动完成 | M3 核心玩法闭环开工 |
+| 2026-10-04 | M3.1 落地: shared/activities.ts 六类活动目录(数值公式定稿,关闭 requirement §10-5)+start/stop_activity 意图+activity.started/finished 事件(结束原因 completed/stopped/interrupted/insufficient_coins)+快照角色增 activity 字段;server world/activity.ts 逐分钟结算(净增量叠加自然衰减,净负金币结算前判定防透支)+simulation 开始/停止/打断编排+移动中禁 start(先到再开始);单测 6 例+16x debug intent 实测。附带修复——docker-postgres-1 遗留容器(旧版 compose 挂错数据目录)移除后重建 dev 库(-p agent-sims-dev,workspace/postgres-dev+migrate+seed),dev/prod compose 项目名约定写入注释 | M3.1 活动层就绪,M3.2 商店开工 |
