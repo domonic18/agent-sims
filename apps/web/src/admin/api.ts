@@ -2,10 +2,13 @@ import {
   ADMIN_API,
   type AdminLoginRequest,
   type AdminLoginResponse,
+  type CreateWorldRequest,
   type ModelConfigTestResult,
   type ModelConfigUpdate,
   type ModelConfigView,
   type ModelSlot,
+  WORLD_ADMIN_API,
+  type WorldView,
 } from '@sims/shared';
 
 const TOKEN_STORAGE_KEY = 'sims_admin_token';
@@ -77,5 +80,28 @@ export async function updateModelConfig(
 export async function testModelConfig(slot: ModelSlot): Promise<ModelConfigTestResult> {
   return await adminFetch<ModelConfigTestResult>(ADMIN_API.modelConfigTest(slot), {
     method: 'POST',
+  });
+}
+
+export async function fetchWorlds(): Promise<WorldView[]> {
+  return await adminFetch<WorldView[]>(WORLD_ADMIN_API.worlds);
+}
+
+export async function createWorld(payload: CreateWorldRequest): Promise<WorldView> {
+  return await adminFetch<WorldView>(WORLD_ADMIN_API.worlds, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function closeWorld(id: string): Promise<WorldView> {
+  return await adminFetch<WorldView>(WORLD_ADMIN_API.worldClose.replace(':id', id), {
+    method: 'POST',
+  });
+}
+
+export async function deleteWorld(id: string): Promise<void> {
+  await adminFetch<unknown>(WORLD_ADMIN_API.world.replace(':id', id), {
+    method: 'DELETE',
   });
 }

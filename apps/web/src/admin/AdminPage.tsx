@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ModelConfigView } from '@sims/shared';
 import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } from './api';
 import { ModelConfigPanel } from './ModelConfigPanel';
+import { WorldPanel } from './WorldPanel';
 import './admin.css';
 
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
@@ -52,8 +53,11 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
+type AdminTab = 'world' | 'models';
+
 export default function AdminPage() {
   const [authed, setAuthed] = useState(() => getToken() !== null);
+  const [tab, setTab] = useState<AdminTab>('world');
   const [configs, setConfigs] = useState<ModelConfigView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -71,8 +75,8 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (authed) void load();
-  }, [authed, load]);
+    if (authed && tab === 'models') void load();
+  }, [authed, tab, load]);
 
   if (!authed) {
     return <LoginForm onSuccess={() => setAuthed(true)} />;
@@ -81,7 +85,22 @@ export default function AdminPage() {
   return (
     <div className="admin-page">
       <header className="admin-header">
-        <h1>模型配置</h1>
+        <nav className="admin-tabs">
+          <button
+            type="button"
+            className={tab === 'world' ? 'admin-tab active' : 'admin-tab'}
+            onClick={() => setTab('world')}
+          >
+            世界管理
+          </button>
+          <button
+            type="button"
+            className={tab === 'models' ? 'admin-tab active' : 'admin-tab'}
+            onClick={() => setTab('models')}
+          >
+            模型配置
+          </button>
+        </nav>
         <button
           className="admin-secondary"
           onClick={() => {
@@ -93,11 +112,17 @@ export default function AdminPage() {
           退出登录
         </button>
       </header>
-      {loadError && <p className="admin-error">{loadError}</p>}
-      {!configs ? (
-        <p>加载中…</p>
+      {tab === 'world' ? (
+        <WorldPanel />
       ) : (
-        <ModelConfigPanel configs={configs} onChanged={() => void load()} />
+        <>
+          {loadError && <p className="admin-error">{loadError}</p>}
+          {!configs ? (
+            <p>加载中…</p>
+          ) : (
+            <ModelConfigPanel configs={configs} onChanged={() => void load()} />
+          )}
+        </>
       )}
     </div>
   );
