@@ -104,7 +104,8 @@
   height: 100%;
 }
 
-/* 右侧操作列: 快捷操作 SidePanel + 协议表单 + 世界状态,整列限高滚动 */
+/* 右侧操作列: 快捷操作 SidePanel + 协议表单 + 世界状态,整列限高滚动;
+   可整体收起(M3.6f): translateX 滑出屏幕,右侧把手按钮展开/收起 */
 .lab-side {
   position: absolute;
   top: 46px;
@@ -117,6 +118,45 @@
   flex-direction: column;
   gap: 10px;
   font-size: 12px;
+  transition: transform 0.25s ease;
+}
+
+.lab-side.collapsed {
+  transform: translateX(calc(100% + 16px));
+}
+
+/* 操作列右缘把手: 展开时贴列左缘,收起后贴屏幕右缘 */
+.lab-side-toggle {
+  position: absolute;
+  top: 50%;
+  z-index: 11;
+  width: 26px;
+  height: 52px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px 0 0 8px;
+  background: rgba(15, 18, 26, 0.85);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  transition: right 0.25s ease;
+}
+
+.revive-btn {
+  border-color: #2e7d32 !important;
+  background: #2e7d32 !important;
+  color: #fff !important;
+  font-weight: bold;
+}
+
+.world-table td.low-energy {
+  color: #ef6c00;
+  font-weight: bold;
+}
+
+.world-table td.dead {
+  color: #c62828;
+  font-weight: bold;
 }
 
 /* SidePanel 自带悬浮定位,在操作列内转为普通块随列滚动 */

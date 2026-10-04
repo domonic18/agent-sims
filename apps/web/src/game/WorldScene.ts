@@ -20,10 +20,15 @@ const SNAP_DISTANCE_TILES = 4;
 const POND_RECT = { x: 4, y: 30, w: 4, h: 4 };
 /** 广场铺装(paths 内矩形默认砂路,该矩形单独用灰石) */
 const PLAZA_RECT = { x: 22, y: 15, w: 12, h: 11 };
+/** 广场喷泉(blockedRect 内,程序化绘制+正弦波纹动画) */
+const FOUNTAIN_RECT = { x: 30, y: 18, w: 3, h: 3 };
 
 /** 内景配色(M3.6e 剖切风): 墙体按场所着色区分建筑,室内铺木地板双色棋盘 */
 const WALL_COLORS: Record<string, number> = {
-  home: 0x9c7b5f,
+  'home-a': 0x9c7b5f,
+  'home-b': 0xa8825f,
+  'home-c': 0x8f7a9c,
+  'home-d': 0x7f9c6f,
   library: 0x7a6f9e,
   office: 0x6f8496,
   shop: 0xa8894f,
@@ -78,6 +83,44 @@ const PLAZA_LAMPS: ReadonlyArray<readonly [number, number]> = [
   [21, 14],
   [34, 14],
 ];
+/** M3.6f 围栏灯: 公园北缘/广场北角/健身房两侧/公寓 D 门前横路两端的夜间点缀灯 */
+const FENCE_LAMPS: ReadonlyArray<readonly [number, number]> = [
+  [5, 25],
+  [13, 25],
+  [26, 14],
+  [35, 14],
+  [43, 25],
+  [52, 25],
+  [27, 44],
+  [46, 44],
+];
+/** M3.6f 花丛点缀: 广场四角/主街沿线的固定花位(纯视觉) */
+const DECOR_FLOWERS: ReadonlyArray<readonly [number, number]> = [
+  [22, 15],
+  [33, 15],
+  [22, 25],
+  [33, 25],
+  [10, 19],
+  [18, 21],
+  [40, 19],
+  [52, 21],
+  [21, 25],
+  [26, 25],
+  [30, 45],
+  [41, 45],
+];
+/** M3.6f 新公寓周边行道树(纯视觉) */
+const APARTMENT_TREES: ReadonlyArray<readonly [number, number]> = [
+  [2, 3],
+  [15, 3],
+  [15, 12],
+  [25, 3],
+  [25, 12],
+  [54, 3],
+  [54, 12],
+  [31, 35],
+  [41, 35],
+];
 
 /** 活动 → 头顶气泡图标(emoji,M4 决策气泡复用此形态) */
 const ACTIVITY_EMOJI: Record<string, string> = {
@@ -129,6 +172,16 @@ interface CharacterRender {
   bubbleElapsed: number;
   /** 当前播放的动画 key,null = 从未播放 */
   animKey: string | null;
+  /** 存活状态(false=幽灵态: 半透明+飘浮+👻) */
+  alive: boolean;
+  /** 最新体力值(≤20 低体力警示) */
+  energy: number;
+  /** rest 到位后横躺于床/长椅(吸附锚点中心+旋转 90°) */
+  resting: boolean;
+  /** 幽灵 👻 徽标(懒创建) */
+  ghostBadge: Phaser.GameObjects.Text | null;
+  /** 低体力 ⚡ 徽标(懒创建) */
+  warnBadge: Phaser.GameObjects.Text | null;
 }
 
 /**
@@ -140,6 +193,13 @@ interface CharacterRender {
 export class WorldScene extends Phaser.Scene {
   private readonly _characters = new Map<string, CharacterRender>();
   private _nightOverlay: Phaser.GameObjects.Rectangle | null = null;
+  /** 夜间灯光层(ADD 混合同心光晕: 路灯/窗光/室内暖光),alpha 随 isNight 插值 */
+  private _lightLayer: Phaser.GameObjects.Container | null = null;
+  /** 选中角色脚下呼吸椭圆环 */
+  private _selectionRing: Phaser.GameObjects.Graphics | null = null;
+  /** 广场喷泉(程序化绘制,~200ms 正弦波纹重绘) */
+  private _fountainGfx: Phaser.GameObjects.Graphics | null = null;
+  private _lastFountainAt = 0;
   /** 当前相机跟随的角色 id,null = 全图概览 */
   private _followId: string | null = null;
   private _keyControls: Record<string, Phaser.Input.Keyboard.Key> | null = null;
@@ -175,10 +235,12 @@ export class WorldScene extends Phaser.Scene {
     this._drawMap(TOWN_MAP);
     this._createCharacterAnims();
     this._nightOverlay = this.add
-      .rectangle(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE, 0x0a1436, 1)
+      .rectangle(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE, 0x081024, 1)
       .setOrigin(0, 0)
       .setAlpha(0)
       .setDepth(100);
+    this._buildLightLayer();
+    this._selectionRing = this.add.graphics().setDepth(9);
 
     const cam = this.cameras.main;
     cam.setBounds(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE);
@@ -314,13 +376,14 @@ export class WorldScene extends Phaser.Scene {
     this._updateCamera(selectedCharacterId);
     this._handleKeyboardStep(time);
     if (this._nightOverlay !== null) {
-      // 昼夜色调平滑过渡
-      const target = (snapshot?.clock.isNight ?? false) ? 0.38 : 0;
-      this._nightOverlay.alpha = Phaser.Math.Linear(
-        this._nightOverlay.alpha,
-        target,
-        Math.min(1, (delta / 1000) * 2),
-      );
+      // 昼夜色调平滑过渡(M3.6f 加深夜色)
+      const night = snapshot?.clock.isNight ?? false;
+      const target = night ? 0.55 : 0;
+      const ease = Math.min(1, (delta / 1000) * 2);
+      this._nightOverlay.alpha = Phaser.Math.Linear(this._nightOverlay.alpha, target, ease);
+      if (this._lightLayer !== null) {
+        this._lightLayer.alpha = Phaser.Math.Linear(this._lightLayer.alpha, night ? 1 : 0, ease);
+      }
     }
     // 1 tick = 1 游戏分钟,倍率加快 tick 频率 → 插值与步频随 timeScale 放大
     const now = this.time.now;
@@ -329,6 +392,8 @@ export class WorldScene extends Phaser.Scene {
       const dx = render.targetX - render.x;
       const dy = render.targetY - render.y;
       const distance = Math.hypot(dx, dy);
+      let drawX = render.x;
+      let drawY = render.y;
       if (distance <= step || distance > SNAP_DISTANCE_TILES) {
         render.x = render.targetX;
         render.y = render.targetY;
@@ -343,14 +408,150 @@ export class WorldScene extends Phaser.Scene {
         } else {
           this._playAnim(render, 'idle');
         }
+        // M3.6f 躺床: rest 到位后吸附最近床/长椅占地中心,纯视觉横躺
+        const anchor =
+          render.inActivity && render.activityId === 'rest'
+            ? this._nearestRestAnchor(render.x, render.y)
+            : null;
+        render.resting = anchor !== null;
+        if (anchor !== null) {
+          drawX = anchor.cx;
+          drawY = anchor.cy;
+        }
       } else {
+        render.resting = false;
         render.x += (dx / distance) * step;
         render.y += (dy / distance) * step;
         this._playWalk(render, dx, dy);
       }
-      render.node.setPosition(render.x * TILE + TILE / 2, render.y * TILE + TILE / 2);
+      render.sprite.setAngle(render.resting ? 90 : 0);
+      // 幽灵态: 半透明飘浮
+      const bob = render.alive ? 0 : Math.sin(now / 300) * 1.5 - 2;
+      render.node.setPosition(drawX * TILE + TILE / 2, drawY * TILE + TILE / 2 + bob);
       this._updateBubble(render, now);
+      this._updateBadges(render, now);
     }
+    this._drawSelectionRing(now);
+    this._updateFountain(now);
+  }
+
+  /** rest 锚点全集(床/长椅占地中心,格坐标),取距角色最近者 */
+  private _nearestRestAnchor(x: number, y: number): { cx: number; cy: number } | null {
+    let best: { cx: number; cy: number } | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const place of TOWN_MAP.places) {
+      for (const f of place.furniture ?? []) {
+        if (f.activityId !== 'rest') continue;
+        const cx = f.x + f.w / 2;
+        const cy = f.y + f.h / 2;
+        const dist = Math.abs(cx - x) + Math.abs(cy - y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { cx, cy };
+        }
+      }
+    }
+    return best;
+  }
+
+  /** 幽灵 👻 与低体力 ⚡ 徽标(懒创建,闪烁驱动) */
+  private _updateBadges(render: CharacterRender, now: number): void {
+    if (render.ghostBadge === null) {
+      render.ghostBadge = this.add
+        .text(0, BUBBLE_Y - 14, '👻', { fontSize: '10px' })
+        .setOrigin(0.5, 0.5);
+      render.node.add(render.ghostBadge);
+    }
+    render.ghostBadge.setVisible(!render.alive);
+    render.sprite.setTint(render.alive ? 0xffffff : 0x8899aa);
+    render.sprite.alpha = render.alive ? 1 : 0.55;
+    if (render.warnBadge === null) {
+      render.warnBadge = this.add
+        .text(13, -22, '⚡', { fontSize: '10px', color: '#ff4d4d' })
+        .setOrigin(0.5, 0.5)
+        .setStroke('rgba(0,0,0,0.5)', 2);
+      render.node.add(render.warnBadge);
+    }
+    render.warnBadge.setVisible(render.alive && render.energy <= 20 && Math.floor(now / 400) % 2 === 0);
+  }
+
+  /** 选中角色脚下呼吸椭圆环 */
+  private _drawSelectionRing(now: number): void {
+    const ring = this._selectionRing;
+    if (ring === null) return;
+    ring.clear();
+    const { selectedCharacterId } = useWorldStore.getState();
+    if (selectedCharacterId === null) return;
+    const render = this._characters.get(selectedCharacterId);
+    if (render === undefined) return;
+    ring.fillStyle(0x66ffcc, 0.25 + 0.15 * Math.sin(now / 500));
+    ring.fillEllipse(render.node.x, render.node.y + 8, 22, 10);
+  }
+
+  /** 广场喷泉: 石池+立柱+水面,每 ~200ms 按正弦相位重绘波纹 */
+  private _updateFountain(now: number): void {
+    if (now - this._lastFountainAt < 200) return;
+    this._lastFountainAt = now;
+    if (this._fountainGfx === null) {
+      this._fountainGfx = this.add.graphics().setDepth(2);
+    }
+    const g = this._fountainGfx;
+    g.clear();
+    const px = FOUNTAIN_RECT.x * TILE;
+    const py = FOUNTAIN_RECT.y * TILE;
+    const size = FOUNTAIN_RECT.w * TILE;
+    g.fillStyle(0x9a9aa2, 1);
+    g.fillRoundedRect(px + 1, py + 1, size - 2, size - 2, 5); // 石池外圈
+    g.fillStyle(0x7d7d85, 1);
+    g.fillRoundedRect(px + 3, py + 3, size - 6, size - 6, 4); // 池沿
+    g.fillStyle(0x5f9fd9, 1);
+    g.fillRect(px + 5, py + 5, size - 10, size - 10); // 水面
+    const cx = px + size / 2;
+    const cy = py + size / 2;
+    for (let i = 0; i < 3; i += 1) {
+      const phase = (now / 600 + i / 3) % 1;
+      g.lineStyle(1, 0xbfe3ff, 0.55 * (1 - phase));
+      g.strokeCircle(cx, cy, 4 + phase * (size / 2 - 6)); // 扩散波纹
+    }
+    g.fillStyle(0xb8b8c0, 1);
+    g.fillRect(cx - 3, cy - 3, 6, 8); // 中央立柱
+    g.fillStyle(0xd8d8e0, 1);
+    g.fillEllipse(cx, cy - 4, 14, 5); // 顶盆
+    g.fillStyle(0x9fe0ff, 1);
+    g.fillEllipse(cx, cy - 4, 9, 3); // 盆中水
+  }
+
+  /** 夜间灯光层: 路灯/围栏灯/窗光/室内暖光,ADD 混合三层同心光晕 */
+  private _buildLightLayer(): void {
+    const layer = this.add.container(0, 0).setDepth(101);
+    this._lightLayer = layer;
+    const glow = (tx: number, ty: number, scale = 1, alpha = 1): void => {
+      const g = this.add.graphics();
+      const cx = tx * TILE + TILE / 2;
+      const cy = ty * TILE + TILE / 2;
+      const warm = 0xffd27a;
+      g.fillStyle(warm, 0.1 * alpha);
+      g.fillCircle(cx, cy, 40 * scale);
+      g.fillStyle(warm, 0.18 * alpha);
+      g.fillCircle(cx, cy, 22 * scale);
+      g.fillStyle(warm, 0.5 * alpha);
+      g.fillCircle(cx, cy, 6 * scale);
+      g.blendMode = Phaser.BlendModes.ADD;
+      layer.add(g);
+    };
+    for (const [x, y] of [...STREET_LAMPS, ...PLAZA_LAMPS, ...PARK_LAMPS, ...FENCE_LAMPS]) {
+      glow(x, y);
+    }
+    for (const place of TOWN_MAP.places) {
+      if (place.door === undefined) continue;
+      // 窗光: 顶墙 2-3 扇窗位
+      const right = place.x + place.w - 1;
+      const xs = [...new Set([place.x + 2, place.x + Math.floor(place.w / 2), right - 2])];
+      for (const wx of xs) glow(wx, place.y, 0.8, 0.8);
+      // 室内暖光: 建筑中心大范围低强度
+      glow(place.x + place.w / 2 - 0.5, place.y + place.h / 2 - 0.5, place.w / 9, 0.3);
+    }
+    layer.alpha = 0;
   }
 
   /** 头顶活动气泡:活动开始挂载/结束销毁,进度环仅在 elapsed 变化时重绘,悬浮呼吸 */
@@ -454,8 +655,15 @@ export class WorldScene extends Phaser.Scene {
         .setStroke('rgba(0,0,0,0.6)', 3);
     }
 
-    for (const [lx, ly] of [...STREET_LAMPS, ...PLAZA_LAMPS]) {
+    for (const [lx, ly] of [...STREET_LAMPS, ...PLAZA_LAMPS, ...PARK_LAMPS, ...FENCE_LAMPS]) {
       this._prop(lx, ly, TILE_FRAME.lamp);
+    }
+    const flowerFrames = [TILE_FRAME.flowerPurple, TILE_FRAME.flowerYellow, TILE_FRAME.flowerOrange];
+    for (const [fx, fy] of DECOR_FLOWERS) {
+      this._overlay(fx, fy, flowerFrames[(fx + fy) % flowerFrames.length]!);
+    }
+    for (const [tx, ty] of APARTMENT_TREES) {
+      this._prop(tx, ty, PROP_TREES[(tx * 3 + ty) % PROP_TREES.length]!);
     }
   }
 
@@ -708,6 +916,8 @@ export class WorldScene extends Phaser.Scene {
       name: string;
       x: number;
       y: number;
+      energy: number;
+      alive: boolean;
       activity: { activityId: string; elapsedMinutes: number } | null;
     }[],
   ): void {
@@ -731,6 +941,11 @@ export class WorldScene extends Phaser.Scene {
           bubbleText: null,
           bubbleElapsed: -1,
           animKey: null,
+          alive: character.alive,
+          energy: character.energy,
+          resting: false,
+          ghostBadge: null,
+          warnBadge: null,
         };
         this._characters.set(character.id, render);
         render.node.setPosition(render.x * TILE + TILE / 2, render.y * TILE + TILE / 2);
@@ -740,6 +955,8 @@ export class WorldScene extends Phaser.Scene {
       render.inActivity = character.activity !== null;
       render.activityId = character.activity?.activityId ?? null;
       render.elapsedMinutes = character.activity?.elapsedMinutes ?? 0;
+      render.alive = character.alive;
+      render.energy = character.energy;
     }
     for (const [id, render] of this._characters) {
       if (!seen.has(id)) {

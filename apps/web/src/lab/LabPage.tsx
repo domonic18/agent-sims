@@ -8,7 +8,7 @@ import {
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { WorldCanvas } from '../game/WorldCanvas';
-import { setPaused, setTimeScale } from '../net/debugApi';
+import { reviveCharacter, setPaused, setTimeScale } from '../net/debugApi';
 import { connectWorld, sendIntent } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
 import { SidePanel } from '../ui/SidePanel';
@@ -42,6 +42,7 @@ export default function LabPage() {
   const selectedId = useWorldStore((state) => state.selectedCharacterId);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [controlError, setControlError] = useState<string | null>(null);
+  const [sideCollapsed, setSideCollapsed] = useState(false);
   const nextLogIdRef = useRef(1);
 
   useEffect(() => {
@@ -91,6 +92,16 @@ export default function LabPage() {
     }
   };
 
+  const revive = async (): Promise<void> => {
+    if (character === null) return;
+    try {
+      await reviveCharacter(character.id);
+      setControlError(null);
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
     <main className="lab-page">
       <div className="status-bar">
@@ -128,6 +139,11 @@ export default function LabPage() {
           ))}
         </span>
         {snapshot?.paused === true && <span className="paused-badge">已暂停</span>}
+        {character !== null && !character.alive && (
+          <button type="button" className="revive-btn" onClick={() => void revive()}>
+            ✚ 复活 {character.name}
+          </button>
+        )}
         {controlError !== null && <span className="control-error">{controlError}</span>}
       </div>
 
@@ -136,11 +152,11 @@ export default function LabPage() {
         <Toasts />
       </div>
 
-      <aside className="lab-side">
+      <aside className={sideCollapsed ? 'lab-side collapsed' : 'lab-side'}>
         <SidePanel />
         {character !== null && (
           <section className="lab-panel">
-            <h3>意图操作台(6 意图全量)</h3>
+            <h3>意图操作台(7 意图全量)</h3>
             <IntentForms key={character.id} character={character} onRun={run} />
           </section>
         )}
@@ -157,6 +173,7 @@ export default function LabPage() {
                   <th>体力</th>
                   <th>幸福</th>
                   <th>金币</th>
+                  <th>存活</th>
                   <th>活动</th>
                 </tr>
               </thead>
@@ -167,9 +184,10 @@ export default function LabPage() {
                     <td>
                       {c.x},{c.y}
                     </td>
-                    <td>{Math.round(c.energy)}</td>
+                    <td className={c.energy <= 20 ? 'low-energy' : ''}>{Math.round(c.energy)}</td>
                     <td>{Math.round(c.happiness)}</td>
                     <td>{Math.round(c.coins)}</td>
+                    <td className={c.alive ? '' : 'dead'}>{c.alive ? '✓' : '☠'}</td>
                     <td>{c.activity?.activityId ?? '—'}</td>
                   </tr>
                 ))}
@@ -178,6 +196,16 @@ export default function LabPage() {
           )}
         </section>
       </aside>
+
+      <button
+        type="button"
+        className="lab-side-toggle"
+        style={{ right: sideCollapsed ? 12 : 318 }}
+        title={sideCollapsed ? '展开操作列' : '收起操作列'}
+        onClick={() => setSideCollapsed((value) => !value)}
+      >
+        {sideCollapsed ? '◀' : '▶'}
+      </button>
 
       <section className="lab-log">
         <h3>回执日志(最新在上)</h3>
@@ -203,7 +231,7 @@ export default function LabPage() {
   );
 }
 
-/** 7 意图分组表单;key=character.id 挂载,切角色时表单自动重置 */
+/** 7 意图分组表单(buy_item/eat_item 同组);key=character.id 挂载,切角色时表单自动重置 */
 function IntentForms({
   character,
   onRun,
@@ -222,7 +250,7 @@ function IntentForms({
         <ActivityForm character={character} onRun={onRun} />
       </div>
       <div className="intent-group">
-        <span className="intent-name">buy_item</span>
+        <span className="intent-name">buy_item / eat_item</span>
         <ShopForm character={character} onRun={onRun} />
       </div>
       <div className="intent-group">
@@ -309,6 +337,16 @@ function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: R
         }
       >
         购买
+      </button>
+      <button
+        type="button"
+        disabled={itemId === ''}
+        onClick={() =>
+          itemId !== '' &&
+          void onRun({ type: 'eat_item', characterId: character.id, itemId }, `eat_item(${itemId})`)
+        }
+      >
+        吃
       </button>
     </span>
   );

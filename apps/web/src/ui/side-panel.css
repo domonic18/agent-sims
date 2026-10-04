@@ -158,3 +158,45 @@
   color: #c62828;
   background: #ffebee;
 }
+
+/* 体力区段配色(M3.6f): >20 绿 / ≤20 橙 / ≤5 红 */
+.vital-fill.ok {
+  background: #2e7d32;
+}
+
+.vital-fill.warn {
+  background: #ef6c00;
+}
+
+.vital-fill.critical {
+  background: #c62828;
+}
+
+/* 死亡(幽灵态)横幅 */
+.death-banner {
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: #263238;
+  color: #ff8a80;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* 资产列表: 租约过期红警 / 自有徽标 */
+.activity-list li.expired span {
+  color: #c62828;
+}
+
+.owned-tag {
+  font-style: normal;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 11px;
+}
+
+.hint.err {
+  color: #c62828;
+}

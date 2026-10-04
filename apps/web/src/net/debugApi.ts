@@ -20,3 +20,7 @@ export const setPaused = (paused: boolean): Promise<void> =>
 
 export const setTimeScale = (scale: number): Promise<void> =>
   post('/debug/time/scale', { scale });
+
+/** 复活幽灵态角色(M3.6f 死亡机制) */
+export const reviveCharacter = (characterId: string): Promise<void> =>
+  post('/debug/revive', { characterId });

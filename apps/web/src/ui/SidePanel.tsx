@@ -64,7 +64,8 @@ export function SidePanel() {
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
   const focusPlaceId = useWorldStore((state) => state.focusPlaceId);
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
-  const [pendingActivityId, setPendingActivityId] = useState<string | null>(null);
+  /** go-and-do 待办: 到达目标后自动接续(activity=开始活动 / buy=店内购入) */
+  const [pending, setPending] = useState<{ kind: 'activity' | 'buy'; id: string } | null>(null);
   const pendingArrivalRef = useRef(false);
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
@@ -119,49 +120,82 @@ export function SidePanel() {
     setFeedback(ack);
     pushToast(ack.ok, ack.message);
     pendingArrivalRef.current = false;
-    setPendingActivityId(ack.ok ? def.id : null);
+    setPending(ack.ok ? { kind: 'activity', id: def.id } : null);
+  };
+
+  /**
+   * 购物(M3.6f 店内购约束):已在商店直接购入;否则 go-and-do——
+   * 先前往商店入口,到达后自动接续 buy_item。
+   */
+  const buyItem = async (itemId: string): Promise<void> => {
+    if (character === null || snapshot === null) return;
+    if (atPlace?.id === 'shop') {
+      await run({ type: 'buy_item', characterId: character.id, itemId });
+      return;
+    }
+    const shop = TOWN_MAP.places.find((p) => p.id === 'shop');
+    if (shop === undefined) return;
+    const ack = await sendIntent({
+      type: 'move_to',
+      characterId: character.id,
+      x: shop.entrance.x,
+      y: shop.entrance.y,
+    });
+    setFeedback(ack);
+    pushToast(ack.ok, ack.ok ? '前往商店,到达后自动购入' : ack.message);
+    pendingArrivalRef.current = false;
+    setPending(ack.ok ? { kind: 'buy', id: itemId } : null);
   };
 
   useEffect(() => {
-    setPendingActivityId(null);
+    setPending(null);
   }, [selectedId]);
 
-  // 前往途中随每 tick 快照检查:到达锚点使用格(或场所)后自动接续开始;
+  // 前往途中随每 tick 快照检查:到达目标(锚点使用格/场所/商店)后自动接续;
   // 途中改道/被打断则放弃。pendingArrivalRef 标记"快照已反映行进",
   // 未见行进前不判弃(move_to 刚下发时快照尚未反映移动)。
   useEffect(() => {
-    if (pendingActivityId === null || character === null || snapshot === null) return;
+    if (pending === null || character === null || snapshot === null) return;
     if (character.activity !== null) {
       pendingArrivalRef.current = false;
-      setPendingActivityId(null);
+      setPending(null);
       return;
     }
     if (character.pathRemaining > 0) {
       pendingArrivalRef.current = true;
       return;
     }
-    const def = getActivityDefinition(pendingActivityId);
-    if (def === null) {
+    const finish = (): void => {
       pendingArrivalRef.current = false;
-      setPendingActivityId(null);
-      return;
-    }
-    const anchors = activityAnchors(def.id);
-    const arrived =
-      anchors.length > 0
-        ? anchors.some((a) => character.x === a.x && character.y === a.y)
-        : def.placeIds.includes(findPlaceAt(snapshot, character.x, character.y)?.id ?? '');
-    if (arrived) {
-      pendingArrivalRef.current = false;
-      setPendingActivityId(null);
-      void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
-      return;
+      setPending(null);
+    };
+    if (pending.kind === 'buy') {
+      if (findPlaceAt(snapshot, character.x, character.y)?.id === 'shop') {
+        finish();
+        void run({ type: 'buy_item', characterId: character.id, itemId: pending.id });
+        return;
+      }
+    } else {
+      const def = getActivityDefinition(pending.id);
+      if (def === null) {
+        finish();
+        return;
+      }
+      const anchors = activityAnchors(def.id);
+      const arrived =
+        anchors.length > 0
+          ? anchors.some((a) => character.x === a.x && character.y === a.y)
+          : def.placeIds.includes(findPlaceAt(snapshot, character.x, character.y)?.id ?? '');
+      if (arrived) {
+        finish();
+        void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
+        return;
+      }
     }
     if (pendingArrivalRef.current) {
-      pendingArrivalRef.current = false;
-      setPendingActivityId(null);
+      finish();
     }
-  }, [pendingActivityId, character, snapshot]);
+  }, [pending, character, snapshot]);
 
   useEffect(() => {
     if (focusPlaceId === null) return;
@@ -182,7 +216,16 @@ export function SidePanel() {
       : 0;
   const atPlace = character !== null ? findPlaceAt(snapshot, character.x, character.y) : null;
   const housing = character?.housing ?? null;
-  const property = PROPERTY_DEFINITIONS[0];
+  const dead = character !== null && !character.alive;
+  const moving = character !== null && character.pathRemaining > 0;
+  const inShop = atPlace?.id === 'shop';
+  const day = snapshot.clock.day;
+  // 冰箱进食前提: 位于自己住房且(自有或租约未过期)
+  const atHome = housing !== null && atPlace?.id === housing.propertyId;
+  const leaseValid = housing === null || housing.ownership === 'owned' || housing.paidThroughDay >= day;
+  const inventoryEntries = Object.entries(character?.foodInventory ?? {}).filter(
+    ([, count]) => count > 0,
+  );
 
   return (
     <aside className="side-panel">
@@ -207,6 +250,9 @@ export function SidePanel() {
             <VitalBar label="体力" value={character.energy} />
             <VitalBar label="幸福" value={character.happiness} />
             <div className="coins">金币 {Math.round(character.coins * 10) / 10}</div>
+            {!character.alive && (
+              <div className="death-banner">☠️ 已死亡(幽灵态),等待复活(/lab 可复活)</div>
+            )}
           </div>
         )}
       </section>
@@ -231,7 +277,7 @@ export function SidePanel() {
                     </span>
                     <button
                       type="button"
-                      disabled={moving || here}
+                      disabled={moving || here || dead}
                       onClick={() =>
                         void run({
                           type: 'move_to',
@@ -279,12 +325,12 @@ export function SidePanel() {
                       ? anchors.some((a) => character.x === a.x && character.y === a.y)
                       : def.placeIds.includes(atPlace?.id ?? '');
                   const moving = character.pathRemaining > 0;
-                  const pending = pendingActivityId === def.id;
+                  const enRoute = pending?.kind === 'activity' && pending.id === def.id;
                   return (
                     <li
                       key={def.id}
                       id={`activity-row-${def.id}`}
-                      className={pending ? 'focused' : ''}
+                      className={enRoute ? 'focused' : ''}
                     >
                       <span>
                         {def.name}
@@ -298,11 +344,11 @@ export function SidePanel() {
                       </span>
                       <button
                         type="button"
-                        disabled={moving}
+                        disabled={moving || dead}
                         title={here ? undefined : `自动前往 ${targetLabel} 并开始`}
                         onClick={() => void startActivity(def)}
                       >
-                        {pending ? '途中…' : '开始'}
+                        {enRoute ? '途中…' : '开始'}
                       </button>
                     </li>
                   );
@@ -312,59 +358,133 @@ export function SidePanel() {
           </section>
 
           <section className="panel-section">
-            <h3>资产</h3>
-            {housing !== null && property !== undefined && (
-              <div className="housing">
-                <div>
-                  {property.name}:{' '}
-                  {housing.ownership === 'owned'
-                    ? '自有'
-                    : `租约付至第 ${housing.paidThroughDay} 日`}
-                </div>
-                {housing.ownership === 'rent' && (
-                  <div className="housing-actions">
-                    <button
-                      type="button"
-                      onClick={() => void run({ type: 'rent_property', characterId: character.id, propertyId: property.id })}
-                    >
-                      续租 {property.rentPrice}币
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void run({ type: 'buy_property', characterId: character.id, propertyId: property.id })}
-                    >
-                      买断 {property.buyPrice}币
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <h3>资产(四公寓)</h3>
+            <ul className="activity-list">
+              {PROPERTY_DEFINITIONS.map((prop) => {
+                const current = housing?.propertyId === prop.id;
+                const owned = current && housing?.ownership === 'owned';
+                const expired =
+                  current && housing?.ownership === 'rent' && housing.paidThroughDay < day;
+                return (
+                  <li
+                    key={prop.id}
+                    id={`asset-row-${prop.id}`}
+                    className={expired ? 'expired' : ''}
+                  >
+                    <span>
+                      {prop.name}
+                      {current && <small> · 现居</small>}
+                      {current && !owned && (
+                        <small>
+                          {' '}· 付至第 {housing?.paidThroughDay} 日
+                          {expired ? ' ⚠已过期' : ''}
+                        </small>
+                      )}
+                      <small>
+                        {' '}租{prop.rentPrice}/买{prop.buyPrice}币
+                      </small>
+                    </span>
+                    {owned ? (
+                      <em className="owned-tag">自有</em>
+                    ) : (
+                      <span className="housing-actions">
+                        <button
+                          type="button"
+                          disabled={moving || dead}
+                          onClick={() =>
+                            void run({ type: 'rent_property', characterId: character.id, propertyId: prop.id })
+                          }
+                        >
+                          {current ? '续租' : '租下'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={moving || dead}
+                          onClick={() =>
+                            void run({ type: 'buy_property', characterId: character.id, propertyId: prop.id })
+                          }
+                        >
+                          {current ? '买断' : '买下'}
+                        </button>
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </section>
 
           <section
             id="place-row-shop"
             className={focusPlaceId === 'shop' ? 'panel-section focused' : 'panel-section'}
           >
-            <h3>商店</h3>
+            <h3>商店{inShop ? ' · 在店内' : ''}</h3>
             <ul className="shop-list">
-              {SHOP_ITEMS.map((item) => (
-                <li key={item.id}>
-                  <span>
-                    {item.name}
-                    <small>
-                      {item.price}币 体力+{item.effects.energy}
-                      {item.effects.happiness > 0 ? ` 幸福+${item.effects.happiness}` : ''}
-                    </small>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void run({ type: 'buy_item', characterId: character.id, itemId: item.id })}
-                  >
-                    食用
-                  </button>
-                </li>
-              ))}
+              {SHOP_ITEMS.map((item) => {
+                const pendingBuy = pending?.kind === 'buy' && pending.id === item.id;
+                return (
+                  <li key={item.id}>
+                    <span>
+                      {item.name}
+                      <small>
+                        {item.price}币 体力+{item.effects.energy}
+                        {item.effects.happiness > 0 ? ` 幸福+${item.effects.happiness}` : ''}
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={moving || dead}
+                      title={inShop ? '购入冰箱存库存' : '自动前往商店并购入'}
+                      onClick={() => void buyItem(item.id)}
+                    >
+                      {pendingBuy ? '途中…' : inShop ? '购入' : '到店购买'}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
+          </section>
+
+          <section className="panel-section">
+            <h3>冰箱(回自家吃)</h3>
+            {inventoryEntries.length === 0 ? (
+              <p className="hint">空空如也——到商店购入食物囤进冰箱</p>
+            ) : (
+              <ul className="shop-list">
+                {inventoryEntries.map(([itemId, count]) => {
+                  const item = SHOP_ITEMS.find((i) => i.id === itemId);
+                  const canEat = !dead && atHome && leaseValid;
+                  return (
+                    <li key={itemId}>
+                      <span>
+                        {item?.name ?? itemId}
+                        <small>×{count}</small>
+                      </span>
+                      <button
+                        type="button"
+                        disabled={!canEat}
+                        title={
+                          !atHome
+                            ? '须回到自己的住房才能吃'
+                            : !leaseValid
+                              ? '租约已过期,先续租或买断'
+                              : `体力+${item?.effects.energy ?? 0}`
+                        }
+                        onClick={() =>
+                          void run({ type: 'eat_item', characterId: character.id, itemId })
+                        }
+                      >
+                        吃
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {!atHome && inventoryEntries.length > 0 && (
+              <p className="hint">不在自家:吃之前先回家(入口或室内)</p>
+            )}
+            {atHome && !leaseValid && <p className="hint err">租约已过期,无法进食——先续租或买断</p>}
           </section>
         </>
       )}
@@ -380,11 +500,13 @@ export function SidePanel() {
 
 function VitalBar({ label, value }: { label: string; value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
+  // 体力区段配色(M3.6f): >20 绿 / ≤20 橙 / ≤5 红
+  const level = value <= 5 ? 'critical' : value <= 20 ? 'warn' : 'ok';
   return (
     <div className="vital">
       <span className="vital-label">{label}</span>
       <div className="vital-track">
-        <div className="vital-fill" style={{ width: `${clamped}%` }} />
+        <div className={`vital-fill ${level}`} style={{ width: `${clamped}%` }} />
       </div>
       <span className="vital-value">{Math.round(value)}</span>
     </div>
