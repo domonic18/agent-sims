@@ -69,7 +69,7 @@ describe('活动执行(M3.1)', () => {
     const { sim, events } = simWith('dave', 'park');
     sim.requestStartActivity('dave', 'stroll');
     sim.advanceTicks(5);
-    sim.requestMoveTo('dave', 8, 19);
+    sim.requestMoveTo('dave', 10, 28); // 公园内部目标
     const dave = sim.character('dave');
     expect(dave.activity).toBeNull();
     expect(dave.path.length).toBeGreaterThan(0); // 路径已重新规划
@@ -98,8 +98,8 @@ describe('活动执行(M3.1)', () => {
   it('校验: 非场所/移动中/重复开始/未知活动/无活动停止均拒绝', () => {
     const { sim } = simWith('frank', 'home');
     expect(() => sim.requestStartActivity('frank', 'study')).toThrow(/场所/);
-    sim.spawnCharacter('gina', 10, 10, 'gina');
-    sim.requestMoveTo('gina', 11, 10);
+    sim.spawnCharacter('gina', 20, 13, 'gina');
+    sim.requestMoveTo('gina', 21, 13);
     expect(() => sim.requestStartActivity('gina', 'stroll')).toThrow(/移动中/);
     sim.requestStartActivity('frank', 'rest');
     expect(() => sim.requestStartActivity('frank', 'rest')).toThrow(/已在进行/);

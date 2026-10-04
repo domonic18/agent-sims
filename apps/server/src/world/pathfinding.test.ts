@@ -7,6 +7,7 @@ const miniMap: TileMapDefinition = {
   width: 9,
   height: 7,
   blockedRects: [],
+  paths: [],
   places: [],
 };
 const withWall: TileMapDefinition = {
@@ -14,6 +15,7 @@ const withWall: TileMapDefinition = {
   height: 7,
   // 竖墙 x=4,y=0..4,留 y=5..6 通道
   blockedRects: [{ x: 4, y: 0, w: 1, h: 5 }],
+  paths: [],
   places: [],
 };
 
@@ -58,6 +60,7 @@ describe('A* 寻路', () => {
         { x: 3, y: 3, w: 1, h: 1 },
         { x: 5, y: 3, w: 1, h: 1 },
       ],
+      paths: [],
       places: [],
     };
     const sealedMap = TileMap.fromDefinition(sealed);
@@ -78,6 +81,7 @@ describe('A* 寻路', () => {
         { x: 2, y: 2, w: 6, h: 5 },
         { x: 13, y: 11, w: 6, h: 4 },
       ],
+      paths: [],
       places: [
         { id: 'home', name: '公寓', x: 2, y: 2, w: 6, h: 5, entrance: { x: 5, y: 7 } },
         { id: 'park', name: '公园', x: 8, y: 17, w: 14, h: 5, entrance: { x: 14, y: 16 } },

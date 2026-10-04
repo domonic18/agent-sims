@@ -3,7 +3,7 @@ import { Simulation } from './simulation.js';
 
 function simWith(id: string, coins: number): { sim: Simulation; id: string } {
   const sim = new Simulation();
-  sim.spawnCharacter(id, 10, 10, id);
+  sim.spawnCharacter(id, 20, 13, id);
   sim.character(id).coins = coins;
   return { sim, id };
 }
@@ -11,7 +11,7 @@ function simWith(id: string, coins: number): { sim: Simulation; id: string } {
 describe('房产与家具摆放(M3.3)', () => {
   it('初始租房: 生成即租住公寓,预付至次日,快照携带住宿状态', () => {
     const sim = new Simulation();
-    sim.spawnCharacter('alice', 10, 10);
+    sim.spawnCharacter('alice', 20, 13);
     const alice = sim.character('alice');
     expect(alice.housing).toMatchObject({
       propertyId: 'home',
@@ -87,7 +87,7 @@ describe('房产与家具摆放(M3.3)', () => {
 
   it('核心循环串接: 打工赚币→买家具→摆放生效→买食物应急', () => {
     const { sim } = simWith('gina', 0);
-    const office = { x: 15, y: 8 };
+    const office = { x: 49, y: 12 }; // 办公楼入口
     sim.spawnCharacter('worker', office.x, office.y, 'worker');
     sim.requestStartActivity('worker', 'work');
     sim.advanceTicks(120);

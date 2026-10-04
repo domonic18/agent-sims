@@ -17,7 +17,7 @@ function parseArgs(argv: readonly string[]): { ticks: number } {
 
 const { ticks } = parseArgs(process.argv.slice(2));
 const sim = new Simulation();
-sim.spawnCharacter('demo', 5, 7, '演示'); // home 门口,随模拟自然衰减
+sim.spawnCharacter('demo', 8, 12, '演示'); // home 门口,随模拟自然衰减
 
 let lastDay = sim.clock.day;
 const VITALS_EVERY_TICKS = 240; // 每 4 游戏小时输出一行数值曲线

@@ -7,6 +7,7 @@ const miniMap: TileMapDefinition = {
   width: 8,
   height: 6,
   blockedRects: [{ x: 3, y: 1, w: 3, h: 2 }],
+  paths: [],
   places: [{ id: 'hut', name: '小屋', x: 3, y: 1, w: 3, h: 2, entrance: { x: 4, y: 3 } }],
 };
 
@@ -34,10 +35,10 @@ describe('TileMap 可行走层', () => {
 
   it('placeAt 命中场所占地,含可行走场所(公园)', () => {
     const map = TileMap.fromDefinition(TOWN_MAP);
-    expect(map.placeAt(3, 3)?.id).toBe('home');
-    expect(map.placeAt(14, 18)?.id).toBe('park');
-    expect(map.placeAt(15, 8)).toBeNull(); // 入口格不算场所内
-    expect(map.placeAt(31, 23)).toBeNull();
+    expect(map.placeAt(5, 5)?.id).toBe('home');
+    expect(map.placeAt(10, 30)?.id).toBe('park');
+    expect(map.placeAt(49, 12)).toBeNull(); // 入口格不算场所内
+    expect(map.placeAt(54, 38)).toBeNull();
   });
 
   it('placeById 返回场所定义', () => {
@@ -74,8 +75,8 @@ describe('TileMap 可行走层', () => {
 
   it('Simulation 持有城镇地图且 7 场所入口全部合法', () => {
     const sim = new Simulation();
-    expect(sim.map.width).toBe(32);
-    expect(sim.map.height).toBe(24);
+    expect(sim.map.width).toBe(56);
+    expect(sim.map.height).toBe(40);
     expect(sim.map.places).toHaveLength(7); // 构造已验证全部入口
   });
 });

@@ -91,8 +91,8 @@ describe('socket 同步层', () => {
   });
 
   it('每 tick 广播快照,角色移动产生到达事件', async () => {
-    app.simulation.spawnCharacter('alice', 5, 7, '爱丽丝');
-    app.simulation.requestMoveTo('alice', 7, 7);
+    app.simulation.spawnCharacter('alice', 8, 12, '爱丽丝');
+    app.simulation.requestMoveTo('alice', 10, 12);
 
     const socket = openSocket();
     const snapshotPromise = waitFor<WorldSnapshotMessage>(socket, SOCKET_EVENTS.snapshot);
@@ -117,11 +117,11 @@ describe('socket 同步层', () => {
     expect(pumped).toBe(3);
     await until(() => tickMessages.length >= 3);
     expect(tickMessages.map((message) => message.tick)).toEqual([1, 2, 3]);
-    expect(tickMessages[2]?.characters[0]?.x).toBe(7);
+    expect(tickMessages[2]?.characters[0]?.x).toBe(10);
     expect(tickMessages[2]?.characters[0]?.pathRemaining).toBe(0);
 
     const arrived = events.find((message) => message.event.type === 'character.arrived');
-    expect(arrived?.event).toMatchObject({ characterId: 'alice', tick: 2, x: 7, y: 7 });
+    expect(arrived?.event).toMatchObject({ characterId: 'alice', tick: 2, x: 10, y: 12 });
     socket.disconnect();
     app.simulation.characters.delete('alice');
   });
@@ -151,7 +151,7 @@ describe('socket 同步层', () => {
   });
 
   it('意图通道: player 指令执行并 ack,spectator 指令丢弃,非法意图拒绝', async () => {
-    app.simulation.spawnCharacter('bill', 5, 7, '比尔');
+    app.simulation.spawnCharacter('bill', 8, 12, '比尔');
     const emitIntent = (socket: Socket, payload: unknown): Promise<IntentAck> =>
       new Promise((resolve) => {
         socket.emit(CLIENT_EVENTS.intent, payload, (ack: IntentAck) => resolve(ack));
@@ -161,7 +161,7 @@ describe('socket 同步层', () => {
     await connected(player);
     const moved = await emitIntent(
       player,
-      { type: 'move_to', characterId: 'bill', x: 6, y: 7 },
+      { type: 'move_to', characterId: 'bill', x: 9, y: 12 },
     );
     expect(moved.ok).toBe(true);
     expect(moved.message).toContain('路径');
@@ -181,7 +181,7 @@ describe('socket 同步层', () => {
     await connected(spectator);
     const rejected = await emitIntent(
       spectator,
-      { type: 'move_to', characterId: 'bill', x: 7, y: 7 },
+      { type: 'move_to', characterId: 'bill', x: 10, y: 12 },
     );
     expect(rejected).toMatchObject({ ok: false, message: expect.stringContaining('只读') });
     expect(app.simulation.character('bill').path).toHaveLength(1); // 未被执行

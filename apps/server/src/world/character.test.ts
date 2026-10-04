@@ -99,44 +99,44 @@ describe('Simulation 移动集成', () => {
     const sim = new Simulation();
     const events: WorldEvent[] = [];
     sim.events.subscribe((event) => events.push(event));
-    sim.spawnCharacter('jev', 5, 7, '杰夫'); // home 入口
-    sim.requestMoveTo('jev', 8, 7);
+    sim.spawnCharacter('jev', 8, 12, '杰夫'); // home 入口
+    sim.requestMoveTo('jev', 11, 12);
     expect(sim.character('jev').path.length).toBe(3);
     sim.advanceTicks(3);
-    expect(sim.character('jev').x).toBe(8);
+    expect(sim.character('jev').x).toBe(11);
     expect(sim.character('jev').path).toHaveLength(0);
     expect(events).toEqual([
-      { type: 'character.arrived', characterId: 'jev', tick: 3, x: 8, y: 7 },
+      { type: 'character.arrived', characterId: 'jev', tick: 3, x: 11, y: 12 },
     ]);
   });
 
   it('requestMoveTo 拒绝不可行走目标/未知角色', () => {
     const sim = new Simulation();
-    sim.spawnCharacter('a', 5, 7);
-    expect(() => sim.requestMoveTo('a', 3, 3)).toThrow(/不可行走/); // 公寓屋顶
-    expect(() => sim.requestMoveTo('ghost', 5, 8)).toThrow(/角色不存在/);
+    sim.spawnCharacter('a', 8, 12);
+    expect(() => sim.requestMoveTo('a', 5, 6)).toThrow(/不可行走/); // 公寓屋顶
+    expect(() => sim.requestMoveTo('ghost', 13, 12)).toThrow(/角色不存在/);
   });
 
   it('spawnCharacter 拒绝重复 id 与不可行走出生点', () => {
     const sim = new Simulation();
-    sim.spawnCharacter('a', 5, 7);
-    expect(() => sim.spawnCharacter('a', 6, 7)).toThrow(/已存在/);
+    sim.spawnCharacter('a', 8, 12);
+    expect(() => sim.spawnCharacter('a', 9, 12)).toThrow(/已存在/);
     expect(() => sim.spawnCharacter('b', 0, 0)).toThrow(/不可行走/); // 边界墙
   });
 
   it('移动中改目标:重置路径从当前位置出发', () => {
     const sim = new Simulation();
-    sim.spawnCharacter('a', 5, 7);
-    sim.requestMoveTo('a', 10, 7);
+    sim.spawnCharacter('a', 8, 12);
+    sim.requestMoveTo('a', 13, 12);
     sim.advanceTicks(2);
-    expect(sim.character('a').x).toBe(7);
-    sim.requestMoveTo('a', 9, 10); // 商店占地 x2..7,选 x=9 避开
+    expect(sim.character('a').x).toBe(10);
+    sim.requestMoveTo('a', 12, 15); // 商店占地 x20..26,选广场西侧草地避开
     const path = sim.character('a').path;
     const first = path[0]!;
-    expect(Math.abs(first.x - 7) + Math.abs(first.y - 7)).toBe(1); // 首步从当前位置相邻格起算
+    expect(Math.abs(first.x - 10) + Math.abs(first.y - 12)).toBe(1); // 首步从当前位置相邻格起算
     sim.advanceTicks(path.length);
     const final = sim.character('a');
-    expect(final.x).toBe(9);
-    expect(final.y).toBe(10);
+    expect(final.x).toBe(12);
+    expect(final.y).toBe(15);
   });
 });

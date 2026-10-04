@@ -4,7 +4,7 @@ import { Simulation } from './simulation.js';
 
 function simWith(id: string, coins: number): { sim: Simulation; id: string } {
   const sim = new Simulation();
-  sim.spawnCharacter(id, 10, 10, id);
+  sim.spawnCharacter(id, 20, 13, id);
   sim.character(id).coins = coins;
   return { sim, id };
 }
