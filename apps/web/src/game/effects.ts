@@ -2,33 +2,15 @@ import Phaser from 'phaser';
 import { TOWN_MAP } from '@sims/shared';
 import { TILE } from './assets';
 import type { CharacterRender } from './character-view';
-import { FENCE_LAMPS, PARK_LAMPS, PLAZA_LAMPS, STREET_LAMPS } from './decor';
 
 const FOUNTAIN_RECT = { x: 30, y: 18, w: 3, h: 3 };
 
 /**
- * 夜间灯光层(M3.6g 重做): 圆形光圈只留户外(路灯/围栏灯/公园/广场);
- * 有门建筑改为整屋暖色矩形(整间亮),仅门口保留小光圈透光。
+ * 夜间灯光层(M3.6i 收敛): 圆形光圈全部移除(路灯/围栏灯/公园/广场/门口透光),
+ * 仅保有门建筑整屋暖色矩形(整间亮),灯柱本体仍由 terrain 绘制。
  */
 export function buildLightLayer(scene: Phaser.Scene): Phaser.GameObjects.Container {
   const layer = scene.add.container(0, 0).setDepth(101);
-  const glow = (tx: number, ty: number, scale = 1, alpha = 1): void => {
-    const g = scene.add.graphics();
-    const cx = tx * TILE + TILE / 2;
-    const cy = ty * TILE + TILE / 2;
-    const warm = 0xffd27a;
-    g.fillStyle(warm, 0.1 * alpha);
-    g.fillCircle(cx, cy, 40 * scale);
-    g.fillStyle(warm, 0.18 * alpha);
-    g.fillCircle(cx, cy, 22 * scale);
-    g.fillStyle(warm, 0.5 * alpha);
-    g.fillCircle(cx, cy, 6 * scale);
-    g.blendMode = Phaser.BlendModes.ADD;
-    layer.add(g);
-  };
-  for (const [x, y] of [...STREET_LAMPS, ...PLAZA_LAMPS, ...PARK_LAMPS, ...FENCE_LAMPS]) {
-    glow(x, y);
-  }
   for (const place of TOWN_MAP.places) {
     if (place.door === undefined) continue;
     // 整屋暖光: 覆盖场所占地的低强度矩形,ADD 混合随夜显隐
@@ -37,7 +19,6 @@ export function buildLightLayer(scene: Phaser.Scene): Phaser.GameObjects.Contain
     room.fillRect(place.x * TILE, place.y * TILE, place.w * TILE, place.h * TILE);
     room.blendMode = Phaser.BlendModes.ADD;
     layer.add(room);
-    glow(place.door.x, place.door.y, 0.7, 0.9); // 门口透光
   }
   layer.alpha = 0;
   return layer;
