@@ -52,15 +52,12 @@ export interface WorldSnapshotMessage {
     coins: number;
     /** 进行中活动(null=空闲);前端活动面板与气泡消费 */
     activity: { activityId: string; elapsedMinutes: number } | null;
-    /** 家具库存(已购未摆放;食物即买即耗不入此列);M3.3 摆放后转住宅摆放 */
-    items: string[];
-    /** 住宿状态(null=无住宿): 租约付到日/自有/已摆放家具 */
+    /** 住宿状态(null=无住宿): 租约付到日/自有 */
     housing: {
       propertyId: string;
       ownership: 'rent' | 'owned';
       /** 租约付到的游戏日(含);自有忽略此字段 */
       paidThroughDay: number;
-      placedItems: string[];
     } | null;
   }>;
 }

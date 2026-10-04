@@ -3,7 +3,6 @@ import {
   buyItemIntentSchema,
   buyPropertyIntentSchema,
   moveToIntentSchema,
-  placeFurnitureIntentSchema,
   rentPropertyIntentSchema,
 } from '@sims/shared';
 import { executeIntent } from './execute.js';
@@ -36,20 +35,21 @@ describe('executeIntent 意图执行', () => {
     ).toThrow(/角色不存在/);
   });
 
-  it('buy_item: 家具入库存,余额不足拒绝', () => {
+  it('buy_item: 食物即买即食,余额不足拒绝', () => {
     const sim = new Simulation();
     sim.spawnCharacter('jev', 8, 12);
     sim.character('jev').coins = 30;
-    const bought = executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'chair' }));
+    const bought = executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'coffee' }));
     expect(bought.ok).toBe(true);
-    expect(bought.message).toContain('存入库存');
-    expect(sim.character('jev').items).toEqual(['chair']);
+    expect(bought.message).toContain('购买并食用');
+    expect(sim.character('jev').coins).toBe(24);
+    sim.character('jev').coins = 5;
     expect(() =>
-      executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'bed' })),
+      executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'cake' })),
     ).toThrow(/金币不足/);
   });
 
-  it('rent/buy_property 与 place_furniture: 返回摘要消息', () => {
+  it('rent/buy_property: 返回摘要消息', () => {
     const sim = new Simulation();
     sim.spawnCharacter('jev', 8, 12);
     sim.character('jev').coins = 600;
@@ -57,10 +57,5 @@ describe('executeIntent 意图执行', () => {
     expect(rented.message).toContain('租约付至第');
     const bought = executeIntent(sim, buyPropertyIntentSchema.parse({ type: 'buy_property', characterId: 'jev', propertyId: 'home' }));
     expect(bought.message).toContain('买下');
-    sim.character('jev').coins = 100;
-    executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'lamp' }));
-    const placed = executeIntent(sim, placeFurnitureIntentSchema.parse({ type: 'place_furniture', characterId: 'jev', itemId: 'lamp' }));
-    expect(placed.message).toContain('摆放');
-    expect(sim.character('jev').housing?.placedItems).toEqual(['lamp']);
   });
 });

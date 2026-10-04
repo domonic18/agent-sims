@@ -56,16 +56,6 @@ export const TILE_FRAME = {
 /** 公园点缀树(圆树/松树/秋树/果树混植) */
 export const PROP_TREES = [TILE_FRAME.tree, TILE_FRAME.pine, TILE_FRAME.autumn] as const;
 
-/** 场所 → 屋顶 tile(id 与 shared TOWN_MAP places 一致) */
-export const ROOF_FRAME: Record<string, number> = {
-  home: TILE_FRAME.roofHome,
-  office: TILE_FRAME.roofOffice,
-  library: TILE_FRAME.roofLibrary,
-  shop: TILE_FRAME.roofShop,
-  restaurant: TILE_FRAME.roofRestaurant,
-  gym: TILE_FRAME.roofGym,
-};
-
 /**
  * LPC 穿衣角色表(288x384,32px 帧,9 列 × 12 行):
  * rows 0-3 行走(9 帧)/ rows 4-7 待机(取前 2 帧呼吸循环)/ rows 8-11 坐姿(2 帧)。

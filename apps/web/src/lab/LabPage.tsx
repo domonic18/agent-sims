@@ -4,7 +4,6 @@ import {
   ACTIVITY_DEFINITIONS,
   PROPERTY_DEFINITIONS,
   SHOP_ITEMS,
-  getShopItem,
   type Intent,
   type WorldSnapshotMessage,
 } from '@sims/shared';
@@ -31,9 +30,10 @@ const LOG_MAX = 100;
 const TIME_SCALES = [1, 4, 16] as const;
 
 /**
- * /lab 独立调试台(M3.6b;M3.6d 全屏化+操作收口): 全屏画布+悬浮 HUD,
- * 右列=快捷操作面板(前往/活动/资产/商店)+7 意图协议表单+世界状态只读表,
- * 左下=回执日志。暂停/倍率经 /debug 联调通道(M4 换正式指令)。
+ * /lab 独立调试台(M3.6b;M3.6d 全屏化+操作收口;M3.6e 六意图):
+ * 全屏画布+悬浮 HUD,右列=快捷操作面板(前往/活动/资产/商店)
+ * +6 意图协议表单+世界状态只读表,左下=回执日志。
+ * 暂停/倍率经 /debug 联调通道(M4 换正式指令)。
  * 地图全量操控(点击移动/方向键步进)仅此页开启,主页面纯观看。
  */
 export default function LabPage() {
@@ -140,7 +140,7 @@ export default function LabPage() {
         <SidePanel />
         {character !== null && (
           <section className="lab-panel">
-            <h3>意图操作台(7 意图全量)</h3>
+            <h3>意图操作台(6 意图全量)</h3>
             <IntentForms key={character.id} character={character} onRun={run} />
           </section>
         )}
@@ -228,10 +228,6 @@ function IntentForms({
       <div className="intent-group">
         <span className="intent-name">rent/buy_property</span>
         <PropertyForm character={character} onRun={onRun} />
-      </div>
-      <div className="intent-group">
-        <span className="intent-name">place_furniture</span>
-        <FurnitureForm character={character} onRun={onRun} />
       </div>
     </div>
   );
@@ -354,40 +350,6 @@ function PropertyForm({ character, onRun }: { character: CharacterSnapshot; onRu
         }
       >
         买断
-      </button>
-    </span>
-  );
-}
-
-function FurnitureForm({ character, onRun }: { character: CharacterSnapshot; onRun: RunFn }) {
-  const owned = [...new Set(character.items)];
-  const [picked, setPicked] = useState<string | null>(null);
-  // 购买发生在组件挂载后时首个库存项晚于初始化,未选择前派生回退,避免显示值与提交值脱节
-  const itemId = picked !== null && owned.includes(picked) ? picked : (owned[0] ?? '');
-  if (owned.length === 0) {
-    return <span className="hint">库存为空——先经 buy_item 购买家具</span>;
-  }
-  return (
-    <span className="intent-controls">
-      <select value={itemId} onChange={(e) => setPicked(e.target.value)}>
-        {owned.map((id) => (
-          <option key={id} value={id}>
-            {getShopItem(id)?.name ?? id}
-          </option>
-        ))}
-      </select>
-      <button
-        type="button"
-        disabled={itemId === ''}
-        onClick={() =>
-          itemId !== '' &&
-          void onRun(
-            { type: 'place_furniture', characterId: character.id, itemId },
-            `place_furniture(${itemId})`,
-          )
-        }
-      >
-        摆放
       </button>
     </span>
   );

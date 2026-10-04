@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ACTIVITY_DEFINITIONS,
+  FURNITURE_LABELS,
   PROPERTY_DEFINITIONS,
   SHOP_ITEMS,
   TOWN_MAP,
   getActivityDefinition,
-  getShopItem,
   type ActivityDefinition,
   type Intent,
   type PlaceDefinition,
@@ -28,8 +28,34 @@ function findPlaceAt(snapshot: WorldSnapshotMessage, x: number, y: number): Plac
   return null;
 }
 
+interface ActivityAnchor {
+  x: number;
+  y: number;
+  placeId: string;
+  label: string;
+}
+
+/** 活动锚点使用格全集(M3.6e 内景): 与服务端 TileMap.activityAnchors 同源 TOWN_MAP */
+function activityAnchors(activityId: string): ActivityAnchor[] {
+  const anchors: ActivityAnchor[] = [];
+  for (const place of TOWN_MAP.places) {
+    for (const furniture of place.furniture ?? []) {
+      if (furniture.activityId === activityId && furniture.use !== undefined) {
+        anchors.push({
+          x: furniture.use.x,
+          y: furniture.use.y,
+          placeId: place.id,
+          label: FURNITURE_LABELS[furniture.kind],
+        });
+      }
+    }
+  }
+  return anchors;
+}
+
 /**
- * 玩家侧边面板(M3.4):角色选择/数值/活动/资产/商店。
+ * 玩家侧边面板(M3.4;M3.6e 锚点语义):角色选择/数值/前往/活动/资产/商店。
+ * 活动开始目标为室内家具使用格(书桌/床/跑步机…),无锚点活动(散步)仍按场所;
  * 全部操作经 socket 意图通道下发,状态随每 tick 快照自动刷新。
  */
 export function SidePanel() {
@@ -50,22 +76,36 @@ export function SidePanel() {
   };
 
   /**
-   * 开始活动:在任一可执行场所直接开始;否则先前往首选场所,到达后自动接续开始。
-   * 协议仍是两步显式语义,此处仅为客户端 UI 合成(move_to → start_activity)。
+   * 开始活动:已在锚点使用格(或无锚点活动已在场所)直接开始;否则先前往
+   * 首个锚点使用格/场所入口,到达后自动接续开始。协议仍是两步显式语义,
+   * 此处仅为客户端 UI 合成(move_to → start_activity)。
    */
   const startActivity = async (def: ActivityDefinition): Promise<void> => {
-    if (character === null) return;
-    const place = TOWN_MAP.places.find((p) => p.id === def.placeIds[0]);
-    if (def.placeIds.includes(atPlace?.id ?? '')) {
+    if (character === null || snapshot === null) return;
+    const anchors = activityAnchors(def.id);
+    const atPlace = findPlaceAt(snapshot, character.x, character.y);
+    const arrived =
+      anchors.length > 0
+        ? anchors.some((a) => character.x === a.x && character.y === a.y)
+        : def.placeIds.includes(atPlace?.id ?? '');
+    if (arrived) {
       await run({ type: 'start_activity', characterId: character.id, activityId: def.id });
       return;
     }
-    if (place === undefined) return;
+    // 未在位:锚点活动去首个使用格,无锚点活动(散步)去首选场所入口
+    const target =
+      anchors.length > 0
+        ? { x: anchors[0]!.x, y: anchors[0]!.y }
+        : (() => {
+            const place = TOWN_MAP.places.find((p) => p.id === def.placeIds[0]);
+            return place !== undefined ? { x: place.entrance.x, y: place.entrance.y } : null;
+          })();
+    if (target === null) return;
     const ack = await sendIntent({
       type: 'move_to',
       characterId: character.id,
-      x: place.entrance.x,
-      y: place.entrance.y,
+      x: target.x,
+      y: target.y,
     });
     setFeedback(ack);
     pushToast(ack.ok, ack.message);
@@ -77,7 +117,9 @@ export function SidePanel() {
     setPendingActivityId(null);
   }, [selectedId]);
 
-  // 前往途中随每 tick 快照检查:到达任一可执行场所后自动接续开始;途中改道/被打断则放弃
+  // 前往途中随每 tick 快照检查:到达锚点使用格(或场所)后自动接续开始;
+  // 途中改道/被打断则放弃。pendingArrivalRef 标记"快照已反映行进",
+  // 未见行进前不判弃(move_to 刚下发时快照尚未反映移动)。
   useEffect(() => {
     if (pendingActivityId === null || character === null || snapshot === null) return;
     if (character.activity !== null) {
@@ -90,8 +132,17 @@ export function SidePanel() {
       return;
     }
     const def = getActivityDefinition(pendingActivityId);
-    const at = findPlaceAt(snapshot, character.x, character.y);
-    if (def !== null && def.placeIds.includes(at?.id ?? '')) {
+    if (def === null) {
+      pendingArrivalRef.current = false;
+      setPendingActivityId(null);
+      return;
+    }
+    const anchors = activityAnchors(def.id);
+    const arrived =
+      anchors.length > 0
+        ? anchors.some((a) => character.x === a.x && character.y === a.y)
+        : def.placeIds.includes(findPlaceAt(snapshot, character.x, character.y)?.id ?? '');
+    if (arrived) {
       pendingArrivalRef.current = false;
       setPendingActivityId(null);
       void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
@@ -101,7 +152,6 @@ export function SidePanel() {
       pendingArrivalRef.current = false;
       setPendingActivityId(null);
     }
-    // 其余情形:move_to 刚下发,快照尚未反映移动,继续等待而非误判放弃
   }, [pendingActivityId, character, snapshot]);
 
   useEffect(() => {
@@ -208,10 +258,17 @@ export function SidePanel() {
             ) : (
               <ul className="activity-list">
                 {ACTIVITY_DEFINITIONS.map((def) => {
-                  const placeNames = def.placeIds
-                    .map((id) => TOWN_MAP.places.find((p) => p.id === id)?.name ?? id)
-                    .join('/');
-                  const here = def.placeIds.includes(atPlace?.id ?? '');
+                  const anchors = activityAnchors(def.id);
+                  const targetLabel =
+                    anchors.length > 0
+                      ? anchors.map((a) => a.label).join('/')
+                      : def.placeIds
+                          .map((id) => TOWN_MAP.places.find((p) => p.id === id)?.name ?? id)
+                          .join('/');
+                  const here =
+                    anchors.length > 0
+                      ? anchors.some((a) => character.x === a.x && character.y === a.y)
+                      : def.placeIds.includes(atPlace?.id ?? '');
                   const moving = character.pathRemaining > 0;
                   const pending = pendingActivityId === def.id;
                   return (
@@ -223,7 +280,7 @@ export function SidePanel() {
                       <span>
                         {def.name}
                         <small>
-                          {placeNames} {def.durationMinutes}分
+                          {targetLabel} {def.durationMinutes}分
                           {def.effects.coins !== 0 &&
                             (def.effects.coins > 0
                               ? ` +${def.effects.coins}/分`
@@ -233,7 +290,7 @@ export function SidePanel() {
                       <button
                         type="button"
                         disabled={moving}
-                        title={here ? undefined : `自动前往 ${placeNames} 并开始`}
+                        title={here ? undefined : `自动前往 ${targetLabel} 并开始`}
                         onClick={() => void startActivity(def)}
                       >
                         {pending ? '途中…' : '开始'}
@@ -271,33 +328,6 @@ export function SidePanel() {
                     </button>
                   </div>
                 )}
-                <div className="hint">
-                  已摆放:
-                  {housing.placedItems.length === 0
-                    ? ' 无'
-                    : housing.placedItems
-                        .map((id) => getShopItem(id)?.name ?? id)
-                        .join('、')}
-                </div>
-              </div>
-            )}
-            <div className="inventory">
-              库存:
-              {character.items.length === 0
-                ? ' 无'
-                : character.items.map((id) => getShopItem(id)?.name ?? id).join('、')}
-            </div>
-            {character.items.length > 0 && (
-              <div className="housing-actions">
-                {[...new Set(character.items)].map((id) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => void run({ type: 'place_furniture', characterId: character.id, itemId: id })}
-                  >
-                    摆放「{getShopItem(id)?.name ?? id}」
-                  </button>
-                ))}
               </div>
             )}
           </section>
@@ -313,17 +343,15 @@ export function SidePanel() {
                   <span>
                     {item.name}
                     <small>
-                      {item.price}币
-                      {item.category === 'food'
-                        ? ` 体力+${item.effects.energy}${item.effects.happiness > 0 ? ` 幸福+${item.effects.happiness}` : ''}`
-                        : ' 家具'}
+                      {item.price}币 体力+{item.effects.energy}
+                      {item.effects.happiness > 0 ? ` 幸福+${item.effects.happiness}` : ''}
                     </small>
                   </span>
                   <button
                     type="button"
                     onClick={() => void run({ type: 'buy_item', characterId: character.id, itemId: item.id })}
                   >
-                    {item.category === 'food' ? '食用' : '购买'}
+                    食用
                   </button>
                 </li>
               ))}

@@ -30,13 +30,8 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
     }
     case 'buy_item': {
       const character = sim.requestBuyItem(intent.characterId, intent.itemId);
-      const item = getShopItem(intent.itemId);
-      const name = item?.name ?? intent.itemId;
-      const message =
-        item?.category === 'food'
-          ? `${character.name} 购买并食用「${name}」`
-          : `${character.name} 购入「${name}」,存入库存`;
-      return { ok: true, message };
+      const name = getShopItem(intent.itemId)?.name ?? intent.itemId;
+      return { ok: true, message: `${character.name} 购买并食用「${name}」` };
     }
     case 'rent_property': {
       const character = sim.requestRentProperty(intent.characterId, intent.propertyId);
@@ -48,11 +43,6 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       const character = sim.requestBuyProperty(intent.characterId, intent.propertyId);
       const name = getPropertyDefinition(intent.propertyId)?.name ?? intent.propertyId;
       return { ok: true, message: `${character.name} 买下「${name}」,从此免租金` };
-    }
-    case 'place_furniture': {
-      const character = sim.requestPlaceFurniture(intent.characterId, intent.itemId);
-      const name = getShopItem(intent.itemId)?.name ?? intent.itemId;
-      return { ok: true, message: `${character.name} 摆放「${name}」,加成生效中` };
     }
   }
 }

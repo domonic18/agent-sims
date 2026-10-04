@@ -7,6 +7,7 @@ import type {
   WorldSnapshotMessage,
 } from '@sims/shared';
 import {
+  FURNITURE_LABELS,
   getActivityDefinition,
   getPropertyDefinition,
   getShopItem,
@@ -61,12 +62,10 @@ export class Simulation {
       happiness: BALANCE.START_HAPPINESS,
       coins: 0,
       activity: null,
-      items: [],
       housing: {
         propertyId: 'home', // 初始租房: 公寓,预付当日+次日租
         ownership: 'rent',
         paidThroughDay: this.clock.day + 1,
-        placedItems: [],
       },
     };
     this.characters.set(id, character);
@@ -82,8 +81,8 @@ export class Simulation {
   }
 
   /**
-   * 开始活动:须在活动场所的入口格或矩形内;已有进行中活动则拒绝
-   * (先显式 stop 或移动打断)。
+   * 开始活动:有锚点家具的活动须站在其使用格上(M3.6e 内景化,如书桌/床);
+   * 无锚点活动(散步)沿用场所范围判定。已有进行中活动则拒绝(先显式 stop 或移动打断)。
    */
   requestStartActivity(characterId: string, activityId: string): WorldCharacter {
     const definition = getActivityDefinition(activityId);
@@ -97,7 +96,16 @@ export class Simulation {
     if (character.path.length > 0) {
       throw new Error(`${character.name} 移动中,到达后再开始活动`);
     }
-    if (!definition.placeIds.some((placeId) => this._atPlace(character, placeId))) {
+    const anchors = this.map.activityAnchors(activityId);
+    if (anchors.length > 0) {
+      const onAnchor = anchors.some((anchor) => character.x === anchor.x && character.y === anchor.y);
+      if (!onAnchor) {
+        const spots = anchors.map((anchor) => `(${anchor.x},${anchor.y})`).join('/');
+        throw new Error(
+          `${definition.name} 须站在${FURNITURE_LABELS[anchors[0]!.kind]}使用格: ${spots}`,
+        );
+      }
+    } else if (!definition.placeIds.some((placeId) => this._atPlace(character, placeId))) {
       throw new Error(`${definition.name} 须在场所 ${definition.placeIds.join('、')} 入口或范围内`);
     }
     character.activity = { activityId, elapsed: 0 };
@@ -121,8 +129,7 @@ export class Simulation {
   }
 
   /**
-   * 购买商品:结算前判定余额(不透支);food 即买即结算一次性效果,
-   * furniture 入库存待摆放(M3.3)。
+   * 购买商品(M3.6e 收敛为食物):结算前判定余额(不透支),买入即结算一次性效果。
    */
   requestBuyItem(characterId: string, itemId: string): WorldCharacter {
     const item = getShopItem(itemId);
@@ -136,12 +143,8 @@ export class Simulation {
       );
     }
     character.coins -= item.price;
-    if (item.category === 'food') {
-      character.energy = clampVital(character.energy + item.effects.energy);
-      character.happiness = clampVital(character.happiness + item.effects.happiness);
-    } else {
-      character.items.push(item.id);
-    }
+    character.energy = clampVital(character.energy + item.effects.energy);
+    character.happiness = clampVital(character.happiness + item.effects.happiness);
     return character;
   }
 
@@ -165,7 +168,6 @@ export class Simulation {
       propertyId: property.id,
       ownership: 'rent',
       paidThroughDay: Math.max(character.housing?.paidThroughDay ?? this.clock.day, this.clock.day) + 1,
-      placedItems: character.housing?.placedItems ?? [],
     };
     return character;
   }
@@ -190,34 +192,7 @@ export class Simulation {
       propertyId: property.id,
       ownership: 'owned',
       paidThroughDay: character.housing?.paidThroughDay ?? this.clock.day,
-      placedItems: character.housing?.placedItems ?? [],
     };
-    return character;
-  }
-
-  /** 摆放家具: 从库存移入住宅;须持有有效住宿(自有或租约未到期) */
-  requestPlaceFurniture(characterId: string, itemId: string): WorldCharacter {
-    const item = getShopItem(itemId);
-    if (item === null) {
-      throw new Error(`未知商品: ${itemId}`);
-    }
-    if (item.category !== 'furniture') {
-      throw new Error(`「${item.name}」是食物,购买时即已食用`);
-    }
-    const character = this.character(characterId);
-    const housing = character.housing;
-    if (housing === null) {
-      throw new Error(`${character.name} 无住宿,无法摆放家具`);
-    }
-    if (housing.ownership === 'rent' && housing.paidThroughDay < this.clock.day) {
-      throw new Error(`${character.name} 租约已过期(付至第 ${housing.paidThroughDay} 日),请先续租`);
-    }
-    const index = character.items.indexOf(itemId);
-    if (index === -1) {
-      throw new Error(`${character.name} 库存中没有「${item.name}」`);
-    }
-    character.items.splice(index, 1);
-    housing.placedItems.push(itemId);
     return character;
   }
 
@@ -275,13 +250,11 @@ export class Simulation {
         activity: character.activity
           ? { activityId: character.activity.activityId, elapsedMinutes: character.activity.elapsed }
           : null,
-        items: [...character.items],
         housing: character.housing
           ? {
               propertyId: character.housing.propertyId,
               ownership: character.housing.ownership,
               paidThroughDay: character.housing.paidThroughDay,
-              placedItems: [...character.housing.placedItems],
             }
           : null,
       })),
@@ -298,7 +271,7 @@ export class Simulation {
     this.events.emit(event);
   }
 
-  /** 角色是否位于场所矩形内或其入口格(建筑为障碍,入口格即"门口") */
+  /** 角色是否位于场所矩形内(内景建筑可入内,矩形即含室内)或其入口格 */
   private _atPlace(character: WorldCharacter, placeId: string): boolean {
     const place = this.map.placeById(placeId);
     if (place === null) {
@@ -355,33 +328,6 @@ export class Simulation {
           }
         }
       }
-      this._applyFurnitureBonus(character);
-    }
-  }
-
-  /** 已摆放家具每游戏分钟被动加成;住宿失效(欠租)即停发 */
-  private _applyFurnitureBonus(character: WorldCharacter): void {
-    const housing = character.housing;
-    if (housing === null || housing.placedItems.length === 0) {
-      return;
-    }
-    if (housing.ownership === 'rent' && housing.paidThroughDay < this.clock.day) {
-      return;
-    }
-    let energy = 0;
-    let happiness = 0;
-    for (const itemId of housing.placedItems) {
-      const item = getShopItem(itemId);
-      if (item !== null && item.category === 'furniture') {
-        energy += item.bonus.energy;
-        happiness += item.bonus.happiness;
-      }
-    }
-    if (energy !== 0) {
-      character.energy = clampVital(character.energy + energy);
-    }
-    if (happiness !== 0) {
-      character.happiness = clampVital(character.happiness + happiness);
     }
   }
 }

@@ -28,7 +28,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
   {
     id: 'study',
     name: '学习',
-    placeIds: ['library'],
+    placeIds: ['library', 'home'],
     durationMinutes: 60,
     effects: { energy: -0.15, happiness: -0.05, coins: 0 },
   },

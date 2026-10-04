@@ -24,7 +24,6 @@ export {
   buyPropertyIntentSchema,
   intentSchema,
   moveToIntentSchema,
-  placeFurnitureIntentSchema,
   rentPropertyIntentSchema,
   startActivityIntentSchema,
   stopActivityIntentSchema,
@@ -33,7 +32,6 @@ export {
   type Intent,
   type IntentType,
   type MoveToIntent,
-  type PlaceFurnitureIntent,
   type RentPropertyIntent,
   type StartActivityIntent,
   type StopActivityIntent,
@@ -69,7 +67,6 @@ export {
   SHOP_ITEM_IDS,
   getShopItem,
   type FoodShopItem,
-  type FurnitureShopItem,
   type ShopCategory,
   type ShopItemDefinition,
   type ShopItemId,
@@ -96,8 +93,12 @@ export {
 } from './sync.js';
 
 export {
+  FURNITURE_KINDS,
+  FURNITURE_LABELS,
   TOWN_MAP,
   type BlockedRect,
+  type FurnitureDefinition,
+  type FurnitureKind,
   type PlaceDefinition,
   type TileMapDefinition,
 } from './world.js';

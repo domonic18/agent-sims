@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TOWN_MAP, type TileMapDefinition } from '@sims/shared';
 import { TileMap } from './map.js';
+import { findPath } from './pathfinding.js';
 import { Simulation } from './simulation.js';
 
 const miniMap: TileMapDefinition = {
@@ -9,6 +10,27 @@ const miniMap: TileMapDefinition = {
   blockedRects: [{ x: 3, y: 1, w: 3, h: 2 }],
   paths: [],
   places: [{ id: 'hut', name: '小屋', x: 3, y: 1, w: 3, h: 2, entrance: { x: 4, y: 3 } }],
+};
+
+/** 带内景的最小房:占地 5x4,南墙门洞,一张床锚点 */
+const roomMap: TileMapDefinition = {
+  width: 10,
+  height: 9,
+  blockedRects: [],
+  paths: [],
+  places: [
+    {
+      id: 'room',
+      name: '小房',
+      x: 3,
+      y: 2,
+      w: 5,
+      h: 4,
+      entrance: { x: 5, y: 6 },
+      door: { x: 5, y: 5 },
+      furniture: [{ kind: 'bed', x: 4, y: 3, w: 1, h: 1, activityId: 'rest', use: { x: 4, y: 4 } }],
+    },
+  ],
 };
 
 describe('TileMap 可行走层', () => {
@@ -78,5 +100,120 @@ describe('TileMap 可行走层', () => {
     expect(sim.map.width).toBe(56);
     expect(sim.map.height).toBe(40);
     expect(sim.map.places).toHaveLength(7); // 构造已验证全部入口
+  });
+});
+
+describe('TileMap 内景层(M3.6e)', () => {
+  it('有门洞建筑: 墙体阻塞,门洞可行走,室内可行走,家具阻塞,使用格可行走', () => {
+    const map = TileMap.fromDefinition(roomMap);
+    expect(map.isWalkable(3, 2)).toBe(false); // 西北墙角
+    expect(map.isWalkable(5, 2)).toBe(false); // 北墙
+    expect(map.isWalkable(5, 5)).toBe(true); // 门洞(南墙豁口)
+    expect(map.isWalkable(4, 3)).toBe(false); // 床占地
+    expect(map.isWalkable(4, 4)).toBe(true); // 床使用格(室内)
+    expect(map.isWalkable(6, 4)).toBe(true); // 室内空地
+    expect(map.isWalkable(5, 6)).toBe(true); // 入口格(门外)
+  });
+
+  it('门洞在 ASCII 图标注为 D', () => {
+    const rows = TileMap.fromDefinition(TOWN_MAP).toAscii().split('\n');
+    expect(rows[11]?.charAt(8)).toBe('D'); // 公寓门洞
+    expect(rows[11]?.charAt(7)).toBe('#'); // 同排墙体
+  });
+
+  it('activityAnchors: 汇总各场所锚点使用格,无锚点活动返回空', () => {
+    const map = TileMap.fromDefinition(TOWN_MAP);
+    expect(map.activityAnchors('study')).toEqual(
+      expect.arrayContaining([
+        { x: 33, y: 9, placeId: 'library', kind: 'desk' },
+        { x: 11, y: 6, placeId: 'home', kind: 'desk' },
+      ]),
+    );
+    expect(map.activityAnchors('stroll')).toEqual([]);
+  });
+
+  it('门洞非法: 不在边缘/不邻入口/被障碍覆盖均抛错', () => {
+    const base = roomMap.places[0]!;
+    expect(() =>
+      TileMap.fromDefinition({ ...roomMap, places: [{ ...base, door: { x: 5, y: 4 } }] }),
+    ).toThrow(/边缘/); // 室内格非边缘
+    expect(() =>
+      TileMap.fromDefinition({ ...roomMap, places: [{ ...base, entrance: { x: 5, y: 7 } }] }),
+    ).toThrow(/四邻相接/); // 门洞与入口隔 2 格
+    expect(() =>
+      TileMap.fromDefinition({ ...roomMap, blockedRects: [{ x: 5, y: 5, w: 1, h: 1 }] }),
+    ).toThrow(/被障碍覆盖/);
+  });
+
+  it('家具非法: 出墙/锚点不成对/使用格不邻家具或被阻塞均抛错', () => {
+    const base = roomMap.places[0]!;
+    expect(() =>
+      TileMap.fromDefinition({
+        ...roomMap,
+        places: [{ ...base, furniture: [{ kind: 'sofa', x: 3, y: 3, w: 1, h: 1 }] }],
+      }),
+    ).toThrow(/室内/); // 占西墙
+    expect(() =>
+      TileMap.fromDefinition({
+        ...roomMap,
+        places: [{ ...base, furniture: [{ kind: 'sofa', x: 6, y: 4, w: 1, h: 1, activityId: 'rest' }] }],
+      }),
+    ).toThrow(/成对/); // 有绑定无使用格
+    expect(() =>
+      TileMap.fromDefinition({
+        ...roomMap,
+        places: [
+          { ...base, furniture: [{ ...base.furniture![0]!, use: { x: 6, y: 4 } }] },
+        ],
+      }),
+    ).toThrow(/紧邻/); // 使用格与床隔 2 格
+    expect(() =>
+      TileMap.fromDefinition({
+        ...roomMap,
+        blockedRects: [{ x: 4, y: 4, w: 1, h: 1 }],
+      }),
+    ).toThrow(/被阻塞/); // 使用格被定制障碍压住
+  });
+
+  it('无门洞却有家具/室内被割裂致使用格不可达均抛错', () => {
+    const base = roomMap.places[0]!;
+    expect(() =>
+      TileMap.fromDefinition({
+        ...roomMap,
+        places: [{ ...base, door: undefined, furniture: base.furniture! }],
+      }),
+    ).toThrow(/门洞/);
+    // 横贯室内的柜台把床的使用格隔在门洞不可达侧
+    const hall: TileMapDefinition = {
+      width: 12,
+      height: 9,
+      blockedRects: [],
+      paths: [],
+      places: [
+        {
+          id: 'hall',
+          name: '大厅',
+          x: 3,
+          y: 2,
+          w: 6,
+          h: 5,
+          entrance: { x: 5, y: 7 },
+          door: { x: 5, y: 6 },
+          furniture: [
+            { kind: 'counter', x: 4, y: 4, w: 4, h: 1 },
+            { kind: 'bed', x: 4, y: 3, w: 1, h: 1, activityId: 'rest', use: { x: 5, y: 3 } },
+          ],
+        },
+      ],
+    };
+    expect(() => TileMap.fromDefinition(hall)).toThrow(/不连通/);
+  });
+
+  it('寻路可穿门入内: A* 从入口到床使用格经门洞', () => {
+    const map = TileMap.fromDefinition(roomMap);
+    const path = findPath(map, { x: 5, y: 6 }, { x: 4, y: 4 });
+    expect(path).not.toBeNull();
+    expect(path?.at(-1)).toEqual({ x: 4, y: 4 });
+    expect(path).toContainEqual({ x: 5, y: 5 }); // 必经门洞
   });
 });
