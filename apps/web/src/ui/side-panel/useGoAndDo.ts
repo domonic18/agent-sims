@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   TOWN_MAP,
+  findActivityAnchorAt,
   getActivityDefinition,
   type ActivityDefinition,
   type Intent,
@@ -44,14 +45,14 @@ export function useGoAndDo(
     pushToast(ack.ok, ack.message);
   };
 
-  /** 开始活动:已在锚点使用格(或无锚点活动已在场所)直接开始;否则先前往首个锚点使用格/场所入口 */
+  /** 开始活动:已在锚点位(使用格或紧邻家具占地;无锚点活动已在场所)直接开始;否则先前往最近锚点使用格/场所入口 */
   const startActivity = async (def: ActivityDefinition): Promise<void> => {
     if (character === null || snapshot === null) return;
     const anchors = activityAnchors(def.id);
     const atPlace = findPlaceAt(snapshot, character.x, character.y);
     const arrived =
       anchors.length > 0
-        ? anchors.some((a) => character.x === a.x && character.y === a.y)
+        ? findActivityAnchorAt(def.id, character.x, character.y) !== null
         : def.placeIds.includes(atPlace?.id ?? '');
     if (arrived) {
       await run({ type: 'start_activity', characterId: character.id, activityId: def.id });
@@ -145,7 +146,7 @@ export function useGoAndDo(
       const anchors = activityAnchors(def.id);
       const arrived =
         anchors.length > 0
-          ? anchors.some((a) => character.x === a.x && character.y === a.y)
+          ? findActivityAnchorAt(def.id, character.x, character.y) !== null
           : def.placeIds.includes(findPlaceAt(snapshot, character.x, character.y)?.id ?? '');
       if (arrived) {
         finish();

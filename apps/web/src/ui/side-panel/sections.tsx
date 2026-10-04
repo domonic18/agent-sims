@@ -2,6 +2,7 @@ import {
   ACTIVITY_DEFINITIONS,
   LOW_ENERGY_THRESHOLD,
   TOWN_MAP,
+  findActivityAnchorAt,
   getActivityDefinition,
   type ActivityDefinition,
   type PlaceDefinition,
@@ -173,7 +174,7 @@ export function ActivitySection({
                     .join('/');
             const here =
               anchors.length > 0
-                ? anchors.some((a) => character.x === a.x && character.y === a.y)
+                ? findActivityAnchorAt(def.id, character.x, character.y) !== null
                 : def.placeIds.includes(atPlace?.id ?? '');
             const enRoute = pending?.kind === 'activity' && pending.id === def.id;
             return (

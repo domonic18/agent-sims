@@ -44,8 +44,9 @@ export function finishActivity(
 }
 
 /**
- * 开始活动:有锚点家具的活动须站在其使用格上(M3.6e 内景化,如书桌/床);
- * 无锚点活动(散步)沿用场所范围判定。已有进行中活动则拒绝(先显式 stop 或移动打断)。
+ * 开始活动:有锚点家具的活动须站在其声明使用格或紧邻家具占地(四邻,M3.6i 放宽;
+ * M3.6e 内景化,如书桌/床/跑步机);无锚点活动(散步)沿用场所范围判定。
+ * 已有进行中活动则拒绝(先显式 stop 或移动打断)。
  * M3.6f 体力区段: 体力≤阈值仅允许基础活动;rest 使用住宅床铺须本人租约有效(公园长椅放行)。
  */
 export function startActivity(
@@ -74,13 +75,12 @@ export function startActivity(
   const anchors = sim.map.activityAnchors(activityId);
   let anchorKind: string | null = null;
   if (anchors.length > 0) {
-    const anchor = anchors.find(
-      (candidate) => character.x === candidate.x && character.y === candidate.y,
-    );
-    if (anchor === undefined) {
+    // M3.6i 放宽: 声明使用格或紧邻锚点家具占地(四邻)均可,贴着跑步机即能开始
+    const anchor = sim.map.anchorAt(activityId, character.x, character.y);
+    if (anchor === null) {
       const spots = anchors.map((item) => `(${item.x},${item.y})`).join('/');
       throw new Error(
-        `${definition.name} 须站在${FURNITURE_LABELS[anchors[0]!.kind]}使用格: ${spots}`,
+        `${definition.name} 须站在${FURNITURE_LABELS[anchors[0]!.kind]}旁(使用格: ${spots})`,
       );
     }
     anchorKind = anchor.kind;

@@ -4,8 +4,10 @@ import {
   FURNITURE_KINDS,
   REST_ANCHOR_KINDS,
   TOWN_MAP,
+  findActivityAnchorAt,
   furnitureRectsOf,
   getActivityDefinition,
+  isBesideFootprint,
   wallRectsOf,
   type BlockedRect,
   type PlaceDefinition,
@@ -134,6 +136,28 @@ describe('TOWN_MAP 结构不变量', () => {
         Math.abs(place.entrance.x - place.door!.x) + Math.abs(place.entrance.y - place.door!.y);
       expect(dist, `${place.id} 入口须紧邻门洞`).toBe(1);
     }
+  });
+});
+
+describe('锚点命中(M3.6i 放宽: 使用格或紧邻占地)', () => {
+  it('isBesideFootprint: 四邻相接为真,对角/远格为假', () => {
+    const treadmill = TOWN_MAP.places
+      .find((p) => p.id === 'gym')!
+      .furniture!.find((f) => f.kind === 'treadmill' && f.x === 44)!;
+    expect(isBesideFootprint(treadmill, 45, 27)).toBe(true); // 声明使用格(右侧)
+    expect(isBesideFootprint(treadmill, 45, 28)).toBe(true); // 下半格右侧,同样紧邻
+    expect(isBesideFootprint(treadmill, 44, 26)).toBe(true); // 正上方
+    expect(isBesideFootprint(treadmill, 45, 26)).toBe(false); // 对角不算
+    expect(isBesideFootprint(treadmill, 46, 27)).toBe(false); // 两机间隙,不邻
+  });
+
+  it('findActivityAnchorAt: 使用格与紧邻格命中同锚点,间隙/远处未命中', () => {
+    const hitUse = findActivityAnchorAt('workout', 45, 27);
+    expect(hitUse).toMatchObject({ placeId: 'gym', kind: 'treadmill' });
+    expect(findActivityAnchorAt('workout', 45, 28)).toMatchObject({ placeId: 'gym' });
+    expect(findActivityAnchorAt('workout', 46, 27)).toBeNull();
+    expect(findActivityAnchorAt('workout', 10, 10)).toBeNull();
+    expect(findActivityAnchorAt('stroll', 45, 27)).toBeNull(); // 无锚点活动
   });
 });
 

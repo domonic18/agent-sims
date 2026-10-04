@@ -2,7 +2,7 @@
  * 城镇地图定义与布局。协议面一部分——服务端模拟与客户端渲染共用同一份
  * 定义,避免双端漂移。家具/休息档位见 furniture.ts。
  */
-import type { FurnitureDefinition } from './furniture.js';
+import type { FurnitureDefinition, FurnitureKind } from './furniture.js';
 
 /** 场所定义:占地矩形 + 入口格(入口必须在占地外且可行走) */
 export interface PlaceDefinition {
@@ -67,6 +67,34 @@ export function wallRectsOf(place: PlaceDefinition): BlockedRect[] {
 /** 家具占地矩形(锚点/装饰统一按格阻塞) */
 export function furnitureRectsOf(place: PlaceDefinition): BlockedRect[] {
   return (place.furniture ?? []).map((f) => ({ x: f.x, y: f.y, w: f.w, h: f.h }));
+}
+
+/** 点位是否紧邻家具占地(四邻相接,最小曼哈顿距离=1;对角不算) */
+export function isBesideFootprint(f: FurnitureDefinition, x: number, y: number): boolean {
+  const gapX = Math.max(f.x - x, 0, x - (f.x + f.w - 1));
+  const gapY = Math.max(f.y - y, 0, y - (f.y + f.h - 1));
+  return gapX + gapY === 1;
+}
+
+/**
+ * 点位的活动锚点命中(TOWN_MAP 直查,客户端 go-and-do 判定用):
+ * 站在声明使用格,或紧邻锚点家具占地(四邻)均算命中(M3.6i 放宽——
+ * "站在跑步机旁"即可开始,不再要求精确踩中声明格);未命中返回 null。
+ */
+export function findActivityAnchorAt(
+  activityId: string,
+  x: number,
+  y: number,
+): { placeId: string; kind: FurnitureKind } | null {
+  for (const place of TOWN_MAP.places) {
+    for (const f of place.furniture ?? []) {
+      if (f.activityId !== activityId || f.use === undefined) continue;
+      if ((x === f.use.x && y === f.use.y) || isBesideFootprint(f, x, y)) {
+        return { placeId: place.id, kind: f.kind };
+      }
+    }
+  }
+  return null;
 }
 
 /**

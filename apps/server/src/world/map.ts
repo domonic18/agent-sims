@@ -1,5 +1,6 @@
 import {
   furnitureRectsOf,
+  isBesideFootprint,
   wallRectsOf,
   type BlockedRect,
   type FurnitureKind,
@@ -84,6 +85,27 @@ export class TileMap {
       }
     }
     return anchors;
+  }
+
+  /**
+   * 锚点命中判定(M3.6i 放宽): 站在声明使用格,或紧邻锚点家具占地(四邻)均算——
+   * 家具占地本身不可行走,"站在跑步机旁"即应可开始,不再要求精确踩中声明格。
+   * 返回命中锚点(使用格坐标+场所+家具 kind,rest 权属/档位结算用),未命中 null。
+   */
+  anchorAt(
+    activityId: string,
+    x: number,
+    y: number,
+  ): { x: number; y: number; placeId: string; kind: FurnitureKind } | null {
+    for (const place of this.places) {
+      for (const f of place.furniture ?? []) {
+        if (f.activityId !== activityId || f.use === undefined) continue;
+        if ((x === f.use.x && y === f.use.y) || isBesideFootprint(f, x, y)) {
+          return { x: f.use.x, y: f.use.y, placeId: place.id, kind: f.kind };
+        }
+      }
+    }
+    return null;
   }
 
   /** ASCII 渲染(debug 端点/脚本对照):#=障碍 .=地面 E=入口 D=门洞 */

@@ -168,6 +168,17 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     expect(() => sim.requestStartActivity('mary', 'rest')).toThrow(/租约已过期/);
   });
 
+  it('锚点放宽(M3.6i): 紧邻家具占地(非声明格)可开始,两机间隙仍拒', () => {
+    const { sim } = simWith('tina', 45, 28); // 跑步机(44,27..28)下侧旁,非声明格(45,27)
+    sim.requestStartActivity('tina', 'workout');
+    expect(sim.character('tina').activity).toMatchObject({
+      activityId: 'workout',
+      anchorKind: 'treadmill',
+    });
+    sim.spawnCharacter('uma', 46, 27, 'uma'); // 两台跑步机之间的空隙,不邻任何占地
+    expect(() => sim.requestStartActivity('uma', 'workout')).toThrow(/跑步机旁/);
+  });
+
   it('校验: 不在锚点/不在场所/移动中/重复开始/未知活动/无活动停止均拒绝', () => {
     const { sim } = simWith('gina', 8, 12); // 公寓入口(非书桌/床使用格)
     expect(() => sim.requestStartActivity('gina', 'study')).toThrow(/使用格/);
