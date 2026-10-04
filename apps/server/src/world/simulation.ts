@@ -6,7 +6,13 @@ import type {
   WorldEvent,
   WorldSnapshotMessage,
 } from '@sims/shared';
-import { getActivityDefinition, getShopItem, TOWN_MAP, type ActivityFinishReason } from '@sims/shared';
+import {
+  getActivityDefinition,
+  getPropertyDefinition,
+  getShopItem,
+  TOWN_MAP,
+  type ActivityFinishReason,
+} from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import { settleActivityMinute } from './activity.js';
 import { GameClock } from './clock.js';
@@ -56,6 +62,12 @@ export class Simulation {
       coins: 0,
       activity: null,
       items: [],
+      housing: {
+        propertyId: 'home', // 初始租房: 公寓,预付当日+次日租
+        ownership: 'rent',
+        paidThroughDay: this.clock.day + 1,
+        placedItems: [],
+      },
     };
     this.characters.set(id, character);
     return character;
@@ -133,6 +145,82 @@ export class Simulation {
     return character;
   }
 
+  /** 续租: 扣一日期租金,租约顺延一天(已过期则从今日起算) */
+  requestRentProperty(characterId: string, propertyId: string): WorldCharacter {
+    const property = getPropertyDefinition(propertyId);
+    if (property === null) {
+      throw new Error(`未知房产: ${propertyId}`);
+    }
+    const character = this.character(characterId);
+    if (character.housing?.ownership === 'owned') {
+      throw new Error(`${character.name} 已拥有 ${property.name},无需续租`);
+    }
+    if (character.coins < property.rentPrice) {
+      throw new Error(
+        `${character.name} 金币不足: 租金需 ${property.rentPrice},现有 ${Math.floor(character.coins)}`,
+      );
+    }
+    character.coins -= property.rentPrice;
+    character.housing = {
+      propertyId: property.id,
+      ownership: 'rent',
+      paidThroughDay: Math.max(character.housing?.paidThroughDay ?? this.clock.day, this.clock.day) + 1,
+      placedItems: character.housing?.placedItems ?? [],
+    };
+    return character;
+  }
+
+  /** 买断房产: 一次性扣全款,此后免租金 */
+  requestBuyProperty(characterId: string, propertyId: string): WorldCharacter {
+    const property = getPropertyDefinition(propertyId);
+    if (property === null) {
+      throw new Error(`未知房产: ${propertyId}`);
+    }
+    const character = this.character(characterId);
+    if (character.housing?.ownership === 'owned') {
+      throw new Error(`${character.name} 已拥有 ${property.name}`);
+    }
+    if (character.coins < property.buyPrice) {
+      throw new Error(
+        `${character.name} 金币不足: ${property.name}售价 ${property.buyPrice},现有 ${Math.floor(character.coins)}`,
+      );
+    }
+    character.coins -= property.buyPrice;
+    character.housing = {
+      propertyId: property.id,
+      ownership: 'owned',
+      paidThroughDay: character.housing?.paidThroughDay ?? this.clock.day,
+      placedItems: character.housing?.placedItems ?? [],
+    };
+    return character;
+  }
+
+  /** 摆放家具: 从库存移入住宅;须持有有效住宿(自有或租约未到期) */
+  requestPlaceFurniture(characterId: string, itemId: string): WorldCharacter {
+    const item = getShopItem(itemId);
+    if (item === null) {
+      throw new Error(`未知商品: ${itemId}`);
+    }
+    if (item.category !== 'furniture') {
+      throw new Error(`「${item.name}」是食物,购买时即已食用`);
+    }
+    const character = this.character(characterId);
+    const housing = character.housing;
+    if (housing === null) {
+      throw new Error(`${character.name} 无住宿,无法摆放家具`);
+    }
+    if (housing.ownership === 'rent' && housing.paidThroughDay < this.clock.day) {
+      throw new Error(`${character.name} 租约已过期(付至第 ${housing.paidThroughDay} 日),请先续租`);
+    }
+    const index = character.items.indexOf(itemId);
+    if (index === -1) {
+      throw new Error(`${character.name} 库存中没有「${item.name}」`);
+    }
+    character.items.splice(index, 1);
+    housing.placedItems.push(itemId);
+    return character;
+  }
+
   /** 重新规划到目标的路径(意图指令层校验后调用);移动打断进行中活动 */
   requestMoveTo(characterId: string, x: number, y: number): WorldCharacter {
     const character = this.character(characterId);
@@ -188,6 +276,14 @@ export class Simulation {
           ? { activityId: character.activity.activityId, elapsedMinutes: character.activity.elapsed }
           : null,
         items: [...character.items],
+        housing: character.housing
+          ? {
+              propertyId: character.housing.propertyId,
+              ownership: character.housing.ownership,
+              paidThroughDay: character.housing.paidThroughDay,
+              placedItems: [...character.housing.placedItems],
+            }
+          : null,
       })),
     };
   }
@@ -259,6 +355,33 @@ export class Simulation {
           }
         }
       }
+      this._applyFurnitureBonus(character);
+    }
+  }
+
+  /** 已摆放家具每游戏分钟被动加成;住宿失效(欠租)即停发 */
+  private _applyFurnitureBonus(character: WorldCharacter): void {
+    const housing = character.housing;
+    if (housing === null || housing.placedItems.length === 0) {
+      return;
+    }
+    if (housing.ownership === 'rent' && housing.paidThroughDay < this.clock.day) {
+      return;
+    }
+    let energy = 0;
+    let happiness = 0;
+    for (const itemId of housing.placedItems) {
+      const item = getShopItem(itemId);
+      if (item !== null && item.category === 'furniture') {
+        energy += item.bonus.energy;
+        happiness += item.bonus.happiness;
+      }
+    }
+    if (energy !== 0) {
+      character.energy = clampVital(character.energy + energy);
+    }
+    if (happiness !== 0) {
+      character.happiness = clampVital(character.happiness + happiness);
     }
   }
 }

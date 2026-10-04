@@ -7,6 +7,14 @@ export interface CharacterActivity {
   elapsed: number;
 }
 
+/** 住宿状态: 租约付到日(含)或自有;已摆放家具离开库存 */
+export interface CharacterHousing {
+  propertyId: string;
+  ownership: 'rent' | 'owned';
+  paidThroughDay: number;
+  placedItems: string[];
+}
+
 /** 世界运行时角色(权威状态在服务端内存;持久化衔接后置) */
 export interface WorldCharacter {
   id: string;
@@ -23,6 +31,8 @@ export interface WorldCharacter {
   activity: CharacterActivity | null;
   /** 家具库存(已购未摆放;食物即买即耗不入此列) */
   items: string[];
+  /** 住宿状态(null=无住宿) */
+  housing: CharacterHousing | null;
 }
 
 export const clampVital = (value: number): number => Math.max(0, Math.min(100, value));

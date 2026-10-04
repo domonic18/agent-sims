@@ -1,4 +1,4 @@
-import { getActivityDefinition, getShopItem, type Intent } from '@sims/shared';
+import { getActivityDefinition, getPropertyDefinition, getShopItem, type Intent } from '@sims/shared';
 import type { Simulation } from '../world/simulation.js';
 
 export interface IntentResult {
@@ -37,6 +37,22 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
           ? `${character.name} 购买并食用「${name}」`
           : `${character.name} 购入「${name}」,存入库存`;
       return { ok: true, message };
+    }
+    case 'rent_property': {
+      const character = sim.requestRentProperty(intent.characterId, intent.propertyId);
+      const name = getPropertyDefinition(intent.propertyId)?.name ?? intent.propertyId;
+      const through = character.housing?.paidThroughDay ?? 0;
+      return { ok: true, message: `${character.name} 续租「${name}」,租约付至第 ${through} 日` };
+    }
+    case 'buy_property': {
+      const character = sim.requestBuyProperty(intent.characterId, intent.propertyId);
+      const name = getPropertyDefinition(intent.propertyId)?.name ?? intent.propertyId;
+      return { ok: true, message: `${character.name} 买下「${name}」,从此免租金` };
+    }
+    case 'place_furniture': {
+      const character = sim.requestPlaceFurniture(intent.characterId, intent.itemId);
+      const name = getShopItem(intent.itemId)?.name ?? intent.itemId;
+      return { ok: true, message: `${character.name} 摆放「${name}」,加成生效中` };
     }
   }
 }
