@@ -3,8 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import {
   MODEL_PROTOCOLS,
   MODEL_SLOTS,
+  MODEL_SLOT_PROTOCOLS,
+  type ModelConfigInvokeResult,
   type ModelConfigView,
-  type ModelProtocol,
   type ModelSlot,
 } from '@sims/shared';
 import { z } from 'zod';
@@ -12,6 +13,14 @@ import { env } from '../config/env.js';
 import type { DbHandle } from '../db/client.js';
 import { modelConfigs } from '../db/schema/index.js';
 import { decryptSecret, encryptSecret, maskSecret } from '../utils/crypto.js';
+import {
+  chatViaAnthropic,
+  chatViaOpenAi,
+  chatViaSystemOne,
+  embedViaOpenAi,
+} from '../llm/adapters.js';
+import { ModelRouter } from '../llm/router.js';
+import type { SlotRuntimeConfig } from '../llm/types.js';
 import { requireAdmin } from './auth.js';
 
 const putSchema = z.object({
@@ -78,64 +87,30 @@ async function loadRow(handle: DbHandle, slot: ModelSlot) {
   return row;
 }
 
-async function probeModel(config: {
-  slot: ModelSlot;
-  protocol: ModelProtocol;
-  baseUrl: string;
-  model: string;
-  apiKey: string;
-}): Promise<{ ok: boolean; detail: string }> {
-  const isEmbedding = config.slot === 'embedding';
-  // embedding 槽位无 anthropic 形态,固定 openai;其余按协议选路径
-  const protocol: ModelProtocol = isEmbedding ? 'openai' : config.protocol;
-  const url =
-    protocol === 'anthropic'
-      ? `${config.baseUrl}/messages`
-      : `${config.baseUrl}${isEmbedding ? '/embeddings' : '/chat/completions'}`;
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    authorization: `Bearer ${config.apiKey}`,
-  };
-  let body: unknown;
-  if (protocol === 'anthropic') {
-    headers['x-api-key'] = config.apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    body = {
-      model: config.model,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'ping' }],
-    };
-  } else if (isEmbedding) {
-    body = { model: config.model, input: ['ping'] };
-  } else {
-    body = {
-      model: config.model,
-      max_tokens: 1,
-      messages: [{ role: 'user', content: 'ping' }],
-    };
-  }
+/** 连通探测走与正式调用同一套适配器(请求形状单源,防探测/实调漂移) */
+async function probeModel(config: SlotRuntimeConfig): Promise<{ ok: boolean; detail: string }> {
+  const opts = { timeoutMs: env.PROBE_TIMEOUT_MS, maxTokens: 1 };
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(env.PROBE_TIMEOUT_MS),
-    });
-    const text = await res.text();
-    if (!res.ok) {
-      return { ok: false, detail: `HTTP ${res.status} @ ${url}: ${text.slice(0, 200)}` };
+    if (config.slot === 'embedding') {
+      const result = await embedViaOpenAi(config, ['ping'], opts, fetch);
+      return { ok: true, detail: `模型 ${config.model} 连通正常(${result.vector.length} 维)` };
     }
-    if (isEmbedding) {
-      const data = (JSON.parse(text) as { data?: Array<{ embedding?: unknown[] }> }).data;
-      const dims = data?.[0]?.embedding?.length;
-      if (typeof dims !== 'number') {
-        return { ok: false, detail: `响应缺少向量字段: ${text.slice(0, 200)}` };
-      }
-      return { ok: true, detail: `模型 ${config.model} 连通正常(${dims} 维)` };
+    if (config.protocol === 'anthropic') {
+      await chatViaAnthropic(config, [{ role: 'user', content: 'ping' }], opts, fetch);
+    } else if (config.protocol === 'systemone') {
+      await chatViaSystemOne(
+        config,
+        'probe',
+        { demo: { type: 'choice', criteria: { text: '连通测试' }, choices: ['A', 'B'] } },
+        opts,
+        fetch,
+      );
+    } else {
+      await chatViaOpenAi(config, [{ role: 'user', content: 'ping' }], opts, fetch);
     }
-    return { ok: true, detail: `模型 ${config.model} 连通正常(${protocol})` };
+    return { ok: true, detail: `模型 ${config.model} 连通正常(${config.protocol})` };
   } catch (err) {
-    return { ok: false, detail: `${String(err).slice(0, 240)} @ ${url}` };
+    return { ok: false, detail: String(err instanceof Error ? err.message : err).slice(0, 240) };
   }
 }
 
@@ -175,6 +150,8 @@ async function persistTestResult(
 }
 
 export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle): void {
+  const router = new ModelRouter(handle);
+
   app.get('/api/admin/model-configs', async (request, reply) => {
     if (!requireAdmin(request, reply)) return;
     const rows = await handle.db.select().from(modelConfigs);
@@ -198,10 +175,15 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
     }
     const target = params.slot as ModelSlot;
     const data = parsed.data;
-    // embedding 槽位只支持 OpenAI 兼容(/embeddings),协议选择器对其隐藏
-    const protocol: ModelProtocol =
-      target === 'embedding' ? 'openai' : (data.protocol ?? 'openai');
+    // 协议按槽位锁定(ai-invest 同款交互): embedding 仅 openai,jev 双轨,slow/light 不含原生 systemone
+    const allowed = MODEL_SLOT_PROTOCOLS[target];
+    if (data.protocol !== undefined && !allowed.includes(data.protocol)) {
+      return await reply
+        .code(400)
+        .send({ error: `槽位 ${target} 不支持协议 ${data.protocol}(可选: ${allowed.join('/')})` });
+    }
     const existing = await loadRow(handle, target);
+    const protocol = data.protocol ?? existing?.protocol ?? 'openai';
     if (!existing && !data.baseUrl && !data.model && !data.apiKey) {
       return await reply.code(400).send({ error: '槽位不存在且未提供任何配置字段' });
     }
@@ -248,5 +230,79 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
       latencyMs: Math.round(performance.now() - startedAt),
       detail: result.detail,
     });
+  });
+
+  /** 试调用:走 ModelRouter 真实调用链(协议适配+token 记账),与「测试连通」互补 */
+  app.post('/api/admin/model-configs/:slot/invoke', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const params = request.params as { slot: string };
+    if (!MODEL_SLOTS.includes(params.slot as ModelSlot)) {
+      return await reply.code(404).send({ error: `未知槽位: ${params.slot}` });
+    }
+    const target = params.slot as ModelSlot;
+    const parsed = z
+      .object({ prompt: z.string().min(1).max(2000).optional() })
+      .safeParse(request.body ?? {});
+    const prompt =
+      parsed.success && parsed.data.prompt ? parsed.data.prompt : '用一句话介绍你自己';
+    const startedAt = performance.now();
+    try {
+      if (target === 'embedding') {
+        const result = await router.embed(target, [prompt], { taskType: 'admin_invoke' });
+        const payload: ModelConfigInvokeResult = {
+          ok: true,
+          latencyMs: Math.round(performance.now() - startedAt),
+          detail: `向量 ${result.vector.length} 维`,
+          dims: result.vector.length,
+          usage: { promptTokens: result.promptTokens, completionTokens: 0 },
+        };
+        return await reply.send(payload);
+      }
+      if (target === 'jev') {
+        const row = await loadRow(handle, target);
+        if (row?.protocol === 'systemone') {
+          const result = await router.systemOne(
+            target,
+            prompt,
+            { demo: { type: 'choice', criteria: { text: '试调用问题' }, choices: ['A', 'B', 'C'] } },
+            { taskType: 'admin_invoke' },
+          );
+          const payload: ModelConfigInvokeResult = {
+            ok: true,
+            latencyMs: Math.round(performance.now() - startedAt),
+            detail: `SystemOne(${result.model})`,
+            content: JSON.stringify(result.answers),
+            usage: {
+              promptTokens: result.promptTokens,
+              completionTokens: result.completionTokens,
+            },
+          };
+          return await reply.send(payload);
+        }
+      }
+      const result = await router.chat(
+        target,
+        [{ role: 'user', content: prompt }],
+        { taskType: 'admin_invoke', maxTokens: 256 },
+      );
+      const payload: ModelConfigInvokeResult = {
+        ok: true,
+        latencyMs: Math.round(performance.now() - startedAt),
+        detail: '对话补全',
+        content: result.content,
+        usage: {
+          promptTokens: result.promptTokens,
+          completionTokens: result.completionTokens,
+        },
+      };
+      return await reply.send(payload);
+    } catch (err) {
+      const payload: ModelConfigInvokeResult = {
+        ok: false,
+        latencyMs: Math.round(performance.now() - startedAt),
+        detail: String(err instanceof Error ? err.message : err).slice(0, 300),
+      };
+      return await reply.send(payload);
+    }
   });
 }
