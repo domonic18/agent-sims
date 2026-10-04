@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /** 意图指令集(arch §5):玩家输入与 Agent 规划器共用的同一指令层 */
 
-export const INTENT_TYPES = ['move_to', 'start_activity', 'stop_activity'] as const;
+export const INTENT_TYPES = ['move_to', 'start_activity', 'stop_activity', 'buy_item'] as const;
 
 export type IntentType = (typeof INTENT_TYPES)[number];
 
@@ -30,10 +30,19 @@ export const stopActivityIntentSchema = z.object({
 
 export type StopActivityIntent = z.infer<typeof stopActivityIntentSchema>;
 
+export const buyItemIntentSchema = z.object({
+  type: z.literal('buy_item'),
+  characterId: z.string().min(1),
+  itemId: z.string().min(1),
+});
+
+export type BuyItemIntent = z.infer<typeof buyItemIntentSchema>;
+
 export const intentSchema = z.discriminatedUnion('type', [
   moveToIntentSchema,
   startActivityIntentSchema,
   stopActivityIntentSchema,
+  buyItemIntentSchema,
 ]);
 
 export type Intent = z.infer<typeof intentSchema>;

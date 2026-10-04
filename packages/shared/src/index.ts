@@ -20,10 +20,12 @@ export {
 
 export {
   INTENT_TYPES,
+  buyItemIntentSchema,
   intentSchema,
   moveToIntentSchema,
   startActivityIntentSchema,
   stopActivityIntentSchema,
+  type BuyItemIntent,
   type Intent,
   type IntentType,
   type MoveToIntent,
@@ -54,6 +56,18 @@ export {
   type ActivityEffects,
   type ActivityId,
 } from './activities.js';
+
+export {
+  SHOP_CATEGORIES,
+  SHOP_ITEMS,
+  SHOP_ITEM_IDS,
+  getShopItem,
+  type FoodShopItem,
+  type FurnitureShopItem,
+  type ShopCategory,
+  type ShopItemDefinition,
+  type ShopItemId,
+} from './shop.js';
 
 export {
   SOCKET_EVENTS,
