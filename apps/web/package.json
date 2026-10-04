@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "check": "tsc -p tsconfig.json --noEmit && eslint src",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {

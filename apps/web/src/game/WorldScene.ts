@@ -3,9 +3,7 @@ import {
   LOW_ENERGY_THRESHOLD,
   TOWN_MAP,
   WALK_SPEED_TILES_PER_TICK,
-  furnitureRectsOf,
   getActivityDefinition,
-  wallRectsOf,
   type FurnitureDefinition,
   type PlaceDefinition,
   type TileMapDefinition,
@@ -14,6 +12,7 @@ import { sendIntent } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
 import { pushToast } from '../store/toastStore';
 import { CHARACTER, characterVariant, PROP_TREES, TILE_FRAME, TILESET } from './assets';
+import { isWalkable } from './walkability';
 
 const TILE = 16;
 /** 目标偏差超过该格数视为瞬移(重连/重生),直接吸附 */
@@ -217,8 +216,6 @@ export class WorldScene extends Phaser.Scene {
   private _wasdDir: { dx: number; dy: number } | null = null;
   /** WASD 作用中的角色 id(切角色重置方向状态) */
   private _wasdCharacterId: string | null = null;
-  /** 不可行走格集合(懒建,内容静态):与 server TileMap 同源——blockedRects+边界墙+墙体展开+家具占地 */
-  private _blockedTiles: Set<string> | null = null;
   /** 交互开关: 主页面纯观看(仅点选角色/缩放),/lab 调试台全量操控(地图移动/方向键) */
   private _interactive = true;
 
@@ -333,37 +330,6 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * 可行走判定(与服务端 TileMap 同源): 边界内 且 不在
-   * blockedRects/边界墙/建筑墙体展开(wallRectsOf)/家具占地(furnitureRectsOf)内。
-   */
-  private _walkable(x: number, y: number): boolean {
-    if (this._blockedTiles === null) {
-      const blocked = new Set<string>();
-      const add = (rect: { x: number; y: number; w: number; h: number }): void => {
-        for (let ry = rect.y; ry < rect.y + rect.h; ry += 1) {
-          for (let rx = rect.x; rx < rect.x + rect.w; rx += 1) blocked.add(`${rx},${ry}`);
-        }
-      };
-      for (const rect of TOWN_MAP.blockedRects) add(rect);
-      add({ x: 0, y: 0, w: TOWN_MAP.width, h: 1 });
-      add({ x: 0, y: TOWN_MAP.height - 1, w: TOWN_MAP.width, h: 1 });
-      add({ x: 0, y: 0, w: 1, h: TOWN_MAP.height });
-      add({ x: TOWN_MAP.width - 1, y: 0, w: 1, h: TOWN_MAP.height });
-      for (const place of TOWN_MAP.places) {
-        for (const rect of [...wallRectsOf(place), ...furnitureRectsOf(place)]) add(rect);
-      }
-      this._blockedTiles = blocked;
-    }
-    return (
-      x >= 0 &&
-      y >= 0 &&
-      x < TOWN_MAP.width &&
-      y < TOWN_MAP.height &&
-      !this._blockedTiles.has(`${x},${y}`)
-    );
-  }
-
-  /**
    * 方向键/WASD 连续移动(验收反馈: 修复一顿一顿)——按住时沿方向前瞻
    * 最远连续可行走格整段下发 move_to,路径余量 ≤ WASD_EXTEND_TILES 提前续路,
    * 服务端路径不空转、角色连贯行进;松手下发 stop_move 即停(协议 9→10)。
@@ -409,7 +375,7 @@ export class WorldScene extends Phaser.Scene {
     let tx = character.x;
     let ty = character.y;
     for (let i = 0; i < WASD_LOOKAHEAD_TILES; i += 1) {
-      if (!this._walkable(tx + dir.dx, ty + dir.dy)) break;
+      if (!isWalkable(tx + dir.dx, ty + dir.dy)) break;
       tx += dir.dx;
       ty += dir.dy;
     }
