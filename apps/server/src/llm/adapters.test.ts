@@ -63,6 +63,13 @@ describe('chatViaOpenAi', () => {
       chatViaOpenAi(cfg('openai'), [{ role: 'user', content: 'x' }], {}, impl),
     ).rejects.toThrow(/401/);
   });
+
+  it('HTTP 200 但正文带 error(one_api 网关形态)显式报错', async () => {
+    const { impl } = mockFetch(200, { error: { message: '用户已被封禁', type: 'one_api_error' } });
+    await expect(
+      chatViaOpenAi(cfg('openai'), [{ role: 'user', content: 'x' }], {}, impl),
+    ).rejects.toThrow(/封禁/);
+  });
 });
 
 describe('chatViaAnthropic', () => {

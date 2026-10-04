@@ -81,6 +81,11 @@ export async function chatViaOpenAi(
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
   const content = data.choices?.[0]?.message?.content ?? '';
+  // one_api 类网关有「HTTP 200 + error 正文」形态,须显式识别
+  const errBody = (data as { error?: unknown }).error;
+  if (errBody !== undefined && content === '') {
+    throw new LlmError(cfg.slot, `网关返回错误: ${JSON.stringify(errBody).slice(0, 300)}`);
+  }
   const usage = readOpenAiUsage(data);
   return { content, ...usage };
 }
