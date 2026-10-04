@@ -6,6 +6,10 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   MASTER_KEY: z.string().min(16),
   ADMIN_INITIAL_PASSWORD: z.string().min(6),
+  /** 管理端会话有效期(默认 12 小时) */
+  ADMIN_TOKEN_TTL_MS: z.coerce.number().int().positive().default(12 * 60 * 60 * 1000),
+  /** 模型连通性探测超时(默认 15 秒) */
+  PROBE_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
 });
 
 const parsed = envSchema.safeParse(process.env);

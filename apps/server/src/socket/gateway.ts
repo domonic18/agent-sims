@@ -1,7 +1,6 @@
 import { Server, type Socket } from 'socket.io';
 import {
   CLIENT_EVENTS,
-  intentSchema,
   SOCKET_EVENTS,
   SOCKET_ROLES,
   type IntentAck,
@@ -9,7 +8,7 @@ import {
   type WorldEventMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
-import { executeIntent } from '../intents/execute.js';
+import { runIntent } from '../intents/execute.js';
 import type { Simulation } from '../world/simulation.js';
 import type { ClientRegistry } from './clients.js';
 
@@ -40,16 +39,7 @@ export function attachSocketGateway(
       if (role !== 'player') {
         return reply({ ok: false, message: '参观者只读,指令已忽略' });
       }
-      const parsed = intentSchema.safeParse(payload);
-      if (!parsed.success) {
-        const issue = parsed.error.issues[0];
-        return reply({ ok: false, message: issue ? `意图不合法: ${issue.message}` : '意图不合法' });
-      }
-      try {
-        reply(executeIntent(sim, parsed.data));
-      } catch (err) {
-        reply({ ok: false, message: err instanceof Error ? err.message : '意图执行失败' });
-      }
+      reply(runIntent(sim, payload));
     });
     socket.on('disconnect', () => {
       clients.remove(socket.id);
@@ -63,4 +53,9 @@ export function attachSocketGateway(
   });
 
   return io;
+}
+
+/** 每 tick 快照广播接线(arch §7):宿主驱动器 onTick 调用;index.ts 实时驱动与 sync.test 对照共用,防两端漂移 */
+export function tickBroadcast(sim: Simulation, io: Server): () => void {
+  return () => io.emit(SOCKET_EVENTS.tick, sim.snapshot());
 }

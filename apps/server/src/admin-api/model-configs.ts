@@ -14,9 +14,6 @@ import { modelConfigs } from '../db/schema/index.js';
 import { decryptSecret, encryptSecret, maskSecret } from '../utils/crypto.js';
 import { requireAdmin } from './auth.js';
 
-/** 连通性探测超时 */
-const PROBE_TIMEOUT_MS = 15_000;
-
 const putSchema = z.object({
   protocol: z.enum(MODEL_PROTOCOLS).optional(),
   baseUrl: z
@@ -122,7 +119,7 @@ async function probeModel(config: {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(env.PROBE_TIMEOUT_MS),
     });
     const text = await res.text();
     if (!res.ok) {

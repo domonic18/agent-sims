@@ -7,9 +7,6 @@ import { adminUsers } from '../db/schema/index.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { issueAdminToken, verifyAdminToken } from '../utils/token.js';
 
-/** 会话有效期:12 小时 */
-const ADMIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
-
 const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
@@ -50,7 +47,7 @@ export function registerAuthRoutes(app: FastifyInstance, handle: DbHandle): void
     const issued = issueAdminToken({
       username: user.username,
       masterKey: env.MASTER_KEY,
-      ttlMs: ADMIN_TOKEN_TTL_MS,
+      ttlMs: env.ADMIN_TOKEN_TTL_MS,
     });
     return await reply.send({ token: issued.token, expiresIn: issued.expiresIn });
   });

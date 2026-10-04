@@ -76,12 +76,12 @@ describe('生死机制(M3.6f 体力区段)', () => {
     expect(() => sim.requestStartActivity('mort', 'stroll')).toThrow(/幽灵态/);
     expect(() => sim.requestBuyItem('mort', 'bread')).toThrow(/幽灵态/);
     sim.advanceTicks(3);
-    const revived = sim.revive('mort');
+    const revived = sim.debugRevive('mort');
     expect(revived.alive).toBe(true);
     expect(revived.energy).toBe(100);
     expect(revived.happiness).toBe(80);
     expect(events.some((e) => e.type === 'character.revived')).toBe(true);
-    expect(() => sim.revive('mort')).toThrow(/尚存活/);
+    expect(() => sim.debugRevive('mort')).toThrow(/尚存活/);
     // 复活后可正常行动
     sim.requestMoveTo('mort', 9, 12);
     expect(sim.character('mort').path.length).toBeGreaterThan(0);

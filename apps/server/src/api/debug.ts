@@ -1,8 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { intentSchema } from '@sims/shared';
 import { z } from 'zod';
 import { BALANCE } from '../config/balance.js';
-import { executeIntent } from '../intents/execute.js';
+import { runIntent } from '../intents/execute.js';
 import type { ClientRegistry } from '../socket/clients.js';
 import type { Simulation } from '../world/simulation.js';
 
@@ -114,7 +113,7 @@ export function registerDebugRoutes(
       return parseError(reply, issue ? `characterId: ${issue.message}` : '请求体不合法');
     }
     try {
-      const character = sim.revive(parsed.data.characterId);
+      const character = sim.debugRevive(parsed.data.characterId);
       return await reply.send({
         ok: true,
         message: `${character.name} 已复活`,
@@ -125,18 +124,12 @@ export function registerDebugRoutes(
     }
   });
 
-  // intents 层雏形:经共享协议校验后执行(异常映射 400)
+  // intents 层雏形:与 socket 网关同一 runIntent 入口(校验/执行/错误归一一致)
   app.post('/debug/intent', async (request, reply) => {
-    const parsed = intentSchema.safeParse(request.body);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      return parseError(reply, issue ? `intent: ${issue.message}` : '意图不合法');
+    const result = runIntent(sim, request.body);
+    if (!result.ok) {
+      return parseError(reply, result.message);
     }
-    try {
-      const result = executeIntent(sim, parsed.data);
-      return await reply.send({ ...result, state: sim.snapshot() });
-    } catch (err) {
-      return parseError(reply, err instanceof Error ? err.message : '意图执行失败');
-    }
+    return await reply.send({ ...result, state: sim.snapshot() });
   });
 }

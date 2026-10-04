@@ -323,8 +323,8 @@ export class Simulation {
     return character;
   }
 
-  /** 复活(debug 通道):幽灵态解除,恢复满状态 */
-  revive(characterId: string): WorldCharacter {
+  /** 复活(debug 通道,经 /debug/revive 暴露):幽灵态解除,恢复满状态 */
+  debugRevive(characterId: string): WorldCharacter {
     const character = this.character(characterId);
     if (character.alive) {
       throw new Error(`${character.name} 尚存活,无需复活`);

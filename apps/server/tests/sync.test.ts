@@ -1,6 +1,6 @@
 import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   CLIENT_EVENTS,
   SOCKET_EVENTS,
@@ -11,13 +11,14 @@ import {
 } from '@sims/shared';
 import { buildApp } from '../src/app.js';
 import { BALANCE } from '../src/config/balance.js';
+import { tickBroadcast } from '../src/socket/gateway.js';
 import { TickDriver } from '../src/world/driver.js';
 
 /**
  * 同步层集成测试(arch §7):验证连接快照、tick 广播、离散事件转发、
  * 在线注册表与多次连接(重连)。纯 socket 面,不依赖 DB。
  * 快照在连接握手中同步下发,监听必须先于 connect 注册,否则错过首帧。
- * 与 index.ts 相同的驱动器接线(onTick → io.emit world.tick)在用例内复刻。
+ * onTick 广播与 index.ts 共用 tickBroadcast 接线;每用例重建 app 隔离世界状态。
  */
 
 let app: ReturnType<typeof buildApp>;
@@ -50,13 +51,14 @@ const until = async (condition: () => boolean, timeoutMs = 3_000): Promise<void>
   expect(condition()).toBe(true);
 };
 
-beforeAll(async () => {
+// 每用例重建 app(端口/世界状态全隔离),用例间互不污染
+beforeEach(async () => {
   app = buildApp();
   const address = await app.listen({ port: 0, host: '127.0.0.1' });
   port = Number(new URL(address).port);
 }, 30_000);
 
-afterAll(async () => {
+afterEach(async () => {
   await app.close();
 });
 
@@ -106,11 +108,11 @@ describe('socket 同步层', () => {
     const tickMessages: WorldSnapshotMessage[] = [];
     socket.on(SOCKET_EVENTS.tick, (snapshot: WorldSnapshotMessage) => tickMessages.push(snapshot));
 
-    // 复刻 index.ts 接线,注入时钟按泵间隔连跑 3 拍(每拍 1 tick)
+    // 与 index.ts 相同的 onTick 广播接线,注入时钟按泵间隔连跑 3 拍(每拍 1 tick)
     let now = 0;
     const driver = new TickDriver(app.simulation, {
       now: () => (now += BALANCE.TICK_MS),
-      onTick: () => app.io.emit(SOCKET_EVENTS.tick, app.simulation.snapshot()),
+      onTick: tickBroadcast(app.simulation, app.io),
     });
     const pumped = driver.pump() + driver.pump() + driver.pump();
 
@@ -123,7 +125,6 @@ describe('socket 同步层', () => {
     const arrived = events.find((message) => message.event.type === 'character.arrived');
     expect(arrived?.event).toMatchObject({ characterId: 'alice', tick: 1, x: 10, y: 12 }); // 2 格 @2格/分 → 第 1 tick 到达
     socket.disconnect();
-    app.simulation.characters.delete('alice');
   });
 
   it('控制变更经 world.control 事件转发,新连接快照反映最新状态', async () => {
@@ -147,7 +148,6 @@ describe('socket 同步层', () => {
     }
 
     socket.disconnect();
-    app.simulation.setTimeScale(BALANCE.DEFAULT_TIME_SCALE);
   });
 
   it('意图通道: player 指令执行并 ack,spectator 指令丢弃,非法意图拒绝', async () => {
@@ -189,6 +189,5 @@ describe('socket 同步层', () => {
     player.disconnect();
     spectator.disconnect();
     await until(() => app.clients.list().length === 0);
-    app.simulation.characters.delete('bill');
   });
 });

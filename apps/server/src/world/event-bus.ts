@@ -14,7 +14,12 @@ export class EventBus<E> {
 
   emit(event: E): void {
     for (const handler of this._handlers) {
-      handler(event);
+      try {
+        handler(event);
+      } catch (err) {
+        // 单订阅者异常不阻断 tick 推进与其他订阅者(同步转发处于 tick 调用链上)
+        console.error('[event-bus] 订阅者处理异常', err);
+      }
     }
   }
 }

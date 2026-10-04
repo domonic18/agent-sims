@@ -1,9 +1,32 @@
-import { getActivityDefinition, getPropertyDefinition, getShopItem, type Intent } from '@sims/shared';
+import {
+  getActivityDefinition,
+  getPropertyDefinition,
+  getShopItem,
+  intentSchema,
+  type Intent,
+} from '@sims/shared';
 import type { Simulation } from '../world/simulation.js';
 
 export interface IntentResult {
   ok: boolean;
   message: string;
+}
+
+/**
+ * 意图统一入口(socket 网关与 /debug/intent 共用):协议校验+执行+错误归一,
+ * 调用方拿 IntentResult 自行决定 ack 或 HTTP 状态。
+ */
+export function runIntent(sim: Simulation, payload: unknown): IntentResult {
+  const parsed = intentSchema.safeParse(payload);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return { ok: false, message: issue ? `意图不合法: ${issue.message}` : '意图不合法' };
+  }
+  try {
+    return executeIntent(sim, parsed.data);
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : '意图执行失败' };
+  }
 }
 
 /**
