@@ -2,6 +2,7 @@
  * 素材清单:tile 条带与角色精灵表的帧配置(素材经裁切入库,来源与授权见 public/assets/README.md)。
  * 索引与裁切脚本中的条带顺序一一对应,调整时需同步重新裁切。
  */
+import type { ActivityId } from '@sims/shared';
 
 /** 像素格边长(tile→px 换算,渲染层通用) */
 export const TILE = 16;
@@ -81,8 +82,8 @@ export const CHARACTER = {
 
 export type CharacterVariant = (typeof CHARACTER.variants)[number];
 
-/** 活动 → 头顶气泡图标(emoji,M4 决策气泡复用此形态) */
-export const ACTIVITY_EMOJI: Record<string, string> = {
+/** 活动 → 头顶气泡图标(emoji,M4 决策气泡复用此形态);键穷举 ActivityId,新增活动漏配即编译错误 */
+export const ACTIVITY_EMOJI: Record<ActivityId, string> = {
   study: '📖',
   work: '🔨',
   rest: '💤',
@@ -92,7 +93,7 @@ export const ACTIVITY_EMOJI: Record<string, string> = {
 };
 
 /** 活动 → 静止姿态:坐(sit)/原地跑(run)/站立(idle) */
-export const ACTIVITY_POSES: Record<string, 'sit' | 'run' | 'idle'> = {
+export const ACTIVITY_POSES: Record<ActivityId, 'sit' | 'run' | 'idle'> = {
   study: 'sit',
   work: 'sit',
   rest: 'sit',

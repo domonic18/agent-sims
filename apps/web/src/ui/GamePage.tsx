@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { formatCoins } from '../format';
 import { connectWorld } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
 import { WorldCanvas } from '../game/WorldCanvas';
@@ -59,7 +60,7 @@ export default function GamePage() {
               </div>
               <VitalBar label="体力" value={character.energy} />
               <VitalBar label="幸福" value={character.happiness} />
-              <div className="coins">金币 {character.coins}</div>
+              <div className="coins">金币 {formatCoins(character.coins)}</div>
             </div>
           ))}
         </div>

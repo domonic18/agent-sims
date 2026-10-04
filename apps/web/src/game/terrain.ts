@@ -16,8 +16,10 @@ import {
   PLAZA_LAMPS,
   STREET_LAMPS,
 } from './decor';
-import type { FurnitureDefinition, PlaceDefinition, TileMapDefinition } from '@sims/shared';
+import type { PlaceDefinition, TileMapDefinition } from '@sims/shared';
 import { TOWN_MAP } from '@sims/shared';
+import { drawFurniture } from './furniture-art';
+import { FLOOR, WALL_COLORS, WALL_DEFAULT } from './palette';
 
 const POND_RECT = { x: 4, y: 30, w: 4, h: 4 };
 /** 广场铺装(paths 内矩形默认砂路,该矩形单独用灰石) */
@@ -28,23 +30,6 @@ export const inRect = (
   y: number,
   rect: { x: number; y: number; w: number; h: number },
 ): boolean => x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
-
-/** 内景配色(M3.6e 剖切风): 墙体按场所着色区分建筑,室内铺木地板双色棋盘 */
-const WALL_COLORS: Record<string, number> = {
-  'home-a': 0x9c7b5f,
-  'home-b': 0xa8825f,
-  'home-c': 0x8f7a9c,
-  'home-d': 0x7f9c6f,
-  library: 0x7a6f9e,
-  office: 0x6f8496,
-  shop: 0xa8894f,
-  restaurant: 0xa26353,
-  gym: 0x5f8472,
-};
-const WALL_DEFAULT = 0x7d7d85;
-const FLOOR_A = 0xd9b98a;
-const FLOOR_B = 0xcfae7e;
-const FLOOR_LINE = 0xb1925f;
 
 /**
  * 城镇地形绘制(M3.6e 剖切风):Kenney tile 地图(水岸/装饰分层)
@@ -137,11 +122,11 @@ function drawInterior(scene: Phaser.Scene, place: PlaceDefinition): void {
   // 室内木地板: 双色棋盘 + 细缝线
   for (let y = place.y + 1; y < bottom; y += 1) {
     for (let x = place.x + 1; x < right; x += 1) {
-      g.fillStyle((x + y) % 2 === 0 ? FLOOR_A : FLOOR_B, 1);
+      g.fillStyle((x + y) % 2 === 0 ? FLOOR.a : FLOOR.b, 1);
       g.fillRect(x * TILE, y * TILE, TILE, TILE);
     }
   }
-  g.lineStyle(1, FLOOR_LINE, 0.35);
+  g.lineStyle(1, FLOOR.line, 0.35);
   for (let x = place.x + 1; x <= right; x += 1) {
     g.lineBetween(x * TILE, (place.y + 1) * TILE, x * TILE, bottom * TILE);
   }
@@ -168,114 +153,15 @@ function drawInterior(scene: Phaser.Scene, place: PlaceDefinition): void {
   g.fillRect((place.x + 1) * TILE, (place.y + 1) * TILE, (place.w - 2) * TILE, 2);
   g.fillRect((place.x + 1) * TILE, (place.y + 1) * TILE, 2, (place.h - 2) * TILE);
   if (place.door !== undefined) {
-    g.fillStyle(FLOOR_A, 1);
+    g.fillStyle(FLOOR.a, 1);
     g.fillRect(place.door.x * TILE, place.door.y * TILE, TILE, TILE);
-    g.fillStyle(0x8a5a3a, 1);
+    g.fillStyle(FLOOR.doorThreshold, 1);
     g.fillRect(place.door.x * TILE + 2, place.door.y * TILE + 4, TILE - 4, TILE - 8);
   }
   const fg = scene.add.graphics();
   fg.setDepth(2);
   for (const furniture of place.furniture ?? []) {
     drawFurniture(fg, furniture);
-  }
-}
-
-/** 家具程序化像素画:每格 16px,锚点家具(床/桌/跑步机等)即活动使用位 */
-function drawFurniture(g: Phaser.GameObjects.Graphics, f: FurnitureDefinition): void {
-  const px = f.x * TILE;
-  const py = f.y * TILE;
-  const w = f.w * TILE;
-  const h = f.h * TILE;
-  const r = (x: number, y: number, ww: number, hh: number, color: number): void => {
-    g.fillStyle(color, 1);
-    g.fillRect(px + x, py + y, ww, hh);
-  };
-  switch (f.kind) {
-    case 'bed': {
-      r(0, 0, w, h, 0x8a6d4a); // 床架
-      r(2, 2, w - 4, h - 4, 0xf2ead8); // 床垫
-      r(3, 3, w - 6, 6, 0xffffff); // 枕头(床头在上)
-      r(2, 11, w - 4, h - 15, 0x7f9fd9); // 被子
-      r(2, 11, w - 4, 2, 0x6f8fc9); // 被沿
-      break;
-    }
-    case 'desk': {
-      r(0, 2, w, h - 5, 0x9a6b45); // 桌面
-      r(0, 2, w, 2, 0xb98a5f); // 桌沿高光
-      r(2, h - 3, 3, 3, 0x6f4a2f); // 桌腿
-      r(w - 5, h - 3, 3, 3, 0x6f4a2f);
-      r(w - 12, 5, 8, 5, 0xd9534f); // 桌上的书
-      r(w - 12, 5, 8, 2, 0xe2776f);
-      break;
-    }
-    case 'workstation': {
-      r(0, 9, w, h - 11, 0x7f8fa0); // 桌面(下半)
-      r(0, 9, w, 2, 0x9aabb8);
-      r(w / 2 - 8, 0, 16, 8, 0x333a44); // 显示器
-      r(w / 2 - 6, 1, 12, 5, 0x6fd3e8); // 屏
-      break;
-    }
-    case 'treadmill': {
-      r(2, 3, w - 4, h - 5, 0x4a525c); // 机身
-      r(4, h / 2, w - 8, h / 2 - 4, 0x22262c); // 跑带
-      r(4, h / 2, w - 8, 2, 0x3a4048);
-      r(1, 0, w - 2, 6, 0x8a99a8); // 仪表台
-      r(3, 1, 4, 3, 0x6fd3e8); // 仪表屏
-      break;
-    }
-    case 'table': {
-      r(1, 2, w - 2, h - 6, 0xa87748); // 桌面
-      r(1, 2, w - 2, 2, 0xc09060);
-      r(3, h - 4, 3, 3, 0x7a5230); // 桌腿
-      r(w - 6, h - 4, 3, 3, 0x7a5230);
-      r(w / 2 - 3, 5, 6, 4, 0xe8e0d0); // 餐盘
-      break;
-    }
-    case 'bookshelf': {
-      r(0, 0, w, h, 0x7a5230); // 柜体
-      const books = [0xd9534f, 0x4f8fd9, 0xe8b84f, 0x6fae5f, 0xb08fd9];
-      for (let i = 1; i < w - 2; i += 3) {
-        r(i, 2, 2, 5, books[i % books.length]!);
-        r(i, 9, 2, 5, books[(i + 2) % books.length]!);
-      }
-      g.lineStyle(1, 0x8f6540, 1);
-      g.lineBetween(px + 1, py + 7.5, px + w - 1, py + 7.5); // 中层隔板
-      break;
-    }
-    case 'shelf': {
-      r(0, 0, w, h, 0x8f979f); // 货架框架
-      g.lineStyle(1, 0x767e86, 1);
-      for (let i = 1; i < 4; i += 1) {
-        g.lineBetween(px + 1, py + (h / 4) * i, px + w - 1, py + (h / 4) * i);
-      }
-      r(2, 3, w - 4, 4, 0xc9a06a); // 货箱
-      r(2, h / 2 + 1, w - 4, 4, 0x8fb0d9);
-      r(2, h - 5, w - 4, 4, 0x9fd98f);
-      break;
-    }
-    case 'counter': {
-      r(0, 0, w, h, 0x8d6e4f); // 柜体
-      r(0, 0, w, 4, 0xb08f6a); // 台面
-      r(0, h - 2, w, 2, 0x6f5238); // 底沿
-      break;
-    }
-    case 'sofa': {
-      r(0, 0, w, h, 0x5f7f5a); // 靠背
-      r(0, h / 2, w, h / 2, 0x6f8f6a); // 座
-      r(0, h / 2, w, 2, 0x7f9f7a);
-      r(0, 0, 3, h, 0x4f6f4a); // 扶手
-      r(w - 3, 0, 3, h, 0x4f6f4a);
-      break;
-    }
-    case 'plant': {
-      r(4, h - 7, w - 8, 6, 0xb0603f); // 花盆
-      r(4, h - 7, w - 8, 2, 0x8f4f33);
-      g.fillStyle(0x4f8f4a, 1);
-      g.fillCircle(px + w / 2, py + 6, 5); // 叶冠
-      g.fillStyle(0x63a85c, 1);
-      g.fillCircle(px + w / 2 - 2, py + 5, 3);
-      break;
-    }
   }
 }
 

@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
-import { LOW_ENERGY_THRESHOLD, TOWN_MAP, getActivityDefinition } from '@sims/shared';
+import {
+  LOW_ENERGY_THRESHOLD,
+  TOWN_MAP,
+  getActivityDefinition,
+  type ActivityId,
+} from '@sims/shared';
 import {
   ACTIVITY_EMOJI,
   ACTIVITY_POSES,
@@ -168,7 +173,7 @@ export function updateCharacterView(
     view.y = view.targetY;
     // 活动姿态映射:健身=原地跑(walk 动画不位移),散步=站立,其余=坐
     if (view.inActivity && view.activityId !== null) {
-      const pose = ACTIVITY_POSES[view.activityId] ?? 'sit';
+      const pose = ACTIVITY_POSES[view.activityId as ActivityId] ?? 'sit';
       playAnim(scene, view, pose === 'run' ? 'walk' : pose);
     } else {
       playAnim(scene, view, 'idle');
@@ -254,7 +259,7 @@ function updateBubble(scene: Phaser.Scene, view: CharacterRender, now: number): 
   }
   if (view.bubble === null) {
     const ring = scene.add.graphics();
-    const emoji = ACTIVITY_EMOJI[view.activityId] ?? '❓';
+    const emoji = ACTIVITY_EMOJI[view.activityId as ActivityId] ?? '❓';
     const text = scene.add
       .text(0, 0, emoji, { fontSize: '9px', color: '#222222' })
       .setOrigin(0.5, 0.5);
@@ -267,7 +272,7 @@ function updateBubble(scene: Phaser.Scene, view: CharacterRender, now: number): 
   }
   const phase = (view.targetX + view.targetY) * 0.7;
   view.bubble.y = BUBBLE_Y + Math.sin(now / 400 + phase) * 1.5;
-  const emoji = ACTIVITY_EMOJI[view.activityId] ?? '❓';
+  const emoji = ACTIVITY_EMOJI[view.activityId as ActivityId] ?? '❓';
   if (view.bubbleText !== null && view.bubbleText.text !== emoji) {
     view.bubbleText.setText(emoji);
   }

@@ -7,6 +7,7 @@ import {
   type PlaceDefinition,
   type WorldSnapshotMessage,
 } from '@sims/shared';
+import { formatCoins } from '../../format';
 import { activityAnchors } from './place';
 import type { CharacterView } from './place';
 import type { GoAndDoPending, RunIntent } from './useGoAndDo';
@@ -62,7 +63,7 @@ export function CharactersSection({
         <div className="vitals">
           <VitalBar label="体力" value={character.energy} />
           <VitalBar label="幸福" value={character.happiness} />
-          <div className="coins">金币 {Math.round(character.coins * 10) / 10}</div>
+          <div className="coins">金币 {formatCoins(character.coins)}</div>
           {!character.alive && (
             <div className="death-banner">☠️ 已死亡(幽灵态),等待复活(/lab 可复活)</div>
           )}
