@@ -1,5 +1,5 @@
 /**
- * 素材清单:tile 条带与角色 walk 表的帧配置(素材经裁切入库,来源与授权见 public/assets/README.md)。
+ * 素材清单:tile 条带与角色精灵表的帧配置(素材经裁切入库,来源与授权见 public/assets/README.md)。
  * 索引与裁切脚本中的条带顺序一一对应,调整时需同步重新裁切。
  */
 
@@ -38,14 +38,34 @@ export const ROOF_FRAME: Record<string, number> = {
   gym: TILE_FRAME.roofGym,
 };
 
+/**
+ * LPC 穿衣角色表(288x384,32px 帧,9 列 × 12 行):
+ * rows 0-3 行走(9 帧)/ rows 4-7 待机(取前 2 帧呼吸循环)/ rows 8-11 坐姿(2 帧)。
+ * 方向序均为 up/left/down/right;配色变体按角色 id 稳定分配。
+ */
 export const CHARACTER = {
-  key: 'character',
-  url: '/assets/character/walk.png',
+  keyPrefix: 'character',
   frameWidth: 32,
   frameHeight: 32,
-  /** 每方向帧数(行内列数) */
-  frames: 9,
+  columns: 9,
   walkFps: 8,
-  /** 行序沿用 LPC 通用表 rows 8-11:up/left/down/right */
+  idleFps: 3,
+  sitFps: 2,
+  variants: ['blue', 'forest', 'maroon', 'slate', 'teal', 'walnut'],
+  /** 三组动画的基行(方向偏移在此基础上加 rows[dir]) */
+  groups: { walk: 0, idle: 4, sit: 8 },
   rows: { up: 0, left: 1, down: 2, right: 3 },
+  framesPerGroup: { walk: 9, idle: 2, sit: 2 },
 } as const;
+
+export type CharacterVariant = (typeof CHARACTER.variants)[number];
+
+/** 角色 id → 配色变体(稳定哈希,同一角色始终同一套衣服) */
+export function characterVariant(id: string): CharacterVariant {
+  let hash = 7;
+  for (let i = 0; i < id.length; i += 1) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % CHARACTER.variants.length;
+  return CHARACTER.variants[index] as CharacterVariant;
+}

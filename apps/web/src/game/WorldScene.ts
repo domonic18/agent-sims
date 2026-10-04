@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { TOWN_MAP, type PlaceDefinition, type TileMapDefinition } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
-import { CHARACTER, ROOF_FRAME, TILE_FRAME, TILESET } from './assets';
+import { CHARACTER, characterVariant, ROOF_FRAME, TILE_FRAME, TILESET } from './assets';
 
 const TILE = 16;
 /** 与服务端 BALANCE.WALK_SPEED_TILES_PER_MINUTE 对应的移动契约:每 tick 1 格 */
@@ -21,10 +21,13 @@ const PARK_TREES: ReadonlyArray<readonly [number, number]> = [
 ];
 
 type Direction = keyof typeof CHARACTER.rows;
+type AnimGroup = keyof typeof CHARACTER.groups;
 
 interface CharacterRender {
   node: Phaser.GameObjects.Container;
   sprite: Phaser.GameObjects.Sprite;
+  /** 配色变体(按角色 id 稳定分配) */
+  variant: string;
   /** 渲染坐标(tile 浮点) */
   x: number;
   y: number;
@@ -32,12 +35,14 @@ interface CharacterRender {
   targetX: number;
   targetY: number;
   dir: Direction;
-  /** 当前播放的 walk 动画 key,null = 静止 */
+  /** 是否处于活动中(坐姿指示) */
+  inActivity: boolean;
+  /** 当前播放的动画 key,null = 从未播放 */
   animKey: string | null;
 }
 
 /**
- * 世界渲染场景:Kenney tile 地图 + LPC 角色四向 walk 动画(素材清单见 game/assets.ts),
+ * 世界渲染场景:Kenney tile 地图 + LPC 穿衣角色(walk/idle/sit 三组四向动画,见 game/assets.ts),
  * 角色向快照位置按 tick 速率插值移动——快照暂停时自然冻结,步频随 timeScale 放大。
  * 数据源轮询 worldStore(避免与 React 渲染耦合),HUD 走 React 侧。
  */
@@ -55,16 +60,22 @@ export class WorldScene extends Phaser.Scene {
       frameHeight: TILESET.frameHeight,
       spacing: TILESET.spacing,
     });
-    this.load.spritesheet(CHARACTER.key, CHARACTER.url, {
-      frameWidth: CHARACTER.frameWidth,
-      frameHeight: CHARACTER.frameHeight,
-    });
+    for (const variant of CHARACTER.variants) {
+      this.load.spritesheet(this._textureKey(variant), `/assets/character/char-${variant}.png`, {
+        frameWidth: CHARACTER.frameWidth,
+        frameHeight: CHARACTER.frameHeight,
+      });
+    }
+  }
+
+  private _textureKey(variant: string): string {
+    return `${CHARACTER.keyPrefix}-${variant}`;
   }
 
   create(): void {
     this.cameras.main.setBackgroundColor('#8fc978');
     this._drawMap(TOWN_MAP);
-    this._createWalkAnims();
+    this._createCharacterAnims();
     this._nightOverlay = this.add
       .rectangle(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE, 0x0a1436, 1)
       .setOrigin(0, 0)
@@ -94,7 +105,11 @@ export class WorldScene extends Phaser.Scene {
       if (distance <= step || distance > SNAP_DISTANCE_TILES) {
         render.x = render.targetX;
         render.y = render.targetY;
-        this._setIdle(render);
+        if (render.inActivity) {
+          this._playAnim(render, 'sit');
+        } else {
+          this._playAnim(render, 'idle');
+        }
       } else {
         render.x += (dx / distance) * step;
         render.y += (dy / distance) * step;
@@ -165,22 +180,37 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private _createWalkAnims(): void {
-    for (const [dir, row] of Object.entries(CHARACTER.rows)) {
-      this.anims.create({
-        key: `walk-${dir}`,
-        frames: this.anims.generateFrameNumbers(CHARACTER.key, {
-          start: row * CHARACTER.frames,
-          end: row * CHARACTER.frames + CHARACTER.frames - 1,
-        }),
-        frameRate: CHARACTER.walkFps,
-        repeat: -1,
-      });
+  private _createCharacterAnims(): void {
+    for (const variant of CHARACTER.variants) {
+      for (const group of Object.keys(CHARACTER.groups) as AnimGroup[]) {
+        for (const [dir, row] of Object.entries(CHARACTER.rows) as [Direction, number][]) {
+          const start = (CHARACTER.groups[group] + row) * CHARACTER.columns;
+          this.anims.create({
+            key: this._animKey(variant, group, dir),
+            frames: this.anims.generateFrameNumbers(this._textureKey(variant), {
+              start,
+              end: start + CHARACTER.framesPerGroup[group] - 1,
+            }),
+            frameRate: group === 'walk' ? CHARACTER.walkFps : group === 'idle' ? CHARACTER.idleFps : CHARACTER.sitFps,
+            repeat: -1,
+          });
+        }
+      }
     }
   }
 
+  private _animKey(variant: string, group: AnimGroup, dir: Direction): string {
+    return `${variant}-${group}-${dir}`;
+  }
+
   private _syncCharacterNodes(
-    characters: { id: string; name: string; x: number; y: number }[],
+    characters: {
+      id: string;
+      name: string;
+      x: number;
+      y: number;
+      activity: { activityId: string } | null;
+    }[],
   ): void {
     const seen = new Set<string>();
     for (const character of characters) {
@@ -188,12 +218,13 @@ export class WorldScene extends Phaser.Scene {
       let render = this._characters.get(character.id);
       if (!render) {
         render = {
-          ...this._createCharacterNode(character.name),
+          ...this._createCharacterNode(character.id, character.name),
           x: character.x,
           y: character.y,
           targetX: character.x,
           targetY: character.y,
           dir: 'down',
+          inActivity: character.activity !== null,
           animKey: null,
         };
         this._characters.set(character.id, render);
@@ -201,6 +232,7 @@ export class WorldScene extends Phaser.Scene {
       }
       render.targetX = character.x;
       render.targetY = character.y;
+      render.inActivity = character.activity !== null;
     }
     for (const [id, render] of this._characters) {
       if (!seen.has(id)) {
@@ -211,11 +243,22 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private _createCharacterNode(
+    id: string,
     name: string,
-  ): { node: Phaser.GameObjects.Container; sprite: Phaser.GameObjects.Sprite } {
+  ): {
+    node: Phaser.GameObjects.Container;
+    sprite: Phaser.GameObjects.Sprite;
+    variant: string;
+  } {
+    const variant = characterVariant(id);
     const node = this.add.container(0, 0);
     const sprite = this.add
-      .sprite(0, 0, CHARACTER.key, CHARACTER.rows.down * CHARACTER.frames)
+      .sprite(
+        0,
+        0,
+        this._textureKey(variant),
+        (CHARACTER.groups.idle + CHARACTER.rows.down) * CHARACTER.columns,
+      )
       .setOrigin(0.5, 0.82);
     const label = this.add
       .text(0, -24, name, { fontSize: '10px', color: '#ffffff' })
@@ -223,25 +266,21 @@ export class WorldScene extends Phaser.Scene {
       .setBackgroundColor('rgba(0,0,0,0.45)');
     node.add([sprite, label]);
     node.setDepth(10);
-    return { node, sprite };
+    return { node, sprite, variant };
   }
 
   private _playWalk(render: CharacterRender, dx: number, dy: number): void {
     const dir: Direction =
       Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
     render.dir = dir;
-    const key = `walk-${dir}`;
+    this._playAnim(render, 'walk', dir);
+  }
+
+  private _playAnim(render: CharacterRender, group: AnimGroup, dir: Direction = render.dir): void {
+    const key = this._animKey(render.variant, group, dir);
     if (render.animKey !== key) {
       render.animKey = key;
       render.sprite.play(key, true);
-    }
-  }
-
-  private _setIdle(render: CharacterRender): void {
-    if (render.animKey !== null) {
-      render.animKey = null;
-      render.sprite.stop();
-      render.sprite.setFrame(CHARACTER.rows[render.dir] * CHARACTER.frames);
     }
   }
 }

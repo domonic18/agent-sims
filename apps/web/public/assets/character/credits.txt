@@ -1,5 +1,9 @@
-body/bodies/male/walk.png
-	- Note: see details at https://opengameart.org/content/lpc-character-bases; 'Thick' Male Revised Run/Climb by JaidynReiman (based on ElizaWy's LPC Revised)
+# char-*.png 图层来源与授权(LPC 通用角色生成器素材裁切合成)
+# 合成方式:各层 64px 帧按 (0,0) 叠加到 832x2944 通用表,裁 rows 8-11(行走)/22-25(待机)/30-33(坐姿,
+# 取前 2 帧),BOX 50% 缩至 32px,得 288x384(9 列 x 12 行);行布局见 src/game/assets.ts。
+
+body/bodies/male/*.png
+	- Note: see details at https://opengameart.org/content/lpc-character-bases; idle/jump/run/sit 扩展动画 by JaidynReiman / ElizaWy (LPC Revised)
 	- Licenses:
 		- OGA-BY 3.0
 		- CC-BY-SA 3.0
@@ -17,38 +21,58 @@ body/bodies/male/walk.png
 		- Stephen Challener (Redshrike)
 	- Links:
 		- https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles
-		- https://opengameart.org/content/lpc-medieval-fantasy-character-sprites
-		- https://opengameart.org/content/lpc-male-jumping-animation-by-durrani
-		- https://opengameart.org/content/lpc-runcycle-and-diagonal-walkcycle
 		- https://opengameart.org/content/lpc-revised-character-basics
 		- https://opengameart.org/content/lpc-be-seated
-		- https://opengameart.org/content/lpc-runcycle-for-male-muscular-and-pregnant-character-bases-with-modular-heads
-		- https://opengameart.org/content/lpc-jump-expanded
 		- https://opengameart.org/content/lpc-character-bases
 
-head/heads/human/male/walk.png
-	- Note: original head by Redshrike, tweaks by BenCreating, modular version by bluecarrot16
+hair/bob/adult/*.png
+	- Note: bob 发型(全部 46 行动画)
 	- Licenses:
-		- OGA-BY 3.0
-		- CC-BY-SA 3.0
-		- GPL 3.0
+		- CC0
 	- Authors:
-		- bluecarrot16
-		- Benjamin K. Smith (BenCreating)
-		- Stephen Challener (Redshrike)
-	- Links:
-		- https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles
-		- https://opengameart.org/content/lpc-character-bases
-
-head/faces/male/neutral/walk.png
-	- Note: Original by Redshrike, Expressions by ElizaWy, mapped to all frames by JaidynReiman
-	- Licenses:
-		- OGA-BY 3.0
-	- Authors:
-		- JaidynReiman
 		- ElizaWy
-		- Stephen Challener (Redshrike)
+		- bluecarrot16
 	- Links:
 		- https://github.com/ElizaWy/LPC/tree/main/Characters/Head
-		- https://opengameart.org/content/ulpc-expanded-expressions
 
+legs/pants/male/*.png
+	- Note: 长裤(全部 46 行动画)
+	- Licenses:
+		- OGA-BY 3.0
+		- GPL 3.0
+		- CC-BY-SA 3.0
+	- Authors:
+		- bluecarrot16
+		- JaidynReiman
+		- ElizaWy
+		- Matthew Krohn (makrohn)
+	- Links:
+		- https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles
+		- https://opengameart.org/content/lpc-revised-character-basics
+
+torso/aprons/overalls/male/*.png
+	- Note: 背带工装(含全部 idle/run/sit 扩展动画)
+	- Licenses:
+		- OGA-BY 3.0
+		- GPL 3.0
+	- Authors:
+		- ElizaWy
+		- bluecarrot16
+		- JaidynReiman
+	- Links:
+		- https://github.com/ElizaWy/LPC/tree/main/Characters/Clothing
+		- https://opengameart.org/content/expanded-universal-lpc-spritesheet-idle-run-jump-lpc-revised-combat-and-assets
+
+feet/shoes2/male/*.png
+	- Note: 便鞋(含全部 idle/run/sit 扩展动画)
+	- Licenses:
+		- OGA-BY 3.0
+		- GPL 3.0
+	- Authors:
+		- ElizaWy
+		- JaidynReiman
+		- bluecarrot16
+	- Links:
+		- https://github.com/ElizaWy/LPC/tree/main/Characters/Clothing
+		- https://opengameart.org/content/lpc-expanded-socks-shoes
+		- https://opengameart.org/content/expanded-universal-lpc-spritesheet-idle-run-jump-lpc-revised-combat-and-assets
