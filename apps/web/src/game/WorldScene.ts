@@ -9,15 +9,19 @@ const TILES_PER_TICK = 1;
 /** 目标偏差超过该格数视为瞬移(重连/重生),直接吸附 */
 const SNAP_DISTANCE_TILES = 4;
 
-const POND_RECT = { x: 2, y: 17, w: 3, h: 3 };
+const POND_RECT = { x: 4, y: 30, w: 4, h: 4 };
 
-/** 公园内点缀的圆树(格坐标,纯视觉,不参与寻路) */
+const inRect = (x: number, y: number, rect: { x: number; y: number; w: number; h: number }): boolean =>
+  x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
+
+/** 公园内点缀的圆树(格坐标,纯视觉,不参与寻路,避开池塘与门前小路) */
 const PARK_TREES: ReadonlyArray<readonly [number, number]> = [
-  [9, 18],
-  [12, 20],
-  [15, 18],
-  [19, 20],
-  [21, 18],
+  [5, 27],
+  [11, 28],
+  [14, 31],
+  [6, 34],
+  [12, 34],
+  [16, 27],
 ];
 
 type Direction = keyof typeof CHARACTER.rows;
@@ -120,8 +124,6 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private _drawMap(map: TileMapDefinition): void {
-    const inRect = (x: number, y: number, rect: { x: number; y: number; w: number; h: number }): boolean =>
-      x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
     const border = (x: number, y: number): boolean =>
       x === 0 || y === 0 || x === map.width - 1 || y === map.height - 1;
 
@@ -142,13 +144,17 @@ export class WorldScene extends Phaser.Scene {
           continue;
         }
         this._ground(x, y, TILE_FRAME.grass);
+        if (map.paths.some((r) => inRect(x, y, r))) {
+          this._ground(x, y, TILE_FRAME.path);
+          continue;
+        }
         if (border(x, y)) this._prop(x, y, TILE_FRAME.pine);
       }
     }
 
     for (const place of map.places) {
       if (place.id === 'park') {
-        this._fillPlace(place, TILE_FRAME.parkGrass);
+        this._fillPlace(map, place, TILE_FRAME.parkGrass);
         for (const [tx, ty] of PARK_TREES) this._prop(tx, ty, TILE_FRAME.tree);
       } else {
         this._ground(place.entrance.x, place.entrance.y, TILE_FRAME.path);
@@ -172,9 +178,11 @@ export class WorldScene extends Phaser.Scene {
     this.add.image(x * TILE, y * TILE, TILESET.key, frame).setOrigin(0, 0).setDepth(5);
   }
 
-  private _fillPlace(place: PlaceDefinition, frame: number): void {
+  /** 可行走场所整块铺装;障碍格(如公园内的池塘)跳过,保留主循环已画的水面 */
+  private _fillPlace(map: TileMapDefinition, place: PlaceDefinition, frame: number): void {
     for (let y = place.y; y < place.y + place.h; y += 1) {
       for (let x = place.x; x < place.x + place.w; x += 1) {
+        if (map.blockedRects.some((r) => inRect(x, y, r))) continue;
         this._ground(x, y, frame);
       }
     }
