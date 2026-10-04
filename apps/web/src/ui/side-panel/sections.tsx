@@ -1,6 +1,6 @@
 import {
   ACTIVITY_DEFINITIONS,
-  CHAT_DAILY_LIMIT,
+  CHAT_DAILY_GAINED,
   LOW_ENERGY_THRESHOLD,
   SOCIAL_PRESENCE_DISTANCE,
   TOWN_MAP,
@@ -171,7 +171,7 @@ export function SocialSection({
                   disabled={moving || dead || !near || !other.alive}
                   title={
                     near
-                      ? `与 ${other.name} 闲聊(每日同对限 ${CHAT_DAILY_LIMIT} 次)`
+                      ? `与 ${other.name} 闲聊(每日前 ${CHAT_DAILY_GAINED} 次有收益,之后无增益)`
                       : `距离太远,走近点再聊(曼哈顿 ≤ ${SOCIAL_PRESENCE_DISTANCE})`
                   }
                   onClick={() =>

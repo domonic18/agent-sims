@@ -96,13 +96,18 @@ describe('chat 闲聊全链', () => {
     ]);
   });
 
-  it('防刷递减六档(Σ2.6),同日第 7 次拒绝,跨日重置', () => {
+  it('收益封顶六档(Σ2.6),第 7 次起不拒绝但增益为 0,跨日重置', () => {
     const sim = socialSim();
+    sim.character('a').happiness = 50;
     for (let i = 0; i < 6; i += 1) chat(sim, 'a', 'b');
     const forward = sim.socials.get(relationKey('a', 'b'))!;
     expect(forward.familiarity).toBeCloseTo(6 * 2.6, 5); // 递减 1/0.6/0.4/0.3/0.2/0.1
-    expect(forward.chatCount).toBe(6);
-    expect(() => chat(sim, 'a', 'b')).toThrow(/聊过 6 次/);
+    expect(sim.character('a').happiness).toBeCloseTo(50 + 2 * 2.6, 5); // 幸福同样乘递减
+    chat(sim, 'a', 'b'); // 第 7 次:对话照常,增益全 0
+    expect(forward.familiarity).toBeCloseTo(6 * 2.6, 5);
+    expect(forward.affinity).toBeCloseTo(4 * 1.4 * 2.6, 5);
+    expect(forward.chatCount).toBe(7);
+    expect(sim.character('a').happiness).toBeCloseTo(50 + 2 * 2.6, 5);
 
     sim.advanceTicks(960); // 08:00 → 次日 00:00(日翻转含熟悉度衰减 -1)
     expect(forward.familiarity).toBeCloseTo(6 * 2.6 - 1, 5);

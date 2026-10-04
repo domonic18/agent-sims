@@ -5,7 +5,7 @@
  */
 import {
   BACKPACK_VOLUME_LIMIT,
-  CHAT_DAILY_LIMIT,
+  CHAT_DAILY_GAINED,
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
   SOCIAL_PRESENCE_DISTANCE,
@@ -72,8 +72,8 @@ export const BALANCE = {
   CHAT_FAMILIARITY_GAIN: 6,
   CHAT_AFFINITY_BASE: 4,
   CHAT_HAPPINESS: 2,
-  /** 同对角色每游戏日限次;第 n 次收益 ×STEPS[n-1](六档 Σ2.6,数值文档 §6.2) */
-  CHAT_DAILY_LIMIT,
+  /** 每游戏日「有收益」次数(超出不拒绝,收益 ×0);第 n 次收益 ×STEPS[n-1](六档 Σ2.6,数值文档 §6.2) */
+  CHAT_DAILY_GAINED,
   CHAT_DECAY_STEPS: [1, 0.6, 0.4, 0.3, 0.2, 0.1] as const,
   /** 同场增益: 曼哈顿 ≤ 距离且双方都在活动,按人数给幸福/分(封顶计人数;距离常量双端同源) */
   SOCIAL_PRESENCE_DISTANCE,

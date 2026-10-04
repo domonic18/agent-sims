@@ -64,7 +64,8 @@ export function randomTraits(): TraitVector {
 /**
  * 闲聊(social-design §3.1):双方须存活、非同一人、同处一地
  * (曼哈顿 ≤ SOCIAL_PRESENCE_DISTANCE);收益=基础×当日递减×相性系数,
- * 同对角色每游戏日限 CHAT_DAILY_LIMIT 次。返回聊天语(回执展示用)。
+ * 每游戏日超过 CHAT_DAILY_GAINED 次后不拒绝但收益为 0(对话照常)。
+ * 返回聊天语(回执展示用)。
  */
 export function chat(sim: Simulation, fromId: string, toId: string): string {
   const from = sim.character(fromId);
@@ -79,15 +80,11 @@ export function chat(sim: Simulation, fromId: string, toId: string): string {
     throw new Error(`${from.name} 与 ${to.name} 距离太远(曼哈顿 ${distance}),走近点再聊`);
   }
   const [forward] = ensureRelations(sim, fromId, toId);
-  if (forward.chatDay === sim.clock.day && forward.chatCount >= BALANCE.CHAT_DAILY_LIMIT) {
-    throw new Error(
-      `${from.name} 和 ${to.name} 今天已经聊过 ${BALANCE.CHAT_DAILY_LIMIT} 次,明天再聊吧`,
-    );
-  }
   if (forward.chatDay !== sim.clock.day) {
     forward.chatDay = sim.clock.day;
     forward.chatCount = 0;
   }
+  // 收益封顶不设硬上限(M4 Agent 高频社交): 超出有收益档位后对话照常,增益全 ×0
   const decay = BALANCE.CHAT_DECAY_STEPS[forward.chatCount] ?? 0;
   const compat = compatibility(from.traits, to.traits);
   const affinityDelta = BALANCE.CHAT_AFFINITY_BASE * compat * decay;
@@ -96,8 +93,9 @@ export function chat(sim: Simulation, fromId: string, toId: string): string {
   const [, backward] = ensureRelations(sim, fromId, toId);
   applyRelationChange(forward, BALANCE.CHAT_FAMILIARITY_GAIN * decay, affinityDelta);
   applyRelationChange(backward, 0, affinityDelta);
-  from.happiness = clampVital(from.happiness + BALANCE.CHAT_HAPPINESS);
-  to.happiness = clampVital(to.happiness + BALANCE.CHAT_HAPPINESS);
+  const happinessGain = BALANCE.CHAT_HAPPINESS * decay;
+  from.happiness = clampVital(from.happiness + happinessGain);
+  to.happiness = clampVital(to.happiness + happinessGain);
 
   const content = pickChatLine(forward.familiarity);
   const event: SocialChatEvent = {

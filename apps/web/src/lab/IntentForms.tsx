@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ACTIVITY_DEFINITIONS,
-  CHAT_DAILY_LIMIT,
+  CHAT_DAILY_GAINED,
   PROPERTY_DEFINITIONS,
   SHOP_ITEMS,
   type Intent,
@@ -133,7 +133,7 @@ function ChatForm({
       <button
         type="button"
         disabled={target === '' || !character.alive}
-        title={`须双方存活且同处一地(曼哈顿 ≤ 2);每日同对限 ${CHAT_DAILY_LIMIT} 次`}
+        title={`须双方存活且同处一地(曼哈顿 ≤ 2);每日前 ${CHAT_DAILY_GAINED} 次有收益,之后可继续聊但无增益`}
         onClick={() =>
           target !== '' &&
           void onRun(

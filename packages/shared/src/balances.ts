@@ -16,8 +16,8 @@ export const FRIDGE_VOLUME_LIMIT = 30;
 export const LOW_ENERGY_THRESHOLD = 20;
 /** 社交同场距离(曼哈顿):chat 与同场增益的"同处一地"判定,UI 聊天按钮同源禁用 */
 export const SOCIAL_PRESENCE_DISTANCE = 2;
-/** 同对角色每日闲聊限次(数值文档 §6.2),UI 提示文案同源 */
-export const CHAT_DAILY_LIMIT = 6;
+/** 同对角色每日「有收益」闲聊次数(数值文档 §6.2);超出可继续聊但收益为 0,UI 提示同源 */
+export const CHAT_DAILY_GAINED = 6;
 
 /** 库存体积求和(Σ份数×单件体积);未知商品按 0 计(调用方保证 id 合法) */
 export function inventoryVolume(record: Record<string, number>): number {
