@@ -1,3 +1,4 @@
+import type { TraitVector } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import type { Point } from './pathfinding.js';
 
@@ -39,6 +40,8 @@ export interface WorldCharacter {
   fridge: Record<string, number>;
   /** 繁荣分(M3.6j,goal-design §5):生涯质量账本,只增不减(死亡扣减除外) */
   lifeScore: number;
+  /** 特质向量 v0(social-design §4):出生随机生成,世界配置可覆盖部分维度;仅用于相性 */
+  traits: TraitVector;
 }
 
 export const clampVital = (value: number): number =>

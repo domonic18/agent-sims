@@ -17,7 +17,7 @@ import { requireAdmin } from './auth.js';
 const characterSchema = z.object({
   name: z.string().trim().min(1, '人物名不能为空').max(20),
   gender: z.enum(GENDERS),
-  traits: z.record(z.enum(TRAIT_KEYS), z.number().min(0).max(100)).optional(),
+  traits: z.record(z.enum(TRAIT_KEYS), z.number().min(0).max(1)).optional(),
   persona: z.string().max(2000).optional(),
   modelSlot: z.string().max(40).optional(),
 });
@@ -98,7 +98,13 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       const spot = spots[index]!;
       const simId = shortId();
       simIds.push(simId);
-      const created = app.simulation.spawnCharacter(simId, spot.x, spot.y, character.name);
+      const created = app.simulation.spawnCharacter(
+        simId,
+        spot.x,
+        spot.y,
+        character.name,
+        character.traits,
+      );
       try {
         await handle.db.insert(characters).values({
           tier: 'core',

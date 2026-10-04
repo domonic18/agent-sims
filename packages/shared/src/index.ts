@@ -10,6 +10,7 @@ export * from './events.js';
 export * from './intents.js';
 export * from './property.js';
 export * from './shop.js';
+export * from './social.js';
 export * from './sync.js';
 export * from './world.js';
 export * from './world-admin.js';

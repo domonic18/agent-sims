@@ -31,6 +31,7 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
       backpack: { ...character.backpack },
       fridge: { ...character.fridge },
       lifeScore: round(character.lifeScore),
+      traits: { ...character.traits },
       activity: character.activity
         ? {
             activityId: character.activity.activityId,
@@ -45,6 +46,12 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
             paidThroughDay: character.housing.paidThroughDay,
           }
         : null,
+    })),
+    socials: [...sim.socials.values()].map((relation) => ({
+      fromId: relation.fromId,
+      toId: relation.toId,
+      familiarity: round(relation.familiarity),
+      affinity: round(relation.affinity),
     })),
   };
 }

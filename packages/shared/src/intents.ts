@@ -86,6 +86,15 @@ export const buyPropertyIntentSchema = z.object({
 
 export type BuyPropertyIntent = z.infer<typeof buyPropertyIntentSchema>;
 
+/** 聊天(社交 v1):双方同处一地(同场所或曼哈顿 ≤2),每日同对限次防刷 */
+export const chatIntentSchema = z.object({
+  type: z.literal('chat'),
+  characterId: z.string().min(1),
+  targetId: z.string().min(1),
+});
+
+export type ChatIntent = z.infer<typeof chatIntentSchema>;
+
 export const intentSchema = z.discriminatedUnion('type', [
   moveToIntentSchema,
   stopMoveIntentSchema,
@@ -97,6 +106,7 @@ export const intentSchema = z.discriminatedUnion('type', [
   takeItemIntentSchema,
   rentPropertyIntentSchema,
   buyPropertyIntentSchema,
+  chatIntentSchema,
 ]);
 
 export type Intent = z.infer<typeof intentSchema>;

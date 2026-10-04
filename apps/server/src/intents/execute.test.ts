@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buyItemIntentSchema,
   buyPropertyIntentSchema,
+  chatIntentSchema,
   eatItemIntentSchema,
   moveToIntentSchema,
   rentPropertyIntentSchema,
@@ -118,5 +119,19 @@ describe('executeIntent 意图执行', () => {
     expect(rented.message).toContain('租约付至第');
     const bought = executeIntent(sim, buyPropertyIntentSchema.parse({ type: 'buy_property', characterId: 'jev', propertyId: 'home-a' }));
     expect(bought.message).toContain('买下');
+  });
+
+  it('chat: 同处一地闲聊回执带对话内容,距离太远拒绝', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('jev', 8, 12);
+    sim.spawnCharacter('mia', 9, 12);
+    const chatted = executeIntent(sim, chatIntentSchema.parse({ type: 'chat', characterId: 'jev', targetId: 'mia' }));
+    expect(chatted.ok).toBe(true);
+    expect(chatted.message).toMatch(/^jev 对 mia 说:「.+」$/);
+    sim.requestMoveTo('mia', 13, 15);
+    sim.advanceTicks(sim.character('mia').path.length);
+    expect(() =>
+      executeIntent(sim, chatIntentSchema.parse({ type: 'chat', characterId: 'jev', targetId: 'mia' })),
+    ).toThrow(/距离太远/);
   });
 });

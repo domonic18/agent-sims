@@ -2,6 +2,7 @@ import type {
   CharacterArrivedEvent,
   CharacterDiedEvent,
   CharacterRevivedEvent,
+  TraitVector,
   WorldControlEvent,
   WorldEvent,
   WorldResetEvent,
@@ -23,6 +24,13 @@ import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
 import { worldSnapshot } from './snapshot.js';
+import {
+  applySocialDailyRollover,
+  applySocialPresenceBonus,
+  chat,
+  randomTraits,
+  type SocialRelation,
+} from './social.js';
 
 /**
  * 世界模拟核心:固定 tick(1 tick = 1 游戏分钟),纯逻辑零 I/O。
@@ -35,6 +43,8 @@ export class Simulation {
   readonly clock = new GameClock();
   readonly map: TileMap = TileMap.fromDefinition(TOWN_MAP);
   readonly characters = new Map<string, WorldCharacter>();
+  /** 有向关系表(社交 v1):key = `fromId|toId`,A→B 与 B→A 各一条 */
+  readonly socials = new Map<string, SocialRelation>();
   /** 世界事件总线:离散事件与控制变更即时分发,感知/同步层订阅 */
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
@@ -56,6 +66,7 @@ export class Simulation {
    */
   reset(): void {
     this.characters.clear();
+    this.socials.clear();
     this.tick = 0;
     this.clock.reset();
     this.paused = false;
@@ -65,7 +76,13 @@ export class Simulation {
     this._emitControl();
   }
 
-  spawnCharacter(id: string, x: number, y: number, name = id): WorldCharacter {
+  spawnCharacter(
+    id: string,
+    x: number,
+    y: number,
+    name = id,
+    traits?: Partial<TraitVector>,
+  ): WorldCharacter {
     if (this.characters.has(id)) {
       throw new Error(`角色已存在: ${id}`);
     }
@@ -92,6 +109,7 @@ export class Simulation {
       backpack: {},
       fridge: {},
       lifeScore: 0,
+      traits: { ...randomTraits(), ...traits },
     };
     this.characters.set(id, character);
     return character;
@@ -135,6 +153,11 @@ export class Simulation {
 
   requestBuyProperty(characterId: string, propertyId: string): WorldCharacter {
     return buyProperty(this, characterId, propertyId);
+  }
+
+  /** 闲聊(社交 v1):返回本句话内容(回执/气泡显示) */
+  requestChat(characterId: string, targetId: string): string {
+    return chat(this, characterId, targetId);
   }
 
   /** 重新规划到目标的路径(意图指令层校验后调用);移动打断进行中活动 */
@@ -214,6 +237,10 @@ export class Simulation {
   }
 
   private _stepCharacters(): void {
+    // 世界日翻转(00:00)社交结算:熟悉度衰减+聊天防刷计数跨日自然重置
+    if (this.clock.minuteOfDay === 0) {
+      applySocialDailyRollover(this);
+    }
     for (const character of this.characters.values()) {
       // 净速率模型(M3.6g):活动数值已含代谢,仅待机走基础代谢衰减
       if (character.activity === null) {
@@ -245,6 +272,8 @@ export class Simulation {
       }
       // 繁荣分质量流(M3.6j): 本分钟数值结算完毕后按当前幸福累计,死亡当分钟也计入
       applyLifeScoreTick(character);
+      // 同场增益(社交 v1): 活动角色按附近活动人数得幸福修正
+      applySocialPresenceBonus(this, character);
       this._checkDeath(character);
     }
   }

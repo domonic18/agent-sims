@@ -83,6 +83,29 @@ export const worldResetEventSchema = z.object({
 
 export type WorldResetEvent = z.infer<typeof worldResetEventSchema>;
 
+/** 闲聊(社交 v1):content 为本句话气泡/日志显示用,affinityDelta 供日志展示 */
+export const socialChatEventSchema = z.object({
+  type: z.literal('social.chat'),
+  fromId: z.string().min(1),
+  toId: z.string().min(1),
+  tick: z.number().int(),
+  content: z.string().min(1),
+  affinityDelta: z.number(),
+});
+
+export type SocialChatEvent = z.infer<typeof socialChatEventSchema>;
+
+/** 首次结成关系(朋友/挚友):观察者故事流事件 */
+export const friendshipFormedEventSchema = z.object({
+  type: z.literal('friendship.formed'),
+  aId: z.string().min(1),
+  bId: z.string().min(1),
+  tick: z.number().int(),
+  title: z.string().min(1),
+});
+
+export type FriendshipFormedEvent = z.infer<typeof friendshipFormedEventSchema>;
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -91,6 +114,8 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   characterRevivedEventSchema,
   worldControlEventSchema,
   worldResetEventSchema,
+  socialChatEventSchema,
+  friendshipFormedEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;

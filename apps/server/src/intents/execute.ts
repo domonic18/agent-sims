@@ -89,5 +89,11 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       const name = getPropertyDefinition(intent.propertyId)?.name ?? intent.propertyId;
       return { ok: true, message: `${character.name} 买下「${name}」,从此免租金` };
     }
+    case 'chat': {
+      const content = sim.requestChat(intent.characterId, intent.targetId);
+      const from = sim.character(intent.characterId);
+      const to = sim.character(intent.targetId);
+      return { ok: true, message: `${from.name} 对 ${to.name} 说:「${content}」` };
+    }
   }
 }

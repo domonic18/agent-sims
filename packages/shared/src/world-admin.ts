@@ -14,7 +14,7 @@ export const GENDER_LABELS: Record<Gender, string> = {
   unspecified: '不限',
 };
 
-/** 特质向量 v0(social-design §相性):0~100 五维,预留字段先行存储 */
+/** 特质向量 v0(social-design §相性):0~1 五维,与 TraitVector 同型;配置可覆盖出生随机值 */
 export const TRAIT_KEYS = [
   'ambition',
   'hedonism',
@@ -33,7 +33,7 @@ export const TRAIT_LABELS: Record<TraitKey, string> = {
   frugality: '节俭',
 };
 
-/** 世界人物配置:name/gender v1 生效;traits/persona/modelSlot 只存不生效,行为后续里程碑接入 */
+/** 世界人物配置:name/gender/traits 生效(traits 覆盖出生随机值,供相性计算);persona/modelSlot 只存不生效 */
 export interface WorldCharacterConfig {
   name: string;
   gender: Gender;

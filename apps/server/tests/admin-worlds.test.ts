@@ -15,7 +15,7 @@ const CREATE_BODY: CreateWorldRequest = {
   name: `${WORLD_NAME_PREFIX}一号镇`,
   characters: [
     { name: '阿泽', gender: 'male' },
-    { name: '苏晚', gender: 'female', traits: { sociability: 80 }, persona: '爱逛公园', modelSlot: 'slow' },
+    { name: '苏晚', gender: 'female', traits: { sociability: 0.8 }, persona: '爱逛公园', modelSlot: 'slow' },
     { name: '周牧', gender: 'unspecified' },
   ],
 };
@@ -93,6 +93,8 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
 
     // 模拟层:3 人出生,世界回到 tick 0
     expect(app.simulation.characters.size).toBe(3);
+    const suWan = [...app.simulation.characters.values()].find((c) => c.name === '苏晚');
+    expect(suWan?.traits.sociability).toBe(0.8); // 配置特质覆盖出生随机值(社交 v1 相性输入)
     expect(app.simulation.tick).toBe(0);
     expect(app.simulation.clock.formatTime()).toBe('08:00');
 
@@ -102,7 +104,7 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     expect(rows.map((r) => r.gender).sort()).toEqual(['female', 'male', 'unspecified']);
     const withPersona = rows.find((r) => r.name === '苏晚');
     expect(withPersona?.persona).toMatchObject({
-      traits: { sociability: 80 },
+      traits: { sociability: 0.8 },
       bio: '爱逛公园',
       modelSlot: 'slow',
     });

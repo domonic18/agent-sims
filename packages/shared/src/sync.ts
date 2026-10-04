@@ -1,4 +1,5 @@
 import type { WorldEvent } from './events.js';
+import type { SocialRelationView, TraitVector } from './social.js';
 
 /**
  * Socket.IO 同步协议(arch §7):首连全量快照 + 每 tick 增量(带 tick 序号)
@@ -58,6 +59,8 @@ export interface WorldSnapshotMessage {
     fridge: Record<string, number>;
     /** 繁荣分(M3.6j): 生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7) */
     lifeScore: number;
+    /** 特质向量 v0(social-design §4): 0~1 五维,相性计算输入;M3.6k 配置可覆盖 */
+    traits: TraitVector;
     /** 进行中活动(null=空闲);前端活动面板与气泡消费;anchorKind=rest 档位(床/沙发/长椅) */
     activity: { activityId: string; elapsedMinutes: number; anchorKind: string | null } | null;
     /** 住宿状态(null=无住宿): 租约付到日/自有 */
@@ -68,6 +71,8 @@ export interface WorldSnapshotMessage {
       paidThroughDay: number;
     } | null;
   }>;
+  /** 有向关系全量(社交 v1: A→B 与 B→A 独立两条;称号前端派生 relationTitle) */
+  socials: SocialRelationView[];
 }
 
 /** world.event 消息封装:事件本体即 shared WorldEvent */

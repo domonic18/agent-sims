@@ -66,4 +66,17 @@ export const BALANCE = {
     { x: 12, y: 15 },
     { x: 13, y: 15 },
   ] as const,
+  /** 社交 v1(social-design/numerical-design §社交): chat 收益=基础值×递减×相性 */
+  CHAT_FAMILIARITY_GAIN: 6,
+  CHAT_AFFINITY_BASE: 4,
+  CHAT_HAPPINESS: 2,
+  /** 同对角色每游戏日限次;第 n 次收益 ×STEPS[n-1] */
+  CHAT_DAILY_LIMIT: 3,
+  CHAT_DECAY_STEPS: [1, 0.6, 0.3] as const,
+  /** 同场增益: 曼哈顿 ≤ 距离且双方都在活动,按人数给幸福/分(封顶计人数) */
+  SOCIAL_PRESENCE_DISTANCE: 2,
+  SOCIAL_PRESENCE_CAP: 3,
+  SOCIAL_PRESENCE_BONUS: 0.05,
+  /** 熟悉度每日衰减(世界日翻转时结算) */
+  FAMILIARITY_DECAY_PER_DAY: 1,
 } as const;
