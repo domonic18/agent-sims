@@ -1,4 +1,4 @@
-import type { Intent } from '@sims/shared';
+import { getActivityDefinition, type Intent } from '@sims/shared';
 import type { Simulation } from '../world/simulation.js';
 
 export interface IntentResult {
@@ -18,6 +18,15 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
         ok: true,
         message: `${character.name} 前往 (${intent.x},${intent.y}),路径 ${character.path.length} 格`,
       };
+    }
+    case 'start_activity': {
+      const character = sim.requestStartActivity(intent.characterId, intent.activityId);
+      const name = getActivityDefinition(intent.activityId)?.name ?? intent.activityId;
+      return { ok: true, message: `${character.name} 开始「${name}」` };
+    }
+    case 'stop_activity': {
+      const character = sim.requestStopActivity(intent.characterId);
+      return { ok: true, message: `${character.name} 停止活动` };
     }
   }
 }

@@ -1,6 +1,12 @@
 import { BALANCE } from '../config/balance.js';
 import type { Point } from './pathfinding.js';
 
+/** 角色进行中活动(elapsed 为已进行游戏分钟) */
+export interface CharacterActivity {
+  activityId: string;
+  elapsed: number;
+}
+
 /** 世界运行时角色(权威状态在服务端内存;持久化衔接后置) */
 export interface WorldCharacter {
   id: string;
@@ -9,13 +15,15 @@ export interface WorldCharacter {
   y: number;
   /** 待走路径(相邻格序列,不含当前格);空=原地 */
   path: Point[];
-  /** 数值系统 0~100;金币静态(M3 接活动) */
+  /** 数值系统 0~100;金币经活动增减(M3.1) */
   energy: number;
   happiness: number;
   coins: number;
+  /** 进行中活动(null=空闲) */
+  activity: CharacterActivity | null;
 }
 
-const clampVital = (value: number): number => Math.max(0, Math.min(100, value));
+export const clampVital = (value: number): number => Math.max(0, Math.min(100, value));
 
 /**
  * 按速度沿路径推进 n 格(1 tick 调 1 次,tiles=速度 格/游戏分钟)。

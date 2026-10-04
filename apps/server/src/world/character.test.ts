@@ -5,7 +5,17 @@ import { EventBus } from './event-bus.js';
 import { Simulation } from './simulation.js';
 
 function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
-  return { id: 't', name: '测试', x: 0, y: 0, path, energy: 100, happiness: 100, coins: 0 };
+  return {
+    id: 't',
+    name: '测试',
+    x: 0,
+    y: 0,
+    path,
+    energy: 100,
+    happiness: 100,
+    coins: 0,
+    activity: null,
+  };
 }
 
 describe('stepMovement 逐 tick 移动', () => {
