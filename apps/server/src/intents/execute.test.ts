@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buyItemIntentSchema, moveToIntentSchema } from '@sims/shared';
+import {
+  buyItemIntentSchema,
+  buyPropertyIntentSchema,
+  moveToIntentSchema,
+  placeFurnitureIntentSchema,
+  rentPropertyIntentSchema,
+} from '@sims/shared';
 import { executeIntent } from './execute.js';
 import { Simulation } from '../world/simulation.js';
 
@@ -41,5 +47,20 @@ describe('executeIntent 意图执行', () => {
     expect(() =>
       executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'bed' })),
     ).toThrow(/金币不足/);
+  });
+
+  it('rent/buy_property 与 place_furniture: 返回摘要消息', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('jev', 5, 7);
+    sim.character('jev').coins = 600;
+    const rented = executeIntent(sim, rentPropertyIntentSchema.parse({ type: 'rent_property', characterId: 'jev', propertyId: 'home' }));
+    expect(rented.message).toContain('租约付至第');
+    const bought = executeIntent(sim, buyPropertyIntentSchema.parse({ type: 'buy_property', characterId: 'jev', propertyId: 'home' }));
+    expect(bought.message).toContain('买下');
+    sim.character('jev').coins = 100;
+    executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'lamp' }));
+    const placed = executeIntent(sim, placeFurnitureIntentSchema.parse({ type: 'place_furniture', characterId: 'jev', itemId: 'lamp' }));
+    expect(placed.message).toContain('摆放');
+    expect(sim.character('jev').housing?.placedItems).toEqual(['lamp']);
   });
 });

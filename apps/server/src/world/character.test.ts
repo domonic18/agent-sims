@@ -16,6 +16,7 @@ function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
     coins: 0,
     activity: null,
     items: [],
+    housing: null,
   };
 }
 
