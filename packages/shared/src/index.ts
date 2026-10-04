@@ -12,3 +12,4 @@ export * from './property.js';
 export * from './shop.js';
 export * from './sync.js';
 export * from './world.js';
+export * from './world-admin.js';
