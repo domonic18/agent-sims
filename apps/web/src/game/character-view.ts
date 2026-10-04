@@ -178,13 +178,16 @@ export function updateCharacterView(
     } else {
       playAnim(scene, view, 'idle');
     }
-    // M3.6f 躺床: rest 到位后吸附锚点家具占地中心,纯视觉横躺
-    // (M3.6g 按 anchorKind 匹配档位家具,沙发不再吸附到床)
-    const anchor =
-      view.inActivity && view.activityId === 'rest'
-        ? nearestRestAnchor(view.x, view.y, view.anchorKind)
+    // 锚点吸附(纯视觉): rest 到位后横躺于床/沙发/长椅中心(旋转 90°,
+    // M3.6g 按 anchorKind 匹配档位家具);workout 站上跑步机占地中心原地跑
+    // (M3.6i 反馈①: 真正在机器上跑,而不是站在旁边)
+    const snapActivity =
+      view.inActivity && (view.activityId === 'rest' || view.activityId === 'workout')
+        ? view.activityId
         : null;
-    view.resting = anchor !== null;
+    const anchor =
+      snapActivity !== null ? nearestAnchorCenter(snapActivity, view.x, view.y, view.anchorKind) : null;
+    view.resting = snapActivity === 'rest' && anchor !== null;
     if (anchor !== null) {
       drawX = anchor.cx;
       drawY = anchor.cy;
@@ -203,13 +206,18 @@ export function updateCharacterView(
   updateBadges(scene, view, now);
 }
 
-/** rest 锚点全集(床/沙发/长椅占地中心,格坐标),按档位 kind 过滤后取距角色最近者 */
-function nearestRestAnchor(x: number, y: number, kind: string | null): { cx: number; cy: number } | null {
+/** 锚点家具占地中心全集(rest=床/沙发/长椅,workout=跑步机),按档位 kind 过滤后取最近 */
+function nearestAnchorCenter(
+  activityId: string,
+  x: number,
+  y: number,
+  kind: string | null,
+): { cx: number; cy: number } | null {
   let best: { cx: number; cy: number } | null = null;
   let bestDist = Number.POSITIVE_INFINITY;
   for (const place of TOWN_MAP.places) {
     for (const f of place.furniture ?? []) {
-      if (f.activityId !== 'rest') continue;
+      if (f.activityId !== activityId) continue;
       if (kind !== null && f.kind !== kind) continue;
       const cx = f.x + f.w / 2;
       const cy = f.y + f.h / 2;
