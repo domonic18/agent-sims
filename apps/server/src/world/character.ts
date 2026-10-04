@@ -21,6 +21,8 @@ export interface WorldCharacter {
   coins: number;
   /** 进行中活动(null=空闲) */
   activity: CharacterActivity | null;
+  /** 家具库存(已购未摆放;食物即买即耗不入此列) */
+  items: string[];
 }
 
 export const clampVital = (value: number): number => Math.max(0, Math.min(100, value));

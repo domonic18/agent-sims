@@ -6,11 +6,11 @@ import type {
   WorldEvent,
   WorldSnapshotMessage,
 } from '@sims/shared';
-import { getActivityDefinition, TOWN_MAP, type ActivityFinishReason } from '@sims/shared';
+import { getActivityDefinition, getShopItem, TOWN_MAP, type ActivityFinishReason } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import { settleActivityMinute } from './activity.js';
 import { GameClock } from './clock.js';
-import { applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
+import { applyVitalDecay, clampVital, stepMovement, type WorldCharacter } from './character.js';
 import { EventBus } from './event-bus.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
@@ -55,6 +55,7 @@ export class Simulation {
       happiness: BALANCE.START_HAPPINESS,
       coins: 0,
       activity: null,
+      items: [],
     };
     this.characters.set(id, character);
     return character;
@@ -104,6 +105,31 @@ export class Simulation {
       throw new Error(`${character.name} 当前没有进行中的活动`);
     }
     this._finishActivity(character, 'stopped');
+    return character;
+  }
+
+  /**
+   * 购买商品:结算前判定余额(不透支);food 即买即结算一次性效果,
+   * furniture 入库存待摆放(M3.3)。
+   */
+  requestBuyItem(characterId: string, itemId: string): WorldCharacter {
+    const item = getShopItem(itemId);
+    if (item === null) {
+      throw new Error(`未知商品: ${itemId}`);
+    }
+    const character = this.character(characterId);
+    if (character.coins < item.price) {
+      throw new Error(
+        `${character.name} 金币不足: 「${item.name}」需 ${item.price},现有 ${Math.floor(character.coins)}`,
+      );
+    }
+    character.coins -= item.price;
+    if (item.category === 'food') {
+      character.energy = clampVital(character.energy + item.effects.energy);
+      character.happiness = clampVital(character.happiness + item.effects.happiness);
+    } else {
+      character.items.push(item.id);
+    }
     return character;
   }
 
@@ -161,6 +187,7 @@ export class Simulation {
         activity: character.activity
           ? { activityId: character.activity.activityId, elapsedMinutes: character.activity.elapsed }
           : null,
+        items: [...character.items],
       })),
     };
   }

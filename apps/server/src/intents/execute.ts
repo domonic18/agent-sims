@@ -1,4 +1,4 @@
-import { getActivityDefinition, type Intent } from '@sims/shared';
+import { getActivityDefinition, getShopItem, type Intent } from '@sims/shared';
 import type { Simulation } from '../world/simulation.js';
 
 export interface IntentResult {
@@ -27,6 +27,16 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
     case 'stop_activity': {
       const character = sim.requestStopActivity(intent.characterId);
       return { ok: true, message: `${character.name} 停止活动` };
+    }
+    case 'buy_item': {
+      const character = sim.requestBuyItem(intent.characterId, intent.itemId);
+      const item = getShopItem(intent.itemId);
+      const name = item?.name ?? intent.itemId;
+      const message =
+        item?.category === 'food'
+          ? `${character.name} 购买并食用「${name}」`
+          : `${character.name} 购入「${name}」,存入库存`;
+      return { ok: true, message };
     }
   }
 }
