@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { moveToIntentSchema } from '@sims/shared';
+import { buyItemIntentSchema, moveToIntentSchema } from '@sims/shared';
 import { executeIntent } from './execute.js';
 import { Simulation } from '../world/simulation.js';
 
@@ -28,5 +28,18 @@ describe('executeIntent 意图执行', () => {
     expect(() =>
       executeIntent(sim, moveToIntentSchema.parse({ type: 'move_to', characterId: 'ghost', x: 6, y: 7 })),
     ).toThrow(/角色不存在/);
+  });
+
+  it('buy_item: 家具入库存,余额不足拒绝', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('jev', 5, 7);
+    sim.character('jev').coins = 30;
+    const bought = executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'chair' }));
+    expect(bought.ok).toBe(true);
+    expect(bought.message).toContain('存入库存');
+    expect(sim.character('jev').items).toEqual(['chair']);
+    expect(() =>
+      executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'bed' })),
+    ).toThrow(/金币不足/);
   });
 });
