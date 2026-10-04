@@ -1,0 +1,126 @@
+.side-panel {
+  width: 280px;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid #999;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  background: #fafafa;
+}
+
+.panel-section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 2px;
+}
+
+.panel-section select {
+  width: 100%;
+  font-family: inherit;
+  margin-bottom: 6px;
+}
+
+.hint {
+  color: #666;
+  margin: 4px 0 0;
+}
+
+.vitals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activity-list,
+.shop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activity-list li,
+.shop-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.activity-list small,
+.shop-list small {
+  color: #666;
+  margin-left: 4px;
+}
+
+.activity-running {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-track {
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #1565c0;
+  transition: width 0.3s;
+}
+
+.housing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.housing-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0;
+}
+
+.side-panel button {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
+  border: 1px solid #888;
+  border-radius: 5px;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.side-panel button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.feedback {
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feedback.ok {
+  color: #2e7d32;
+  background: #e8f5e9;
+}
+
+.feedback.err {
+  color: #c62828;
+  background: #ffebee;
+}

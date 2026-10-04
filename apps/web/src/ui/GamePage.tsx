@@ -5,6 +5,7 @@ import { WorldScene } from '../game/WorldScene';
 import { setPaused, setTimeScale } from '../net/debugApi';
 import { connectWorld } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
+import { SidePanel } from './SidePanel';
 import './game-page.css';
 
 const TIME_SCALES = [1, 4, 16] as const;
@@ -103,7 +104,10 @@ export default function GamePage() {
         {controlError !== null && <span className="control-error">{controlError}</span>}
       </div>
 
-      <div ref={canvasHostRef} className="canvas-host" />
+      <div className="game-main">
+        <div ref={canvasHostRef} className="canvas-host" />
+        <SidePanel />
+      </div>
 
       {snapshot !== null && snapshot.characters.length > 0 && (
         <div className="character-strip">

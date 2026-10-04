@@ -71,9 +71,25 @@
   white-space: nowrap;
 }
 
+.game-main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .game-main {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
 .canvas-host {
   width: min(90vw, 768px);
   aspect-ratio: 4 / 3;
+  flex-shrink: 0;
 }
 
 .character-strip {
