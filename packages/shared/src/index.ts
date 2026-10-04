@@ -21,14 +21,20 @@ export {
 export {
   INTENT_TYPES,
   buyItemIntentSchema,
+  buyPropertyIntentSchema,
   intentSchema,
   moveToIntentSchema,
+  placeFurnitureIntentSchema,
+  rentPropertyIntentSchema,
   startActivityIntentSchema,
   stopActivityIntentSchema,
   type BuyItemIntent,
+  type BuyPropertyIntent,
   type Intent,
   type IntentType,
   type MoveToIntent,
+  type PlaceFurnitureIntent,
+  type RentPropertyIntent,
   type StartActivityIntent,
   type StopActivityIntent,
 } from './intents.js';
@@ -68,6 +74,14 @@ export {
   type ShopItemDefinition,
   type ShopItemId,
 } from './shop.js';
+
+export {
+  PROPERTY_DEFINITIONS,
+  PROPERTY_IDS,
+  getPropertyDefinition,
+  type PropertyDefinition,
+  type PropertyId,
+} from './property.js';
 
 export {
   SOCKET_EVENTS,

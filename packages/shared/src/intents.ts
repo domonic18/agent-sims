@@ -2,7 +2,15 @@ import { z } from 'zod';
 
 /** 意图指令集(arch §5):玩家输入与 Agent 规划器共用的同一指令层 */
 
-export const INTENT_TYPES = ['move_to', 'start_activity', 'stop_activity', 'buy_item'] as const;
+export const INTENT_TYPES = [
+  'move_to',
+  'start_activity',
+  'stop_activity',
+  'buy_item',
+  'rent_property',
+  'buy_property',
+  'place_furniture',
+] as const;
 
 export type IntentType = (typeof INTENT_TYPES)[number];
 
@@ -38,11 +46,38 @@ export const buyItemIntentSchema = z.object({
 
 export type BuyItemIntent = z.infer<typeof buyItemIntentSchema>;
 
+const propertyIntentShape = { characterId: z.string().min(1), propertyId: z.string().min(1) };
+
+export const rentPropertyIntentSchema = z.object({
+  type: z.literal('rent_property'),
+  ...propertyIntentShape,
+});
+
+export type RentPropertyIntent = z.infer<typeof rentPropertyIntentSchema>;
+
+export const buyPropertyIntentSchema = z.object({
+  type: z.literal('buy_property'),
+  ...propertyIntentShape,
+});
+
+export type BuyPropertyIntent = z.infer<typeof buyPropertyIntentSchema>;
+
+export const placeFurnitureIntentSchema = z.object({
+  type: z.literal('place_furniture'),
+  characterId: z.string().min(1),
+  itemId: z.string().min(1),
+});
+
+export type PlaceFurnitureIntent = z.infer<typeof placeFurnitureIntentSchema>;
+
 export const intentSchema = z.discriminatedUnion('type', [
   moveToIntentSchema,
   startActivityIntentSchema,
   stopActivityIntentSchema,
   buyItemIntentSchema,
+  rentPropertyIntentSchema,
+  buyPropertyIntentSchema,
+  placeFurnitureIntentSchema,
 ]);
 
 export type Intent = z.infer<typeof intentSchema>;

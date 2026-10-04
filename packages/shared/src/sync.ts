@@ -41,6 +41,14 @@ export interface WorldSnapshotMessage {
     activity: { activityId: string; elapsedMinutes: number } | null;
     /** 家具库存(已购未摆放;食物即买即耗不入此列);M3.3 摆放后转住宅摆放 */
     items: string[];
+    /** 住宿状态(null=无住宿): 租约付到日/自有/已摆放家具 */
+    housing: {
+      propertyId: string;
+      ownership: 'rent' | 'owned';
+      /** 租约付到的游戏日(含);自有忽略此字段 */
+      paidThroughDay: number;
+      placedItems: string[];
+    } | null;
   }>;
 }
 
