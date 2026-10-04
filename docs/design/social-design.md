@@ -57,8 +57,8 @@
 - 事件: social.chat / relationship.changed / friendship.formed。
 - 场所 affordance: 双人餐桌/长椅并坐/广场集会点(家具体系现成可挂,v2)。
 
-## 7. 待细化(实现时定)
+## 7. 实现定稿(M3.6l,数值出处 numerical-design §6)
 
-- 相性表数值、称号阈值、chat 收益/衰减/每日上限参数。
-- 同场增益的结算位置(activity 结算 or 独立 social tick)。
-- 幽灵/死亡对关系的处理(熟悉度衰减加速?挚友「悼念」事件?)。
+- 相性公式/称号阈值/chat 收益·递减·每日上限: 见 numerical-design §6.1~§6.4。
+- 同场增益结算位置: 每 tick 逐角色、在活动净速率与繁荣分之后(applySocialPresenceBonus)。
+- 幽灵/死亡对关系: v1 不特殊处理(关系保留、幽灵拒绝 chat);悼念/衰减加速留 M4+。
