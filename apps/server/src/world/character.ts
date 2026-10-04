@@ -37,6 +37,8 @@ export interface WorldCharacter {
   backpack: Record<string, number>;
   /** 家中冰箱库存(itemId→数量):store_item/take_item 在家存取;体积受 FRIDGE_VOLUME_LIMIT */
   fridge: Record<string, number>;
+  /** 繁荣分(M3.6j,goal-design §5):生涯质量账本,只增不减(死亡扣减除外) */
+  lifeScore: number;
 }
 
 export const clampVital = (value: number): number =>
@@ -72,4 +74,9 @@ export function applyVitalDecay(character: WorldCharacter, gameMinutes: number):
   character.happiness = clampVital(
     character.happiness - BALANCE.IDLE_HAPPINESS_DECAY * gameMinutes,
   );
+}
+
+/** 繁荣分质量流(M3.6j):每游戏分钟按当前幸福累计,≈等效幸福天(幸福 80 活一天 ≈ +80 分) */
+export function applyLifeScoreTick(character: WorldCharacter): void {
+  character.lifeScore += character.happiness / BALANCE.DAY_MINUTES;
 }

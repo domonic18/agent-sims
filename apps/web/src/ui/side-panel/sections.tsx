@@ -65,6 +65,9 @@ export function CharactersSection({
           <VitalBar label="体力" value={character.energy} />
           <VitalBar label="幸福" value={character.happiness} />
           <div className="coins">金币 {formatCoins(character.coins)}</div>
+          <div className="coins" title="生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7)">
+            繁荣分 {formatCoins(character.lifeScore)}
+          </div>
           {!character.alive && (
             <div className="death-banner">☠️ 已死亡(幽灵态),等待复活(/lab 可复活)</div>
           )}

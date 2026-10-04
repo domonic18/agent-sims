@@ -19,6 +19,7 @@ function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
     alive: true,
     backpack: {},
     fridge: {},
+    lifeScore: 0,
   };
 }
 

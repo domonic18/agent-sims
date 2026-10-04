@@ -15,7 +15,7 @@ import {
   stopActivity,
 } from './activity.js';
 import { GameClock } from './clock.js';
-import { applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
+import { applyLifeScoreTick, applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
 import { EventBus } from './event-bus.js';
 import { buyProperty, rentProperty } from './housing.js';
 import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
@@ -74,6 +74,7 @@ export class Simulation {
       alive: true,
       backpack: {},
       fridge: {},
+      lifeScore: 0,
     };
     this.characters.set(id, character);
     return character;
@@ -225,6 +226,8 @@ export class Simulation {
           }
         }
       }
+      // 繁荣分质量流(M3.6j): 本分钟数值结算完毕后按当前幸福累计,死亡当分钟也计入
+      applyLifeScoreTick(character);
       this._checkDeath(character);
     }
   }
@@ -236,6 +239,8 @@ export class Simulation {
     }
     character.alive = false;
     character.path = [];
+    // 繁荣分死亡扣减(M3.6j 方案B): 比例扣无套利——活得越厚实,死亡的绝对损失越大
+    character.lifeScore *= 1 - BALANCE.LIFE_SCORE_DEATH_DEDUCTION;
     finishActivity(this, character, 'died');
     const event: CharacterDiedEvent = {
       type: 'character.died',

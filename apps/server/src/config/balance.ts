@@ -49,4 +49,6 @@ export const BALANCE = {
   /** Lab 复活(debug 通道)恢复的满状态数值 */
   REVIVE_ENERGY: 100,
   REVIVE_HAPPINESS: 80,
+  /** 繁荣分死亡扣减(M3.6j,goal-design §7 方案B): 死亡时 lifeScore ×= (1 - 该值) */
+  LIFE_SCORE_DEATH_DEDUCTION: 0.2,
 } as const;

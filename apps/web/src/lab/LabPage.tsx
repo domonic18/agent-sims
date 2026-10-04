@@ -158,6 +158,7 @@ export default function LabPage() {
                   <th>体力</th>
                   <th>幸福</th>
                   <th>金币</th>
+                  <th>繁荣分</th>
                   <th>存活</th>
                   <th>活动</th>
                 </tr>
@@ -172,6 +173,7 @@ export default function LabPage() {
                     <td className={c.energy <= 20 ? 'low-energy' : ''}>{Math.round(c.energy)}</td>
                     <td>{Math.round(c.happiness)}</td>
                     <td>{formatCoins(c.coins)}</td>
+                    <td>{formatCoins(c.lifeScore)}</td>
                     <td className={c.alive ? '' : 'dead'}>{c.alive ? '✓' : '☠'}</td>
                     <td>{c.activity?.activityId ?? '—'}</td>
                   </tr>

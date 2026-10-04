@@ -99,4 +99,29 @@ describe('生死机制(M3.6f 体力区段)', () => {
     sim.advanceTicks(5);
     expect(sim.character('ivy').energy).toBeCloseTo(idleEnergy - 5 * 0.02, 5); // 待机基础代谢
   });
+
+  it('繁荣分(M3.6j): 逐分钟按当分钟幸福累计 ≈ 等效幸福天', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('mort', 8, 12, '莫特');
+    // 先衰减再累计: 第 k 分钟幸福 = 100 - 0.015k(k=1..10),Σ/1440
+    const expected =
+      Array.from({ length: 10 }, (_, i) => 100 - 0.015 * (i + 1)).reduce((a, b) => a + b, 0) / 1440;
+    sim.advanceTicks(10);
+    expect(sim.character('mort').lifeScore).toBeCloseTo(expected, 6);
+    // 快照透传(保留 1 位小数)
+    expect(sim.snapshot().characters[0]!.lifeScore).toBeCloseTo(expected, 1);
+  });
+
+  it('死亡繁荣分扣减 20%(方案B): 复活账本保留其余', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('mort', 8, 12, '莫特');
+    sim.character('mort').lifeScore = 100;
+    sim.character('mort').happiness = 0; // 质量流归零,隔离扣减验证
+    sim.character('mort').energy = 0.1;
+    sim.advanceTicks(6); // 途中死亡
+    expect(sim.character('mort').alive).toBe(false);
+    expect(sim.character('mort').lifeScore).toBeCloseTo(80, 5); // ×0.8
+    sim.debugRevive('mort');
+    expect(sim.character('mort').lifeScore).toBeCloseTo(80, 5); // 复活不回补
+  });
 });
