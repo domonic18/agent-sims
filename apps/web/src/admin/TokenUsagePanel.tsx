@@ -184,7 +184,7 @@ export function TokenUsagePanel() {
           <button
             key={option}
             type="button"
-            className={option === win ? 'admin-tab active' : 'admin-tab'}
+            className={option === win ? 'usage-window active' : 'usage-window'}
             onClick={() => {
               setWin(option);
               setPage(1);

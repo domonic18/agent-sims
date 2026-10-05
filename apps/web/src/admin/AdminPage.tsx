@@ -4,9 +4,10 @@ import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } fr
 import { ModelConfigPanel } from './ModelConfigPanel';
 import { TokenUsagePanel } from './TokenUsagePanel';
 import { WorldPanel } from './WorldPanel';
+import { SettingsPanel } from './SettingsPanel';
 import './admin.css';
 
-function LoginForm({ onSuccess }: { onSuccess: () => void }) {
+function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +20,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
     try {
       const result = await login({ username, password });
       setToken(result.token);
-      onSuccess();
+      onSuccess(username);
     } catch (err) {
       setError(err instanceof Error ? err.message : '登录失败');
     } finally {
@@ -54,10 +55,26 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-type AdminTab = 'world' | 'models' | 'usage';
+type AdminTab = 'world' | 'models' | 'usage' | 'settings';
+
+const NAV_GROUPS: Array<{ label: string; items: Array<{ key: AdminTab; icon: string; label: string }> }> = [
+  {
+    label: '运营',
+    items: [
+      { key: 'world', icon: '🌍', label: '世界管理' },
+      { key: 'models', icon: '🤖', label: '模型配置' },
+      { key: 'usage', icon: '📊', label: 'Token 用量' },
+    ],
+  },
+  {
+    label: '系统',
+    items: [{ key: 'settings', icon: '⚙️', label: '系统设置' }],
+  },
+];
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(() => getToken() !== null);
+  const [username, setUsername] = useState('');
   const [tab, setTab] = useState<AdminTab>('world');
   const [configs, setConfigs] = useState<ModelConfigView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -85,60 +102,66 @@ export default function AdminPage() {
   }, [authed, tab, load]);
 
   if (!authed) {
-    return <LoginForm onSuccess={() => setAuthed(true)} />;
+    return <LoginForm onSuccess={(name) => { setUsername(name); setAuthed(true); }} />;
   }
 
   return (
-    <div className="admin-page">
-      <header className="admin-header">
-        <nav className="admin-tabs">
-          <button
-            type="button"
-            className={tab === 'world' ? 'admin-tab active' : 'admin-tab'}
-            onClick={() => setTab('world')}
-          >
-            世界管理
-          </button>
-          <button
-            type="button"
-            className={tab === 'models' ? 'admin-tab active' : 'admin-tab'}
-            onClick={() => setTab('models')}
-          >
-            模型配置
-          </button>
-          <button
-            type="button"
-            className={tab === 'usage' ? 'admin-tab active' : 'admin-tab'}
-            onClick={() => setTab('usage')}
-          >
-            Token 用量
-          </button>
+    <div className="admin-shell">
+      <aside className="admin-sidebar">
+        <div className="admin-sidebar-brand">agent-sims 后台</div>
+        <nav className="admin-nav">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label}>
+              <p className="admin-nav-group">{group.label}</p>
+              {group.items.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={tab === item.key ? 'admin-nav-item active' : 'admin-nav-item'}
+                  onClick={() => setTab(item.key)}
+                >
+                  <span className="admin-nav-icon">{item.icon}</span>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ))}
         </nav>
-        <button
-          className="admin-secondary"
-          onClick={() => {
-            clearToken();
-            setConfigs(null);
-            setAuthed(false);
-          }}
-        >
-          退出登录
-        </button>
-      </header>
-      {tab === 'world' ? (
-        <WorldPanel />
-      ) : tab === 'usage' ? (
-        <TokenUsagePanel />
-      ) : (
-        <>
-          {loadError && <p className="admin-error">{loadError}</p>}
-          {!configs ? (
-            <p>加载中…</p>
+        <div className="admin-sidebar-foot">
+          <span className="admin-sidebar-user">{username || '已登录'}</span>
+          <button
+            type="button"
+            className="admin-secondary"
+            onClick={() => {
+              clearToken();
+              setConfigs(null);
+              setAuthed(false);
+            }}
+          >
+            退出登录
+          </button>
+        </div>
+      </aside>
+      <main className="admin-main">
+        <div className="admin-content">
+          {tab === 'world' ? (
+            <WorldPanel />
+          ) : tab === 'usage' ? (
+            <TokenUsagePanel />
+          ) : tab === 'settings' ? (
+            <SettingsPanel username={username} />
           ) : (
-            <ModelConfigPanel configs={configs} onChanged={() => void load()} />
+            <>
+              {loadError && <p className="admin-error">{loadError}</p>}
+              {!configs ? (
+                <p>加载中…</p>
+              ) : (
+                <ModelConfigPanel configs={configs} onChanged={() => void load()} />
+              )}
+            </>
           )}
-        </>
-      )}
+        </div>
+      </main>
     </div>
   );
 }
