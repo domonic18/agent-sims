@@ -94,7 +94,10 @@ export function startActivity(
       );
     }
     anchorKind = anchor.kind;
-    ensureRestAccess(sim, character, anchor.placeId);
+    // 床位归属仅约束 rest(睡眠);书桌/跑步机等非住宅锚点与他人同住场所放行
+    if (activityId === 'rest') {
+      ensureRestAccess(sim, character, anchor.placeId);
+    }
   } else if (
     !definition.placeIds.some((placeId) => sim.map.contains(placeId, character.x, character.y))
   ) {

@@ -57,6 +57,15 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     expect(sim.character('bob').activity).toMatchObject({ activityId: 'study', anchorKind: 'desk' });
   });
 
+  it('他人住宅书桌学习放行(床位归属仅约束 rest): 生成图就近书桌场景', () => {
+    const desk = anchorUse('home-a', 'study');
+    const { sim } = simWith('bob', 9, 12); // bob 首个生成 → home-a
+    sim.spawnCharacter('oscar', 20, 12, 'oscar'); // oscar → home-b
+    sim.spawnCharacter('pete', desk.x, desk.y, 'pete'); // pete → home-c,站 home-a 书桌
+    sim.requestStartActivity('pete', 'study');
+    expect(sim.character('pete').activity).toMatchObject({ activityId: 'study', anchorKind: 'desk' });
+  });
+
   it('杂工 120 分钟(办公楼工位,M-G.4 兜底类): 赚 96 金币,数值净消耗', () => {
     const desk = anchorUse('office', 'work');
     const { sim } = simWith('carl', desk.x, desk.y);
