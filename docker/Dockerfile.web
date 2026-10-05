@@ -2,6 +2,9 @@
 # /health、/api、/socket.io 反代 compose 内 app 容器,仅 9000 对外(frpc 穿透目标)
 FROM node:22-alpine AS build
 WORKDIR /repo
+# npmjs 直连在构建机网络下不稳定,统一走 npmmirror(corepack 拉取 pnpm 与依赖安装)
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com \
+    NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
 RUN corepack enable
 COPY . .
 RUN pnpm install --frozen-lockfile \
