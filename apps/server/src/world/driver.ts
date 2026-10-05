@@ -1,4 +1,5 @@
 import { BALANCE } from '../config/balance.js';
+import { logTech } from '../telemetry.js';
 import type { Simulation } from './simulation.js';
 
 export interface TickDriverOptions {
@@ -42,6 +43,8 @@ export class TickDriver {
     }
     const stepMs = BALANCE.TICK_MS / this._sim.timeScale;
     let steps = 0;
+    // 慢切片埋点用真实墙钟计时:注入时钟是逻辑时间,多读会污染累加器
+    const wallStartedAt = Date.now();
     while (this._acc >= stepMs && steps < this._maxCatchupTicks) {
       this._sim.advanceTicks(1);
       this._acc -= stepMs;
@@ -50,6 +53,11 @@ export class TickDriver {
     }
     if (steps >= this._maxCatchupTicks) {
       this._acc = 0;
+    }
+    // 慢切片埋点(M-G.1②):单次泵耗时超过泵间隔,说明追帧吃满节拍
+    const sliceMs = Date.now() - wallStartedAt;
+    if (sliceMs > BALANCE.DRIVER_SLICE_MS) {
+      logTech('warn', 'tick', '慢tick切片', { ms: sliceMs, steps, timeScale: this._sim.timeScale });
     }
     return steps;
   }

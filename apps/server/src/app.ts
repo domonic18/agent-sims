@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { Server } from 'socket.io';
 import { registerAdminApi } from './admin-api/index.js';
 import { loadSysConfigOverridesOnce } from './admin-api/sys-configs.js';
@@ -7,6 +7,7 @@ import { createDb } from './db/client.js';
 import { registerDebugRoutes } from './api/debug.js';
 import { ClientRegistry } from './socket/clients.js';
 import { attachSocketGateway } from './socket/gateway.js';
+import { initTechLog, logTech, whenTechLogIdle } from './telemetry.js';
 import { attachWorldEventLog } from './world/event-log.js';
 import { Simulation } from './world/simulation.js';
 
@@ -30,6 +31,19 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   app.decorate('io', attachSocketGateway(app.server, app.simulation, app.clients));
 
   const handle = createDb(env.DATABASE_URL);
+  initTechLog(handle);
+  // 未捕获异常统一落技术日志(M-G.1②):4xx 透传原因,5xx 概括避免泄漏内部细节
+  app.setErrorHandler((err: FastifyError, request, reply) => {
+    const status = err.statusCode ?? 500;
+    if (status >= 500) {
+      logTech('error', 'http', err.message, {
+        method: request.method,
+        url: request.url,
+        stack: err.stack,
+      });
+    }
+    void reply.code(status).send({ error: status >= 500 ? '内部错误' : err.message });
+  });
   // 启动即应用 DB 保存的系统参数覆盖(进程内一次;异步不阻塞监听,失败用默认值)
   loadSysConfigOverridesOnce(handle).catch((err: unknown) => {
     app.log.warn({ err }, 'sys-config 覆盖加载失败,使用默认参数');
@@ -44,6 +58,8 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
     await new Promise<void>((resolve) => {
       app.io.close(() => resolve());
     });
+    // 先冲刷技术日志串行链再断库,避免关停窗口丢尾条
+    await whenTechLogIdle();
     await handle.client.end();
   });
 

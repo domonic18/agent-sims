@@ -6,12 +6,23 @@ import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
 import { adminUsers, techLogs, worldEvents } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
+import { ModelRouter } from '../src/llm/router.js';
+import { LlmError } from '../src/llm/types.js';
+import { initTechLog, logTech, whenTechLogIdle } from '../src/telemetry.js';
 
 // 集成测试:连 dev compose 的 postgres(需已 migrate);库不可达时整组跳过
 const TEST_USERNAME = 'vitest-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
 const TEST_TYPE = 'vitest.event';
 const TEST_MESSAGE = 'vitest-tech-marker';
+const TECH_MARKER = 'vitest-tech-write';
+const BOOM_MARKER = 'boom-vitest';
+
+const clearTechMarkers = async () => {
+  for (const message of [TEST_MESSAGE, TECH_MARKER, BOOM_MARKER]) {
+    await handle.db.delete(techLogs).where(eq(techLogs.message, message));
+  }
+};
 
 let handle: DbHandle;
 let token = '';
@@ -29,6 +40,7 @@ const dbUp = await (async () => {
 
 beforeAll(async () => {
   if (!dbUp) return;
+  initTechLog(handle);
   await handle.db
     .insert(adminUsers)
     .values({ username: TEST_USERNAME, passwordHash: hashPassword(TEST_PASSWORD) })
@@ -37,7 +49,7 @@ beforeAll(async () => {
       set: { passwordHash: hashPassword(TEST_PASSWORD) },
     });
   await handle.db.delete(worldEvents).where(eq(worldEvents.type, TEST_TYPE));
-  await handle.db.delete(techLogs).where(eq(techLogs.message, TEST_MESSAGE));
+  await clearTechMarkers();
   await handle.db.insert(worldEvents).values([
     { type: TEST_TYPE, characterId: 'char-a', tick: 100, payload: { type: TEST_TYPE, note: '甲' } },
     { type: TEST_TYPE, characterId: 'char-b', tick: 200, payload: { type: TEST_TYPE, note: '乙' } },
@@ -57,7 +69,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!dbUp) return;
   await handle.db.delete(worldEvents).where(eq(worldEvents.type, TEST_TYPE));
-  await handle.db.delete(techLogs).where(eq(techLogs.message, TEST_MESSAGE));
+  await clearTechMarkers();
   await handle.client.end();
 });
 
@@ -112,5 +124,53 @@ describe.skipIf(!dbUp)('M-G.1 日志查询 API', () => {
     const res = await get('/api/admin/logs/audit-logs?username=nonexistent-user');
     expect(res.statusCode).toBe(200);
     expect(res.json<{ total: number }>().total).toBe(0);
+  });
+
+  it('logTech 串行落库并可按 source/level 查询', async () => {
+    initTechLog(handle);
+    logTech('warn', 'vitest', TECH_MARKER, { n: 1 });
+    await whenTechLogIdle();
+    const res = await get('/api/admin/logs/tech-logs?source=vitest&level=warn');
+    expect(res.statusCode).toBe(200);
+    const body = res.json<TechLogEntriesResponse>();
+    const hit = body.entries.find((e) => e.message === TECH_MARKER);
+    expect(hit).toBeTruthy();
+    expect(hit!.detail).toMatchObject({ n: 1 });
+  });
+
+  it('未捕获异常经 error handler 落技术日志(5xx 概括响应)', async () => {
+    const app = buildApp();
+    app.get('/api/__boom', async () => {
+      throw new Error(BOOM_MARKER);
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/__boom' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json<{ error: string }>().error).toBe('内部错误');
+    await app.close();
+    initTechLog(handle);
+    await whenTechLogIdle();
+    const list = await get('/api/admin/logs/tech-logs?level=error&source=http');
+    const body = list.json<TechLogEntriesResponse>();
+    const hit = body.entries.find((e) => e.message === BOOM_MARKER);
+    expect(hit).toBeTruthy();
+    expect(hit!.detail).toMatchObject({ url: '/api/__boom' });
+  });
+
+  it('LLM 调用失败落技术日志(source=llm)', async () => {
+    initTechLog(handle);
+    const router = new ModelRouter(handle, {
+      loadConfig: async () => {
+        throw new LlmError('slow', 'llm-vitest-故障');
+      },
+    });
+    await expect(
+      router.chat('slow', [], { taskType: 'vitest' }),
+    ).rejects.toBeInstanceOf(LlmError);
+    await whenTechLogIdle();
+    const res = await get('/api/admin/logs/tech-logs?level=error&source=llm');
+    const body = res.json<TechLogEntriesResponse>();
+    const hit = body.entries.find((e) => e.message === 'llm-vitest-故障');
+    expect(hit).toBeTruthy();
+    expect(hit!.detail).toMatchObject({ slot: 'slow', label: 'chat' });
   });
 });

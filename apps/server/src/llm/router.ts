@@ -4,6 +4,7 @@ import type { DbHandle } from '../db/client.js';
 import { modelConfigs } from '../db/schema/index.js';
 import { decryptSecret } from '../utils/crypto.js';
 import { env } from '../config/env.js';
+import { logTech } from '../telemetry.js';
 import {
   chatViaAnthropic,
   chatViaOpenAi,
@@ -81,30 +82,55 @@ export class ModelRouter {
     this.persistUsage = opts.persistUsage ?? ((entry) => recordTokenUsage(handle, entry));
   }
 
+  /** 埋点包装(M-G.1②):成败各落一条技术日志,异常原样上抛 */
+  private async runLogged<T>(
+    slot: ModelSlot,
+    taskType: string,
+    label: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = Date.now();
+    try {
+      const result = await run();
+      logTech('info', 'llm', '调用完成', { slot, taskType, label, ms: Date.now() - startedAt });
+      return result;
+    } catch (err) {
+      logTech('error', 'llm', err instanceof Error ? err.message : String(err), {
+        slot,
+        taskType,
+        label,
+        ms: Date.now() - startedAt,
+      });
+      throw err;
+    }
+  }
+
   /** 对话补全(slow/light 走此入口;jev 槽位须协议=openai 兼容轨) */
   async chat(slot: ModelSlot, messages: LlmMessage[], task: ChatTask): Promise<LlmChatResult> {
-    const cfg = await this.loadConfig(slot);
-    const opts = {
-      maxTokens: task.maxTokens,
-      temperature: task.temperature,
-      timeoutMs: env.LLM_TIMEOUT_MS,
-    };
-    const result =
-      cfg.protocol === 'anthropic'
-        ? await chatViaAnthropic(cfg, messages, opts, this.fetchImpl)
-        : cfg.protocol === 'openai'
-          ? await chatViaOpenAi(cfg, messages, opts, this.fetchImpl)
-          : (() => {
-              throw new LlmError(slot, `槽位 ${slot} 协议为 systemone(类型化问答),不支持对话;请用 systemOne()`);
-            })();
-    await this.persistUsage({
-      slot,
-      characterId: task.characterId ?? null,
-      taskType: task.taskType,
-      promptTokens: result.promptTokens,
-      completionTokens: result.completionTokens,
+    return this.runLogged(slot, task.taskType, 'chat', async () => {
+      const cfg = await this.loadConfig(slot);
+      const opts = {
+        maxTokens: task.maxTokens,
+        temperature: task.temperature,
+        timeoutMs: env.LLM_TIMEOUT_MS,
+      };
+      const result =
+        cfg.protocol === 'anthropic'
+          ? await chatViaAnthropic(cfg, messages, opts, this.fetchImpl)
+          : cfg.protocol === 'openai'
+            ? await chatViaOpenAi(cfg, messages, opts, this.fetchImpl)
+            : (() => {
+                throw new LlmError(slot, `槽位 ${slot} 协议为 systemone(类型化问答),不支持对话;请用 systemOne()`);
+              })();
+      await this.persistUsage({
+        slot,
+        characterId: task.characterId ?? null,
+        taskType: task.taskType,
+        promptTokens: result.promptTokens,
+        completionTokens: result.completionTokens,
+      });
+      return result;
     });
-    return result;
   }
 
   /** Jev 类型化问答(jev 槽位协议=systemone 原生轨) */
@@ -114,25 +140,27 @@ export class ModelRouter {
     questions: Record<string, SystemOneQuestion>,
     task: { taskType: string; characterId?: string | null },
   ): Promise<SystemOneResult> {
-    const cfg = await this.loadConfig(slot);
-    if (cfg.protocol !== 'systemone') {
-      throw new LlmError(slot, `槽位 ${slot} 协议为 ${cfg.protocol},非 systemone;请用 chat()`);
-    }
-    const result = await chatViaSystemOne(
-      cfg,
-      state,
-      questions,
-      { timeoutMs: env.LLM_TIMEOUT_MS },
-      this.fetchImpl,
-    );
-    await this.persistUsage({
-      slot,
-      characterId: task.characterId ?? null,
-      taskType: task.taskType,
-      promptTokens: result.promptTokens,
-      completionTokens: result.completionTokens,
+    return this.runLogged(slot, task.taskType, 'systemOne', async () => {
+      const cfg = await this.loadConfig(slot);
+      if (cfg.protocol !== 'systemone') {
+        throw new LlmError(slot, `槽位 ${slot} 协议为 ${cfg.protocol},非 systemone;请用 chat()`);
+      }
+      const result = await chatViaSystemOne(
+        cfg,
+        state,
+        questions,
+        { timeoutMs: env.LLM_TIMEOUT_MS },
+        this.fetchImpl,
+      );
+      await this.persistUsage({
+        slot,
+        characterId: task.characterId ?? null,
+        taskType: task.taskType,
+        promptTokens: result.promptTokens,
+        completionTokens: result.completionTokens,
+      });
+      return result;
     });
-    return result;
   }
 
   /** 向量化(仅 embedding 槽位) */
@@ -141,15 +169,17 @@ export class ModelRouter {
     inputs: string[],
     task: { taskType: string; characterId?: string | null },
   ): Promise<LlmEmbedResult> {
-    const cfg = await this.loadConfig(slot);
-    const result = await embedViaOpenAi(cfg, inputs, { timeoutMs: env.LLM_TIMEOUT_MS }, this.fetchImpl);
-    await this.persistUsage({
-      slot,
-      characterId: task.characterId ?? null,
-      taskType: task.taskType,
-      promptTokens: result.promptTokens,
-      completionTokens: 0,
+    return this.runLogged(slot, task.taskType, 'embed', async () => {
+      const cfg = await this.loadConfig(slot);
+      const result = await embedViaOpenAi(cfg, inputs, { timeoutMs: env.LLM_TIMEOUT_MS }, this.fetchImpl);
+      await this.persistUsage({
+        slot,
+        characterId: task.characterId ?? null,
+        taskType: task.taskType,
+        promptTokens: result.promptTokens,
+        completionTokens: 0,
+      });
+      return result;
     });
-    return result;
   }
 }
