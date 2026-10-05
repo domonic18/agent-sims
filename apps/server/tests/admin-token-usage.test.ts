@@ -1,4 +1,3 @@
-import { randomBytes, scryptSync } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { TokenUsageEntriesResponse, TokenUsageSummary } from '@sims/shared';
@@ -6,6 +5,7 @@ import { buildApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
 import { adminUsers, tokenUsage } from '../src/db/schema/index.js';
+import { hashPassword } from '../src/utils/crypto.js';
 
 // 集成测试:连 dev compose 的 postgres(需已 migrate+seed);库不可达时整组跳过
 const TEST_USERNAME = 'vitest-admin';
@@ -28,14 +28,14 @@ const dbUp = await (async () => {
 
 beforeAll(async () => {
   if (!dbUp) return;
-  const salt = randomBytes(16).toString('hex');
+  // 并行测试文件共享 vitest-admin:每次强制重置密码+不删除,避免彼此删号的登录竞态
   await handle.db
     .insert(adminUsers)
-    .values({
-      username: TEST_USERNAME,
-      passwordHash: `scrypt:${salt}:${scryptSync(TEST_PASSWORD, salt, 64).toString('hex')}`,
-    })
-    .onConflictDoNothing({ target: adminUsers.username });
+    .values({ username: TEST_USERNAME, passwordHash: hashPassword(TEST_PASSWORD) })
+    .onConflictDoUpdate({
+      target: adminUsers.username,
+      set: { passwordHash: hashPassword(TEST_PASSWORD) },
+    });
   await handle.db.delete(tokenUsage).where(eq(tokenUsage.taskType, TEST_TASK_TYPE));
   await handle.db.insert(tokenUsage).values([
     { slot: 'light', taskType: TEST_TASK_TYPE, promptTokens: 100, completionTokens: 50, cost: '0' },
@@ -53,7 +53,6 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!dbUp) return;
   await handle.db.delete(tokenUsage).where(inArray(tokenUsage.taskType, [TEST_TASK_TYPE]));
-  await handle.db.delete(adminUsers).where(eq(adminUsers.username, TEST_USERNAME));
   await handle.client.end();
 });
 

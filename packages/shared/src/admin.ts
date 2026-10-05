@@ -141,6 +141,8 @@ export const ADMIN_API = {
   modelConfigInvoke: (slot: ModelSlot) => `/api/admin/model-configs/${slot}/invoke`,
   tokenUsageSummary: '/api/admin/token-usage/summary',
   tokenUsageEntries: '/api/admin/token-usage/entries',
+  sysConfig: '/api/admin/sys-config',
+  sysConfigReset: '/api/admin/sys-config/reset',
 } as const;
 
 /** token 用量统计窗口 */

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { Server } from 'socket.io';
 import { registerAdminApi } from './admin-api/index.js';
+import { loadSysConfigOverridesOnce } from './admin-api/sys-configs.js';
 import { env } from './config/env.js';
 import { createDb } from './db/client.js';
 import { registerDebugRoutes } from './api/debug.js';
@@ -26,6 +27,10 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   app.decorate('io', attachSocketGateway(app.server, app.simulation, app.clients));
 
   const handle = createDb(env.DATABASE_URL);
+  // 启动即应用 DB 保存的系统参数覆盖(进程内一次;异步不阻塞监听,失败用默认值)
+  loadSysConfigOverridesOnce(handle).catch((err: unknown) => {
+    app.log.warn({ err }, 'sys-config 覆盖加载失败,使用默认参数');
+  });
   registerAdminApi(app, handle);
   if (env.NODE_ENV === 'development') {
     registerDebugRoutes(app, app.simulation, app.clients);

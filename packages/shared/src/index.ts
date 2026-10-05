@@ -12,5 +12,6 @@ export * from './property.js';
 export * from './shop.js';
 export * from './social.js';
 export * from './sync.js';
+export * from './sys-config.js';
 export * from './world.js';
 export * from './world-admin.js';

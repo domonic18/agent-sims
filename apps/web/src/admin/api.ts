@@ -11,6 +11,7 @@ import {
   type TokenUsageEntriesResponse,
   type TokenUsageSummary,
   type TokenUsageWindow,
+  type SysConfigView,
   WORLD_ADMIN_API,
   type WorldView,
 } from '@sims/shared';
@@ -83,6 +84,21 @@ export async function changePassword(payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchSysConfig(): Promise<SysConfigView> {
+  return await adminFetch<SysConfigView>(ADMIN_API.sysConfig);
+}
+
+export async function updateSysConfig(updates: Record<string, number>): Promise<SysConfigView> {
+  return await adminFetch<SysConfigView>(ADMIN_API.sysConfig, {
+    method: 'PUT',
+    body: JSON.stringify({ updates }),
+  });
+}
+
+export async function resetSysConfig(): Promise<SysConfigView> {
+  return await adminFetch<SysConfigView>(ADMIN_API.sysConfigReset, { method: 'POST' });
 }
 
 export async function updateModelConfig(

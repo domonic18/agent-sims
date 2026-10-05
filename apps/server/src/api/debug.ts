@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { BALANCE } from '../config/balance.js';
+import { TIME_SCALES } from '../config/balance.js';
 import { runIntent } from '../intents/execute.js';
 import type { ClientRegistry } from '../socket/clients.js';
 import type { Simulation } from '../world/simulation.js';
@@ -18,9 +18,9 @@ const scaleBodySchema = z.object({
   scale: z
     .number()
     .int()
-    .refine((value): value is (typeof BALANCE.TIME_SCALES)[number] =>
-      (BALANCE.TIME_SCALES as readonly number[]).includes(value), {
-      message: `可用档位: ${BALANCE.TIME_SCALES.join('/')}`,
+    .refine((value): value is (typeof TIME_SCALES)[number] =>
+      (TIME_SCALES as readonly number[]).includes(value), {
+      message: `可用档位: ${TIME_SCALES.join('/')}`,
     }),
 });
 

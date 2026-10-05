@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -43,4 +44,11 @@ export const adminUsers = pgTable('admin_users', {
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(), // scrypt:salt:hash
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** 系统参数覆盖(单行表 id 恒为 1):overrides 仅存开放字段的非默认值,BALANCE 热调真源 */
+export const sysConfigs = pgTable('sys_configs', {
+  id: integer('id').primaryKey(),
+  overrides: jsonb('overrides').notNull().default({}),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
