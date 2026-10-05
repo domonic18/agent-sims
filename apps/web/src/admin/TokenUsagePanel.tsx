@@ -1,5 +1,23 @@
 import { useEffect, useState } from 'react';
 import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Flex,
+  Input,
+  Progress,
+  Row,
+  Segmented,
+  Select,
+  Space,
+  Statistic,
+  Table,
+  Typography,
+  type TableProps,
+} from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import {
   MODEL_SLOT_LABELS,
   MODEL_SLOTS,
   TOKEN_USAGE_WINDOW_LABELS,
@@ -11,6 +29,7 @@ import {
   type TokenUsageWindow,
 } from '@sims/shared';
 import { fetchTokenUsageEntries, fetchTokenUsageSummary } from './api';
+import type { TokenUsageCallView } from '@sims/shared';
 
 const PAGE_SIZE = 20;
 
@@ -26,13 +45,23 @@ const fmtTime = (iso: string): string =>
     minute: '2-digit',
   });
 
+const callColumns: NonNullable<TableProps<TokenUsageCallView>['columns']> = [
+  { title: '时间', dataIndex: 'createdAt', width: 130, render: (v: string) => fmtTime(v) },
+  { title: '角色', dataIndex: 'characterName', width: 110, render: (v: string | null) => v ?? '系统' },
+  { title: '槽位', dataIndex: 'slot', width: 110, render: (v: string) => MODEL_SLOT_LABELS[v as ModelSlot] ?? v },
+  { title: '任务', dataIndex: 'taskType' },
+  { title: 'prompt', dataIndex: 'promptTokens', align: 'right', width: 90, render: fmt },
+  { title: 'completion', dataIndex: 'completionTokens', align: 'right', width: 110, render: fmt },
+];
+
 function KpiCard(props: { label: string; value: string; sub: string }) {
   return (
-    <div className="usage-kpi">
-      <small>{props.label}</small>
-      <b>{props.value}</b>
-      <small>{props.sub}</small>
-    </div>
+    <Card size="small">
+      <Statistic title={props.label} value={props.value} valueStyle={{ fontSize: 22 }} />
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        {props.sub}
+      </Typography.Text>
+    </Card>
   );
 }
 
@@ -42,26 +71,30 @@ function TrendChart(props: { summary: TokenUsageSummary }) {
   const max = Math.max(...trend.map((point) => point.totalTokens), 1);
   const labelStep = Math.ceil(trend.length / 10);
   return (
-    <div className="usage-section">
-      <h2>消耗趋势({hourly ? '按小时' : '按天'} · tokens)</h2>
-      <div className="usage-trend">
+    <Card size="small" title={`消耗趋势(${hourly ? '按小时' : '按天'} · tokens)`}>
+      <Flex align="flex-end" gap={3} style={{ height: 130 }}>
         {trend.map((point) => (
           <div
             key={point.bucket}
-            className={point.totalTokens > 0 ? 'usage-trend-bar' : 'usage-trend-bar empty'}
-            style={{ height: point.totalTokens > 0 ? `${Math.max((point.totalTokens / max) * 100, 3)}%` : '2px' }}
             title={`${point.bucket} · ${fmt(point.totalTokens)} tokens · ${point.calls} 次调用`}
+            style={{
+              flex: 1,
+              height: point.totalTokens > 0 ? `${Math.max((point.totalTokens / max) * 100, 3)}%` : 2,
+              background: point.totalTokens > 0 ? undefined : '#f0f0f0',
+              borderRadius: '2px 2px 0 0',
+            }}
+            className={point.totalTokens > 0 ? 'usage-trend-bar' : undefined}
           />
         ))}
-      </div>
-      <div className="usage-trend-labels">
+      </Flex>
+      <Flex gap={3} style={{ marginTop: 6 }}>
         {trend.map((point, index) => (
-          <span key={point.bucket}>
+          <span key={point.bucket} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: '#8c8c8c' }}>
             {index % labelStep === 0 ? (hourly ? `${point.bucket.slice(11, 13)}时` : point.bucket.slice(5)) : ''}
           </span>
         ))}
-      </div>
-    </div>
+      </Flex>
+    </Card>
   );
 }
 
@@ -72,55 +105,32 @@ function DistList(props: {
 }) {
   const { rows, total } = props;
   return (
-    <div>
-      <h3>{props.title}</h3>
-      {rows.length === 0 && <p className="admin-muted">窗口内无调用</p>}
+    <div style={{ flex: '1 1 280px' }}>
+      <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+        {props.title}
+      </Typography.Text>
+      {rows.length === 0 && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          窗口内无调用
+        </Typography.Text>
+      )}
       {rows.map((row) => (
-        <div className="usage-dist-row" key={row.label}>
-          <span className="usage-dist-name" title={row.label}>
+        <Flex align="center" gap={8} key={row.label} style={{ margin: '7px 0' }}>
+          <Typography.Text ellipsis style={{ flexShrink: 0, width: 110, fontSize: 12 }} title={row.label}>
             {row.label}
-          </span>
-          <span className="usage-dist-bar">
-            <span
-              className="usage-dist-fill"
-              style={{ width: total > 0 ? `${Math.max((row.totalTokens / total) * 100, 1)}%` : '0%' }}
-            />
-          </span>
-          <span className="usage-dist-num">
+          </Typography.Text>
+          <Progress
+            size="small"
+            showInfo={false}
+            percent={total > 0 ? Math.max((row.totalTokens / total) * 100, 1) : 0}
+            style={{ flex: 1, margin: 0 }}
+          />
+          <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
             {fmt(row.totalTokens)} · {row.calls}次 · {fmtPct(total > 0 ? row.totalTokens / total : 0)}
-          </span>
-        </div>
+          </Typography.Text>
+        </Flex>
       ))}
     </div>
-  );
-}
-
-function CallTable(props: { rows: TokenUsageSummary['topCalls'] }) {
-  return (
-    <table className="usage-table">
-      <thead>
-        <tr>
-          <th>时间</th>
-          <th>角色</th>
-          <th>槽位</th>
-          <th>任务</th>
-          <th className="num">prompt</th>
-          <th className="num">completion</th>
-        </tr>
-      </thead>
-      <tbody>
-        {props.rows.map((row) => (
-          <tr key={row.id}>
-            <td>{fmtTime(row.createdAt)}</td>
-            <td>{row.characterName ?? '系统'}</td>
-            <td>{MODEL_SLOT_LABELS[row.slot]}</td>
-            <td>{row.taskType}</td>
-            <td className="num">{fmt(row.promptTokens)}</td>
-            <td className="num">{fmt(row.completionTokens)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 
@@ -174,63 +184,65 @@ export function TokenUsagePanel() {
     };
   }, [win, slotFilter, characterFilter, taskTypeFilter, page, refreshKey]);
 
-  const totalPages =
-    entries === null ? 1 : Math.max(Math.ceil(entries.total / entries.pageSize), 1);
-
   return (
-    <div className="usage-panel">
-      <div className="usage-toolbar">
-        {TOKEN_USAGE_WINDOWS.map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={option === win ? 'usage-window active' : 'usage-window'}
-            onClick={() => {
-              setWin(option);
-              setPage(1);
-            }}
-          >
-            {TOKEN_USAGE_WINDOW_LABELS[option]}
-          </button>
-        ))}
-        <button type="button" className="admin-secondary" onClick={() => setRefreshKey((key) => key + 1)}>
+    <Flex vertical gap={16}>
+      <Space wrap>
+        <Segmented<TokenUsageWindow>
+          value={win}
+          onChange={(value) => {
+            setWin(value);
+            setPage(1);
+          }}
+          options={TOKEN_USAGE_WINDOWS.map((option) => ({
+            value: option,
+            label: TOKEN_USAGE_WINDOW_LABELS[option],
+          }))}
+        />
+        <Button icon={<ReloadOutlined />} onClick={() => setRefreshKey((key) => key + 1)}>
           刷新
-        </button>
-      </div>
+        </Button>
+      </Space>
 
-      {summaryError && <p className="admin-error">{summaryError}</p>}
-      {!summary && !summaryError && <p className="admin-muted">加载中…</p>}
+      {summaryError && <Alert type="error" showIcon message={summaryError} />}
+      {!summary && !summaryError && <Card loading style={{ minHeight: 120 }} />}
 
       {summary && (
         <>
-          <div className="usage-kpis">
-            <KpiCard
-              label="总消耗 tokens"
-              value={fmt(summary.kpi.totalTokens)}
-              sub={`prompt ${fmt(summary.kpi.promptTokens)} / completion ${fmt(summary.kpi.completionTokens)}`}
-            />
-            <KpiCard
-              label="调用次数"
-              value={fmt(summary.kpi.calls)}
-              sub={`平均单次 ${summary.kpi.avgTokensPerCall} tokens`}
-            />
-            <KpiCard
-              label="completion 占比"
-              value={fmtPct(summary.kpi.completionShare)}
-              sub="生成密度:占比越高单次越「有产出」"
-            />
-            <KpiCard
-              label="活跃角色"
-              value={fmt(summary.kpi.activeCharacters)}
-              sub={`窗口内产生消耗的角色数(${TOKEN_USAGE_WINDOW_LABELS[win]})`}
-            />
-          </div>
+          <Row gutter={[12, 12]}>
+            <Col xs={24} sm={12} lg={6}>
+              <KpiCard
+                label="总消耗 tokens"
+                value={fmt(summary.kpi.totalTokens)}
+                sub={`prompt ${fmt(summary.kpi.promptTokens)} / completion ${fmt(summary.kpi.completionTokens)}`}
+              />
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <KpiCard
+                label="调用次数"
+                value={fmt(summary.kpi.calls)}
+                sub={`平均单次 ${summary.kpi.avgTokensPerCall} tokens`}
+              />
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <KpiCard
+                label="completion 占比"
+                value={fmtPct(summary.kpi.completionShare)}
+                sub="生成密度:占比越高单次越「有产出」"
+              />
+            </Col>
+            <Col xs={24} sm={12} lg={6}>
+              <KpiCard
+                label="活跃角色"
+                value={fmt(summary.kpi.activeCharacters)}
+                sub={`窗口内产生消耗的角色数(${TOKEN_USAGE_WINDOW_LABELS[win]})`}
+              />
+            </Col>
+          </Row>
 
           <TrendChart summary={summary} />
 
-          <div className="usage-section">
-            <h2>消耗分布(按 tokens 占比)</h2>
-            <div className="usage-dist">
+          <Card size="small" title="消耗分布(按 tokens 占比)">
+            <Flex gap={24} wrap="wrap">
               <DistList
                 title="按槽位"
                 total={summary.kpi.totalTokens}
@@ -252,89 +264,79 @@ export function TokenUsagePanel() {
                   label: row.name ?? '系统/无角色',
                 }))}
               />
-            </div>
-          </div>
+            </Flex>
+          </Card>
 
-          <div className="usage-section">
-            <h2>单次消耗 Top5(发现 prompt 膨胀类异常)</h2>
-            {summary.topCalls.length === 0 ? (
-              <p className="admin-muted">窗口内无调用</p>
-            ) : (
-              <CallTable rows={summary.topCalls} />
-            )}
-          </div>
+          <Card size="small" title="单次消耗 Top5(发现 prompt 膨胀类异常)">
+            <Table<TokenUsageCallView>
+              size="small"
+              rowKey="id"
+              columns={callColumns}
+              dataSource={summary.topCalls}
+              pagination={false}
+              locale={{ emptyText: '窗口内无调用' }}
+            />
+          </Card>
         </>
       )}
 
-      <div className="usage-section">
-        <h2>调用明细流水</h2>
-        <div className="usage-filters">
-          <select
+      <Card size="small" title="调用明细流水">
+        <Space wrap style={{ marginBottom: 12 }}>
+          <Select
             value={slotFilter}
-            onChange={(e) => {
-              setSlotFilter(e.target.value);
+            onChange={(value) => {
+              setSlotFilter(value);
               setPage(1);
             }}
-          >
-            <option value="">全部槽位</option>
-            {MODEL_SLOTS.map((slot) => (
-              <option key={slot} value={slot}>
-                {MODEL_SLOT_LABELS[slot]}
-              </option>
-            ))}
-          </select>
-          <select
+            style={{ minWidth: 140 }}
+            options={[
+              { value: '', label: '全部槽位' },
+              ...MODEL_SLOTS.map((slot) => ({ value: slot, label: MODEL_SLOT_LABELS[slot] })),
+            ]}
+          />
+          <Select
             value={characterFilter}
-            onChange={(e) => {
-              setCharacterFilter(e.target.value);
+            onChange={(value) => {
+              setCharacterFilter(value);
               setPage(1);
             }}
-          >
-            <option value="">全部角色</option>
-            {(summary?.byCharacter ?? [])
-              .filter((row): row is (typeof row) & { characterId: string } => row.characterId !== null)
-              .map((row) => (
-                <option key={row.characterId} value={row.characterId}>
-                  {row.name ?? row.characterId}
-                </option>
-              ))}
-          </select>
-          <input
+            style={{ minWidth: 160 }}
+            options={[
+              { value: '', label: '全部角色' },
+              ...(summary?.byCharacter ?? [])
+                .filter((row): row is (typeof row) & { characterId: string } => row.characterId !== null)
+                .map((row) => ({ value: row.characterId, label: row.name ?? row.characterId })),
+            ]}
+          />
+          <Input
             value={taskTypeFilter}
             placeholder="按任务类型过滤,如 admin_invoke"
+            style={{ width: 240 }}
+            allowClear
             onChange={(e) => {
               setTaskTypeFilter(e.target.value);
               setPage(1);
             }}
           />
-        </div>
-        {entriesError && <p className="admin-error">{entriesError}</p>}
-        {entries && entries.entries.length === 0 && <p className="admin-muted">无匹配记录</p>}
-        {entries && entries.entries.length > 0 && <CallTable rows={entries.entries} />}
-        {entries && entries.total > 0 && (
-          <div className="usage-pager">
-            <button
-              type="button"
-              className="admin-secondary"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              上一页
-            </button>
-            <span>
-              第 {page}/{totalPages} 页 · 共 {fmt(entries.total)} 条
-            </span>
-            <button
-              type="button"
-              className="admin-secondary"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              下一页
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+        </Space>
+        {entriesError && <Alert type="error" showIcon message={entriesError} style={{ marginBottom: 12 }} />}
+        <Table<TokenUsageCallView>
+          size="small"
+          rowKey="id"
+          columns={callColumns}
+          dataSource={entries?.entries ?? []}
+          loading={entries === null}
+          locale={{ emptyText: '无匹配记录' }}
+          pagination={{
+            current: page,
+            pageSize: entries?.pageSize ?? PAGE_SIZE,
+            total: entries?.total ?? 0,
+            showSizeChanger: false,
+            showTotal: (total) => `共 ${fmt(total)} 条`,
+            onChange: (next) => setPage(next),
+          }}
+        />
+      </Card>
+    </Flex>
   );
 }
