@@ -17,6 +17,7 @@
     "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed/index.ts",
     "sim:run": "tsx src/world/sim-run.ts",
     "assets:import": "tsx --env-file-if-exists=../../.env src/assets/cli.ts import",
+    "assets:import-singles": "tsx --env-file-if-exists=../../.env src/assets/cli.ts import-singles",
     "assets:publish": "tsx --env-file-if-exists=../../.env src/assets/cli.ts publish"
   },
   "dependencies": {

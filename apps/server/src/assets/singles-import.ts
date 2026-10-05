@@ -48,21 +48,39 @@ const kebab = (raw: string): string =>
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
-/** 户外语义文件名 → {theme, kindSlug, name, variant} */
-export function parseOutdoorFilename(file: string): {
+export interface OutdoorParseResult {
   theme: string;
   kindSlug: string;
   name: string;
-} | null {
+  /** 形态 B 自带占地格数(NxN) */
+  grid?: { w: number; h: number };
+}
+
+/** 户外语义文件名解析,两种形态:
+ *  A: NN_Theme_16x16_Name[_variant]  B: ME_Singles_Group_NxN_Name[_N][_variant] */
+export function parseOutdoorFilename(file: string): OutdoorParseResult | null {
   const base = path.basename(file, '.png');
-  const match = /^(\d+)_([A-Za-z_]+?)_16x16_(.+)$/.exec(base);
-  if (match === null) return null;
-  const theme = kebab(match[2]!);
-  const rest = match[3]!;
-  // 尾部 `_数字` / `_Sand` / `_数字_Sand` 等变体并入素材名,kind 去变体
-  const kindSource = rest.replace(/(_\d+)?(_Sand|_Stone|_Wood)?$/, '');
-  const kindSlug = kebab(kindSource) || theme;
-  return { theme, kindSlug, name: rest.replace(/_/g, ' ').trim() };
+  const matchA = /^(\d+)_([A-Za-z_]+?)_16x16_(.+)$/.exec(base);
+  if (matchA !== null) {
+    const theme = kebab(matchA[2]!);
+    const rest = matchA[3]!;
+    // 尾部 `_数字` / `_Sand` / `_数字_Sand` 等变体并入素材名,kind 去变体
+    const kindSource = rest.replace(/(_\d+)?(_Sand|_Stone|_Wood)?$/, '');
+    return { theme, kindSlug: kebab(kindSource) || theme, name: rest.replace(/_/g, ' ').trim() };
+  }
+  const matchB = /^ME_Singles_([A-Za-z_]+?)_(\d+)x(\d+)_(.+)$/.exec(base);
+  if (matchB !== null) {
+    const theme = kebab(matchB[1]!);
+    const rest = matchB[4]!;
+    const kindSource = rest.replace(/((_\d+)+)?(_Sand|_Stone|_Wood)?$/, '');
+    return {
+      theme,
+      kindSlug: kebab(kindSource) || theme,
+      name: rest.replace(/_/g, ' ').trim(),
+      grid: { w: Number(matchB[2]), h: Number(matchB[3]) },
+    };
+  }
+  return null;
 }
 
 /** 室内目录名(如 8_Gym_Singles) → theme slug */
@@ -95,13 +113,20 @@ export async function buildSinglesImportList(options: SinglesImportOptions): Pro
     for (const file of picked) {
       const parsed = parseOutdoorFilename(file);
       if (parsed === null) continue;
-      const slug = `${parsed.theme}-${parsed.kindSlug}-${items.length + 1}`;
+      // kind 已含 theme 前缀(如 beach-towel)不再重复拼接
+      const base =
+        parsed.kindSlug === parsed.theme || parsed.kindSlug.startsWith(`${parsed.theme}-`)
+          ? parsed.kindSlug
+          : `${parsed.theme}-${parsed.kindSlug}`;
       items.push({
-        slug,
+        slug: `${base}-${items.length + 1}`,
         name: parsed.name,
         domain: 'outdoor',
         theme: parsed.theme,
         kind: parsed.kindSlug,
+        ...(parsed.grid !== undefined
+          ? { gridW: parsed.grid.w, gridH: parsed.grid.h }
+          : {}),
         sourcePath: path.join(options.sourceDir, file),
         source: `limezu-exterior-singles(${path.basename(file)})`,
         status: 'active',
@@ -131,7 +156,8 @@ export async function buildSinglesImportList(options: SinglesImportOptions): Pro
       // 非法 PNG 保持 draft
     }
     items.push({
-      slug: `${theme}-${kebab(base)}`,
+      // 编号命名(Theme_Singles_N)取尾部编号,避免 theme 前缀冗余(gym-gym-singles-115 → gym-115)
+      slug: `${theme}-${/(\d+)$/.exec(base)?.[1] ?? kebab(base)}`,
       name: base.replace(/_/g, ' '),
       domain: 'indoor',
       theme,

@@ -35,7 +35,8 @@ try {
       console.error('用法: assets:import-singles <目录> <outdoor|indoor> [limit] [theme]');
       process.exitCode = 1;
     } else {
-      const limit = limitArg !== undefined ? Number(limitArg) : undefined;
+      const limit =
+        limitArg !== undefined && limitArg !== '' ? Number(limitArg) : undefined;
       const { items, counts } = await buildSinglesImportList({
         sourceDir: dir,
         mode: modeArg,
