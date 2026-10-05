@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { TechLogEntriesResponse, WorldEventEntriesResponse } from '@sims/shared';
+import type { AuditLogEntriesResponse, TechLogEntriesResponse, WorldEventEntriesResponse } from '@sims/shared';
+import { whenAdminAuditIdle } from '../src/admin-api/audit.js';
 import { buildApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
@@ -172,5 +173,49 @@ describe.skipIf(!dbUp)('M-G.1 日志查询 API', () => {
     const hit = body.entries.find((e) => e.message === 'llm-vitest-故障');
     expect(hit).toBeTruthy();
     expect(hit!.detail).toMatchObject({ slot: 'slow', label: 'chat' });
+  });
+
+  it('登录成功/失败均留操作审计', async () => {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/auth/login',
+      payload: { username: TEST_USERNAME, password: 'wrong-pass-000' },
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+    await whenAdminAuditIdle();
+    const list = await get(`/api/admin/logs/audit-logs?username=${TEST_USERNAME}`);
+    const body = list.json<AuditLogEntriesResponse>();
+    const logins = body.entries.filter((e) => e.path === '/api/admin/auth/login');
+    expect(logins.length).toBeGreaterThanOrEqual(2);
+    expect(logins.some((e) => e.statusCode === 200)).toBe(true);
+    expect(logins.some((e) => e.statusCode === 401)).toBe(true);
+    expect(logins.every((e) => e.method === 'POST')).toBe(true);
+  });
+
+  it('无凭证写请求也留痕(操作者空)', async () => {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/auth/change-password',
+      payload: { oldPassword: 'x', newPassword: 'yyyyyyyy' },
+    });
+    expect(res.statusCode).toBe(401);
+    await app.close();
+    await whenAdminAuditIdle();
+    const list = await get('/api/admin/logs/audit-logs?page=1&pageSize=100');
+    const hit = list
+      .json<AuditLogEntriesResponse>()
+      .entries.find((e) => e.path === '/api/admin/auth/change-password');
+    expect(hit).toMatchObject({ method: 'POST', statusCode: 401, username: null });
+  });
+
+  it('GET 查询不留审计', async () => {
+    await get('/api/admin/logs/tech-logs?source=vitest&page=1');
+    await whenAdminAuditIdle();
+    const res = await get(`/api/admin/logs/audit-logs?username=${TEST_USERNAME}`);
+    const body = res.json<AuditLogEntriesResponse>();
+    expect(body.entries.every((e) => e.method !== 'GET')).toBe(true);
   });
 });
