@@ -1,6 +1,7 @@
 import {
   ACTIVITY_DEFINITIONS,
   CHAT_DAILY_GAINED,
+  JOB_CATEGORIES,
   LOW_ENERGY_THRESHOLD,
   SOCIAL_PRESENCE_DISTANCE,
   findActivityAnchorAt,
@@ -8,6 +9,7 @@ import {
   placeIdMatches,
   relationTitle,
   type ActivityDefinition,
+  type JobCategoryId,
   type PlaceDefinition,
   type TileMapDefinition,
   type WorldSnapshotMessage,
@@ -71,6 +73,9 @@ export function CharactersSection({
           <div className="coins">金币 {formatCoins(character.coins)}</div>
           <div className="coins" title="生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7)">
             繁荣分 {formatCoins(character.lifeScore)}
+          </div>
+          <div className="coins" title="完成一次完整学习 +1;解锁岗位类别(M-G.4)">
+            知识 {character.knowledge} 班
           </div>
           {!character.alive && (
             <div className="death-banner">☠️ 已死亡(幽灵态),等待复活(/lab 可复活)</div>
@@ -219,6 +224,60 @@ export function ActivitySection({
     activity !== null && activityDef !== null
       ? Math.min(100, Math.round((activity.elapsedMinutes / activityDef.durationMinutes) * 100))
       : 0;
+  // 职业类别分组(M-G.4): 无 category=日常活动;岗位按类别成组,知识不足整组置灰
+  const daily = ACTIVITY_DEFINITIONS.filter((def) => def.category === undefined);
+  const jobGroups = (Object.keys(JOB_CATEGORIES) as JobCategoryId[])
+    .map((id) => ({
+      id,
+      meta: JOB_CATEGORIES[id],
+      defs: ACTIVITY_DEFINITIONS.filter((def) => def.category === id),
+    }))
+    .filter((group) => group.defs.length > 0);
+  const renderRow = (def: ActivityDefinition, locked: boolean) => {
+    const anchors = activityAnchors(map, def.id);
+    const targetLabel =
+      anchors.length > 0
+        ? anchors.map((a) => a.label).join('/')
+        : def.placeIds.map((id) => findPlaceByRef(map, id)?.name ?? id).join('/');
+    const here =
+      anchors.length > 0
+        ? findActivityAnchorAt(map, def.id, character.x, character.y) !== null
+        : atPlace !== null && def.placeIds.some((id) => placeIdMatches(id, atPlace.id));
+    const enRoute = pending?.kind === 'activity' && pending.id === def.id;
+    return (
+      <li
+        key={def.id}
+        id={`activity-row-${def.id}`}
+        className={enRoute ? 'focused' : ''}
+      >
+        <span>
+          {def.name}
+          <small>
+            {targetLabel} {def.durationMinutes}分
+            {def.effects.coins !== 0 &&
+              (def.effects.coins > 0
+                ? ` +${def.effects.coins}/分`
+                : ` ${def.effects.coins}/分`)}
+          </small>
+        </span>
+        <button
+          type="button"
+          disabled={moving || dead || locked}
+          title={
+            (locked
+              ? `知识不足: 需学习 ${JOB_CATEGORIES[def.category!].requiredKnowledge} 班`
+              : here
+                ? ''
+                : `自动前往 ${targetLabel} 并开始`) +
+            (def.id === 'rest' ? '恢复速率: 床最快/沙发次之/长椅最慢' : '')
+          }
+          onClick={() => void startActivity(def)}
+        >
+          {enRoute ? '途中…' : '开始'}
+        </button>
+      </li>
+    );
+  };
   return (
     <section className="panel-section">
       <h3>活动{atPlace !== null ? ` · ${atPlace.name}` : ' · 野外'}</h3>
@@ -236,49 +295,25 @@ export function ActivitySection({
           </button>
         </div>
       ) : (
-        <ul className="activity-list">
-          {ACTIVITY_DEFINITIONS.map((def) => {
-            const anchors = activityAnchors(map, def.id);
-            const targetLabel =
-              anchors.length > 0
-                ? anchors.map((a) => a.label).join('/')
-                : def.placeIds.map((id) => findPlaceByRef(map, id)?.name ?? id).join('/');
-            const here =
-              anchors.length > 0
-                ? findActivityAnchorAt(map, def.id, character.x, character.y) !== null
-                : atPlace !== null && def.placeIds.some((id) => placeIdMatches(id, atPlace.id));
-            const enRoute = pending?.kind === 'activity' && pending.id === def.id;
+        <>
+          <ul className="activity-list">{daily.map((def) => renderRow(def, false))}</ul>
+          {jobGroups.map((group) => {
+            const locked = character.knowledge < group.meta.requiredKnowledge;
             return (
-              <li
-                key={def.id}
-                id={`activity-row-${def.id}`}
-                className={enRoute ? 'focused' : ''}
-              >
-                <span>
-                  {def.name}
-                  <small>
-                    {targetLabel} {def.durationMinutes}分
-                    {def.effects.coins !== 0 &&
-                      (def.effects.coins > 0
-                        ? ` +${def.effects.coins}/分`
-                        : ` ${def.effects.coins}/分`)}
-                  </small>
-                </span>
-                <button
-                  type="button"
-                  disabled={moving || dead}
-                  title={
-                    (here ? '' : `自动前往 ${targetLabel} 并开始`) +
-                    (def.id === 'rest' ? '恢复速率: 床最快/沙发次之/长椅最慢' : '')
-                  }
-                  onClick={() => void startActivity(def)}
-                >
-                  {enRoute ? '途中…' : '开始'}
-                </button>
-              </li>
+              <div key={group.id} className={`job-group${locked ? ' locked' : ''}`}>
+                <h4>
+                  {group.meta.label}类岗位
+                  {locked && (
+                    <small className="job-lock-hint">需学习 {group.meta.requiredKnowledge} 班</small>
+                  )}
+                </h4>
+                <ul className="activity-list">
+                  {group.defs.map((def) => renderRow(def, locked))}
+                </ul>
+              </div>
             );
           })}
-        </ul>
+        </>
       )}
     </section>
   );

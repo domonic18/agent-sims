@@ -217,3 +217,25 @@
 .hint.err {
   color: #c62828;
 }
+
+/* 职业类别分组(M-G.4): 岗位按类别成组,知识不足整组置灰显门槛 */
+.job-group h4 {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  color: #444;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.job-lock-hint {
+  font-weight: normal;
+  color: #b26a00;
+  background: #fff3e0;
+  border-radius: 8px;
+  padding: 0 6px;
+}
+
+.job-group.locked .activity-list li {
+  opacity: 0.55;
+}
