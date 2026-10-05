@@ -70,6 +70,17 @@ export const DEFAULT_WORLD_RULES: WorldRules = {
   initialTimeScale: 1,
 };
 
+/** 运行时规则视图(world.rules 事件与设置通道携带;不含 params) */
+export type WorldRulesView = Omit<WorldRules, 'params'>;
+
+/** GET/POST /api/world/settings 响应(游戏内设置菜单与 Lab 共用的常开控制通道) */
+export interface WorldSettingsView {
+  paused: boolean;
+  timeScale: number;
+  params: Record<string, number>;
+  rules: WorldRulesView;
+}
+
 /** POST /api/admin/worlds 请求体 */
 /** 世界生成配置(缺省=内置固定地图;seed 为随机数数字串,同数复现同图) */
 export interface WorldgenConfig {

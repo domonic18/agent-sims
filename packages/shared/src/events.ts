@@ -84,6 +84,19 @@ export const worldParamsEventSchema = z.object({
 
 export type WorldParamsEvent = z.infer<typeof worldParamsEventSchema>;
 
+/** 世界规则运行时变更广播(游戏内设置菜单/难度预设):三字段全集,不含 params */
+export const worldRulesEventSchema = z.object({
+  type: z.literal('world.rules'),
+  tick: z.number().int(),
+  rules: z.object({
+    allowDeath: z.boolean(),
+    allowChat: z.boolean(),
+    initialTimeScale: z.number(),
+  }),
+});
+
+export type WorldRulesEvent = z.infer<typeof worldRulesEventSchema>;
+
 /** 世界重置(M3.6k 后台创建/删除世界):所有角色清场,快照流自动收敛 */
 export const worldResetEventSchema = z.object({
   type: z.literal('world.reset'),
@@ -123,6 +136,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   characterRevivedEventSchema,
   worldControlEventSchema,
   worldParamsEventSchema,
+  worldRulesEventSchema,
   worldResetEventSchema,
   socialChatEventSchema,
   friendshipFormedEventSchema,
