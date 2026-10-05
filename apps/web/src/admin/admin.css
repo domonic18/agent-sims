@@ -361,3 +361,181 @@ button.admin-danger {
   border-radius: 4px;
   padding: 6px 8px;
 }
+
+/* ===== Token 用量面板 ===== */
+.usage-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.usage-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.usage-kpi {
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-kpi b {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-section {
+  border: 1px solid #d0d7de;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: #fff;
+}
+
+.usage-section h2 {
+  font-size: 14px;
+  margin: 0 0 12px;
+  color: #57606a;
+}
+
+.usage-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 130px;
+}
+
+.usage-trend-bar {
+  flex: 1;
+  background: #6366f1;
+  border-radius: 2px 2px 0 0;
+}
+
+.usage-trend-bar.empty {
+  background: #eaeef2;
+}
+
+.usage-trend-labels {
+  display: flex;
+  gap: 3px;
+  margin-top: 6px;
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.usage-trend-labels span {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.usage-dist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.usage-dist h3 {
+  font-size: 13px;
+  margin: 0 0 8px;
+  color: #57606a;
+}
+
+.usage-dist-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 130px) 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin: 7px 0;
+  font-size: 12px;
+}
+
+.usage-dist-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-dist-bar {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: #eaeef2;
+  overflow: hidden;
+}
+
+.usage-dist-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: #6366f1;
+}
+
+.usage-dist-num {
+  color: #57606a;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.usage-table th,
+.usage-table td {
+  border-bottom: 1px solid #eaeef2;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.usage-table th {
+  color: #57606a;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.usage-table td.num,
+.usage-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.usage-filters select,
+.usage-filters input {
+  padding: 5px 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.usage-filters input {
+  min-width: 200px;
+}
+
+.usage-pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  color: #57606a;
+  font-size: 12px;
+}

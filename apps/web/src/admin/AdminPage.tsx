@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { ModelConfigView } from '@sims/shared';
 import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } from './api';
 import { ModelConfigPanel } from './ModelConfigPanel';
+import { TokenUsagePanel } from './TokenUsagePanel';
 import { WorldPanel } from './WorldPanel';
 import './admin.css';
 
@@ -53,7 +54,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-type AdminTab = 'world' | 'models';
+type AdminTab = 'world' | 'models' | 'usage';
 
 export default function AdminPage() {
   const [authed, setAuthed] = useState(() => getToken() !== null);
@@ -105,6 +106,13 @@ export default function AdminPage() {
           >
             模型配置
           </button>
+          <button
+            type="button"
+            className={tab === 'usage' ? 'admin-tab active' : 'admin-tab'}
+            onClick={() => setTab('usage')}
+          >
+            Token 用量
+          </button>
         </nav>
         <button
           className="admin-secondary"
@@ -119,6 +127,8 @@ export default function AdminPage() {
       </header>
       {tab === 'world' ? (
         <WorldPanel />
+      ) : tab === 'usage' ? (
+        <TokenUsagePanel />
       ) : (
         <>
           {loadError && <p className="admin-error">{loadError}</p>}

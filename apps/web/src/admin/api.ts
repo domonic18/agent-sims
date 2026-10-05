@@ -8,6 +8,9 @@ import {
   type ModelConfigUpdate,
   type ModelConfigView,
   type ModelSlot,
+  type TokenUsageEntriesResponse,
+  type TokenUsageSummary,
+  type TokenUsageWindow,
   WORLD_ADMIN_API,
   type WorldView,
 } from '@sims/shared';
@@ -92,6 +95,31 @@ export async function invokeModelConfig(
     method: 'POST',
     body: JSON.stringify(prompt ? { prompt } : {}),
   });
+}
+
+export async function fetchTokenUsageSummary(
+  window: TokenUsageWindow,
+): Promise<TokenUsageSummary> {
+  return await adminFetch<TokenUsageSummary>(`${ADMIN_API.tokenUsageSummary}?window=${window}`);
+}
+
+export interface TokenUsageEntriesQuery {
+  window: TokenUsageWindow;
+  slot?: string;
+  characterId?: string;
+  taskType?: string;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchTokenUsageEntries(
+  query: TokenUsageEntriesQuery,
+): Promise<TokenUsageEntriesResponse> {
+  const params = new URLSearchParams({ window: query.window, page: String(query.page), pageSize: String(query.pageSize) });
+  if (query.slot) params.set('slot', query.slot);
+  if (query.characterId) params.set('characterId', query.characterId);
+  if (query.taskType) params.set('taskType', query.taskType);
+  return await adminFetch<TokenUsageEntriesResponse>(`${ADMIN_API.tokenUsageEntries}?${params.toString()}`);
 }
 
 export async function fetchWorlds(): Promise<WorldView[]> {
