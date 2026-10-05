@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync } from 'node:crypto';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { TokenUsageEntriesResponse, TokenUsageSummary } from '@sims/shared';
 import { buildApp } from '../src/app.js';
@@ -119,6 +119,34 @@ describe.skipIf(!dbUp)('token 用量统计 API', () => {
       `/api/admin/token-usage/entries?window=all&slot=light&taskType=${TEST_TASK_TYPE}&page=2&pageSize=1`,
     );
     expect(page2.json<TokenUsageEntriesResponse>().entries).toHaveLength(1);
+  });
+
+  it('趋势按北京时区归桶(UTC 库跨日 8 小时是关键边界)', async () => {
+    const before = (await get('/api/admin/token-usage/summary?window=all')).json<TokenUsageSummary>();
+    const TZ_MS = 8 * 3_600_000;
+    const beijingDayStartUtc = Math.floor((Date.now() + TZ_MS) / 86_400_000) * 86_400_000 - TZ_MS;
+    // 哨兵 A: 北京今日 00:30(UTC 时刻在前一个 UTC 日);哨兵 B: 北京昨日 23:00
+    await handle.db.insert(tokenUsage).values([
+      { slot: 'light', taskType: TEST_TASK_TYPE, promptTokens: 10, completionTokens: 0, cost: '0', createdAt: new Date(beijingDayStartUtc + 30 * 60_000) },
+      { slot: 'light', taskType: TEST_TASK_TYPE, promptTokens: 20, completionTokens: 0, cost: '0', createdAt: new Date(beijingDayStartUtc - 60 * 60_000) },
+    ]);
+    try {
+      const after = (await get('/api/admin/token-usage/summary?window=all')).json<TokenUsageSummary>();
+      const diff = (label: string): number =>
+        (after.trend.find((p) => p.bucket === label)?.totalTokens ?? 0) -
+        (before.trend.find((p) => p.bucket === label)?.totalTokens ?? 0);
+      const today = new Date(Date.now() + TZ_MS).toISOString().slice(0, 10);
+      const yesterday = new Date(Date.now() + TZ_MS - 86_400_000).toISOString().slice(0, 10);
+      expect(diff(today)).toBe(10);
+      expect(diff(yesterday)).toBe(20);
+    } finally {
+      await handle.db
+        .delete(tokenUsage)
+        .where(and(eq(tokenUsage.taskType, TEST_TASK_TYPE), eq(tokenUsage.promptTokens, 10)));
+      await handle.db
+        .delete(tokenUsage)
+        .where(and(eq(tokenUsage.taskType, TEST_TASK_TYPE), eq(tokenUsage.promptTokens, 20)));
+    }
   });
 
   it('entries 非法 uuid/超长 taskType 400', async () => {

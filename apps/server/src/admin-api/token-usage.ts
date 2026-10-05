@@ -75,9 +75,11 @@ async function buildTrend(
   window: TokenUsageWindow,
 ): Promise<TokenUsageSummary['trend']> {
   const hourly = window === 'today';
+  // 先转北京墙钟再截断;外层包 AT TIME ZONE 会变成「会话时区截断后贴 +8 标签」(UTC 库跨日 8 小时全归错桶)
+  const zoneTs = atStatsTz(sql`${tokenUsage.createdAt}`);
   const bucket = hourly
-    ? atStatsTz(sql`date_trunc('hour', ${tokenUsage.createdAt})`)
-    : atStatsTz(sql`date_trunc('day', ${tokenUsage.createdAt})`);
+    ? sql`date_trunc('hour', ${zoneTs})`
+    : sql`date_trunc('day', ${zoneTs})`;
   // to_char 格式与 beijingLabel 输出严格一致(日桶无时间部分,键才能对上)
   const fmt = hourly ? sql`'YYYY-MM-DD"T"HH24:MI'` : sql`'YYYY-MM-DD'`;
   const rows = await handle.db
@@ -99,8 +101,9 @@ async function buildTrend(
   } else {
     const todayStart = Math.floor(nowBeijing / DAY_MS) * DAY_MS;
     if (window === 'all') {
+      // 桶标签即北京墙钟,按「墙钟坐标系」解析(当 UTC 读),与补零循环锚点同空间
       const first = rows[0]?.bucket.slice(0, 10);
-      startWall = first ? Date.parse(`${first}T00:00:00+08:00`) : todayStart;
+      startWall = first ? Date.parse(`${first}T00:00:00Z`) : todayStart;
       startWall = Math.max(startWall, todayStart - 179 * DAY_MS);
     } else {
       startWall = todayStart - (window === '7d' ? 6 : 29) * DAY_MS;
