@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   App as AntdApp,
   Avatar,
   Button,
@@ -28,7 +29,6 @@ import { ModelConfigPanel } from './ModelConfigPanel';
 import { TokenUsagePanel } from './TokenUsagePanel';
 import { WorldPanel } from './WorldPanel';
 import { SettingsPanel } from './SettingsPanel';
-import './admin.css';
 
 function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   const { message } = AntdApp.useApp();
@@ -203,7 +203,7 @@ function AdminShell() {
             <SettingsPanel username={username} />
           ) : (
             <>
-              {loadError && <p className="admin-error">{loadError}</p>}
+              {loadError && <Alert type="error" showIcon message={loadError} style={{ marginBottom: 16 }} />}
               {!configs ? (
                 <p>加载中…</p>
               ) : (

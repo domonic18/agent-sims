@@ -80,10 +80,9 @@ function TrendChart(props: { summary: TokenUsageSummary }) {
             style={{
               flex: 1,
               height: point.totalTokens > 0 ? `${Math.max((point.totalTokens / max) * 100, 3)}%` : 2,
-              background: point.totalTokens > 0 ? undefined : '#f0f0f0',
+              background: point.totalTokens > 0 ? '#6366f1' : '#f0f0f0',
               borderRadius: '2px 2px 0 0',
             }}
-            className={point.totalTokens > 0 ? 'usage-trend-bar' : undefined}
           />
         ))}
       </Flex>
