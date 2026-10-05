@@ -69,6 +69,27 @@ const CHARACTERS: ReadonlyArray<readonly [string, string]> = [
   ['red', '居民·红衣'],
   ['white', '居民·白衣'],
   ['blue', '居民·蓝衣'],
+  // LimeZu Legacy 命名角色(源:Modern Interiors 完整包 Single_Characters_Legacy/32x32,
+  // 经 scripts/extract-legacy-characters.py 裁切重排为 288×384 契约表)
+  ['adam', '居民·亚当'],
+  ['alex', '居民·亚历克斯'],
+  ['amelia', '居民·艾米莉亚'],
+  ['ash', '居民·艾什'],
+  ['bob', '居民·鲍勃'],
+  ['bouncer', '保镖'],
+  ['bruce', '居民·布鲁斯'],
+  ['butcher', '屠夫'],
+  ['butcher2', '屠夫·二号'],
+  ['dan', '居民·丹'],
+  ['edward', '居民·爱德华'],
+  ['lucy', '居民·露西'],
+  ['molly', '居民·莫莉'],
+  ['pier', '居民·皮尔'],
+  ['rob', '居民·罗布'],
+  ['roki', '居民·罗基'],
+  ['samuel', '居民·塞缪尔'],
+  ['witch', '女巫'],
+  ['zombie', '僵尸'],
 ];
 /** 角色表帧契约(与 apps/web/src/game/assets.ts CHARACTER 一致,M-L.3 对接后单源化) */
 const CHARACTER_ANIM: AssetAnimConfig = {
