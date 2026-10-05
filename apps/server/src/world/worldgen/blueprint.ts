@@ -132,8 +132,8 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
     size: [[14, 10], [16, 10]],
     requiredAnchors: ['rest'],
     furniture: [
-      { kind: 'bench', w: 1, h: 1, anchor: 'center', activityId: 'rest' },
-      { kind: 'bench', w: 1, h: 1, anchor: 'center', activityId: 'rest' },
+      { kind: 'bench', w: 2, h: 1, anchor: 'center', activityId: 'rest' },
+      { kind: 'bench', w: 2, h: 1, anchor: 'center', activityId: 'rest' },
     ],
   },
 };
