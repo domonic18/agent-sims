@@ -28,7 +28,6 @@ import { changePassword, fetchSysConfig, resetSysConfig, updateSysConfig } from 
 const EFFECT_TAG_COLORS: Record<SysConfigEffect, string> = {
   live: 'success',
   spawn: 'processing',
-  world: 'warning',
 };
 
 interface AccountSecurityValues {

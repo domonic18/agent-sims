@@ -1,17 +1,17 @@
 /**
- * 后台可调系统参数目录:仅收录 server-only 数值(双端同源常量与时序基建不开放,
- * 见 balance.ts 注释)。目录元数据驱动 server 校验与 web 表单——加参数=shared 加目录
- * 条目 + balance.ts 默认值,两处之外零改动。
+ * 世界参数目录:世界级可调的 server-only 数值(创建世界时在向导设置并随 config 存档,
+ * 运行中经 Lab 调试台修改)。双端同源常量与时序基建不开放,见 balance.ts 注释。
+ * 目录元数据驱动 server 校验与 web 表单——加参数=shared 加目录条目 + balance.ts 默认值,
+ * 两处之外零改动。
  */
 
-export const SYS_CONFIG_EFFECTS = ['live', 'spawn', 'world'] as const;
+export const SYS_CONFIG_EFFECTS = ['live', 'spawn'] as const;
 
 export type SysConfigEffect = (typeof SYS_CONFIG_EFFECTS)[number];
 
 export const SYS_CONFIG_EFFECT_LABELS: Record<SysConfigEffect, string> = {
   live: '立即生效',
   spawn: '新角色生效',
-  world: '下个世界生效',
 };
 
 export const SYS_CONFIG_GROUPS = ['time', 'vitals', 'economy', 'social'] as const;
@@ -47,10 +47,6 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
   {
     key: 'NIGHT_END_MINUTE', label: '夜晚结束', group: 'time', type: 'int', min: 0, max: 1439,
     effect: 'live', desc: '次日分钟数,06:00=360',
-  },
-  {
-    key: 'DEFAULT_TIME_SCALE', label: '初始时间倍率', group: 'time', type: 'int', min: 1, max: 16,
-    effect: 'world', desc: '新创建世界的默认时间流速(1/4/16)',
   },
   // —— 体力与生存 ——
   {

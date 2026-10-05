@@ -60,6 +60,8 @@ export interface WorldRules {
   allowChat: boolean;
   /** 创建世界时的初始时间倍率 */
   initialTimeScale: WorldTimeScale;
+  /** 世界参数(键=balance.ts 目录键,缺省=BALANCE_DEFAULTS);Lab 调试台改参后回写 */
+  params?: Record<string, number>;
 }
 
 export const DEFAULT_WORLD_RULES: WorldRules = {

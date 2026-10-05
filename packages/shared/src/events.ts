@@ -75,6 +75,15 @@ export const worldControlEventSchema = z.object({
 
 export type WorldControlEvent = z.infer<typeof worldControlEventSchema>;
 
+/** 世界参数变更广播(Lab 调试台改参):params 为目录全集生效值 */
+export const worldParamsEventSchema = z.object({
+  type: z.literal('world.params'),
+  tick: z.number().int(),
+  params: z.record(z.string(), z.number()),
+});
+
+export type WorldParamsEvent = z.infer<typeof worldParamsEventSchema>;
+
 /** 世界重置(M3.6k 后台创建/删除世界):所有角色清场,快照流自动收敛 */
 export const worldResetEventSchema = z.object({
   type: z.literal('world.reset'),
