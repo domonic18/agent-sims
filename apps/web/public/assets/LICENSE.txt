@@ -1,0 +1,22 @@
+###############################################################################
+
+  Modern Interiors & Modern Exteriors (16x16, paid full versions)
+  by LimeZu (https://limezu.itch.io/)
+
+  ------------------------------
+
+  License summary (per itch.io asset pages):
+
+  - You may use, modify and edit the assets in free and commercial
+    projects (games, videos, etc.).
+  - Credit is appreciated: "Assets by LimeZu (limezu.itch.io)".
+  - You may NOT resell, sublicense or redistribute the original or
+    lightly-modified assets as an asset pack or as standalone files.
+
+  ------------------------------
+
+  This repository only ships cropped subsets required at runtime
+  (tile strip / props / furniture / premade character sheets).
+  Original asset packs are NOT included.
+
+###############################################################################

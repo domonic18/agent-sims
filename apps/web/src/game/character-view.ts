@@ -92,7 +92,7 @@ export function createCharacterAnims(scene: Phaser.Scene): void {
               ? CHARACTER.walkFps
               : group === 'idle'
                 ? CHARACTER.idleFps
-                : CHARACTER.sitFps,
+                : CHARACTER.lieFps,
           repeat: -1,
         });
       }
@@ -171,16 +171,16 @@ export function updateCharacterView(
   if (distance <= step || distance > SNAP_DISTANCE_TILES) {
     view.x = view.targetX;
     view.y = view.targetY;
-    // 活动姿态映射:健身=原地跑(walk 动画不位移),散步=站立,其余=坐
+    // 活动姿态映射:健身=原地跑(walk 动画不位移),rest=躺卧帧,其余=站立待机
     if (view.inActivity && view.activityId !== null) {
-      const pose = ACTIVITY_POSES[view.activityId as ActivityId] ?? 'sit';
+      const pose = ACTIVITY_POSES[view.activityId as ActivityId] ?? 'idle';
       playAnim(scene, view, pose === 'run' ? 'walk' : pose);
     } else {
       playAnim(scene, view, 'idle');
     }
-    // 锚点吸附(纯视觉): rest 到位后横躺于床/沙发/长椅中心(旋转 90°,
-    // M3.6g 按 anchorKind 匹配档位家具);workout 站上跑步机占地中心原地跑
-    // (M3.6i 反馈①: 真正在机器上跑,而不是站在旁边)
+    // 锚点吸附(纯视觉): rest 到位后以躺卧帧横陈床/沙发/长椅中心
+    // (M3.6g 按 anchorKind 匹配档位家具,躺卧帧自带姿态不再旋转精灵);
+    // workout 站上跑步机占地中心原地跑(M3.6i 反馈①: 真正在机器上跑)
     const snapActivity =
       view.inActivity && (view.activityId === 'rest' || view.activityId === 'workout')
         ? view.activityId
@@ -198,7 +198,6 @@ export function updateCharacterView(
     view.y += (dy / distance) * step;
     playWalk(scene, view, dx, dy);
   }
-  view.sprite.setAngle(view.resting ? 90 : 0);
   // 幽灵态: 半透明飘浮
   const bob = view.alive ? 0 : Math.sin(now / 300) * 1.5 - 2;
   view.node.setPosition(drawX * TILE + TILE / 2, drawY * TILE + TILE / 2 + bob);

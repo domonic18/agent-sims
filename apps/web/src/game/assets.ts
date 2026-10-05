@@ -1,6 +1,7 @@
 /**
- * 素材清单:tile 条带与角色精灵表的帧配置(素材经裁切入库,来源与授权见 public/assets/README.md)。
- * 索引与裁切脚本中的条带顺序一一对应,调整时需同步重新裁切。
+ * 素材清单:tile 条带 / props / furniture / 角色精灵表的帧配置。
+ * 素材裁切自 LimeZu Modern Interiors & Exteriors(16x16),
+ * 来源与授权见 public/assets/README.md;索引与裁切脚本条带顺序一一对应。
  */
 import type { ActivityId } from '@sims/shared';
 
@@ -30,39 +31,54 @@ export const TILE_FRAME = {
   shoreNE: 10,
   shoreSW: 11,
   shoreSE: 12,
-  meadowOrange: 13,
-  meadowWhite: 14,
-  meadowBlue: 15,
-  roofHome: 16,
-  roofOffice: 17,
-  roofLibrary: 18,
-  roofShop: 19,
-  roofRestaurant: 20,
-  roofGym: 21,
-  wall: 22,
-  pine: 23,
-  tree: 24,
-  autumn: 25,
-  bush: 26,
-  flowerPurple: 27,
-  flowerYellow: 28,
-  flowerOrange: 29,
-  fence: 30,
-  lamp: 31,
-  bench: 32,
-  door: 33,
-  windowBrown: 34,
-  windowWhite: 35,
-  awningOrange: 36,
-  awningGreen: 37,
+  bush: 13,
+  flowerA: 14,
+  flowerB: 15,
+  flowerC: 16,
+  fence: 17,
+  floorWood: 18,
+  floorOval: 19,
+  floorTile: 20,
+  floorBrick: 21,
+  floorBlue: 22,
+  floorGrey: 23,
+  wallCream: 24,
+  wallBrown: 25,
+  wallGrey: 26,
+  wallTeal: 27,
+  wallPurple: 28,
+  wallBlue: 29,
 } as const;
 
-/** 公园点缀树(圆树/松树/秋树/果树混植) */
-export const PROP_TREES = [TILE_FRAME.tree, TILE_FRAME.pine, TILE_FRAME.autumn] as const;
+/** 户外大型 prop 精灵(树/灯,底边中心锚定格底) */
+export const PROPS = ['tree-a', 'tree-b', 'cypress', 'lamp'] as const;
+export type PropName = (typeof PROPS)[number];
+
+/** 家具精灵(与 FurnitureKind 一一对应,底边中心锚定占地底边) */
+export const FURNITURE_SPRITES = [
+  'bed',
+  'sofa',
+  'workstation',
+  'treadmill',
+  'bookshelf',
+  'shelf',
+  'counter',
+  'fridge',
+  'plant',
+  'tv',
+  'wardrobe',
+  'bench',
+  'desk',
+  'table',
+] as const;
+export type FurnitureSprite = (typeof FURNITURE_SPRITES)[number];
+
+export const propKey = (name: PropName): string => `prop-${name}`;
+export const furnitureKey = (name: FurnitureSprite): string => `furniture-${name}`;
 
 /**
- * LPC 穿衣角色表(288x384,32px 帧,9 列 × 12 行):
- * rows 0-3 行走(9 帧)/ rows 4-7 待机(取前 2 帧呼吸循环)/ rows 8-11 坐姿(2 帧)。
+ * LimeZu premade 角色表(288x384,32px 帧,9 列 × 12 行):
+ * rows 0-3 行走(6 帧)/ rows 4-7 待机(2 帧呼吸)/ rows 8-11 躺卧(2 帧,无方向)。
  * 方向序均为 up/left/down/right;配色变体按角色 id 稳定分配。
  */
 export const CHARACTER = {
@@ -72,12 +88,12 @@ export const CHARACTER = {
   columns: 9,
   walkFps: 8,
   idleFps: 3,
-  sitFps: 2,
-  variants: ['blue', 'forest', 'maroon', 'slate', 'teal', 'walnut'],
+  lieFps: 2,
+  variants: ['green', 'purple', 'beige', 'red', 'white', 'blue'],
   /** 三组动画的基行(方向偏移在此基础上加 rows[dir]) */
-  groups: { walk: 0, idle: 4, sit: 8 },
+  groups: { walk: 0, idle: 4, lie: 8 },
   rows: { up: 0, left: 1, down: 2, right: 3 },
-  framesPerGroup: { walk: 9, idle: 2, sit: 2 },
+  framesPerGroup: { walk: 6, idle: 2, lie: 2 },
 } as const;
 
 export type CharacterVariant = (typeof CHARACTER.variants)[number];
@@ -92,14 +108,14 @@ export const ACTIVITY_EMOJI: Record<ActivityId, string> = {
   meal: '🍽️',
 };
 
-/** 活动 → 静止姿态:坐(sit)/原地跑(run)/站立(idle) */
-export const ACTIVITY_POSES: Record<ActivityId, 'sit' | 'run' | 'idle'> = {
-  study: 'sit',
-  work: 'sit',
-  rest: 'sit',
-  meal: 'sit',
+/** 活动 → 静止姿态:躺(lie,rest 横卧床/长椅)/原地跑(run,workout)/站立(idle) */
+export const ACTIVITY_POSES: Record<ActivityId, 'idle' | 'run' | 'lie'> = {
+  study: 'idle',
+  work: 'idle',
+  rest: 'lie',
   workout: 'run',
   stroll: 'idle',
+  meal: 'idle',
 };
 
 /** 角色 id → 配色变体(稳定哈希,同一角色始终同一套衣服) */

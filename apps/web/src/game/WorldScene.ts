@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { TOWN_MAP, WALK_SPEED_TILES_PER_TICK, type WorldEvent } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
-import { TILE, TILESET, CHARACTER } from './assets';
+import { FURNITURE_SPRITES, PROPS, TILE, TILESET, CHARACTER, furnitureKey, propKey } from './assets';
 import {
   createCharacterAnims,
   syncCharacterViews,
@@ -57,6 +57,12 @@ export class WorldScene extends Phaser.Scene {
         frameWidth: CHARACTER.frameWidth,
         frameHeight: CHARACTER.frameHeight,
       });
+    }
+    for (const name of PROPS) {
+      this.load.image(propKey(name), `/assets/props/${name}.png`);
+    }
+    for (const name of FURNITURE_SPRITES) {
+      this.load.image(furnitureKey(name), `/assets/furniture/${name}.png`);
     }
   }
 

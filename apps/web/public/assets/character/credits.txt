@@ -1,78 +1,9 @@
-# char-*.png 图层来源与授权(LPC 通用角色生成器素材裁切合成)
-# 合成方式:各层 64px 帧按 (0,0) 叠加到 832x2944 通用表,裁 rows 8-11(行走)/22-25(待机)/30-33(坐姿,
-# 取前 2 帧),BOX 50% 缩至 32px,得 288x384(9 列 x 12 行);行布局见 src/game/assets.ts。
+char-*.png 来源与授权(LimeZu Modern Interiors premade 角色裁切)
+# 源表: 2_Characters/Character_Generator/0_Premade_Characters/16x16/Premade_Character_{03,05,08,12,16,19}.png
+# 裁切: 896x656 源表(56 列 x 41 行,动画按行对组织),窗口 16x27 → 32px 帧,合成 288x384
+#       (9 列 x 12 行: rows0-3 行走 / rows4-7 待机 / rows8-11 躺卧),布局见 src/game/assets.ts。
 
-body/bodies/male/*.png
-	- Note: see details at https://opengameart.org/content/lpc-character-bases; idle/jump/run/sit 扩展动画 by JaidynReiman / ElizaWy (LPC Revised)
-	- Licenses:
-		- OGA-BY 3.0
-		- CC-BY-SA 3.0
-		- GPL 3.0
-	- Authors:
-		- bluecarrot16
-		- JaidynReiman
-		- Benjamin K. Smith (BenCreating)
-		- Evert
-		- Eliza Wyatt (ElizaWy)
-		- TheraHedwig
-		- MuffinElZangano
-		- Durrani
-		- Johannes Sjölund (wulax)
-		- Stephen Challener (Redshrike)
-	- Links:
-		- https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles
-		- https://opengameart.org/content/lpc-revised-character-basics
-		- https://opengameart.org/content/lpc-be-seated
-		- https://opengameart.org/content/lpc-character-bases
-
-hair/bob/adult/*.png
-	- Note: bob 发型(全部 46 行动画)
-	- Licenses:
-		- CC0
-	- Authors:
-		- ElizaWy
-		- bluecarrot16
-	- Links:
-		- https://github.com/ElizaWy/LPC/tree/main/Characters/Head
-
-legs/pants/male/*.png
-	- Note: 长裤(全部 46 行动画)
-	- Licenses:
-		- OGA-BY 3.0
-		- GPL 3.0
-		- CC-BY-SA 3.0
-	- Authors:
-		- bluecarrot16
-		- JaidynReiman
-		- ElizaWy
-		- Matthew Krohn (makrohn)
-	- Links:
-		- https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles
-		- https://opengameart.org/content/lpc-revised-character-basics
-
-torso/aprons/overalls/male/*.png
-	- Note: 背带工装(含全部 idle/run/sit 扩展动画)
-	- Licenses:
-		- OGA-BY 3.0
-		- GPL 3.0
-	- Authors:
-		- ElizaWy
-		- bluecarrot16
-		- JaidynReiman
-	- Links:
-		- https://github.com/ElizaWy/LPC/tree/main/Characters/Clothing
-		- https://opengameart.org/content/expanded-universal-lpc-spritesheet-idle-run-jump-lpc-revised-combat-and-assets
-
-feet/shoes2/male/*.png
-	- Note: 便鞋(含全部 idle/run/sit 扩展动画)
-	- Licenses:
-		- OGA-BY 3.0
-		- GPL 3.0
-	- Authors:
-		- ElizaWy
-		- JaidynReiman
-		- bluecarrot16
-	- Links:
-		- https://github.com/ElizaWy/LPC/tree/main/Characters/Clothing
-		- https://opengameart.org/content/lpc-expanded-socks-shoes
-		- https://opengameart.org/content/expanded-universal-lpc-spritesheet-idle-run-jump-lpc-revised-combat-and-assets
+Premade Character sheets
+	- Author: LimeZu (https://limezu.itch.io/)
+	- License: 允许商用与修改,需署名 limezu.itch.io,禁止转售/再分发素材本体
+	- Pack: Modern Interiors (paid full version)
