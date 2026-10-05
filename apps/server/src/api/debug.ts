@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { TIME_SCALES } from '../config/balance.js';
+import { currentWorldParams, TIME_SCALES, validateBalanceOverrides } from '../config/balance.js';
 import { runIntent } from '../intents/execute.js';
 import type { ClientRegistry } from '../socket/clients.js';
 import type { Simulation } from '../world/simulation.js';
@@ -33,6 +33,10 @@ const spawnBodySchema = z.object({
 });
 
 const reviveBodySchema = z.object({ characterId: z.string().min(1) });
+
+const paramsBodySchema = z.object({
+  updates: z.record(z.string(), z.number()),
+});
 
 function parseError(reply: FastifyReply, message: string) {
   return reply.code(400).send({ error: message });
@@ -103,6 +107,23 @@ export function registerDebugRoutes(
     }
     sim.setTimeScale(parsed.data.scale);
     return await reply.send(sim.snapshot());
+  });
+
+  // 世界参数(Lab 调试台控制面板):GET 读生效全集,POST 校验后热调并广播 world.params
+  app.get('/debug/params', async () => ({ params: currentWorldParams() }));
+
+  app.post('/debug/params', async (request, reply) => {
+    const parsed = paramsBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return parseError(reply, issue ? `updates: ${issue.message}` : '请求体不合法');
+    }
+    const errors = validateBalanceOverrides(parsed.data.updates);
+    if (errors.length > 0) {
+      return parseError(reply, errors.map((e) => `${e.key}: ${e.reason}`).join('; '));
+    }
+    sim.setParams(parsed.data.updates);
+    return await reply.send({ params: currentWorldParams(), state: sim.snapshot() });
   });
 
   // 调试辅助:生成运行时角色(出生点须可行走);正式角色创建走 DB 层,后置

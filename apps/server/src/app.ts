@@ -1,7 +1,6 @@
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { Server } from 'socket.io';
 import { registerAdminApi } from './admin-api/index.js';
-import { loadSysConfigOverridesOnce } from './admin-api/sys-configs.js';
 import { env } from './config/env.js';
 import { createDb } from './db/client.js';
 import { registerDebugRoutes } from './api/debug.js';
@@ -9,6 +8,7 @@ import { ClientRegistry } from './socket/clients.js';
 import { attachSocketGateway } from './socket/gateway.js';
 import { initTechLog, logTech, whenTechLogIdle } from './telemetry.js';
 import { attachWorldEventLog } from './world/event-log.js';
+import { attachWorldParamPersist } from './world/param-persist.js';
 import { Simulation } from './world/simulation.js';
 
 declare module 'fastify' {
@@ -44,11 +44,9 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
     }
     void reply.code(status).send({ error: status >= 500 ? '内部错误' : err.message });
   });
-  // 启动即应用 DB 保存的系统参数覆盖(进程内一次;异步不阻塞监听,失败用默认值)
-  loadSysConfigOverridesOnce(handle).catch((err: unknown) => {
-    app.log.warn({ err }, 'sys-config 覆盖加载失败,使用默认参数');
-  });
+  // 世界事件落库+参数存档订阅(EventBus 零 I/O,宿主侧串行链写入)
   attachWorldEventLog(handle, app.simulation.events);
+  attachWorldParamPersist(handle, app.simulation.events);
   registerAdminApi(app, handle);
   if (env.NODE_ENV === 'development') {
     registerDebugRoutes(app, app.simulation, app.clients);

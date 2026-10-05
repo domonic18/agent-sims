@@ -23,7 +23,7 @@ import { publishTarget, readManifestVersion } from '../assets/paths.js';
 import { TileMap } from '../world/map.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
 import { z } from 'zod';
-import { BALANCE } from '../config/balance.js';
+import { applyWorldParams, BALANCE, validateBalanceOverrides } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { characters, worldState, worlds } from '../db/schema/index.js';
 import { requireAdmin } from './auth.js';
@@ -46,6 +46,7 @@ const rulesSchema = z.object({
       (WORLD_TIME_SCALES as readonly number[]).includes(value), {
       message: `可用档位: ${WORLD_TIME_SCALES.join('/')}`,
     }),
+  params: z.record(z.string(), z.number()).optional(),
 });
 
 const worldgenSchema = z.object({
@@ -70,12 +71,13 @@ const createSchema = z.object({
   worldgen: worldgenSchema.optional(),
 });
 
-/** 旧世界无 rules 或部分缺省时逐项兜底默认值 */
+/** 旧世界无 rules 或部分缺省时逐项兜底默认值;params 缺省=全默认 */
 function normalizeRules(partial: Partial<WorldRules> | undefined): WorldRules {
   return {
     allowDeath: partial?.allowDeath ?? DEFAULT_WORLD_RULES.allowDeath,
     allowChat: partial?.allowChat ?? DEFAULT_WORLD_RULES.allowChat,
     initialTimeScale: partial?.initialTimeScale ?? DEFAULT_WORLD_RULES.initialTimeScale,
+    ...(partial?.params !== undefined ? { params: partial.params } : {}),
   };
 }
 
@@ -212,6 +214,13 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       return await reply.code(400).send({ error: '请求参数不合法' });
     }
     const rules = normalizeRules(parsed.data.rules);
+    // 世界参数目录校验(zod 只保证数字 record;越界/非整数/未知 key 在此拒绝)
+    const paramErrors = validateBalanceOverrides(rules.params ?? {});
+    if (paramErrors.length > 0) {
+      return await reply.code(400).send({
+        error: paramErrors.map((e) => `${e.key}: ${e.reason}`).join('; '),
+      });
+    }
     // 随机世界:seed 缺省自动生成随机数;地图按 (seed,gameType,params,manifestVersion) 生成
     let mapDefinition: TileMapDefinition | null = null;
     let worldgenReport: WorldgenReport | undefined;
@@ -265,6 +274,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
     app.simulation.reset();
     if (mapDefinition !== null) app.simulation.setMap(mapDefinition);
     app.simulation.rules = rules;
+    applyWorldParams(rules.params); // 先复位出厂默认再应用本世界覆盖,消除上一世界残留
     app.simulation.timeScale = rules.initialTimeScale;
     const simIds: string[] = [];
     for (const [index, character] of config.characters.entries()) {

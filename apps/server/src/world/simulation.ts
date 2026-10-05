@@ -5,12 +5,13 @@ import type {
   TraitVector,
   WorldControlEvent,
   WorldEvent,
+  WorldParamsEvent,
   WorldResetEvent,
   WorldRules,
   WorldSnapshotMessage,
 } from '@sims/shared';
 import { DEFAULT_WORLD_RULES, PROPERTY_IDS, TOWN_MAP, getActivityDefinition, type TileMapDefinition } from '@sims/shared';
-import { BALANCE } from '../config/balance.js';
+import { applyBalanceOverrides, BALANCE, currentWorldParams } from '../config/balance.js';
 import {
   finishActivity,
   settleActivityMinute,
@@ -232,6 +233,17 @@ export class Simulation {
     }
     this.timeScale = scale;
     this._emitControl();
+  }
+
+  /** 世界参数热调(Lab 调试台):应用覆盖后广播生效值全集,落档由订阅侧回写世界记录 */
+  setParams(updates: Record<string, number>): void {
+    applyBalanceOverrides(updates);
+    const event: WorldParamsEvent = {
+      type: 'world.params',
+      tick: this.tick,
+      params: currentWorldParams(),
+    };
+    this.events.emit(event);
   }
 
   /** 状态快照:调试端点与同步层共用的对外形态(序列化在 snapshot.ts) */

@@ -122,6 +122,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   characterDiedEventSchema,
   characterRevivedEventSchema,
   worldControlEventSchema,
+  worldParamsEventSchema,
   worldResetEventSchema,
   socialChatEventSchema,
   friendshipFormedEventSchema,

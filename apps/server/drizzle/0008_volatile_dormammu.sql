@@ -1,0 +1,1 @@
+DROP TABLE "sys_configs" CASCADE;
