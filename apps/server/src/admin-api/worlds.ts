@@ -120,10 +120,16 @@ function loadAssetsByKind(): Record<string, string[]> | undefined {
       }>;
     };
     const THEME_TILE_CAPS = [1, 2, 4] as const;
+    // 拼接件(modular/场地线 line)是地形拼图,单独摆放观感差,不入主题道具池
     const pool: Record<string, string[]> = {};
     for (const asset of raw.assets ?? []) {
       (pool[`${asset.domain}/${asset.categorySlug}`] ??= []).push(asset.slug);
-      if (asset.domain === 'outdoor' && asset.themeSlug !== undefined) {
+      if (
+        asset.domain === 'outdoor' &&
+        asset.themeSlug !== undefined &&
+        !asset.slug.includes('modular') &&
+        !asset.slug.includes('-line-')
+      ) {
         const tiles = asset.gridW * asset.gridH;
         for (const cap of THEME_TILE_CAPS) {
           if (tiles <= cap) (pool[`theme/${asset.themeSlug}@${cap}`] ??= []).push(asset.slug);
