@@ -23,12 +23,14 @@
     "@sims/shared": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "fastify": "^5.2.0",
+    "pngjs": "^7.0.0",
     "postgres": "^3.4.5",
     "socket.io": "^4.8.4",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/pngjs": "^6.0.5",
     "drizzle-kit": "^0.31.11",
     "socket.io-client": "^4.8.4",
     "tsx": "^4.19.2",

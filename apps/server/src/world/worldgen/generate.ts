@@ -30,6 +30,8 @@ export interface WorldgenInput {
   params: WorldgenParams;
   /** 素材清单版本(manifest version;参与种子派生,素材变更即世界不同) */
   manifestVersion: string;
+  /** kind → 可选素材 slug 池(素材库随机选材;缺省 sprite 省略=kind 同名纹理) */
+  assetsByKind?: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface WorldgenResult {
@@ -150,7 +152,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
       counters[quota.kind] += 1;
       const id = `${quota.kind}-${String.fromCharCode(96 + counters[quota.kind])}`;
       if (quota.kind === 'park') pond = parkPond(rng, cursor.x, cursor.y, w, h);
-      const place = buildPlace(rng, quota.kind, id, cursor.x, cursor.y, w, h, pond);
+      const place = buildPlace(rng, quota.kind, id, cursor.x, cursor.y, w, h, pond, input.assetsByKind);
       places.push(place);
       cursor.x += w + 2;
       cursor.rowHeight = Math.max(cursor.rowHeight, h);
@@ -209,6 +211,7 @@ function buildPlace(
   w: number,
   h: number,
   pond: BlockedRect | null,
+  assetsByKind: Readonly<Record<string, readonly string[]>> | undefined,
 ): PlaceDefinition {
   const blueprint = PLACE_BLUEPRINTS[kind];
   if (kind === 'park') {
@@ -230,7 +233,11 @@ function buildPlace(
       attempt < 2
         ? blueprint.furniture
         : blueprint.furniture.filter((slot) => slot.chance === undefined);
-    furniture = layoutFurniture(rng, x, y, w, h, slots, false, null);
+    furniture = (layoutFurniture(rng, x, y, w, h, slots, false, null) ?? []).map((f) => {
+      // 素材库随机选材:同 kind 多素材时挑具体 sprite(多样性兑现)
+      const pool = assetsByKind?.[f.kind];
+      return pool !== undefined && pool.length > 0 ? { ...f, sprite: rng.pick([...pool]) } : f;
+    });
     if (interiorReachable(x, y, w, h, doorX, furniture)) break;
   }
   return {

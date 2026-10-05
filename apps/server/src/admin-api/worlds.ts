@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { randomInt } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
   DEFAULT_WORLD_RULES,
   GENDERS,
@@ -17,7 +19,7 @@ import {
   type WorldView,
   type WorldgenReport,
 } from '@sims/shared';
-import { readManifestVersion } from '../assets/paths.js';
+import { publishTarget, readManifestVersion } from '../assets/paths.js';
 import { TileMap } from '../world/map.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
 import { z } from 'zod';
@@ -100,6 +102,22 @@ function toView(row: typeof worlds.$inferSelect): WorldView {
   };
 }
 
+/** 发布产物 manifest → kind 素材池(素材库随机选材;读不到返回 undefined) */
+function loadAssetsByKind(): Record<string, string[]> | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(path.join(publishTarget(), 'manifest.json'), 'utf8')) as {
+      assets?: Array<{ categorySlug: string; slug: string }>;
+    };
+    const pool: Record<string, string[]> = {};
+    for (const asset of raw.assets ?? []) {
+      (pool[asset.categorySlug] ??= []).push(asset.slug);
+    }
+    return pool;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 生成地图出生点:自主街中心 BFS 收集前 N 个可行走格(静态 SPAWN_SPOTS 仅内置地图用) */
 function generateSpawnSpots(map: TileMapDefinition, count: number): Array<{ x: number; y: number }> {
   const tm = TileMap.fromDefinition(map);
@@ -180,6 +198,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
         gameType: parsed.data.worldgen.gameType,
         params: parsed.data.worldgen.params,
         manifestVersion: readManifestVersion(),
+        assetsByKind: loadAssetsByKind(),
       });
       mapDefinition = result.map;
       worldgenReport = result.report;

@@ -57,6 +57,11 @@ export interface FurnitureDefinition {
   activityId?: ActivityId;
   /** 使用格(锚点必填):紧邻家具的可行走室内格 */
   use?: { x: number; y: number };
+  /**
+   * 具体素材 slug(素材库随机选材;缺省回退 kind 同名纹理——
+   * 内置固定地图与未选材场景兼容)
+   */
+  sprite?: string;
 }
 
 /** 可作 rest 锚点的家具档位(satisfies 约束新增档位必须先入 FURNITURE_KINDS) */

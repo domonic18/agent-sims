@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createDb } from '../db/client.js';
 import { env } from '../config/env.js';
 import { buildImportPlan } from './import-plan.js';
+import { buildSinglesImportList } from './singles-import.js';
 import { importAssets, publishManifest } from './library.js';
 
 const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url));
@@ -27,6 +28,28 @@ try {
     );
     for (const err of report.errors) console.error(`  ✗ ${err}`);
     if (report.errors.length > 0) process.exitCode = 1;
+  } else if (command === 'import-singles') {
+    // 用法: assets:import-singles <dir> <outdoor|indoor> [limit] [theme]
+    const [dir, modeArg, limitArg, themeArg] = process.argv.slice(3);
+    if (dir === undefined || (modeArg !== 'outdoor' && modeArg !== 'indoor')) {
+      console.error('用法: assets:import-singles <目录> <outdoor|indoor> [limit] [theme]');
+      process.exitCode = 1;
+    } else {
+      const limit = limitArg !== undefined ? Number(limitArg) : undefined;
+      const { items, counts } = await buildSinglesImportList({
+        sourceDir: dir,
+        mode: modeArg,
+        ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
+        ...(themeArg !== undefined ? { theme: themeArg } : {}),
+      });
+      console.log(`[assets] singles 清单 ${items.length} 条(active ${items.length - counts.indoorDraft} / draft ${counts.indoorDraft})`);
+      const report = await importAssets(db, items, libraryRoot);
+      console.log(
+        `[assets] 完成: 新建 ${report.created} / 跳过 ${report.skipped} / 更新 ${report.updated} / 失败 ${report.errors.length}`,
+      );
+      for (const err of report.errors) console.error(`  ✗ ${err}`);
+      if (report.errors.length > 0) process.exitCode = 1;
+    }
   } else if (command === 'publish') {
     const result = await publishManifest(db, libraryRoot, publishTarget);
     console.log(

@@ -1,11 +1,50 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { PNG } from 'pngjs';
 import { asc, eq } from 'drizzle-orm';
 import type { AssetAnimConfig, AssetDomain, AssetStatus } from '@sims/shared';
 import type { Db } from '../db/client.js';
 import { assetCategories, assets } from '../db/schema/asset.js';
 import { pngSize } from './png.js';
+
+/**
+ * PNG 收边(去透明边距,规范库形态:内容底边即图像底边,渲染底对齐契约)。
+ * Singles 源文件带边距(如床源 32x48/内容 32x38),入库统一 trim。
+ */
+export function trimPng(buffer: Buffer): Buffer {
+  const png = PNG.sync.read(buffer);
+  const { width, height, data } = png;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (data[(y * width + x) * 4 + 3]! > 10) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return buffer; // 全透明原样
+  const w = maxX - minX + 1;
+  const h = maxY - minY + 1;
+  const out = new PNG({ width: w, height: h });
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      const src = ((minY + y) * width + (minX + x)) * 4;
+      const dst = (y * w + x) * 4;
+      out.data[dst] = data[src]!;
+      out.data[dst + 1] = data[src + 1]!;
+      out.data[dst + 2] = data[src + 2]!;
+      out.data[dst + 3] = data[src + 3]!;
+    }
+  }
+  return PNG.sync.write(out);
+}
 
 /** 导入清单条目:源文件 + 分类归属 + 元数据(清单版本化于 import-plan.ts) */
 export interface ImportItem {
@@ -23,6 +62,8 @@ export interface ImportItem {
   anim?: AssetAnimConfig | null;
   tags?: string[];
   status?: AssetStatus;
+  /** 入库前 trim 透明边距(Singles 源带边距) */
+  trim?: boolean;
 }
 
 export interface ImportReport {
@@ -102,7 +143,8 @@ export async function importAssets(
   const report: ImportReport = { created: 0, skipped: 0, updated: 0, errors: [] };
   for (const item of items) {
     try {
-      const buffer = await readFile(item.sourcePath);
+      const raw = await readFile(item.sourcePath);
+      const buffer = item.trim === true ? trimPng(raw) : raw;
       const checksum = createHash('sha256').update(buffer).digest('hex');
       const { width, height } = pngSize(buffer);
       const categoryId = await ensureCategoryChain(db, item.domain, item.theme, item.kind);
@@ -141,7 +183,11 @@ export async function importAssets(
       }
       const target = path.join(libraryRoot, relativePath);
       await mkdir(path.dirname(target), { recursive: true });
-      await copyFile(item.sourcePath, target);
+      if (item.trim === true) {
+        await writeFile(target, buffer);
+      } else {
+        await copyFile(item.sourcePath, target);
+      }
     } catch (err) {
       report.errors.push(`${item.slug}: ${err instanceof Error ? err.message : String(err)}`);
     }

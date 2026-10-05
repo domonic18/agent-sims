@@ -8,8 +8,8 @@ import { TILE } from './assets';
  * 健身房横向 shelf(2x1)用矮凳精灵,竖向 shelf(1x3)用高货架。
  */
 export function addFurnitureSprite(scene: Phaser.Scene, f: FurnitureDefinition): void {
-  const name = f.kind === 'shelf' && f.w > f.h ? 'bench' : f.kind;
-  scene.add.image((f.x + f.w / 2) * TILE, (f.y + f.h) * TILE, name)
+  const fallbackKind = f.kind === 'shelf' && f.w > f.h ? 'bench' : f.kind;
+  scene.add.image((f.x + f.w / 2) * TILE, (f.y + f.h) * TILE, f.sprite ?? fallbackKind)
     .setOrigin(0.5, 1)
     .setDepth(3);
 }
