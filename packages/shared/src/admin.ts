@@ -144,7 +144,6 @@ export const ADMIN_API = {
   tokenUsageSummary: '/api/admin/token-usage/summary',
   tokenUsageEntries: '/api/admin/token-usage/entries',
   sysConfig: '/api/admin/sys-config',
-  sysConfigReset: '/api/admin/sys-config/reset',
   assetCategories: '/api/admin/assets/categories',
   assets: '/api/admin/assets',
   asset: (id: number) => `/api/admin/assets/${id}`,

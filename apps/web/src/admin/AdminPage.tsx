@@ -100,7 +100,7 @@ const NAV_ITEMS: MenuProps['items'] = [
   {
     type: 'group',
     label: '系统',
-    children: [{ key: 'settings', icon: <SettingOutlined />, label: '系统设置' }],
+    children: [{ key: 'settings', icon: <SettingOutlined />, label: '账户安全' }],
   },
 ];
 

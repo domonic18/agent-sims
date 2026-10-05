@@ -193,6 +193,43 @@
   margin: 4px 0 0;
 }
 
+.param-group {
+  margin-bottom: 8px;
+}
+
+.param-group-title {
+  font-size: 11px;
+  font-weight: bold;
+  color: #607d8b;
+  margin-bottom: 3px;
+}
+
+.param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 3px;
+}
+
+.param-row span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.param-row input {
+  width: 72px;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 1px 4px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+}
+
 .intent-groups {
   display: flex;
   flex-direction: column;

@@ -4,19 +4,25 @@ import {
   App as AntdApp,
   Button,
   Card,
+  Col,
+  Collapse,
   Empty,
   Flex,
   Form,
   Input,
+  InputNumber,
   List,
   Popconfirm,
   Radio,
+  Row,
   Select,
   Space,
   Steps,
   Switch,
   Table,
   Tag,
+  Tooltip,
+  Typography,
   type TableColumnsType,
 } from 'antd';
 import { DeleteOutlined, PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
@@ -24,6 +30,9 @@ import {
   DEFAULT_WORLD_RULES,
   GENDERS,
   GENDER_LABELS,
+  SYS_CONFIG_FIELDS,
+  SYS_CONFIG_GROUP_LABELS,
+  SYS_CONFIG_GROUPS,
   WORLD_CHARACTER_LIMITS,
   WORLD_TIME_SCALES,
   pickRandomName,
@@ -33,7 +42,7 @@ import {
   type WorldPreviewResponse,
   type WorldView,
 } from '@sims/shared';
-import { ApiError, closeWorld, createWorld, deleteWorld, fetchWorlds, previewWorld } from './api';
+import { ApiError, closeWorld, createWorld, deleteWorld, fetchSysConfig, fetchWorlds, previewWorld } from './api';
 
 interface CharacterRow {
   name: string;
@@ -52,6 +61,55 @@ interface WorldFormValues {
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString('zh-CN', { hour12: false });
+}
+
+/** 世界参数折叠区(默认收起):17 项随本世界创建定格,defaults 由挂载时回填 form store */
+function WorldParamsCollapse({ busy }: { busy: boolean }) {
+  return (
+    <Collapse
+      ghost
+      style={{ marginTop: 8 }}
+      items={[
+        {
+          key: 'params',
+          label: '世界参数(展开调整;默认值已是最优,改动随本世界存档)',
+          children: (
+            <>
+              {SYS_CONFIG_GROUPS.map((group) => (
+                <div key={group} style={{ marginBottom: 12 }}>
+                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+                    {SYS_CONFIG_GROUP_LABELS[group]}
+                  </Typography.Text>
+                  <Row gutter={[16, 0]}>
+                    {SYS_CONFIG_FIELDS.filter((field) => field.group === group).map((field) => (
+                      <Col xs={24} sm={12} lg={8} key={field.key}>
+                        <Form.Item
+                          name={['rules', 'params', field.key]}
+                          label={<Tooltip title={field.desc}>{field.label}</Tooltip>}
+                          style={{ marginBottom: 8 }}
+                        >
+                          <InputNumber
+                            min={field.min}
+                            max={field.max}
+                            step={field.step}
+                            style={{ width: '100%' }}
+                            disabled={busy}
+                          />
+                        </Form.Item>
+                      </Col>
+                    ))}
+                  </Row>
+                </div>
+              ))}
+              <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>
+                参数随本世界创建定格并随 config 存档;运行中修改请到 /lab 调试台控制面板。
+              </p>
+            </>
+          ),
+        },
+      ]}
+    />
+  );
 }
 
 function CurrentWorldCard({ active, busy, onClose }: { active: WorldView; busy: boolean; onClose: () => void }) {
@@ -127,6 +185,21 @@ export function WorldPanel() {
     void load();
   }, [load]);
 
+  // 世界参数出厂默认回填 form store(挂载即填,折叠区不展开也能随创建提交)
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSysConfig()
+      .then((view) => {
+        if (!cancelled) form.setFieldValue(['rules', 'params'], { ...view.defaults });
+      })
+      .catch(() => {
+        // 目录拉取失败不阻断向导:提交时 params 缺省=全默认
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form]);
+
   const active = worlds?.find((w) => w.status === 'active') ?? null;
   const history = worlds?.filter((w) => w.status === 'closed') ?? [];
 
@@ -165,12 +238,24 @@ export function WorldPanel() {
             params: form.getFieldValue('params') as { size: 'small' | 'medium' | 'large'; density: 'sparse' | 'normal' | 'dense' },
           }
         : undefined;
+    // 清空的输入框会产生 undefined 条目,剔除后再提交(缺省键=出厂默认)
+    const rulesFromForm = values.rules ?? (form.getFieldValue('rules') as WorldRules | undefined);
+    const rawParams = (rulesFromForm?.params ?? {}) as Record<string, number | undefined>;
+    const params = Object.fromEntries(
+      Object.entries(rawParams).filter((entry): entry is [string, number] =>
+        typeof entry[1] === 'number' && Number.isFinite(entry[1]),
+      ),
+    );
+    const rules: WorldRules = {
+      ...(rulesFromForm ?? { ...DEFAULT_WORLD_RULES }),
+      ...(Object.keys(params).length > 0 ? { params } : {}),
+    };
     setBusy(true);
     try {
       const created = await createWorld({
         name: values.name.trim(),
         characters,
-        rules: values.rules,
+        rules,
         ...(worldgen !== undefined ? { worldgen } : {}),
       });
       message.success(`世界「${created.name}」已创建,${created.characters.length} 位居民已入驻`);
@@ -455,6 +540,7 @@ export function WorldPanel() {
           )}
 
           {step === 1 && (
+            <>
           <Card type="inner" title="世界规则" style={{ marginTop: 8, marginBottom: 16 }}>
             <Flex gap={24} wrap="wrap" align="center">
               <Form.Item name={['rules', 'allowDeath']} label="允许死亡" valuePropName="checked" noStyle>
@@ -475,6 +561,8 @@ export function WorldPanel() {
               规则随本世界创建定格:关闭死亡后体力归 0 只会躺平不会死;关闭聊天后角色聊天指令将被拒绝。
             </p>
           </Card>
+          <WorldParamsCollapse busy={busy} />
+            </>
           )}
 
           {step === 3 && (
