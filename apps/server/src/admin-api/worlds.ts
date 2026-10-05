@@ -102,14 +102,15 @@ function toView(row: typeof worlds.$inferSelect): WorldView {
   };
 }
 
-/** 发布产物 manifest → kind 素材池(素材库随机选材;读不到返回 undefined) */
+/** 发布产物 manifest → kind 素材池(素材库随机选材;仅室内域,户外 Singles 不入家具池) */
 function loadAssetsByKind(): Record<string, string[]> | undefined {
   try {
     const raw = JSON.parse(readFileSync(path.join(publishTarget(), 'manifest.json'), 'utf8')) as {
-      assets?: Array<{ categorySlug: string; slug: string }>;
+      assets?: Array<{ domain: string; categorySlug: string; slug: string }>;
     };
     const pool: Record<string, string[]> = {};
     for (const asset of raw.assets ?? []) {
+      if (asset.domain !== 'indoor') continue;
       (pool[asset.categorySlug] ??= []).push(asset.slug);
     }
     return pool;
