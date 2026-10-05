@@ -1,6 +1,7 @@
 import {
   furnitureRectsOf,
   isBesideFootprint,
+  placeIdMatches,
   wallRectsOf,
   type BlockedRect,
   type AnyFurnitureKind,
@@ -65,9 +66,9 @@ export class TileMap {
     return this.places.find((place) => place.id === id) ?? null;
   }
 
-  /** 位置判定: 位于场所矩形内(内景建筑含室内)或其入口格 */
+  /** 位置判定: 位于场所矩形内(内景建筑含室内)或其入口格;placeId 按 id/kind 前缀匹配(生成地图 kind-N 命名) */
   contains(placeId: string, x: number, y: number): boolean {
-    const place = this.placeById(placeId);
+    const place = this.places.find((p) => placeIdMatches(placeId, p.id)) ?? null;
     if (place === null) {
       return false;
     }

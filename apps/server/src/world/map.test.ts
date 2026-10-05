@@ -69,6 +69,24 @@ describe('TileMap 可行走层', () => {
     expect(map.placeById('nope')).toBeNull();
   });
 
+  it('contains 按 id/kind 前缀匹配(生成图 kind-N 命名),非前缀不误伤', () => {
+    const generatedMap: TileMapDefinition = {
+      width: 10,
+      height: 8,
+      blockedRects: [],
+      paths: [],
+      places: [
+        { id: 'shop-a', name: '商店', x: 3, y: 2, w: 3, h: 2, entrance: { x: 4, y: 4 } },
+        { id: 'workshop-a', name: '工坊', x: 7, y: 2, w: 2, h: 2, entrance: { x: 7, y: 4 } },
+      ],
+    };
+    const map = TileMap.fromDefinition(generatedMap);
+    expect(map.contains('shop', 4, 3)).toBe(true); // 矩形内
+    expect(map.contains('shop', 4, 4)).toBe(true); // 入口格
+    expect(map.contains('shop-a', 4, 3)).toBe(true); // 精确 id 照常
+    expect(map.contains('shop', 7, 3)).toBe(false); // workshop 不因子串误伤
+  });
+
   it('入口非法(在占地内/在障碍上)构造即抛错', () => {
     expect(
       () =>
