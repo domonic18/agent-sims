@@ -47,6 +47,7 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
       elapsedMinutes: 60,
       reason: 'completed',
     });
+    expect(alice.knowledge).toBe(1); // 完整学习 +1(M-G.4)
   });
 
   it('学习支持家中书桌: home-a 锚点同效(placeIds 多场所)', () => {
@@ -56,14 +57,14 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     expect(sim.character('bob').activity).toMatchObject({ activityId: 'study', anchorKind: 'desk' });
   });
 
-  it('打工 120 分钟(办公楼工位): 赚 60 金币,数值净消耗', () => {
+  it('杂工 120 分钟(办公楼工位,M-G.4 兜底类): 赚 96 金币,数值净消耗', () => {
     const desk = anchorUse('office', 'work');
     const { sim } = simWith('carl', desk.x, desk.y);
     sim.requestStartActivity('carl', 'work');
     sim.advanceTicks(120);
     const carl = sim.character('carl');
-    expect(carl.coins).toBe(60);
-    expect(carl.energy).toBeCloseTo(100 - 120 * 0.18, 5);
+    expect(carl.coins).toBeCloseTo(96, 5); // 0.8 币/分 × 120(04-numerical §5.1);逐分累加有二进制浮点误差
+    expect(carl.energy).toBeCloseTo(100 - 120 * 0.15, 5);
     expect(carl.happiness).toBeCloseTo(100 - 120 * 0.05, 5);
   });
 
@@ -194,5 +195,28 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     expect(() => sim.requestStartActivity('iris', 'unknown')).toThrow(/未知活动/);
     sim.requestStopActivity('iris');
     expect(() => sim.requestStopActivity('iris')).toThrow(/没有进行中的活动/);
+  });
+});
+
+describe('职业类别与知识(M-G.4 类别平行模型,goal-design §4.2/numerical §5.1)', () => {
+  it('知识门槛: knowledge 0 时三服务岗拒绝并回执缺口(校验先于锚点判定)', () => {
+    const { sim } = simWith('quinn', 9, 25); // 公园入口,位置无关——门槛校验在前
+    expect(() => sim.requestStartActivity('quinn', 'waiter')).toThrow(/知识不足.*学习 3 班\(当前 0\)/);
+    expect(() => sim.requestStartActivity('quinn', 'vendor')).toThrow(/知识不足/);
+    expect(() => sim.requestStartActivity('quinn', 'librarian')).toThrow(/知识不足/);
+    // 兜底类零门槛放行(锚点判定随后)
+    const work = anchorUse('office', 'work');
+    sim.spawnCharacter('rex', work.x, work.y, 'rex');
+    sim.requestStartActivity('rex', 'work');
+    expect(sim.character('rex').activity).toMatchObject({ activityId: 'work' });
+  });
+
+  it('中断学习不涨知识: 30 分钟停止后 knowledge 仍为 0', () => {
+    const desk = anchorUse('library', 'study');
+    const { sim } = simWith('sara', desk.x, desk.y);
+    sim.requestStartActivity('sara', 'study');
+    sim.advanceTicks(30);
+    sim.requestStopActivity('sara');
+    expect(sim.character('sara').knowledge).toBe(0);
   });
 });

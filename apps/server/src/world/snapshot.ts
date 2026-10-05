@@ -31,6 +31,7 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
       backpack: { ...character.backpack },
       fridge: { ...character.fridge },
       lifeScore: round(character.lifeScore),
+      knowledge: character.knowledge,
       traits: { ...character.traits },
       activity: character.activity
         ? {

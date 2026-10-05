@@ -63,12 +63,12 @@ describe('房产租买(M3.3;M3.6f 四公寓轮询分房)', () => {
     sim.requestStartActivity('worker', 'work');
     sim.advanceTicks(120);
     const worker = sim.character('worker');
-    expect(worker.coins).toBe(60);
+    expect(worker.coins).toBeCloseTo(96, 5); // 杂工 0.8 币/分 × 120(M-G.4 调价)
     sim.requestMoveTo('worker', 23, 25); // 商店入口
     sim.advanceTicks(sim.character('worker').path.length);
     sim.requestBuyItem('worker', 'bread'); // 背包制: 入背包,数值不结算
     const afterBuy = sim.character('worker');
-    expect(afterBuy.coins).toBe(56);
+    expect(afterBuy.coins).toBeCloseTo(92, 5);
     expect(afterBuy.backpack).toEqual({ bread: 1 });
     sim.requestMoveTo('worker', 17, 8); // 自家(home-b)床使用格
     sim.advanceTicks(sim.character('worker').path.length);

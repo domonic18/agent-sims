@@ -53,6 +53,9 @@ export const ACTIVITY_EMOJI: Record<ActivityId, string> = {
   workout: '💪',
   stroll: '🚶',
   meal: '🍽️',
+  waiter: '🧾',
+  vendor: '🛒',
+  librarian: '📚',
 };
 
 /** 活动 → 静止姿态:躺(lie,rest 横卧床/长椅)/原地跑(run,workout)/站立(idle) */
@@ -63,6 +66,9 @@ export const ACTIVITY_POSES: Record<ActivityId, 'idle' | 'run' | 'lie'> = {
   workout: 'run',
   stroll: 'idle',
   meal: 'idle',
+  waiter: 'idle',
+  vendor: 'idle',
+  librarian: 'idle',
 };
 
 /** 角色 id → 配色变体 slug(稳定哈希,同一角色始终同一套衣服;变体列表来自 manifest) */

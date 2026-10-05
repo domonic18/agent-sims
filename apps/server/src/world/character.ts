@@ -40,6 +40,8 @@ export interface WorldCharacter {
   fridge: Record<string, number>;
   /** 繁荣分(M3.6j,goal-design §5):生涯质量账本,只增不减(死亡扣减除外) */
   lifeScore: number;
+  /** 知识(M-G.4,goal-design §4.2):完成一次完整学习 +1,不衰减;岗位类别门槛(numerical §5.1) */
+  knowledge: number;
   /** 特质向量 v0(social-design §4):出生随机生成,世界配置可覆盖部分维度;仅用于相性 */
   traits: TraitVector;
 }

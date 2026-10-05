@@ -59,6 +59,8 @@ export interface WorldSnapshotMessage {
     fridge: Record<string, number>;
     /** 繁荣分(M3.6j): 生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7) */
     lifeScore: number;
+    /** 知识(M-G.4): 完成一次完整学习(study 60 分)+1,不衰减;岗位类别门槛(numerical §5.1) */
+    knowledge: number;
     /** 特质向量 v0(social-design §4): 0~1 五维,相性计算输入;M3.6k 配置可覆盖 */
     traits: TraitVector;
     /** 进行中活动(null=空闲);前端活动面板与气泡消费;anchorKind=rest 档位(床/沙发/长椅) */

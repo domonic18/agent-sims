@@ -124,6 +124,7 @@ export class Simulation {
       backpack: {},
       fridge: {},
       lifeScore: 0,
+      knowledge: 0,
       traits: { ...randomTraits(), ...traits },
     };
     this.characters.set(id, character);
@@ -312,6 +313,10 @@ export class Simulation {
         if (definition !== null) {
           const result = settleActivityMinute(character.activity, character, definition);
           if (result !== 'continue') {
+            // 知识(M-G.4): 完成一次完整学习 +1,中断不计(goal-design §4.2)
+            if (result === 'completed' && definition.id === 'study') {
+              character.knowledge += 1;
+            }
             finishActivity(
               this,
               character,

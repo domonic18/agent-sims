@@ -20,6 +20,7 @@ function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
     backpack: {},
     fridge: {},
     lifeScore: 0,
+    knowledge: 0,
     traits: { ambition: 0.5, hedonism: 0.5, homebody: 0.5, sociability: 0.5, frugality: 0.5 },
   };
 }

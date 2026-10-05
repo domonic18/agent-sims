@@ -6,6 +6,7 @@ import type {
 } from '@sims/shared';
 import {
   BASIC_ACTIVITY_IDS,
+  JOB_CATEGORIES,
   furnitureLabel,
   REST_RATES_BY_KIND,
   getActivityDefinition,
@@ -71,6 +72,15 @@ export function startActivity(
     throw new Error(
       `${character.name} 体力过低(${Math.floor(character.energy)}≤${BALANCE.LOW_ENERGY_THRESHOLD}),只能进行基础活动(${BASIC_ACTIVITY_IDS.join('/')})`,
     );
+  }
+  // 岗位知识门槛(M-G.4 类别平行模型): 门槛=类别累计学习班数,拒绝并回执缺口
+  if (definition.category !== undefined) {
+    const required = JOB_CATEGORIES[definition.category].requiredKnowledge;
+    if (character.knowledge < required) {
+      throw new Error(
+        `${character.name} 知识不足: ${JOB_CATEGORIES[definition.category].label}类岗位需学习 ${required} 班(当前 ${character.knowledge})`,
+      );
+    }
   }
   const anchors = sim.map.activityAnchors(activityId);
   let anchorKind: string | null = null;
