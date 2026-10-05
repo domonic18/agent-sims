@@ -102,16 +102,33 @@ function toView(row: typeof worlds.$inferSelect): WorldView {
   };
 }
 
-/** 发布产物 manifest → kind 素材池(素材库随机选材;仅室内域,户外 Singles 不入家具池) */
+/**
+ * 发布产物 manifest → worldgen 素材池(素材库随机选材):
+ * - {domain}/{kind}:域分键家具池(室内家具与户外道具互不混)
+ * - theme/{slug}@{maxTiles}:主题道具池(户外开放场所装饰,按占地上限预过滤)
+ */
 function loadAssetsByKind(): Record<string, string[]> | undefined {
   try {
     const raw = JSON.parse(readFileSync(path.join(publishTarget(), 'manifest.json'), 'utf8')) as {
-      assets?: Array<{ domain: string; categorySlug: string; slug: string }>;
+      assets?: Array<{
+        domain: string;
+        categorySlug: string;
+        themeSlug?: string;
+        slug: string;
+        gridW: number;
+        gridH: number;
+      }>;
     };
+    const THEME_TILE_CAPS = [1, 2, 4] as const;
     const pool: Record<string, string[]> = {};
     for (const asset of raw.assets ?? []) {
-      if (asset.domain !== 'indoor') continue;
-      (pool[asset.categorySlug] ??= []).push(asset.slug);
+      (pool[`${asset.domain}/${asset.categorySlug}`] ??= []).push(asset.slug);
+      if (asset.domain === 'outdoor' && asset.themeSlug !== undefined) {
+        const tiles = asset.gridW * asset.gridH;
+        for (const cap of THEME_TILE_CAPS) {
+          if (tiles <= cap) (pool[`theme/${asset.themeSlug}@${cap}`] ??= []).push(asset.slug);
+        }
+      }
     }
     return pool;
   } catch {

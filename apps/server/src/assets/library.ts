@@ -208,6 +208,18 @@ function traceDomain(categoryById: Map<number, CategoryRow>, categoryId: number)
   return current?.id ?? categoryId;
 }
 
+/** 沿 parent 链上溯到 level 1(theme)分类 slug(kind 直挂 theme 时即自身) */
+function traceThemeSlug(
+  categoryById: Map<number, CategoryRow>,
+  categoryId: number,
+): string {
+  let current = categoryById.get(categoryId);
+  while (current !== undefined && current.level > 1 && current.parentId !== null) {
+    current = categoryById.get(current.parentId);
+  }
+  return current?.slug ?? '';
+}
+
 export interface PublishResult {
   version: string;
   assetCount: number;
@@ -255,6 +267,7 @@ export async function publishManifest(
       domain: (categoryById.get(traceDomain(categoryById, asset.categoryId))?.slug ??
         'outdoor') as AssetDomain,
       categorySlug: categoryById.get(asset.categoryId)?.slug ?? '',
+      themeSlug: traceThemeSlug(categoryById, asset.categoryId),
       url: `library/${asset.slug}.png`,
       width: asset.width,
       height: asset.height,
