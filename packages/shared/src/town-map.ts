@@ -212,6 +212,7 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'bookshelf', x: 38, y: 5, w: 3, h: 1 },
         { kind: 'sofa', x: 32, y: 7, w: 2, h: 1, activityId: 'rest', use: { x: 32, y: 8 } },
         { kind: 'desk', x: 33, y: 8, w: 2, h: 1, activityId: 'study', use: { x: 33, y: 9 } },
+        { kind: 'desk', x: 35, y: 8, w: 2, h: 1, activityId: 'librarian', use: { x: 35, y: 9 } },
         { kind: 'desk', x: 37, y: 8, w: 2, h: 1, activityId: 'study', use: { x: 37, y: 9 } },
         { kind: 'plant', x: 32, y: 10, w: 1, h: 1 },
       ],
@@ -245,7 +246,7 @@ export const TOWN_MAP: TileMapDefinition = {
       entrance: { x: 23, y: 25 },
       door: { x: 23, y: 26 },
       furniture: [
-        { kind: 'counter', x: 21, y: 27, w: 2, h: 1 },
+        { kind: 'counter', x: 21, y: 27, w: 2, h: 1, activityId: 'vendor', use: { x: 21, y: 28 } },
         { kind: 'fridge', x: 24, y: 27, w: 1, h: 1 },
         { kind: 'shelf', x: 21, y: 29, w: 1, h: 3 },
         { kind: 'shelf', x: 25, y: 29, w: 1, h: 3 },
@@ -262,7 +263,7 @@ export const TOWN_MAP: TileMapDefinition = {
       entrance: { x: 33, y: 25 },
       door: { x: 33, y: 26 },
       furniture: [
-        { kind: 'counter', x: 31, y: 27, w: 2, h: 1 },
+        { kind: 'counter', x: 31, y: 27, w: 2, h: 1, activityId: 'waiter', use: { x: 31, y: 28 } },
         { kind: 'tv', x: 35, y: 27, w: 2, h: 1 },
         { kind: 'table', x: 32, y: 30, w: 2, h: 1, activityId: 'meal', use: { x: 32, y: 31 } },
         { kind: 'table', x: 35, y: 30, w: 2, h: 1, activityId: 'meal', use: { x: 36, y: 31 } },

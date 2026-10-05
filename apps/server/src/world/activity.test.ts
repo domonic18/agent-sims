@@ -219,4 +219,25 @@ describe('职业类别与知识(M-G.4 类别平行模型,goal-design §4.2/numer
     sim.requestStopActivity('sara');
     expect(sim.character('sara').knowledge).toBe(0);
   });
+
+  it('知识满 3 班后服务岗放行(内置图锚点): 馆员单班赚 120,柜台锚点可开工', () => {
+    const librarianDesk = anchorUse('library', 'librarian');
+    const counter = anchorUse('restaurant', 'waiter');
+    const shopCounter = anchorUse('shop', 'vendor');
+    const { sim } = simWith('tom', librarianDesk.x, librarianDesk.y);
+    sim.character('tom').knowledge = 3;
+    sim.requestStartActivity('tom', 'librarian');
+    sim.advanceTicks(120);
+    const tom = sim.character('tom');
+    expect(tom.coins).toBeCloseTo(120, 5); // 1.0 币/分 × 120
+    expect(tom.energy).toBeCloseTo(100 - 120 * 0.15, 5);
+    sim.spawnCharacter('vera', counter.x, counter.y, 'vera');
+    sim.character('vera').knowledge = 3;
+    sim.requestStartActivity('vera', 'waiter');
+    expect(sim.character('vera').activity).toMatchObject({ activityId: 'waiter', anchorKind: 'counter' });
+    sim.spawnCharacter('wendy', shopCounter.x, shopCounter.y, 'wendy');
+    sim.character('wendy').knowledge = 3;
+    sim.requestStartActivity('wendy', 'vendor');
+    expect(sim.character('wendy').activity).toMatchObject({ activityId: 'vendor', anchorKind: 'counter' });
+  });
 });

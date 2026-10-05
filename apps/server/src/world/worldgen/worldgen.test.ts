@@ -55,10 +55,10 @@ describe('generateTownMap 生成质量(50 种子批量)', () => {
     }
   });
 
-  it('场所配额齐备(公寓≥3/七类场所俱全)', () => {
+  it('场所配额齐备(公寓≥3/七类场所+诊所俱全)', () => {
     for (const result of results) {
       const kinds = new Set(result.map.places.map((p) => p.id.split('-')[0]));
-      for (const kind of ['home', 'park', 'library', 'office', 'shop', 'restaurant', 'gym']) {
+      for (const kind of ['home', 'park', 'library', 'office', 'shop', 'restaurant', 'gym', 'clinic']) {
         expect(kinds.has(kind)).toBe(true);
       }
       expect(result.map.places.filter((p) => p.id.startsWith('home')).length).toBeGreaterThanOrEqual(3);
