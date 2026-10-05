@@ -1,7 +1,6 @@
 import { eq, like } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { WorldView } from '@sims/shared';
-import { registerDebugRoutes } from '../src/api/debug.js';
 import { buildApp } from '../src/app.js';
 import { applyWorldParams, BALANCE, BALANCE_DEFAULTS } from '../src/config/balance.js';
 import { env } from '../src/config/env.js';
@@ -91,15 +90,13 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
     await app.close();
   });
 
-  it('POST /debug/params:校验/热调/world.params 事件/config 持久', async () => {
+  it('POST /api/world/settings 改参:校验/热调/world.params 事件/config 持久', async () => {
     const app = buildApp();
-    // vitest 固定 NODE_ENV=test,app.ts 不注册 debug 路由;此处手动挂载以覆盖路由逻辑
-    registerDebugRoutes(app, app.simulation, app.clients);
 
     const bad = await app.inject({
       method: 'POST',
-      url: '/debug/params',
-      payload: { updates: { CHAT_HAPPINESS: 999 } },
+      url: '/api/world/settings',
+      payload: { params: { CHAT_HAPPINESS: 999 } },
     });
     expect(bad.statusCode).toBe(400);
     expect(BALANCE.CHAT_HAPPINESS).toBe(9); // 校验拒绝不落值
@@ -109,8 +106,8 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/debug/params',
-      payload: { updates: { CHAT_HAPPINESS: 5 } },
+      url: '/api/world/settings',
+      payload: { params: { CHAT_HAPPINESS: 5 } },
     });
     expect(res.statusCode).toBe(200);
     expect(BALANCE.CHAT_HAPPINESS).toBe(5);

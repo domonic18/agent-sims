@@ -1,7 +1,6 @@
 /**
- * /debug/* 联调通道(仅 development 注册的服务端端点)。
- * M2 阶段 HUD 暂停/加速经此下发;正式指令通道(角色权限)在 M4 落地后替换。
- * 世界参数读取/热调(Lab 控制面板)同走此通道。
+ * Lab 调试台控制通道:暂停/倍率/参数走 /api/world/settings 常开端点
+ * (开发/生产通用);复活等纯调试动作仍走 /debug/*(仅 development 注册)。
  */
 
 const request = async <T>(path: string, method: 'GET' | 'POST', body?: unknown): Promise<T> => {
@@ -18,26 +17,26 @@ const request = async <T>(path: string, method: 'GET' | 'POST', body?: unknown):
   return (await response.json()) as T;
 };
 
-const post = async (path: string, body: unknown): Promise<void> => {
-  await request(path, 'POST', body);
+const postSettings = async (body: Record<string, unknown>): Promise<void> => {
+  await request('/api/world/settings', 'POST', body);
 };
 
 export const setPaused = (paused: boolean): Promise<void> =>
-  post('/debug/pause', { paused });
+  postSettings({ paused });
 
 export const setTimeScale = (scale: number): Promise<void> =>
-  post('/debug/time/scale', { scale });
+  postSettings({ timeScale: scale });
 
-/** 复活幽灵态角色(M3.6f 死亡机制) */
+/** 复活幽灵态角色(M3.6f 死亡机制,仅 dev) */
 export const reviveCharacter = (characterId: string): Promise<void> =>
-  post('/debug/revive', { characterId });
+  request('/debug/revive', 'POST', { characterId }).then(() => undefined);
 
 /** 世界参数生效值全集(目录键→数值) */
 export const fetchDebugParams = (): Promise<Record<string, number>> =>
-  request<{ params: Record<string, number> }>('/debug/params', 'GET').then((r) => r.params);
+  request<{ params: Record<string, number> }>('/api/world/settings', 'GET').then((r) => r.params);
 
 /** 提交改动键,返回热调后的生效值全集 */
 export const setDebugParams = (updates: Record<string, number>): Promise<Record<string, number>> =>
-  request<{ params: Record<string, number> }>('/debug/params', 'POST', { updates }).then(
+  request<{ params: Record<string, number> }>('/api/world/settings', 'POST', { params: updates }).then(
     (r) => r.params,
   );

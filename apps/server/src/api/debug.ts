@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { currentWorldParams, TIME_SCALES, validateBalanceOverrides } from '../config/balance.js';
 import { runIntent } from '../intents/execute.js';
 import type { ClientRegistry } from '../socket/clients.js';
 import type { Simulation } from '../world/simulation.js';
@@ -13,18 +12,6 @@ const tickQuerySchema = z.object({
   n: z.coerce.number().int().min(1).max(MAX_MANUAL_TICKS).default(1),
 });
 
-const pauseBodySchema = z.object({ paused: z.boolean() });
-
-const scaleBodySchema = z.object({
-  scale: z
-    .number()
-    .int()
-    .refine((value): value is (typeof TIME_SCALES)[number] =>
-      (TIME_SCALES as readonly number[]).includes(value), {
-      message: `可用档位: ${TIME_SCALES.join('/')}`,
-    }),
-});
-
 const spawnBodySchema = z.object({
   id: z.string().min(1),
   x: z.number().int(),
@@ -34,17 +21,14 @@ const spawnBodySchema = z.object({
 
 const reviveBodySchema = z.object({ characterId: z.string().min(1) });
 
-const paramsBodySchema = z.object({
-  updates: z.record(z.string(), z.number()),
-});
-
 function parseError(reply: FastifyReply, message: string) {
   return reply.code(400).send({ error: message });
 }
 
 /**
  * /debug/* 端点族:仅在 NODE_ENV=development 注册(app.ts 控制),生产自动关闭。
- * 全部直接读写 Simulation,供联调与 headless 对照。
+ * 全部直接读写 Simulation,供联调与 headless 对照;暂停/倍率/参数等运行时
+ * 控制已迁移 /api/world/settings 常开通道,本族仅留开发工具。
  */
 export function registerDebugRoutes(
   app: FastifyInstance,
@@ -87,43 +71,6 @@ export function registerDebugRoutes(
     }
     sim.advanceTicks(parsed.data.n);
     return await reply.send(sim.snapshot());
-  });
-
-  app.post('/debug/pause', async (request, reply) => {
-    const parsed = pauseBodySchema.safeParse(request.body);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      return parseError(reply, issue ? `paused: ${issue.message}` : '请求体不合法');
-    }
-    sim.setPaused(parsed.data.paused);
-    return await reply.send(sim.snapshot());
-  });
-
-  app.post('/debug/time/scale', async (request, reply) => {
-    const parsed = scaleBodySchema.safeParse(request.body);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      return parseError(reply, issue ? `scale: ${issue.message}` : '请求体不合法');
-    }
-    sim.setTimeScale(parsed.data.scale);
-    return await reply.send(sim.snapshot());
-  });
-
-  // 世界参数(Lab 调试台控制面板):GET 读生效全集,POST 校验后热调并广播 world.params
-  app.get('/debug/params', async () => ({ params: currentWorldParams() }));
-
-  app.post('/debug/params', async (request, reply) => {
-    const parsed = paramsBodySchema.safeParse(request.body);
-    if (!parsed.success) {
-      const issue = parsed.error.issues[0];
-      return parseError(reply, issue ? `updates: ${issue.message}` : '请求体不合法');
-    }
-    const errors = validateBalanceOverrides(parsed.data.updates);
-    if (errors.length > 0) {
-      return parseError(reply, errors.map((e) => `${e.key}: ${e.reason}`).join('; '));
-    }
-    sim.setParams(parsed.data.updates);
-    return await reply.send({ params: currentWorldParams(), state: sim.snapshot() });
   });
 
   // 调试辅助:生成运行时角色(出生点须可行走);正式角色创建走 DB 层,后置

@@ -24,7 +24,7 @@ async function readActiveWorldParams(handle: DbHandle): Promise<Record<string, n
 
 /**
  * 世界参数目录查询(只读):参数已世界化——创建时随世界 config 存档,运行中经
- * Lab /debug/params 修改;本端点供创建向导取 defaults 与后台查看生效值。
+ * /api/world/settings 设置通道修改;本端点供创建向导取 defaults 与后台查看生效值。
  */
 export function registerSysConfigRoutes(app: FastifyInstance, handle: DbHandle): void {
   app.get('/api/admin/sys-config', async (request, reply) => {

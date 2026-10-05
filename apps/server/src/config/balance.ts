@@ -4,8 +4,8 @@
  *
  * 热调分层(M4f 后台重构):
  * - 本文件仅收录 server-only 数值;BALANCE 为可变运行时持有者,参数已世界化:
- *   创建世界时 applyWorldParams 应用 config.rules.params,运行中 Lab /debug/params
- *   热调(全仓库均为 BALANCE.X 属性访问,无解构)。
+ *   创建世界时 applyWorldParams 应用 config.rules.params,运行中经
+ *   /api/world/settings 常开通道热调(全仓库均为 BALANCE.X 属性访问,无解构)。
  * - 双端同源常量(移速/容积/低体力阈值/聊天日上限,web 展示同源)与时序基建
  *   (TICK_MS/DRIVER_SLICE_MS/DAY_MINUTES 等,改动需重启驱动器或破坏时钟纪元)
  *   不开放热调,仍在 @sims/shared 或下方常量冻结。
@@ -175,7 +175,7 @@ export function applyBalanceOverrides(overrides: Record<string, unknown>): void 
   }
 }
 
-/** 当前生效参数全集(目录键→BALANCE 值;world.params 事件与 GET /debug/params 用) */
+/** 当前生效参数全集(目录键→BALANCE 值;world.params 事件与设置通道 GET 用) */
 export function currentWorldParams(): Record<string, number> {
   const balance = BALANCE as unknown as Record<string, number>;
   return Object.fromEntries(SYS_CONFIG_FIELDS.map((field) => [field.key, balance[field.key]!]));

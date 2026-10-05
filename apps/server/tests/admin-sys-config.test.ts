@@ -8,7 +8,7 @@ import { adminUsers } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
 
 // 集成测试:连 dev compose 的 postgres;不可达时整组跳过。
-// 参数世界化后本端点只读(PUT/reset 已移除,修改走 Lab /debug/params)。
+// 参数世界化后本端点只读(PUT/reset 已移除,修改走 /api/world/settings 设置通道)。
 const TEST_USERNAME = 'vitest-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
 
@@ -87,7 +87,7 @@ describe.skipIf(!dbUp)('世界参数目录查询 API(只读)', () => {
     expect(typeof view.overrides).toBe('object');
   });
 
-  it('PUT 修改 404(参数修改已迁移 Lab /debug/params)', async () => {
+  it('PUT 修改 404(参数修改已迁移设置通道)', async () => {
     const res = await inject('PUT', '/api/admin/sys-config', { updates: { START_COINS: 50 } });
     expect(res.statusCode).toBe(404);
   });
