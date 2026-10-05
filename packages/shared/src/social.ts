@@ -3,7 +3,7 @@ import type { TraitKey } from './world-admin.js';
 /**
  * 社交 v1(social-design):二轴有向关系 + chat 意图 + 特质相性。
  * 称号纯派生不存储;数值(server 结算参数)在 apps/server config/balance.ts,
- * 阈值/公式唯一权威 docs/design/numerical-design.md §社交。
+ * 阈值/公式唯一权威 docs/design/04-numerical-design.md §社交。
  */
 
 /** 关系快照(A→B 有向一条;B→A 独立另一条) */

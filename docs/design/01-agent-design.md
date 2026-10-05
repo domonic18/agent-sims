@@ -1,6 +1,6 @@
 # agent-sims Agent 设计(Agent Design)
 
-> 本文档是**世界运行机制+Agent 运行机制**的设计权威(single source of truth):M4 起各子阶段(agents/ 认知域、记忆流、观测面板等)以本文为设计基准。数值类见 numerical-design.md,社交数值见 social-design.md。**实现与本文冲突时,先改本文再改代码**,并在文末变更记录追加一行。
+> 本文档是**世界运行机制+Agent 运行机制**的设计权威(single source of truth):M4 起各子阶段(agents/ 认知域、记忆流、观测面板等)以本文为设计基准。数值类见 04-numerical-design.md,社交数值见 03-social-design.md。**实现与本文冲突时,先改本文再改代码**,并在文末变更记录追加一行。
 > 定稿: M4 设计讨论(2026-10-05),吸收 M4a 后架构三连问答与用户两条补充需求(记忆人可见性 / Agent 可观测性)。
 
 ## 1. 设计总则

@@ -3,7 +3,7 @@
  * food 须在商店内购买,买入入随身背包(受体积上限约束),任意地点经 eat_item 进食结算 effects;
  * 回家可经 store_item 存入冰箱 / take_item 取出到背包(均受容积约束)。
  * 品类拉开价格/体积/体力/幸福梯度(蛋糕大体积高幸福,咖啡小体积高体力)。
- * 数值出处: docs/design/numerical-design.md §3。
+ * 数值出处: docs/design/04-numerical-design.md §3。
  * M3.6e: 家具购买/摆放删除——家具转为世界内置内容(室内活动锚点),
  * 角色通过走到家具使用格直接使用,不再经商店购买。
  */

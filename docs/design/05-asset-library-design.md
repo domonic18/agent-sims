@@ -8,7 +8,7 @@
 **目标**
 1. 全部游戏素材(户外 tile/家具/建筑件/角色)经素材库统一管理:树形分类、增删改查、放大校验
 2. 批量导入为主(LimeZu Theme_Sorter_Singles 单件目录,数千件) + 手动上传为辅
-3. 元数据支撑 PCG 整图随机(worldgen-design.md 消费)与两演进(tier/domain)
+3. 元数据支撑 PCG 整图随机(06-worldgen-design.md 消费)与两演进(tier/domain)
 4. 发布链路:库 → 游戏侧 manifest+产物,运行时零解析开销
 
 **非目标**

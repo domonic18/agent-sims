@@ -2,7 +2,7 @@
  * 双端消费的游戏平衡常量(M3.6h):server 裁决与 web 展示共用同一份,
  * 消除"web 硬编码复制+注释维持同步"的漂移风险。
  * 仅上提双端消费项;服务端专属数值(tick/衰减/昼夜)仍在 apps/server config/balance.ts。
- * 数值口径见 docs/design/numerical-design.md(改数值先改文档)。
+ * 数值口径见 docs/design/04-numerical-design.md(改数值先改文档)。
  */
 import { getShopItem } from './shop.js';
 

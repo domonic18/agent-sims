@@ -33,7 +33,7 @@ pnpm dev
 
 - **需求基准**：[docs/requirement/](docs/requirement/)
 - **架构设计**：[docs/arch/](docs/arch/)
-- **迭代计划**：[docs/plan/development-plan.md](docs/plan/development-plan.md)
+- **迭代计划**：[docs/plan/01-development-plan.md](docs/plan/01-development-plan.md)
 - **调研评估**：[docs/research/](docs/research/)
 
 ## 目录结构

@@ -17,7 +17,7 @@
 - `scripts/` 运维与工具脚本
 - `workspace/` 宿主机持久化数据(postgres 数据卷/备份),gitignore 不入库,compose bind mount 挂载
 - 测试分层: 单测就近(`*.test.ts` 同置)、集成测试放包内 `tests/`、E2E 后置(web 届时建 `e2e/`);不设顶层 tests/
-- 文档:requirement/(需求基准) arch/(终态方案) plan/development-plan.md(状态真相源)
+- 文档:requirement/(需求基准) arch/(终态方案) plan/01-development-plan.md(状态真相源)
 
 | 主题 | 文档 |
 | ---- | ---- |
@@ -31,7 +31,7 @@
 - 未经用户批准不要提交到 git。不要主动创建 *.md/README。
 - 永远不要模拟、不要占位符、不要省略代码;对想法的好坏坦率诚实。
 - 安全:外部输入边界校验;模型 API-Key 经后台管理 AES 加密存储,永不硬编码;env 仅运行配置(DATABASE_URL/MASTER_KEY 等);日志记事件不记敏感值。
-- 状态只更新 plan/development-plan.md,不回填过程。
+- 状态只更新 plan/01-development-plan.md,不回填过程。
 
 ### CodeReview(每轮迭代完成后必须执行)
 
@@ -55,7 +55,7 @@ Review 中发现的规范缺口回写对应 CLAUDE.md(事故驱动沉淀),避免
 1. 运行类型检查 / lint / 测试(命令就绪后固化为根 `package.json` 的 `check` 脚本)
 2. 每轮迭代完成后进行 CodeReview(按 §3 CodeReview 规范:规范性/封装性/架构合理性),问题清零后收尾
 3. 行为变更同步 CLAUDE.md / docs 对应章节
-4. 里程碑进展写入 docs/plan/development-plan.md
+4. 里程碑进展写入 docs/plan/01-development-plan.md
 
 # 重要指令提醒
 
