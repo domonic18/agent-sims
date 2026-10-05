@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { and, asc, count, eq, ilike, inArray, or } from 'drizzle-orm';
+import { and, asc, count, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { ADMIN_API, ASSET_STATUSES, type AssetStatus } from '@sims/shared';
 import { z } from 'zod';
@@ -120,9 +120,13 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
     const exists = await db
       .select({ id: assetCategories.id })
       .from(assetCategories)
-      .where(eq(assetCategories.slug, slug))
+      .where(
+        parentId === null
+          ? and(eq(assetCategories.slug, slug), isNull(assetCategories.parentId))
+          : and(eq(assetCategories.slug, slug), eq(assetCategories.parentId, parentId)),
+      )
       .limit(1);
-    if (exists.length > 0) return parseError(reply, `slug 已存在: ${slug}`);
+    if (exists.length > 0) return parseError(reply, `同层 slug 已存在: ${slug}`);
     const inserted = await db
       .insert(assetCategories)
       .values({ name, slug, parentId, level })

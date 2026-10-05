@@ -1,0 +1,2 @@
+ALTER TABLE "asset_categories" DROP CONSTRAINT "asset_categories_slug_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "asset_categories_parent_slug_uq" ON "asset_categories" USING btree ("parent_id","slug");

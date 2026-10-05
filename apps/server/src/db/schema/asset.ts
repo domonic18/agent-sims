@@ -7,22 +7,28 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import type { AssetAnimConfig, AssetStatus } from '@sims/shared';
 
 /**
  * 素材库(M-L.1,design/05):分类树 domain(0)→theme(1)→kind(2) 三层,
- * slug 全树唯一且不可变(worldgen/manifest 引用稳定性)。
+ * slug 同层唯一(parent 作用域,全量导入后多主题可各自挂同名 kind)且不可变。
+ * 注: domain 层 parent 为 NULL,唯一索引对 NULL 不去重,由应用侧 ensureCategory 查重兜底。
  */
-export const assetCategories = pgTable('asset_categories', {
-  id: serial('id').primaryKey(),
-  parentId: integer('parent_id').references((): AnyPgColumn => assetCategories.id),
-  level: integer('level').notNull(),
-  name: text('name').notNull(),
-  slug: text('slug').notNull().unique(),
-  sortOrder: integer('sort_order').notNull().default(0),
-});
+export const assetCategories = pgTable(
+  'asset_categories',
+  {
+    id: serial('id').primaryKey(),
+    parentId: integer('parent_id').references((): AnyPgColumn => assetCategories.id),
+    level: integer('level').notNull(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (table) => [uniqueIndex('asset_categories_parent_slug_uq').on(table.parentId, table.slug)],
+);
 
 export const assets = pgTable(
   'assets',

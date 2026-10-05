@@ -43,6 +43,13 @@
       "when": 1791189818090,
       "tag": "0005_fantastic_rhino",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791200756335,
+      "tag": "0006_nifty_starhawk",
+      "breakpoints": true
     }
   ]
 }

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { PNG } from 'pngjs';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { AssetAnimConfig, AssetDomain, AssetStatus } from '@sims/shared';
 import type { Db } from '../db/client.js';
 import { assetCategories, assets } from '../db/schema/asset.js';
@@ -94,7 +94,7 @@ const DOMAIN_ORDER: Record<AssetDomain, number> = {
   survival: 3,
 };
 
-/** 分类节点复用或创建(slug 唯一;存在即复用,不修改既有名称) */
+/** 分类节点复用或创建(slug 同层唯一即 parent 作用域;存在即复用,不修改既有名称) */
 export async function ensureCategory(
   db: Db,
   spec: { level: number; slug: string; name: string },
@@ -104,7 +104,11 @@ export async function ensureCategory(
   const existing = await db
     .select({ id: assetCategories.id })
     .from(assetCategories)
-    .where(eq(assetCategories.slug, spec.slug))
+    .where(
+      parentId === null
+        ? and(eq(assetCategories.slug, spec.slug), isNull(assetCategories.parentId))
+        : and(eq(assetCategories.slug, spec.slug), eq(assetCategories.parentId, parentId)),
+    )
     .limit(1);
   if (existing.length > 0) return existing[0]!.id;
   const inserted = await db
@@ -212,7 +216,7 @@ export interface PublishResult {
 
 /**
  * 发布 manifest(design/05 §4):读 active 素材 → 拷贝产物 → 写 manifest.json。
- * version = active 集(id:slug:checksum 排序拼接)sha256 前 8 hex——内容稳定则版本稳定,
+ * version = active 集(slug:checksum 拼接)sha256 前 8 hex——内容稳定则版本稳定,
  * 是 worldgen 种子派生输入之一(design/06)。
  */
 export async function publishManifest(
@@ -231,7 +235,12 @@ export async function publishManifest(
   const categoryRows = await db.select().from(assetCategories).orderBy(asc(assetCategories.id));
   const categoryById = new Map<number, CategoryRow>(categoryRows.map((c) => [c.id, c]));
 
-  const fingerprint = activeAssets.map((a) => `${a.id}:${a.slug}:${a.checksum}`).join('|');
+  // 指纹只含内容(slug:checksum)且按 slug 排序拼接:与 DB 自增 id 及插入顺序无关,
+  // dev/容器两库同内容同版本,保证 worldgen 种子派生跨环境一致(design/06)
+  const fingerprint = activeAssets
+    .map((a) => `${a.slug}:${a.checksum}`)
+    .sort()
+    .join('|');
   const version = createHash('sha256').update(fingerprint).digest('hex').slice(0, 8);
 
   const libraryDir = path.join(targetDir, 'library');
@@ -276,6 +285,7 @@ export async function publishManifest(
     assets: entries,
   };
   const manifestPath = path.join(targetDir, 'manifest.json');
-  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  // 紧凑序列化:全量导入后 manifest 体积 MB 级,缩进白耗传输
+  await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
   return { version, assetCount: activeAssets.length, manifestPath };
 }
