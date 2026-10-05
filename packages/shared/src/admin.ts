@@ -1,3 +1,5 @@
+import type { AssetAnimConfig, AssetStatus } from './asset-manifest.js';
+
 /**
  * 后台模型槽位:四类模型(慢思考/轻量对话/Jev/embedding)的后台配置键,
  * model_configs.slot 与后台表单共用此枚举。
@@ -143,6 +145,12 @@ export const ADMIN_API = {
   tokenUsageEntries: '/api/admin/token-usage/entries',
   sysConfig: '/api/admin/sys-config',
   sysConfigReset: '/api/admin/sys-config/reset',
+  assetCategories: '/api/admin/assets/categories',
+  assets: '/api/admin/assets',
+  asset: (id: number) => `/api/admin/assets/${id}`,
+  assetImage: (id: number) => `/api/admin/assets/${id}/image`,
+  assetBulkStatus: '/api/admin/assets/bulk-status',
+  assetPublish: '/api/admin/assets/publish',
 } as const;
 
 /** token 用量统计窗口 */
@@ -203,4 +211,51 @@ export interface TokenUsageEntriesResponse {
   page: number;
   pageSize: number;
   entries: TokenUsageCallView[];
+}
+
+// ============ 素材管理(M-L.2,design/05) ============
+
+export interface AssetCategoryView {
+  id: number;
+  parentId: number | null;
+  level: number;
+  slug: string;
+  name: string;
+  sortOrder: number;
+  /** 直挂素材数(不含子孙分类) */
+  assetCount: number;
+}
+
+export interface AssetAdminView {
+  id: number;
+  slug: string;
+  name: string;
+  categoryId: number;
+  /** 挂载分类 slug(kind 层;tile/props 挂 theme 层) */
+  categorySlug: string;
+  domain: string;
+  width: number;
+  height: number;
+  gridW: number;
+  gridH: number;
+  anchor: string;
+  tier: number;
+  tags: string[];
+  status: AssetStatus;
+  source: string;
+  anim: AssetAnimConfig | null;
+}
+
+export interface AssetListResponse {
+  total: number;
+  items: AssetAdminView[];
+}
+
+export interface AssetPublishResult {
+  version: string;
+  assetCount: number;
+}
+
+export interface AssetBulkStatusResult {
+  updated: number;
 }

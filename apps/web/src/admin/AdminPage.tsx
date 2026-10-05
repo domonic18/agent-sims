@@ -16,6 +16,7 @@ import {
 import {
   BarChartOutlined,
   GlobalOutlined,
+  PictureOutlined,
   LogoutOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -27,6 +28,7 @@ import type { ModelConfigView } from '@sims/shared';
 import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } from './api';
 import { ModelConfigPanel } from './ModelConfigPanel';
 import { TokenUsagePanel } from './TokenUsagePanel';
+import { AssetsPanel } from './AssetsPanel';
 import { WorldPanel } from './WorldPanel';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -79,7 +81,7 @@ function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   );
 }
 
-type AdminTab = 'world' | 'models' | 'usage' | 'settings';
+type AdminTab = 'world' | 'models' | 'usage' | 'assets' | 'settings';
 
 const NAV_ITEMS: MenuProps['items'] = [
   {
@@ -89,6 +91,7 @@ const NAV_ITEMS: MenuProps['items'] = [
       { key: 'world', icon: <GlobalOutlined />, label: '世界管理' },
       { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
+      { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
     ],
   },
   {
@@ -199,6 +202,8 @@ function AdminShell() {
             <WorldPanel />
           ) : tab === 'usage' ? (
             <TokenUsagePanel />
+          ) : tab === 'assets' ? (
+            <AssetsPanel />
           ) : tab === 'settings' ? (
             <SettingsPanel username={username} />
           ) : (

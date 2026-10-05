@@ -1,5 +1,10 @@
 import {
   ADMIN_API,
+  type AssetBulkStatusResult,
+  type AssetCategoryView,
+  type AssetListResponse,
+  type AssetPublishResult,
+  type AssetStatus,
   type AdminLoginRequest,
   type AdminLoginResponse,
   type CreateWorldRequest,
@@ -173,4 +178,90 @@ export async function deleteWorld(id: string): Promise<void> {
   await adminFetch<unknown>(WORLD_ADMIN_API.world.replace(':id', id), {
     method: 'DELETE',
   });
+}
+
+// ============ 素材管理(M-L.2) ============
+
+export interface AssetListQuery {
+  categoryId?: number;
+  status?: AssetStatus | '';
+  q?: string;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchAssetCategories(): Promise<AssetCategoryView[]> {
+  return await adminFetch<AssetCategoryView[]>(ADMIN_API.assetCategories);
+}
+
+export async function fetchAssets(query: AssetListQuery): Promise<AssetListResponse> {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) });
+  if (query.categoryId !== undefined) params.set('categoryId', String(query.categoryId));
+  if (query.status) params.set('status', query.status);
+  if (query.q) params.set('q', query.q);
+  return await adminFetch<AssetListResponse>(`${ADMIN_API.assets}?${params.toString()}`);
+}
+
+export interface AssetPatch {
+  name?: string;
+  gridW?: number;
+  gridH?: number;
+  anchor?: string;
+  tier?: number;
+  tags?: string[];
+  status?: AssetStatus;
+}
+
+export async function updateAsset(id: number, patch: AssetPatch): Promise<void> {
+  await adminFetch<unknown>(ADMIN_API.asset(id), { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export async function bulkAssetStatus(ids: number[], status: AssetStatus): Promise<AssetBulkStatusResult> {
+  return await adminFetch<AssetBulkStatusResult>(ADMIN_API.assetBulkStatus, {
+    method: 'POST',
+    body: JSON.stringify({ ids, status }),
+  });
+}
+
+export async function publishAssets(): Promise<AssetPublishResult> {
+  return await adminFetch<AssetPublishResult>(ADMIN_API.assetPublish, { method: 'POST' });
+}
+
+export async function createAssetCategory(
+  name: string,
+  slug: string,
+  parentId: number | null,
+): Promise<AssetCategoryView> {
+  return await adminFetch<AssetCategoryView>(ADMIN_API.assetCategories, {
+    method: 'POST',
+    body: JSON.stringify({ name, slug, parentId }),
+  });
+}
+
+export async function renameAssetCategory(id: number, name: string): Promise<void> {
+  await adminFetch<unknown>(`${ADMIN_API.assetCategories}/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function deleteAssetCategory(id: number): Promise<void> {
+  await adminFetch<unknown>(`${ADMIN_API.assetCategories}/${id}`, { method: 'DELETE' });
+}
+
+/** 素材图片经鉴权 fetch 转 objectURL(带会话级缓存;<img> 无法携带 Bearer 头,不走 JSON 通道) */
+const assetImageCache = new Map<number, string>();
+
+export async function fetchAssetImage(id: number): Promise<string> {
+  const cached = assetImageCache.get(id);
+  if (cached !== undefined) return cached;
+  const token = getToken();
+  const res = await fetch(ADMIN_API.assetImage(id), {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401 && token) clearToken();
+  if (!res.ok) throw new ApiError(res.status, `素材图片加载失败(HTTP ${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  assetImageCache.set(id, url);
+  return url;
 }

@@ -10,8 +10,9 @@ import { buildImportPlan } from './import-plan.js';
 import { importAssets, publishManifest } from './library.js';
 
 const repoRoot = fileURLToPath(new URL('../../../..', import.meta.url));
-const libraryRoot = `${repoRoot}/workspace/asset-library`;
-const publishTarget = `${repoRoot}/apps/web/public/assets`;
+/** 容器内源码相对推导失效,env 显式覆盖 */
+const libraryRoot = process.env.ASSET_LIBRARY_ROOT ?? `${repoRoot}/workspace/asset-library`;
+const publishTarget = process.env.ASSETS_PUBLISH_TARGET ?? `${repoRoot}/apps/web/public/assets`;
 const sourceDir = process.env.ASSET_IMPORT_SOURCE ?? '/tmp/asset-import';
 
 const command = process.argv[2] ?? 'import';
