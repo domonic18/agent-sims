@@ -15,6 +15,7 @@ import {
 } from 'antd';
 import {
   BarChartOutlined,
+  FileTextOutlined,
   GlobalOutlined,
   PictureOutlined,
   LogoutOutlined,
@@ -29,6 +30,7 @@ import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } fr
 import { ModelConfigPanel } from './ModelConfigPanel';
 import { TokenUsagePanel } from './TokenUsagePanel';
 import { AssetsPanel } from './AssetsPanel';
+import { LogsPanel } from './LogsPanel';
 import { WorldPanel } from './WorldPanel';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -81,7 +83,7 @@ function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   );
 }
 
-type AdminTab = 'world' | 'models' | 'usage' | 'assets' | 'settings';
+type AdminTab = 'world' | 'models' | 'usage' | 'assets' | 'logs' | 'settings';
 
 const NAV_ITEMS: MenuProps['items'] = [
   {
@@ -92,6 +94,7 @@ const NAV_ITEMS: MenuProps['items'] = [
       { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
+      { key: 'logs', icon: <FileTextOutlined />, label: '运行日志' },
     ],
   },
   {
@@ -204,6 +207,8 @@ function AdminShell() {
             <TokenUsagePanel />
           ) : tab === 'assets' ? (
             <AssetsPanel />
+          ) : tab === 'logs' ? (
+            <LogsPanel />
           ) : tab === 'settings' ? (
             <SettingsPanel username={username} />
           ) : (

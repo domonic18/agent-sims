@@ -7,16 +7,19 @@ import {
   type AssetStatus,
   type AdminLoginRequest,
   type AdminLoginResponse,
+  type AuditLogEntriesResponse,
   type CreateWorldRequest,
   type ModelConfigInvokeResult,
   type ModelConfigTestResult,
   type ModelConfigUpdate,
   type ModelConfigView,
   type ModelSlot,
+  type TechLogEntriesResponse,
   type TokenUsageEntriesResponse,
   type TokenUsageSummary,
   type TokenUsageWindow,
   type SysConfigView,
+  type WorldEventEntriesResponse,
   WORLD_ADMIN_API,
   type WorldPreviewResponse,
   type WorldView,
@@ -261,6 +264,52 @@ export async function renameAssetCategory(id: number, name: string): Promise<voi
 
 export async function deleteAssetCategory(id: number): Promise<void> {
   await adminFetch<unknown>(`${ADMIN_API.assetCategories}/${id}`, { method: 'DELETE' });
+}
+
+// ============ 三日志查询(M-G.1) ============
+
+export interface WorldEventEntriesQuery {
+  characterId?: string;
+  type?: string;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchWorldEventEntries(
+  query: WorldEventEntriesQuery,
+): Promise<WorldEventEntriesResponse> {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) });
+  if (query.characterId) params.set('characterId', query.characterId);
+  if (query.type) params.set('type', query.type);
+  return await adminFetch<WorldEventEntriesResponse>(`${ADMIN_API.logWorldEvents}?${params.toString()}`);
+}
+
+export interface TechLogEntriesQuery {
+  level?: string;
+  source?: string;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchTechLogEntries(query: TechLogEntriesQuery): Promise<TechLogEntriesResponse> {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) });
+  if (query.level) params.set('level', query.level);
+  if (query.source) params.set('source', query.source);
+  return await adminFetch<TechLogEntriesResponse>(`${ADMIN_API.logTechLogs}?${params.toString()}`);
+}
+
+export interface AuditLogEntriesQuery {
+  username?: string;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchAuditLogEntries(
+  query: AuditLogEntriesQuery,
+): Promise<AuditLogEntriesResponse> {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) });
+  if (query.username) params.set('username', query.username);
+  return await adminFetch<AuditLogEntriesResponse>(`${ADMIN_API.logAuditLogs}?${params.toString()}`);
 }
 
 /** 素材图片经鉴权 fetch 转 objectURL(带会话级缓存;<img> 无法携带 Bearer 头,不走 JSON 通道) */

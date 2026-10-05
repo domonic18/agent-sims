@@ -151,6 +151,9 @@ export const ADMIN_API = {
   assetImage: (id: number) => `/api/admin/assets/${id}/image`,
   assetBulkStatus: '/api/admin/assets/bulk-status',
   assetPublish: '/api/admin/assets/publish',
+  logWorldEvents: '/api/admin/logs/world-events',
+  logTechLogs: '/api/admin/logs/tech-logs',
+  logAuditLogs: '/api/admin/logs/audit-logs',
 } as const;
 
 /** token 用量统计窗口 */
