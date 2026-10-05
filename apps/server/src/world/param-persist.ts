@@ -5,16 +5,17 @@ import { worlds } from '../db/schema/index.js';
 import type { EventBus } from './event-bus.js';
 
 /**
- * 世界参数持久化订阅:world.params 事件回写活跃世界 config.rules.params,
- * 世界记录成为参数存档真源(Lab 改参可追溯,创建向导 defaults 之外的世界差异留档)。
- * EventBus 承诺纯逻辑零 I/O,写操作挂宿主侧串行链(同 event-log),失败仅记 console。
+ * 世界配置持久化订阅:world.params(参数全集)与 world.rules(规则三字段)
+ * 事件回写活跃世界 config,世界记录成为参数/规则存档真源(Lab 与游戏内设置
+ * 菜单的运行时修改均可追溯)。EventBus 承诺纯逻辑零 I/O,写操作挂宿主侧
+ * 串行链(同 event-log),失败仅记 console。
  */
 let tail: Promise<void> = Promise.resolve();
 
 export function attachWorldParamPersist(handle: DbHandle, events: EventBus<WorldEvent>): void {
   let chain: Promise<void> = Promise.resolve();
   events.subscribe((event) => {
-    if (event.type !== 'world.params') return;
+    if (event.type !== 'world.params' && event.type !== 'world.rules') return;
     chain = chain
       .then(async () => {
         const [row] = await handle.db
@@ -25,13 +26,22 @@ export function attachWorldParamPersist(handle: DbHandle, events: EventBus<World
         if (!row) return;
         const config = row.config as Record<string, unknown>;
         const rules = (config.rules ?? {}) as Record<string, unknown>;
+        const merged =
+          event.type === 'world.params'
+            ? { ...rules, params: event.params }
+            : {
+                ...rules,
+                allowDeath: event.rules.allowDeath,
+                allowChat: event.rules.allowChat,
+                initialTimeScale: event.rules.initialTimeScale,
+              };
         await handle.db
           .update(worlds)
-          .set({ config: { ...config, rules: { ...rules, params: event.params } } })
+          .set({ config: { ...config, rules: merged } })
           .where(eq(worlds.id, row.id));
       })
       .catch((err: unknown) => {
-        console.error('[param-persist] 世界参数落档失败', err);
+        console.error('[param-persist] 世界配置落档失败', err);
       });
     tail = chain;
   });

@@ -8,10 +8,11 @@ import type {
   WorldParamsEvent,
   WorldResetEvent,
   WorldRules,
+  WorldRulesEvent,
   WorldSnapshotMessage,
 } from '@sims/shared';
 import { DEFAULT_WORLD_RULES, PROPERTY_IDS, TOWN_MAP, getActivityDefinition, type TileMapDefinition } from '@sims/shared';
-import { applyBalanceOverrides, BALANCE, currentWorldParams } from '../config/balance.js';
+import { applyBalanceOverrides, applyWorldParams, BALANCE, currentWorldParams } from '../config/balance.js';
 import {
   finishActivity,
   settleActivityMinute,
@@ -235,13 +236,37 @@ export class Simulation {
     this._emitControl();
   }
 
-  /** 世界参数热调(Lab 调试台):应用覆盖后广播生效值全集,落档由订阅侧回写世界记录 */
-  setParams(updates: Record<string, number>): void {
-    applyBalanceOverrides(updates);
+  /**
+   * 世界参数热调(Lab 调试台/游戏内设置菜单):应用覆盖后广播生效值全集,
+   * 落档由订阅侧回写世界记录;reset 时先复位出厂默认再应用(难度预设切换,
+   * 清除上一档残留)。
+   */
+  setParams(updates: Record<string, number>, opts?: { reset?: boolean }): void {
+    if (opts?.reset === true) {
+      applyWorldParams(updates);
+    } else {
+      applyBalanceOverrides(updates);
+    }
     const event: WorldParamsEvent = {
       type: 'world.params',
       tick: this.tick,
       params: currentWorldParams(),
+    };
+    this.events.emit(event);
+  }
+
+  /** 世界规则运行时变更(游戏内设置菜单):合并后广播三字段全集,initialTimeScale 运行中不改 */
+  setRules(updates: { allowDeath?: boolean; allowChat?: boolean }): void {
+    if (updates.allowDeath !== undefined) this.rules.allowDeath = updates.allowDeath;
+    if (updates.allowChat !== undefined) this.rules.allowChat = updates.allowChat;
+    const event: WorldRulesEvent = {
+      type: 'world.rules',
+      tick: this.tick,
+      rules: {
+        allowDeath: this.rules.allowDeath,
+        allowChat: this.rules.allowChat,
+        initialTimeScale: this.rules.initialTimeScale,
+      },
     };
     this.events.emit(event);
   }
