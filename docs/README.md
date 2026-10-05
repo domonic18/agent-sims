@@ -21,7 +21,7 @@
 
 | # | 文档 | 说明 | 阅读时机 |
 |---|------|------|----------|
-| 00 | [00-总体架构设计.md](arch/00-总体架构设计.md) | 架构 v1: 选型总览/系统拓扑/目录组织/世界 tick/意图指令层/Agent 内核概览/四层决策路由/数据模型(含 asset 域)/后台管理/部署/关键决策记录 | 首次进入项目必读 |
+| 00 | [00-architecture.md](arch/00-architecture.md) | 架构 v1: 选型总览/系统拓扑/目录组织/世界 tick/意图指令层/Agent 内核概览/四层决策路由/数据模型(含 asset 域)/后台管理/部署/关键决策记录 | 首次进入项目必读 |
 
 ### design/(领域设计 · 各自单一权威)
 
@@ -51,9 +51,9 @@
 
 | # | 文档 | 说明 |
 |---|------|------|
-| 01 | [01-像素模拟人生与Agent代玩技术调研.md](research/01-像素模拟人生与Agent代玩技术调研.md) | 对标 Generative Agents/AI Town/Wild Willows;代玩两路线结论;成本风险 |
-| 02 | [02-架构选型调研.md](research/02-架构选型调研.md) | 同步/tick/Phaser+React;GenAgents 降本数据;双系统先例;后台/DB/飞书实测 |
-| 03 | [03-像素素材选型.md](research/03-像素素材选型.md) | 素材包对比与选型(初版 Kenney;v1.5 起已购 LimeZu 完整版,现状见 public/assets/README.md) |
+| 01 | [01-pixel-sims-agent-play-research.md](research/01-pixel-sims-agent-play-research.md) | 对标 Generative Agents/AI Town/Wild Willows;代玩两路线结论;成本风险 |
+| 02 | [02-tech-stack-research.md](research/02-tech-stack-research.md) | 同步/tick/Phaser+React;GenAgents 降本数据;双系统先例;后台/DB/飞书实测 |
+| 03 | [03-asset-pack-research.md](research/03-asset-pack-research.md) | 素材包对比与选型(初版 Kenney;v1.5 起已购 LimeZu 完整版,现状见 public/assets/README.md) |
 
 ## 背景速览(新会话先看这里)
 
