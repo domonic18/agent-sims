@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
 import { TOWN_MAP, WALK_SPEED_TILES_PER_TICK, type WorldEvent } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
-import { FURNITURE_SPRITES, PROPS, TILE, TILESET, CHARACTER, furnitureKey, propKey } from './assets';
+import { TILE } from './assets';
+import { registryOf } from './manifest';
 import {
   createCharacterAnims,
   syncCharacterViews,
-  textureKey,
   updateCharacterView,
   type CharacterRender,
 } from './character-view';
@@ -47,22 +47,18 @@ export class WorldScene extends Phaser.Scene {
   }
 
   preload(): void {
-    this.load.spritesheet(TILESET.key, TILESET.url, {
-      frameWidth: TILESET.frameWidth,
-      frameHeight: TILESET.frameHeight,
-      spacing: TILESET.spacing,
-    });
-    for (const variant of CHARACTER.variants) {
-      this.load.spritesheet(textureKey(variant), `/assets/character/char-${variant}.png`, {
-        frameWidth: CHARACTER.frameWidth,
-        frameHeight: CHARACTER.frameHeight,
-      });
-    }
-    for (const name of PROPS) {
-      this.load.image(propKey(name), `/assets/props/${name}.png`);
-    }
-    for (const name of FURNITURE_SPRITES) {
-      this.load.image(furnitureKey(name), `/assets/furniture/${name}.png`);
+    // 素材库 manifest 驱动加载(M-L.3):纹理 key=slug,anim 素灵表按帧尺寸切分
+    const registry = registryOf(this);
+    for (const asset of registry.manifest.assets) {
+      const url = `/assets/${asset.url}`;
+      if (asset.anim !== null) {
+        this.load.spritesheet(asset.slug, url, {
+          frameWidth: asset.anim.frameWidth,
+          frameHeight: asset.anim.frameHeight,
+        });
+      } else {
+        this.load.image(asset.slug, url);
+      }
     }
   }
 

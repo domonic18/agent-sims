@@ -29,3 +29,6 @@ build/
 # 素材库发布产物(从库幂等重建,不入库;源头在 workspace/asset-library + DB)
 apps/web/public/assets/library/
 apps/web/public/assets/manifest.json
+
+# 发布产物(app/nginx 共享挂载)
+workspace/assets-published/

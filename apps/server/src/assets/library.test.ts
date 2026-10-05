@@ -66,7 +66,7 @@ describe('buildImportPlan 首批清单', () => {
 });
 
 describe('AssetManifestSchema', () => {
-  it('已发布 manifest 通过协议校验(存在时)', () => {
+  it('已发布 manifest 通过协议校验(存在时)', async () => {
     // 发布产物被 gitignore,仅在本机存在;不存在时跳过(不阻塞 CI)
     let raw: string;
     try {
@@ -83,6 +83,15 @@ describe('AssetManifestSchema', () => {
       expect(parsed.data.version).toMatch(/^[0-9a-f]{8}$/);
       expect(parsed.data.assets.length).toBeGreaterThan(50);
       expect(parsed.data.assets.every((a) => a.url.startsWith('library/'))).toBe(true);
+      // 产物完整性:每条 manifest 记录对应文件实际存在(防"只写清单不拷文件"回归)
+      const { readdirSync } = await import('node:fs');
+      const libDir = fileURLToPath(
+        new URL('../../../web/public/assets/library', import.meta.url),
+      );
+      const files = new Set(readdirSync(libDir));
+      for (const asset of parsed.data.assets) {
+        expect(files.has(`${asset.slug}.png`)).toBe(true);
+      }
     }
   });
 });

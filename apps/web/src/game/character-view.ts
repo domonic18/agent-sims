@@ -8,18 +8,19 @@ import {
 import {
   ACTIVITY_EMOJI,
   ACTIVITY_POSES,
-  CHARACTER,
+  CHARACTER_ROW_OFFSETS,
   TILE,
   characterVariant,
 } from './assets';
+import { characterAnim, registryOf, type GameAssetRegistry } from './manifest';
 
 const BUBBLE_RADIUS = 8;
 const BUBBLE_Y = -38;
 /** 目标偏差超过该格数视为瞬移(重连/重生),直接吸附 */
 const SNAP_DISTANCE_TILES = 4;
 
-type Direction = keyof typeof CHARACTER.rows;
-type AnimGroup = keyof typeof CHARACTER.groups;
+type Direction = keyof typeof CHARACTER_ROW_OFFSETS;
+type AnimGroup = string;
 
 export interface CharacterRender {
   node: Phaser.GameObjects.Container;
@@ -72,27 +73,28 @@ export interface CharacterSnapshotView {
   activity: { activityId: string; elapsedMinutes: number; anchorKind: string | null } | null;
 }
 
+/** 变体 slug 即纹理 key(M-L.3:manifest 素材 key=slug) */
 export function textureKey(variant: string): string {
-  return `${CHARACTER.keyPrefix}-${variant}`;
+  return variant;
 }
 
 export function createCharacterAnims(scene: Phaser.Scene): void {
-  for (const variant of CHARACTER.variants) {
-    for (const group of Object.keys(CHARACTER.groups) as AnimGroup[]) {
-      for (const [dir, row] of Object.entries(CHARACTER.rows) as [Direction, number][]) {
-        const start = (CHARACTER.groups[group] + row) * CHARACTER.columns;
+  const registry = registryOf(scene);
+  for (const slug of registry.characterSlugs) {
+    const anim = characterAnim(registry, slug);
+    for (const group of Object.keys(anim.groups) as AnimGroup[]) {
+      const frameCount = anim.framesPerGroup[group];
+      if (frameCount === undefined) continue;
+      const fps = anim.fps[group] ?? 2;
+      for (const [dir, rowOffset] of Object.entries(CHARACTER_ROW_OFFSETS) as [Direction, number][]) {
+        const start = (anim.groups[group]! + rowOffset) * anim.columns;
         scene.anims.create({
-          key: animKey(variant, group, dir),
-          frames: scene.anims.generateFrameNumbers(textureKey(variant), {
+          key: animKey(slug, group, dir),
+          frames: scene.anims.generateFrameNumbers(slug, {
             start,
-            end: start + CHARACTER.framesPerGroup[group] - 1,
+            end: start + frameCount - 1,
           }),
-          frameRate:
-            group === 'walk'
-              ? CHARACTER.walkFps
-              : group === 'idle'
-                ? CHARACTER.idleFps
-                : CHARACTER.lieFps,
+          frameRate: fps,
           repeat: -1,
         });
       }
@@ -340,10 +342,12 @@ function createCharacterNode(
   id: string,
   name: string,
 ): { node: Phaser.GameObjects.Container; sprite: Phaser.GameObjects.Sprite; variant: string } {
-  const variant = characterVariant(id);
+  const registry: GameAssetRegistry = registryOf(scene);
+  const variant = characterVariant(id, registry.characterSlugs);
+  const anim = characterAnim(registry, variant);
   const node = scene.add.container(0, 0);
   const sprite = scene.add
-    .sprite(0, 0, textureKey(variant), (CHARACTER.groups.idle + CHARACTER.rows.down) * CHARACTER.columns)
+    .sprite(0, 0, textureKey(variant), (anim.groups.idle! + CHARACTER_ROW_OFFSETS.down) * anim.columns)
     .setOrigin(0.5, 0.82);
   const label = scene.add
     .text(0, -24, name, { fontSize: '10px', color: '#ffffff' })

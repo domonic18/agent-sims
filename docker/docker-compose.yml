@@ -26,13 +26,16 @@ services:
       dockerfile: docker/Dockerfile.server
     restart: unless-stopped
     volumes:
-      # 素材库文件(管理侧源头,发布产物由此生成;M-L.3 接 nginx 共享发布目录)
+      # 素材库文件(管理侧源头,发布产物由此生成)
       - ../workspace/asset-library:/app/workspace/asset-library
+      # 发布产物(与 web/nginx 共享,admin 发布即时生效)
+      - ../workspace/assets-published:/publish
     env_file: ../.env
     environment:
       # 默认 production(关闭 /debug/*);本地验证栈可在根 .env 置 development 打开调试端点
       NODE_ENV: ${NODE_ENV:-production}
       ASSET_LIBRARY_ROOT: /app/workspace/asset-library
+      ASSETS_PUBLISH_TARGET: /publish
       DATABASE_URL: postgres://sims:${POSTGRES_PASSWORD:-sims}@postgres:5432/agent_sims
     ports:
       - "${GAME_PORT:-3100}:3100" # 调试/Spike① 脚本直连;常规入口走 web 9000
@@ -54,6 +57,9 @@ services:
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-9000}:9000"
+    volumes:
+      # 素材发布产物(app 写入,nginx 经 /assets/library/ 提供)
+      - ../workspace/assets-published:/publish:ro
     depends_on:
       app:
         condition: service_healthy

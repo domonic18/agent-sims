@@ -190,23 +190,27 @@ export async function publishManifest(
 
   const libraryDir = path.join(targetDir, 'library');
   await mkdir(libraryDir, { recursive: true });
-  const entries = activeAssets.map((asset) => ({
-    id: asset.id,
-    slug: asset.slug,
-    name: asset.name,
-    domain: (categoryById.get(traceDomain(categoryById, asset.categoryId))?.slug ??
-      'outdoor') as AssetDomain,
-    categorySlug: categoryById.get(asset.categoryId)?.slug ?? '',
-    url: `library/${asset.slug}.png`,
-    width: asset.width,
-    height: asset.height,
-    gridW: asset.gridW,
-    gridH: asset.gridH,
-    anchor: asset.anchor,
-    anim: asset.animConfig ?? null,
-    tier: asset.tier,
-    tags: asset.tags,
-  }));
+  const entries = [];
+  for (const asset of activeAssets) {
+    await copyFile(path.join(libraryRoot, asset.filePath), path.join(libraryDir, `${asset.slug}.png`));
+    entries.push({
+      id: asset.id,
+      slug: asset.slug,
+      name: asset.name,
+      domain: (categoryById.get(traceDomain(categoryById, asset.categoryId))?.slug ??
+        'outdoor') as AssetDomain,
+      categorySlug: categoryById.get(asset.categoryId)?.slug ?? '',
+      url: `library/${asset.slug}.png`,
+      width: asset.width,
+      height: asset.height,
+      gridW: asset.gridW,
+      gridH: asset.gridH,
+      anchor: asset.anchor,
+      anim: asset.animConfig ?? null,
+      tier: asset.tier,
+      tags: asset.tags,
+    });
+  }
   const usedCategoryIds = new Set<number>();
   for (const asset of activeAssets) {
     usedCategoryIds.add(asset.categoryId);

@@ -1,9 +1,0 @@
-char-*.png 来源与授权(LimeZu Modern Interiors premade 角色裁切)
-# 源表: 2_Characters/Character_Generator/0_Premade_Characters/16x16/Premade_Character_{03,05,08,12,16,19}.png
-# 裁切: 896x656 源表(56 列 x 41 行,动画按行对组织),窗口 16x27 → 32px 帧,合成 288x384
-#       (9 列 x 12 行: rows0-3 行走 / rows4-7 待机 / rows8-11 躺卧),布局见 src/game/assets.ts。
-
-Premade Character sheets
-	- Author: LimeZu (https://limezu.itch.io/)
-	- License: 允许商用与修改,需署名 limezu.itch.io,禁止转售/再分发素材本体
-	- Pack: Modern Interiors (paid full version)

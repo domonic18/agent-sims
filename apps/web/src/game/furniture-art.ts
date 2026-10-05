@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import type { FurnitureDefinition } from '@sims/shared';
-import { TILE, furnitureKey } from './assets';
+import { TILE } from './assets';
 
 /**
  * 家具精灵摆放(LimeZu 16x16 裁切,自程序化绘制迁移):
@@ -9,8 +9,7 @@ import { TILE, furnitureKey } from './assets';
  */
 export function addFurnitureSprite(scene: Phaser.Scene, f: FurnitureDefinition): void {
   const name = f.kind === 'shelf' && f.w > f.h ? 'bench' : f.kind;
-  scene.add
-    .image((f.x + f.w / 2) * TILE, (f.y + f.h) * TILE, furnitureKey(name))
+  scene.add.image((f.x + f.w / 2) * TILE, (f.y + f.h) * TILE, name)
     .setOrigin(0.5, 1)
     .setDepth(3);
 }
