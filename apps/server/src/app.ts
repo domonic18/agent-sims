@@ -7,6 +7,7 @@ import { createDb } from './db/client.js';
 import { registerDebugRoutes } from './api/debug.js';
 import { ClientRegistry } from './socket/clients.js';
 import { attachSocketGateway } from './socket/gateway.js';
+import { attachWorldEventLog } from './world/event-log.js';
 import { Simulation } from './world/simulation.js';
 
 declare module 'fastify' {
@@ -33,6 +34,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   loadSysConfigOverridesOnce(handle).catch((err: unknown) => {
     app.log.warn({ err }, 'sys-config 覆盖加载失败,使用默认参数');
   });
+  attachWorldEventLog(handle, app.simulation.events);
   registerAdminApi(app, handle);
   if (env.NODE_ENV === 'development') {
     registerDebugRoutes(app, app.simulation, app.clients);

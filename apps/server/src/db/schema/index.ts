@@ -3,3 +3,4 @@ export * from './agent.js';
 export * from './memory.js';
 export * from './sys.js';
 export * from './asset.js';
+export * from './logs.js';

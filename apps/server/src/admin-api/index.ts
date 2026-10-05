@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DbHandle } from '../db/client.js';
 import { registerAssetRoutes } from './assets.js';
 import { registerAuthRoutes } from './auth.js';
+import { registerLogRoutes } from './logs.js';
 import { registerModelConfigRoutes } from './model-configs.js';
 import { registerSysConfigRoutes } from './sys-configs.js';
 import { registerTokenUsageRoutes } from './token-usage.js';
@@ -14,4 +15,5 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle): void {
   registerTokenUsageRoutes(app, handle);
   registerWorldRoutes(app, handle);
   registerAssetRoutes(app, handle);
+  registerLogRoutes(app, handle);
 }

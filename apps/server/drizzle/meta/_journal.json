@@ -50,6 +50,13 @@
       "when": 1791200756335,
       "tag": "0006_nifty_starhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791214697586,
+      "tag": "0007_curved_rage",
+      "breakpoints": true
     }
   ]
 }
