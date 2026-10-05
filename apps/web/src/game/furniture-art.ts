@@ -9,7 +9,10 @@ import { TILE } from './assets';
  */
 export function addFurnitureSprite(scene: Phaser.Scene, f: FurnitureDefinition): void {
   const fallbackKind = f.kind === 'shelf' && f.w > f.h ? 'bench' : f.kind;
-  scene.add.image((f.x + f.w / 2) * TILE, (f.y + f.h) * TILE, f.sprite ?? fallbackKind)
+  const key = f.sprite ?? fallbackKind;
+  // 扩展道具 kind(户外道具池)无 kind 同名兜底纹理:池空/清单滞后时回退盆栽
+  const texture = scene.textures.exists(key) ? key : 'plant';
+  scene.add.image((f.x + f.w / 2) * TILE, (f.y + f.h) * TILE, texture)
     .setOrigin(0.5, 1)
     .setDepth(3);
 }

@@ -126,9 +126,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
     sw: { x: 2, y: midY + 2, w: midX - 4, h: height - midY - 4 },
     se: { x: midX + 2, y: midY + 2, w: width - midX - 4, h: height - midY - 4 },
   };
-  const counters: Record<PlaceKind, number> = {
-    home: 0, library: 0, office: 0, shop: 0, restaurant: 0, gym: 0, park: 0,
-  };
+  const counters = new Map<PlaceKind, number>();
   // 分区级共享行排游标:同分区多 quota 场所依次接排,杜绝互相重叠
   const cursors = {
     nw: { x: zones.nw.x, y: zones.nw.y, rowHeight: 0 },
@@ -149,8 +147,9 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
         cursor.rowHeight = 0;
       }
       if (cursor.y + h > zone.y + zone.h) break;
-      counters[quota.kind] += 1;
-      const id = `${quota.kind}-${String.fromCharCode(96 + counters[quota.kind])}`;
+      const seq = (counters.get(quota.kind) ?? 0) + 1;
+      counters.set(quota.kind, seq);
+      const id = `${quota.kind}-${String.fromCharCode(96 + seq)}`;
       if (quota.kind === 'park') pond = parkPond(rng, cursor.x, cursor.y, w, h);
       const place = buildPlace(rng, quota.kind, id, cursor.x, cursor.y, w, h, pond, input.assetsByKind);
       places.push(place);
@@ -201,7 +200,22 @@ function parkPond(rng: Rng, x: number, y: number, w: number, h: number): Blocked
   return { x: x + 1, y: rng.int(y + 2, Math.max(y + 2, y + h - pondH - 1)), w: pondW, h: pondH };
 }
 
-/** 场所构建:门居南墙中点,入口在门外;室内地板/墙色随机;家具按模板布局 */
+/** 槽位素材池解析:主题道具池(theme/{slug}@{maxTiles})或域分键 kind 池({domain}/{kind}) */
+function slotPool(
+  slot: FurnitureSlot,
+  assetsByKind: Readonly<Record<string, readonly string[]>> | undefined,
+): readonly string[] {
+  if (slot.themePick !== undefined) {
+    const max = slot.themePick.maxTiles ?? 4;
+    return assetsByKind?.[`theme/${slot.themePick.theme}@${max}`] ?? [];
+  }
+  return assetsByKind?.[`${slot.domain ?? 'indoor'}/${slot.kind}`] ?? [];
+}
+
+type SlotWithPool = FurnitureSlot & { pool: readonly string[] };
+
+/** 场所构建:门居南墙中点,入口在门外;室内地板/墙色随机;家具按模板布局。
+ * 开放场所(公园类)无门无墙,入口在上缘。 */
 function buildPlace(
   rng: Rng,
   kind: PlaceKind,
@@ -214,8 +228,9 @@ function buildPlace(
   assetsByKind: Readonly<Record<string, readonly string[]>> | undefined,
 ): PlaceDefinition {
   const blueprint = PLACE_BLUEPRINTS[kind];
-  if (kind === 'park') {
-    const furniture = layoutFurniture(rng, x, y, w, h, blueprint.furniture, true, pond);
+  if (blueprint.open === true) {
+    const slots = blueprint.furniture.map((slot) => ({ ...slot, pool: slotPool(slot, assetsByKind) }));
+    const furniture = layoutFurniture(rng, x, y, w, h, slots, true, pond);
     return {
       id,
       name: blueprint.name,
@@ -229,15 +244,12 @@ function buildPlace(
   // 末轮剔除装饰类(chance 标记)只保核心锚点家具,确保必可达
   let furniture: PlaceDefinition['furniture'] = [];
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const slots =
+    const source =
       attempt < 2
         ? blueprint.furniture
         : blueprint.furniture.filter((slot) => slot.chance === undefined);
-    furniture = (layoutFurniture(rng, x, y, w, h, slots, false, null) ?? []).map((f) => {
-      // 素材库随机选材:同 kind 多素材时挑具体 sprite(多样性兑现)
-      const pool = assetsByKind?.[f.kind];
-      return pool !== undefined && pool.length > 0 ? { ...f, sprite: rng.pick([...pool]) } : f;
-    });
+    const slots = source.map((slot) => ({ ...slot, pool: slotPool(slot, assetsByKind) }));
+    furniture = layoutFurniture(rng, x, y, w, h, slots, false, null);
     if (interiorReachable(x, y, w, h, doorX, furniture)) break;
   }
   return {
@@ -284,17 +296,18 @@ function interiorReachable(
   return uses.every((use) => seen.has(cellKey(use.x, use.y)));
 }
 
-/** 家具布局器:按锚定语义(北墙/西墙/东墙/居中/南缘)行主序找空位,冲突跳过 */
+/** 家具布局器:按锚定语义(北墙/西墙/东墙/居中/南缘)行主序找空位,冲突跳过;
+ * 槽位带池时落位即随机选材(sprite) */
 function layoutFurniture(
   rng: Rng,
   px: number,
   py: number,
   pw: number,
   ph: number,
-  slots: readonly FurnitureSlot[],
+  slots: readonly SlotWithPool[],
   outdoor: boolean,
   pond: BlockedRect | null,
-): PlaceDefinition['furniture'] {
+): NonNullable<PlaceDefinition['furniture']> {
   // 占用网格:有墙场所=室内圈(px+1..px+pw-2);公园=整个场所(留边界)
   const minX = outdoor ? px + 1 : px + 1;
   const maxX = outdoor ? px + pw - 2 : px + pw - 2;
@@ -373,6 +386,8 @@ function layoutFurniture(
     }
     if (placed === null) continue;
     mark(placed.x, placed.y, slot.w, slot.h);
+    // 素材库随机选材:池非空即挑具体 sprite(缺省回退 kind 同名纹理)
+    const sprite = slot.pool.length > 0 ? rng.pick([...slot.pool]) : undefined;
     if (slot.activityId !== undefined) {
       const use = deriveUse(placed.x, placed.y, slot.w, slot.h, minX, maxX, minY, maxY, occupied);
       if (use === null) continue; // 无合法使用格(过度拥挤),放弃该件
@@ -386,9 +401,17 @@ function layoutFurniture(
         h: slot.h,
         activityId: slot.activityId,
         use,
+        ...(sprite !== undefined ? { sprite } : {}),
       });
     } else {
-      furniture.push({ kind: slot.kind, x: placed.x, y: placed.y, w: slot.w, h: slot.h });
+      furniture.push({
+        kind: slot.kind,
+        x: placed.x,
+        y: placed.y,
+        w: slot.w,
+        h: slot.h,
+        ...(sprite !== undefined ? { sprite } : {}),
+      });
     }
   }
   return furniture;

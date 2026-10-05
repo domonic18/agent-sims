@@ -50,7 +50,7 @@ export class WorldScene extends Phaser.Scene {
   preload(): void {
     // 素材库 manifest 驱动加载(M-L.3):纹理 key=slug,anim 素灵表按帧尺寸切分。
     // 全量导入后 active 达万级,按需加载——角色表/tile/固定装饰全量,
-    // 室内家具只加载当前地图引用的 slug(sprite 或 kind 兜底)
+    // 家具(室内+户外道具)只加载当前地图引用的 slug(sprite 或 kind 兜底)
     const registry = registryOf(this);
     const map = this.registry.get('map') as TileMapDefinition | null;
     const usedSlugs = new Set<string>();
@@ -66,7 +66,7 @@ export class WorldScene extends Phaser.Scene {
         asset.anim !== null ||
         asset.slug.startsWith('tile-') ||
         asset.categorySlug === 'props' ||
-        (asset.domain === 'indoor' && usedSlugs.has(asset.slug));
+        usedSlugs.has(asset.slug);
       if (!needed) continue;
       const url = `/assets/${asset.url}`;
       if (asset.anim !== null) {

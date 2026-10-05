@@ -109,3 +109,83 @@ describe('鲁棒性扩量(300 例:100 种子×3 密度)', () => {
     expect(fallback).toBe(0);
   });
 });
+
+describe('全量素材驱动的场所扩展(重规划)', () => {
+  /** 全 kind 全域素材池(键与 worlds.ts loadAssetsByKind 契约一致) */
+  const POOLS: Record<string, string[]> = {
+    ...Object.fromEntries(
+      ['bed', 'desk', 'workstation', 'treadmill', 'table', 'bookshelf', 'shelf', 'counter', 'sofa', 'plant', 'fridge', 'tv', 'wardrobe', 'bench'].map(
+        (k) => [`indoor/${k}`, [`${k}-a`, `${k}-b`]],
+      ),
+    ),
+    ...Object.fromEntries(
+      ['bench', 'tent', 'chair', 'table', 'barrel', 'sign', 'lantern'].map(
+        (k) => [`outdoor/${k}`, [`out-${k}-a`, `out-${k}-b`]],
+      ),
+    ),
+    'theme/beach@1': ['beach-shell-a', 'beach-bucket-a'],
+    'theme/beach@4': ['beach-towel-a', 'beach-castle-a'],
+    'theme/camping@1': ['camping-lantern-a', 'camping-backpack-a'],
+  };
+
+  const results = Array.from({ length: 50 }, (_, i) =>
+    generateTownMap(input(`pool-${i}`, { assetsByKind: POOLS })),
+  );
+  const allFurniture = results.flatMap((r) => r.map.places.flatMap((p) => p.furniture ?? []));
+
+  it('扩展场所会出现(50 种子并集非空);开放场所无门,室内扩展场所有门', () => {
+    const newVenueKinds = ['cafe', 'school', 'hotel', 'clinic', 'plaza', 'beach', 'camping'];
+    const openKinds = new Set(['park', 'plaza', 'beach', 'camping']);
+    const seen = new Set<string>();
+    for (const result of results) {
+      for (const place of result.map.places) {
+        const kind = place.id.split('-')[0]!;
+        if (newVenueKinds.includes(kind)) seen.add(kind);
+        if (openKinds.has(kind)) {
+          expect(place.door).toBeUndefined();
+        } else if (newVenueKinds.includes(kind)) {
+          expect(place.door).toBeDefined();
+        }
+      }
+    }
+    expect(seen.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it('池非空则家具必带 sprite,且选材来自对应池(域分键不混)', () => {
+    const allSlugs = new Set(Object.values(POOLS).flat());
+    for (const f of allFurniture) {
+      expect(f.sprite).toBeDefined();
+      expect(allSlugs.has(f.sprite!)).toBe(true);
+    }
+  });
+
+  it('主题道具池选材不越池(themePick 槽位仅出本主题道具)', () => {
+    const themeOf = (slug: string): string | null => {
+      if (slug.startsWith('beach-')) return 'beach';
+      if (slug.startsWith('camping-')) return 'camping';
+      return null;
+    };
+    for (const result of results) {
+      for (const place of result.map.places) {
+        const kind = place.id.split('-')[0];
+        if (kind !== 'beach' && kind !== 'camping') continue;
+        for (const f of place.furniture ?? []) {
+          // bench/tent 为 kind 池槽位,themePick 槽位才受主题约束
+          if (f.kind === 'bench' || f.kind === 'tent') continue;
+          expect(themeOf(f.sprite ?? '')).toBe(kind);
+        }
+      }
+    }
+  });
+
+  it('户外道具家具渲染占位与声明占地一致(不越界)', () => {
+    for (const result of results) {
+      for (const place of result.map.places) {
+        for (const f of place.furniture ?? []) {
+          expect(f.x).toBeGreaterThanOrEqual(place.x);
+          expect(f.y + f.h).toBeLessThanOrEqual(place.y + place.h);
+        }
+      }
+    }
+  });
+});

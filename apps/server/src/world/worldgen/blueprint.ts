@@ -1,9 +1,10 @@
-import type { ActivityId, FurnitureKind } from '@sims/shared';
+import type { ActivityId, AnyFurnitureKind } from '@sims/shared';
 
 /**
- * 生成蓝图(M-L.4):场所类型配额/尺寸档/家具布局模板/tile 池——
+ * 生成蓝图(M-L.4;全量素材驱动重规划):场所类型配额/尺寸档/家具布局模板/tile 池——
  * 布局模板保证语义锚点(rest/study/work/meal/workout)齐备是硬约束,
- * 自由度交给具体素材选配(素材库 manifest,后续迭代接入)。
+ * 自由度交给具体素材选配(素材库 manifest)。
+ * 建筑分两类:有墙内景(door+地板墙色)与开放场所(公园类,无门)。
  */
 
 export interface BlueprintPlace {
@@ -24,13 +25,22 @@ export type PlaceKind =
   | 'shop'
   | 'restaurant'
   | 'gym'
-  | 'park';
+  | 'park'
+  /** 室内扩展(M-G.0 重规划):锚点驱动,零活动代码接入 */
+  | 'cafe'
+  | 'school'
+  | 'hotel'
+  | 'clinic'
+  /** 户外开放场所:主题道具池布置 */
+  | 'plaza'
+  | 'beach'
+  | 'camping';
 
 export type Zone = 'nw' | 'ne' | 'sw' | 'se';
 
 /** 家具摆放指令:锚定语义由布局器解释(贴北墙/贴西墙/居中/占空位) */
 export interface FurnitureSlot {
-  kind: FurnitureKind;
+  kind: AnyFurnitureKind;
   w: number;
   h: number;
   anchor: 'north' | 'west' | 'east' | 'center' | 'south';
@@ -38,6 +48,13 @@ export interface FurnitureSlot {
   activityId?: ActivityId;
   /** 装饰类摆放概率(0=必选) */
   chance?: number;
+  /** 素材池域(缺省 indoor;户外道具池传 outdoor) */
+  domain?: 'indoor' | 'outdoor';
+  /**
+   * 主题道具池(户外开放场所装饰):从该主题 active 素材按占地上限随机;
+   * 声明后 kind 仅作标签,素材从 theme/{slug}@{maxTiles} 池挑选
+   */
+  themePick?: { theme: string; maxTiles?: number };
 }
 
 export const PLACE_BLUEPRINTS: Record<PlaceKind, {
@@ -45,6 +62,8 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
   size: ReadonlyArray<readonly [number, number]>;
   requiredAnchors: readonly ActivityId[];
   furniture: readonly FurnitureSlot[];
+  /** 开放场所(公园类):无门无墙,入口在上缘;池走户外道具 */
+  open?: boolean;
 }> = {
   home: {
     name: '公寓',
@@ -131,22 +150,129 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
     name: '公园',
     size: [[14, 10], [16, 10]],
     requiredAnchors: ['rest'],
+    open: true,
     furniture: [
       { kind: 'bench', w: 2, h: 1, anchor: 'center', activityId: 'rest' },
       { kind: 'bench', w: 2, h: 1, anchor: 'center', activityId: 'rest' },
     ],
   },
+  cafe: {
+    name: '咖啡馆',
+    size: [[9, 8], [12, 8]],
+    requiredAnchors: ['meal'],
+    furniture: [
+      { kind: 'counter', w: 2, h: 1, anchor: 'north' },
+      { kind: 'fridge', w: 1, h: 1, anchor: 'west', chance: 0.8 },
+      { kind: 'table', w: 2, h: 1, anchor: 'center', activityId: 'meal' },
+      { kind: 'table', w: 2, h: 1, anchor: 'center', activityId: 'meal' },
+      { kind: 'sofa', w: 2, h: 1, anchor: 'south', activityId: 'rest', chance: 0.8 },
+      { kind: 'tv', w: 2, h: 1, anchor: 'east', chance: 0.7 },
+      { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.6 },
+    ],
+  },
+  school: {
+    name: '学校',
+    size: [[12, 8]],
+    requiredAnchors: ['study'],
+    furniture: [
+      { kind: 'desk', w: 2, h: 1, anchor: 'north', activityId: 'study' },
+      { kind: 'desk', w: 2, h: 1, anchor: 'north', activityId: 'study' },
+      { kind: 'desk', w: 2, h: 1, anchor: 'center', activityId: 'study' },
+      { kind: 'desk', w: 2, h: 1, anchor: 'center', activityId: 'study' },
+      { kind: 'bookshelf', w: 3, h: 1, anchor: 'north', chance: 0.7 },
+      { kind: 'bookshelf', w: 2, h: 1, anchor: 'east', chance: 0.9 },
+      { kind: 'counter', w: 2, h: 1, anchor: 'west', chance: 0.6 },
+      { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.6 },
+    ],
+  },
+  hotel: {
+    name: '旅馆',
+    size: [[12, 8], [14, 8]],
+    requiredAnchors: ['rest'],
+    furniture: [
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'wardrobe', w: 1, h: 2, anchor: 'east', chance: 0.8 },
+      { kind: 'counter', w: 2, h: 1, anchor: 'west', chance: 0.8 },
+      { kind: 'sofa', w: 2, h: 1, anchor: 'south', activityId: 'rest', chance: 0.8 },
+      { kind: 'table', w: 2, h: 1, anchor: 'center', chance: 0.7 },
+      { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.7 },
+    ],
+  },
+  clinic: {
+    name: '诊所',
+    size: [[9, 8]],
+    requiredAnchors: ['rest'],
+    furniture: [
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'desk', w: 2, h: 1, anchor: 'north' },
+      { kind: 'bookshelf', w: 2, h: 1, anchor: 'east', chance: 0.8 },
+      { kind: 'counter', w: 2, h: 1, anchor: 'west', chance: 0.8 },
+      { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.6 },
+    ],
+  },
+  plaza: {
+    name: '市集广场',
+    size: [[12, 9], [14, 10]],
+    requiredAnchors: ['rest'],
+    open: true,
+    furniture: [
+      { kind: 'bench', w: 1, h: 1, anchor: 'center', activityId: 'rest', domain: 'outdoor' },
+      { kind: 'bench', w: 1, h: 1, anchor: 'center', activityId: 'rest', domain: 'outdoor' },
+      { kind: 'table', w: 1, h: 1, anchor: 'center', domain: 'outdoor', chance: 0.8 },
+      { kind: 'chair', w: 1, h: 1, anchor: 'center', domain: 'outdoor', chance: 0.7 },
+      { kind: 'barrel', w: 1, h: 1, anchor: 'center', domain: 'outdoor', chance: 0.7 },
+      { kind: 'sign', w: 1, h: 1, anchor: 'center', domain: 'outdoor', chance: 0.5 },
+      { kind: 'lantern', w: 1, h: 1, anchor: 'center', domain: 'outdoor', chance: 0.5 },
+    ],
+  },
+  beach: {
+    name: '海滩',
+    size: [[14, 10]],
+    requiredAnchors: ['rest'],
+    open: true,
+    furniture: [
+      { kind: 'bench', w: 1, h: 1, anchor: 'center', activityId: 'rest', domain: 'outdoor' },
+      { kind: 'beach-towel', w: 2, h: 2, anchor: 'center', themePick: { theme: 'beach', maxTiles: 4 }, chance: 0.9 },
+      { kind: 'beach-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'beach', maxTiles: 1 }, chance: 0.8 },
+      { kind: 'beach-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'beach', maxTiles: 1 }, chance: 0.6 },
+      { kind: 'beach-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'beach', maxTiles: 1 }, chance: 0.4 },
+    ],
+  },
+  camping: {
+    name: '露营地',
+    size: [[12, 9], [14, 10]],
+    requiredAnchors: ['rest'],
+    open: true,
+    furniture: [
+      { kind: 'bench', w: 1, h: 1, anchor: 'center', activityId: 'rest', domain: 'outdoor' },
+      { kind: 'tent', w: 1, h: 1, anchor: 'center', domain: 'outdoor', chance: 0.9 },
+      { kind: 'camping-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'camping', maxTiles: 1 }, chance: 0.8 },
+      { kind: 'camping-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'camping', maxTiles: 1 }, chance: 0.6 },
+      { kind: 'camping-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'camping', maxTiles: 1 }, chance: 0.4 },
+    ],
+  },
 };
 
-/** growth 配额:各分区场所清单(数量区间由密度参数在生成器内定) */
+/** growth 配额:各分区场所清单(数量区间由密度参数在生成器内定;
+ * [0,n] 区间为锦上添花型新场所——空间不足自然裁掉,不挤占核心七类) */
 export const GROWTH_QUOTA: ReadonlyArray<{ kind: PlaceKind; zone: Zone; count: [number, number] }> = [
   { kind: 'home', zone: 'sw', count: [3, 4] },
   { kind: 'park', zone: 'se', count: [1, 1] },
   { kind: 'library', zone: 'nw', count: [1, 1] },
   { kind: 'office', zone: 'nw', count: [1, 1] },
+  { kind: 'hotel', zone: 'nw', count: [0, 1] },
+  { kind: 'school', zone: 'nw', count: [0, 1] },
   { kind: 'shop', zone: 'ne', count: [1, 1] },
   { kind: 'restaurant', zone: 'ne', count: [1, 1] },
   { kind: 'gym', zone: 'ne', count: [1, 1] },
+  { kind: 'cafe', zone: 'ne', count: [0, 1] },
+  { kind: 'clinic', zone: 'ne', count: [0, 1] },
+  { kind: 'beach', zone: 'se', count: [0, 1] },
+  { kind: 'plaza', zone: 'se', count: [0, 1] },
+  { kind: 'camping', zone: 'sw', count: [0, 1] },
 ];
 
 /** 内景地板/墙体 tile 池(与素材库 tile slug 对应) */
