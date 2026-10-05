@@ -188,4 +188,22 @@ describe('全量素材驱动的场所扩展(重规划)', () => {
       }
     }
   });
+
+  it('themePick 池空的装饰槽不发出家具(kind 无同名纹理,必渲染缺素材)', () => {
+    const noCampingPool: Record<string, string[]> = Object.fromEntries(
+      Object.entries(POOLS).filter(([key]) => !key.startsWith('theme/camping')),
+    );
+    for (let i = 0; i < 20; i += 1) {
+      const result = generateTownMap(input(`empty-pool-${i}`, { assetsByKind: noCampingPool }));
+      expect(result.report.checks.fallback).toBe(false);
+      for (const place of result.map.places) {
+        if (place.id.split('-')[0] !== 'camping') continue;
+        for (const f of place.furniture ?? []) {
+          expect(f.kind).not.toBe('camping-prop');
+          // 池非空槽位照常带 sprite
+          expect(f.sprite).toBeDefined();
+        }
+      }
+    }
+  });
 });

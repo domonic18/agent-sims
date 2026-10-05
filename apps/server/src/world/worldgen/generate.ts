@@ -214,6 +214,16 @@ function slotPool(
 
 type SlotWithPool = FurnitureSlot & { pool: readonly string[] };
 
+/** 槽位解析:themePick 池空的装饰槽剔除(kind 仅作标签无同名纹理,发出必渲染缺纹理) */
+function resolvedSlots(
+  source: readonly FurnitureSlot[],
+  assetsByKind: Readonly<Record<string, readonly string[]>> | undefined,
+): SlotWithPool[] {
+  return source
+    .filter((slot) => slot.themePick === undefined || slotPool(slot, assetsByKind).length > 0)
+    .map((slot) => ({ ...slot, pool: slotPool(slot, assetsByKind) }));
+}
+
 /** 场所构建:门居南墙中点,入口在门外;室内地板/墙色随机;家具按模板布局。
  * 开放场所(公园类)无门无墙,入口在上缘。 */
 function buildPlace(
@@ -229,7 +239,7 @@ function buildPlace(
 ): PlaceDefinition {
   const blueprint = PLACE_BLUEPRINTS[kind];
   if (blueprint.open === true) {
-    const slots = blueprint.furniture.map((slot) => ({ ...slot, pool: slotPool(slot, assetsByKind) }));
+    const slots = resolvedSlots(blueprint.furniture, assetsByKind);
     const furniture = layoutFurniture(rng, x, y, w, h, slots, true, pond);
     return {
       id,
@@ -248,7 +258,7 @@ function buildPlace(
       attempt < 2
         ? blueprint.furniture
         : blueprint.furniture.filter((slot) => slot.chance === undefined);
-    const slots = source.map((slot) => ({ ...slot, pool: slotPool(slot, assetsByKind) }));
+    const slots = resolvedSlots(source, assetsByKind);
     furniture = layoutFurniture(rng, x, y, w, h, slots, false, null);
     if (interiorReachable(x, y, w, h, doorX, furniture)) break;
   }
