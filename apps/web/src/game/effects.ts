@@ -1,17 +1,21 @@
 import Phaser from 'phaser';
-import { TOWN_MAP } from '@sims/shared';
+import type { TileMapDefinition } from '@sims/shared';
 import { TILE } from './assets';
 import type { CharacterRender } from './character-view';
 
-const FOUNTAIN_RECT = { x: 30, y: 18, w: 3, h: 3 };
+/** 喷泉占地(仅内置地图广场有喷泉) */
+export const FOUNTAIN_RECT = { x: 30, y: 18, w: 3, h: 3 };
 
 /**
  * 夜间灯光层(M3.6i 收敛): 圆形光圈全部移除(路灯/围栏灯/公园/广场/门口透光),
  * 仅保有门建筑整屋暖色矩形(整间亮),灯柱本体仍由 terrain 绘制。
  */
-export function buildLightLayer(scene: Phaser.Scene): Phaser.GameObjects.Container {
+export function buildLightLayer(
+  scene: Phaser.Scene,
+  map: TileMapDefinition,
+): Phaser.GameObjects.Container {
   const layer = scene.add.container(0, 0).setDepth(101);
-  for (const place of TOWN_MAP.places) {
+  for (const place of map.places) {
     if (place.door === undefined) continue;
     // 整屋暖光: 覆盖场所占地的低强度矩形,ADD 混合随夜显隐
     const room = scene.add.graphics();
@@ -24,22 +28,24 @@ export function buildLightLayer(scene: Phaser.Scene): Phaser.GameObjects.Contain
   return layer;
 }
 
-/** 广场喷泉: 石池+立柱+水面,每 ~200ms 按正弦相位重绘波纹 */
+/** 广场喷泉: 石池+立柱+水面,每 ~200ms 按正弦相位重绘波纹(rect=null 不绘制) */
 export class FountainFx {
   private _gfx: Phaser.GameObjects.Graphics | null = null;
   private _lastAt = 0;
 
+  constructor(private readonly _rect: { x: number; y: number; w: number; h: number } | null) {}
+
   update(scene: Phaser.Scene, now: number): void {
-    if (now - this._lastAt < 200) return;
+    if (this._rect === null || now - this._lastAt < 200) return;
     this._lastAt = now;
     if (this._gfx === null) {
       this._gfx = scene.add.graphics().setDepth(2);
     }
     const g = this._gfx;
     g.clear();
-    const px = FOUNTAIN_RECT.x * TILE;
-    const py = FOUNTAIN_RECT.y * TILE;
-    const size = FOUNTAIN_RECT.w * TILE;
+    const px = this._rect.x * TILE;
+    const py = this._rect.y * TILE;
+    const size = this._rect.w * TILE;
     g.fillStyle(0x9a9aa2, 1);
     g.fillRoundedRect(px + 1, py + 1, size - 2, size - 2, 5); // 石池外圈
     g.fillStyle(0x7d7d85, 1);

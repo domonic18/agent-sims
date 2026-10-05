@@ -44,6 +44,14 @@ const WALL_OF: Record<string, string> = {
   gym: TILE_SLUG.wallGrey,
 };
 
+/** 开放场所(无门)→ 铺装 tile,按 kind 前缀取(缺省公园草皮) */
+const OPEN_FLOOR_OF: Record<string, string> = {
+  park: TILE_SLUG.parkGrass,
+  plaza: TILE_SLUG.plaza,
+  beach: TILE_SLUG.path,
+  camping: TILE_SLUG.parkGrass,
+};
+
 export const inRect = (
   x: number,
   y: number,
@@ -88,6 +96,8 @@ export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
       drawPark(scene, map, place);
     } else if (place.door !== undefined) {
       drawInterior(scene, place);
+    } else {
+      drawOpenPlace(scene, map, place);
     }
     scene.add
       .text(place.x * TILE + (place.w * TILE) / 2, place.y * TILE + 2, place.name, {
@@ -167,6 +177,28 @@ function drawInterior(scene: Phaser.Scene, place: PlaceDefinition): void {
     const g = scene.add.graphics().setDepth(1);
     g.fillStyle(0x000000, 0.18);
     g.fillRect(place.door.x * TILE + 1, (place.door.y + 1) * TILE - 4, TILE - 2, 3);
+  }
+  for (const furniture of place.furniture ?? []) {
+    addFurnitureSprite(scene, furniture);
+  }
+}
+
+/**
+ * 开放场所(M 重规划): 海滩/广场/营地/生成公园等无门场所——
+ * 整块铺装(kind 前缀选地面)+ 地图数据家具(户外道具池选材)直绘;
+ * 生成公园补稀疏花丛,与内置公园观感一致。
+ */
+function drawOpenPlace(scene: Phaser.Scene, map: TileMapDefinition, place: PlaceDefinition): void {
+  const kind = place.id.split('-')[0]!;
+  fillPlace(scene, map, place, OPEN_FLOOR_OF[kind] ?? TILE_SLUG.parkGrass);
+  if (kind === 'park') {
+    const flowers = [TILE_SLUG.flowerA, TILE_SLUG.flowerB, TILE_SLUG.flowerC];
+    for (let y = place.y; y < place.y + place.h; y += 1) {
+      for (let x = place.x; x < place.x + place.w; x += 1) {
+        if (inRect(x, y, map.decor?.pond ?? POND_RECT)) continue;
+        if ((x * 7 + y * 5) % 13 === 0) overlay(scene, x, y, flowers[(x + y) % flowers.length]!);
+      }
+    }
   }
   for (const furniture of place.furniture ?? []) {
     addFurnitureSprite(scene, furniture);

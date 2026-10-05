@@ -1,12 +1,12 @@
 import Phaser from 'phaser';
-import { TOWN_MAP } from '@sims/shared';
+import type { TileMapDefinition } from '@sims/shared';
 import { sendIntent } from '../net/socket';
 import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
 import { TILE } from './assets';
 import type { CharacterRender } from './character-view';
 import { inRect } from './terrain';
-import { isWalkable } from './walkability';
+import { createIsWalkable } from './walkability';
 
 /** WASD 连续行进(M3.6g 验收反馈①): 按住时前瞻整段下发,路径余量 ≤ 该值即提前续路 */
 const WASD_EXTEND_TILES = 3;
@@ -28,11 +28,12 @@ export function handleMapClick(
   pointer: Phaser.Input.Pointer,
   views: Map<string, CharacterRender>,
   interactive: boolean,
+  map: TileMapDefinition,
 ): void {
   const world = scene.cameras.main.getWorldPoint(pointer.x, pointer.y);
   const tx = Math.floor(world.x / TILE);
   const ty = Math.floor(world.y / TILE);
-  if (tx < 0 || ty < 0 || tx >= TOWN_MAP.width || ty >= TOWN_MAP.height) return;
+  if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return;
 
   for (const [id, view] of views) {
     const hit =
@@ -48,7 +49,7 @@ export function handleMapClick(
   // 纯观看页(主页面): 点选角色跟随即可,不下发移动/定位
   if (!interactive) return;
 
-  const place = TOWN_MAP.places.find((p) => p.id !== 'park' && inRect(tx, ty, p));
+  const place = map.places.find((p) => p.door !== undefined && inRect(tx, ty, p));
   if (place !== undefined) {
     useWorldStore.getState().focusPlace(place.id);
     pushToast(true, `已定位「${place.name}」`);
@@ -85,8 +86,9 @@ export class KeyboardController {
   private _pressedAt = 0;
   /** 持住续路是否发过前瞻段(松手急停仅据此判定,快照余量滞后不可依赖) */
   private _hasHoldPath = false;
+  private readonly _isWalkable: (x: number, y: number) => boolean;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, map: TileMapDefinition) {
     const keyboard = scene.input.keyboard;
     this._keys =
       keyboard !== null
@@ -95,6 +97,7 @@ export class KeyboardController {
             Phaser.Input.Keyboard.Key
           >)
         : null;
+    this._isWalkable = createIsWalkable(map);
   }
 
   step(time: number): void {
@@ -162,7 +165,7 @@ export class KeyboardController {
     let tx = character.x;
     let ty = character.y;
     for (let i = 0; i < WASD_LOOKAHEAD_TILES; i += 1) {
-      if (!isWalkable(tx + dir.dx, ty + dir.dy)) break;
+      if (!this._isWalkable(tx + dir.dx, ty + dir.dy)) break;
       tx += dir.dx;
       ty += dir.dy;
     }

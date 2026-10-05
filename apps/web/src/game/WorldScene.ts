@@ -1,16 +1,15 @@
 import Phaser from 'phaser';
-import { TOWN_MAP, WALK_SPEED_TILES_PER_TICK, type WorldEvent } from '@sims/shared';
+import { WALK_SPEED_TILES_PER_TICK, type TileMapDefinition, type WorldEvent } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
 import { TILE } from './assets';
 import { registryOf } from './manifest';
-import type { TileMapDefinition } from '@sims/shared';
 import {
   createCharacterAnims,
   syncCharacterViews,
   updateCharacterView,
   type CharacterRender,
 } from './character-view';
-import { buildLightLayer, drawSelectionRing, FountainFx } from './effects';
+import { buildLightLayer, drawSelectionRing, FOUNTAIN_RECT, FountainFx } from './effects';
 import { handleMapClick, KeyboardController } from './input';
 import { drawTownMap } from './terrain';
 import { showSpeechBubble } from './speech';
@@ -27,13 +26,15 @@ const ZOOM_MAX = 4;
  */
 export class WorldScene extends Phaser.Scene {
   private readonly _views = new Map<string, CharacterRender>();
+  /** 当前世界地图(创建时从 registry 取,相机/灯光/点击统一以此为源) */
+  private _map: TileMapDefinition | null = null;
   private _nightOverlay: Phaser.GameObjects.Rectangle | null = null;
   /** 夜间灯光层(户外光圈+整屋暖光矩形),alpha 随 isNight 插值 */
   private _lightLayer: Phaser.GameObjects.Container | null = null;
   /** 选中角色脚下呼吸椭圆环 */
   private _selectionRing: Phaser.GameObjects.Graphics | null = null;
-  /** 广场喷泉波纹动画 */
-  private readonly _fountain = new FountainFx();
+  /** 广场喷泉波纹动画(仅内置地图有喷泉;生成地图置 null 不绘制) */
+  private _fountain = new FountainFx(null);
   /** 方向键/WASD 连续移动控制器(仅 /lab 交互模式挂载) */
   private _keyboard: KeyboardController | null = null;
   /** 当前相机跟随的角色 id,null = 全图概览 */
@@ -66,6 +67,7 @@ export class WorldScene extends Phaser.Scene {
         asset.anim !== null ||
         asset.slug.startsWith('tile-') ||
         asset.categorySlug === 'props' ||
+        asset.slug === 'plant' || // 家具缺素材的兜底纹理(见 furniture-art),恒加载
         usedSlugs.has(asset.slug);
       if (!needed) continue;
       const url = `/assets/${asset.url}`;
@@ -82,25 +84,28 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#8fc978');
-    drawTownMap(this, this.registry.get('map') as TileMapDefinition);
+    const map = (this._map = this.registry.get('map') as TileMapDefinition);
+    drawTownMap(this, map);
     createCharacterAnims(this);
     this._nightOverlay = this.add
-      .rectangle(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE, 0x081024, 1)
+      .rectangle(0, 0, map.width * TILE, map.height * TILE, 0x081024, 1)
       .setOrigin(0, 0)
       .setAlpha(0)
       .setDepth(100);
-    this._lightLayer = buildLightLayer(this);
+    this._lightLayer = buildLightLayer(this, map);
     this._selectionRing = this.add.graphics().setDepth(9);
+    // 喷泉是内置地图广场的固定装饰;生成地图无此物件不绘制
+    this._fountain = new FountainFx(map.places.some((p) => p.id === 'park') ? FOUNTAIN_RECT : null);
 
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE);
+    cam.setBounds(0, 0, map.width * TILE, map.height * TILE);
     cam.setZoom(ZOOM_DEFAULT);
     this._interactive = this.registry.get('interactive') !== false;
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) =>
-      handleMapClick(this, pointer, this._views, this._interactive),
+      handleMapClick(this, pointer, this._views, this._interactive, map),
     );
     if (this._interactive) {
-      this._keyboard = new KeyboardController(this);
+      this._keyboard = new KeyboardController(this, map);
     }
     this.input.on(
       'wheel',
@@ -114,13 +119,15 @@ export class WorldScene extends Phaser.Scene {
         const factor = dy > 0 ? 0.85 : 1.18;
         cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, ZOOM_MIN, ZOOM_MAX));
         if (cam.zoom <= ZOOM_MIN) {
-          cam.centerOn((TOWN_MAP.width * TILE) / 2, (TOWN_MAP.height * TILE) / 2);
+          cam.centerOn((map.width * TILE) / 2, (map.height * TILE) / 2);
         } else {
           // 保持指针下的世界坐标不动(围绕指针缩放)
           cam.setScroll(anchor.x - pointer.x / cam.zoom, anchor.y - pointer.y / cam.zoom);
         }
       },
     );
+    // /lab 调试钩子: Playwright 走查直接读改相机(定位截图/输入诊断)
+    (window as unknown as { __worldScene?: WorldScene }).__worldScene = this;
   }
 
   override update(time: number, delta: number): void {
@@ -143,8 +150,10 @@ export class WorldScene extends Phaser.Scene {
     // 1 tick = 1 游戏分钟,倍率加快 tick 频率 → 插值与步频随 timeScale 放大
     const now = this.time.now;
     const step = (delta / 1000) * (snapshot?.timeScale ?? 1) * WALK_SPEED_TILES_PER_TICK;
-    for (const view of this._views.values()) {
-      updateCharacterView(this, view, step, now);
+    if (this._map !== null) {
+      for (const view of this._views.values()) {
+        updateCharacterView(this, view, step, now, this._map);
+      }
     }
     if (this._selectionRing !== null) {
       drawSelectionRing(this._selectionRing, now, selectedCharacterId, this._views);
@@ -168,13 +177,14 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private _updateCamera(selectedId: string | null): void {
+    if (this._map === null) return;
     const cam = this.cameras.main;
     const desired = cam.zoom > ZOOM_MIN && selectedId !== null ? selectedId : null;
     if (desired === this._followId) return;
     const view = desired !== null ? this._views.get(desired) : undefined;
     if (desired === null) {
       cam.stopFollow();
-      cam.centerOn((TOWN_MAP.width * TILE) / 2, (TOWN_MAP.height * TILE) / 2);
+      cam.centerOn((this._map.width * TILE) / 2, (this._map.height * TILE) / 2);
       this._followId = null;
     } else if (view !== undefined) {
       cam.startFollow(view.node, true, 0.15, 0.15);

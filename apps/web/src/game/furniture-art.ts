@@ -10,7 +10,9 @@ import { TILE } from './assets';
 export function addFurnitureSprite(scene: Phaser.Scene, f: FurnitureDefinition): void {
   const fallbackKind = f.kind === 'shelf' && f.w > f.h ? 'bench' : f.kind;
   const key = f.sprite ?? fallbackKind;
-  // 扩展道具 kind(户外道具池)无 kind 同名兜底纹理:池空/清单滞后时回退盆栽
+  // 兜底链: 素材 slug → kind 同名 → 盆栽;全缺(旧世界/清单滞后)不画,
+  // 否则 Phaser 对缺失 key 落 __MISSING 纹理渲染成黑底方块
+  if (!scene.textures.exists(key) && !scene.textures.exists('plant')) return;
   const texture = scene.textures.exists(key) ? key : 'plant';
   scene.add.image((f.x + f.w / 2) * TILE, (f.y + f.h) * TILE, texture)
     .setOrigin(0.5, 1)

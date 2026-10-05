@@ -1,9 +1,11 @@
 import { TOWN_MAP } from '@sims/shared';
 import { describe, expect, it } from 'vitest';
-import { isWalkable } from './walkability';
+import { createIsWalkable } from './walkability';
 
 /** web 首个单测(M3.6h):可行走判定与 server TileMap 同规则的回归锚点 */
 describe('可行走判定', () => {
+  const isWalkable = createIsWalkable(TOWN_MAP);
+
   it('边界墙与越界不可行走', () => {
     expect(isWalkable(0, 0)).toBe(false);
     expect(isWalkable(TOWN_MAP.width - 1, 5)).toBe(false);

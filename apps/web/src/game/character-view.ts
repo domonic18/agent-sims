@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
 import {
   LOW_ENERGY_THRESHOLD,
-  TOWN_MAP,
   getActivityDefinition,
   type ActivityId,
+  type TileMapDefinition,
 } from '@sims/shared';
 import {
   ACTIVITY_EMOJI,
@@ -164,6 +164,7 @@ export function updateCharacterView(
   view: CharacterRender,
   step: number,
   now: number,
+  map: TileMapDefinition,
 ): void {
   const dx = view.targetX - view.x;
   const dy = view.targetY - view.y;
@@ -188,7 +189,9 @@ export function updateCharacterView(
         ? view.activityId
         : null;
     const anchor =
-      snapActivity !== null ? nearestAnchorCenter(snapActivity, view.x, view.y, view.anchorKind) : null;
+      snapActivity !== null
+        ? nearestAnchorCenter(snapActivity, view.x, view.y, view.anchorKind, map)
+        : null;
     view.resting = snapActivity === 'rest' && anchor !== null;
     if (anchor !== null) {
       drawX = anchor.cx;
@@ -213,10 +216,11 @@ function nearestAnchorCenter(
   x: number,
   y: number,
   kind: string | null,
+  map: TileMapDefinition,
 ): { cx: number; cy: number } | null {
   let best: { cx: number; cy: number } | null = null;
   let bestDist = Number.POSITIVE_INFINITY;
-  for (const place of TOWN_MAP.places) {
+  for (const place of map.places) {
     for (const f of place.furniture ?? []) {
       if (f.activityId !== activityId) continue;
       if (kind !== null && f.kind !== kind) continue;
