@@ -1,14 +1,8 @@
-import { randomBytes, scryptSync } from 'node:crypto';
 import { MODEL_SLOTS } from '@sims/shared';
 import { env } from '../../config/env.js';
 import { createDb } from '../client.js';
 import { adminUsers, modelConfigs, worldState } from '../schema/index.js';
-
-function hashPassword(password: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(password, salt, 64).toString('hex');
-  return `scrypt:${salt}:${hash}`;
-}
+import { hashPassword } from '../../utils/crypto.js';
 
 const { db, client } = createDb(env.DATABASE_URL);
 try {

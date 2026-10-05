@@ -123,6 +123,8 @@ export interface AdminLoginResponse {
 
 export const ADMIN_API = {
   login: '/api/admin/auth/login',
+  me: '/api/admin/auth/me',
+  changePassword: '/api/admin/auth/change-password',
   modelConfigs: '/api/admin/model-configs',
   modelConfig: (slot: ModelSlot) => `/api/admin/model-configs/${slot}`,
   modelConfigTest: (slot: ModelSlot) => `/api/admin/model-configs/${slot}/test`,

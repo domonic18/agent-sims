@@ -71,6 +71,20 @@ export async function fetchModelConfigs(): Promise<ModelConfigView[]> {
   return await adminFetch<ModelConfigView[]>(ADMIN_API.modelConfigs);
 }
 
+export async function fetchMe(): Promise<{ username: string }> {
+  return await adminFetch<{ username: string }>(ADMIN_API.me);
+}
+
+export async function changePassword(payload: {
+  oldPassword: string;
+  newPassword: string;
+}): Promise<{ ok: true }> {
+  return await adminFetch<{ ok: true }>(ADMIN_API.changePassword, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function updateModelConfig(
   slot: ModelSlot,
   data: ModelConfigUpdate,
