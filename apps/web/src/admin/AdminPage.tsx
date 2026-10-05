@@ -1,4 +1,27 @@
 import { useCallback, useEffect, useState } from 'react';
+import {
+  App as AntdApp,
+  Avatar,
+  Button,
+  Card,
+  ConfigProvider,
+  Dropdown,
+  Form,
+  Input,
+  Layout,
+  Menu,
+  type MenuProps,
+} from 'antd';
+import {
+  BarChartOutlined,
+  GlobalOutlined,
+  LogoutOutlined,
+  RobotOutlined,
+  SettingOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
+import zhCN from 'antd/locale/zh_CN';
+import 'dayjs/locale/zh-cn';
 import type { ModelConfigView } from '@sims/shared';
 import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } from './api';
 import { ModelConfigPanel } from './ModelConfigPanel';
@@ -8,71 +31,74 @@ import { SettingsPanel } from './SettingsPanel';
 import './admin.css';
 
 function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const { message } = AntdApp.useApp();
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const onFinish = async (values: { username: string; password: string }) => {
     setSubmitting(true);
-    setError(null);
     try {
-      const result = await login({ username, password });
+      const result = await login({ username: values.username, password: values.password });
       setToken(result.token);
-      onSuccess(username);
+      onSuccess(values.username);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败');
+      message.error(err instanceof Error ? err.message : '登录失败');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="admin-login">
-      <form className="admin-login-card" onSubmit={handleSubmit}>
-        <h1>agent-sims 后台</h1>
-        <label>
-          用户名
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
-        </label>
-        <label>
-          密码
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            autoFocus
-          />
-        </label>
-        {error && <p className="admin-error">{error}</p>}
-        <button type="submit" disabled={submitting || !password}>
-          {submitting ? '登录中…' : '登录'}
-        </button>
-      </form>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f5f5f5',
+      }}
+    >
+      <Card title="agent-sims 后台" style={{ width: 360 }}>
+        <Form
+          layout="vertical"
+          requiredMark={false}
+          initialValues={{ username: 'admin' }}
+          onFinish={(values) => void onFinish(values)}
+        >
+          <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
+            <Input autoComplete="username" />
+          </Form.Item>
+          <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+            <Input.Password autoComplete="current-password" autoFocus />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" block loading={submitting}>
+            登录
+          </Button>
+        </Form>
+      </Card>
     </div>
   );
 }
 
 type AdminTab = 'world' | 'models' | 'usage' | 'settings';
 
-const NAV_GROUPS: Array<{ label: string; items: Array<{ key: AdminTab; icon: string; label: string }> }> = [
+const NAV_ITEMS: MenuProps['items'] = [
   {
+    type: 'group',
     label: '运营',
-    items: [
-      { key: 'world', icon: '🌍', label: '世界管理' },
-      { key: 'models', icon: '🤖', label: '模型配置' },
-      { key: 'usage', icon: '📊', label: 'Token 用量' },
+    children: [
+      { key: 'world', icon: <GlobalOutlined />, label: '世界管理' },
+      { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
+      { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
     ],
   },
   {
+    type: 'group',
     label: '系统',
-    items: [{ key: 'settings', icon: '⚙️', label: '系统设置' }],
+    children: [{ key: 'settings', icon: <SettingOutlined />, label: '系统设置' }],
   },
 ];
 
-export default function AdminPage() {
+function AdminShell() {
   const [authed, setAuthed] = useState(() => getToken() !== null);
   const [username, setUsername] = useState('');
   const [tab, setTab] = useState<AdminTab>('world');
@@ -102,48 +128,73 @@ export default function AdminPage() {
   }, [authed, tab, load]);
 
   if (!authed) {
-    return <LoginForm onSuccess={(name) => { setUsername(name); setAuthed(true); }} />;
+    return (
+      <LoginForm
+        onSuccess={(name) => {
+          setUsername(name);
+          setAuthed(true);
+        }}
+      />
+    );
   }
 
+  const logout = () => {
+    clearToken();
+    setConfigs(null);
+    setAuthed(false);
+  };
+
   return (
-    <div className="admin-shell">
-      <aside className="admin-sidebar">
-        <div className="admin-sidebar-brand">agent-sims 后台</div>
-        <nav className="admin-nav">
-          {NAV_GROUPS.map((group) => (
-            <div key={group.label}>
-              <p className="admin-nav-group">{group.label}</p>
-              {group.items.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={tab === item.key ? 'admin-nav-item active' : 'admin-nav-item'}
-                  onClick={() => setTab(item.key)}
-                >
-                  <span className="admin-nav-icon">{item.icon}</span>
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
-        <div className="admin-sidebar-foot">
-          <span className="admin-sidebar-user">{username || '已登录'}</span>
-          <button
-            type="button"
-            className="admin-secondary"
-            onClick={() => {
-              clearToken();
-              setConfigs(null);
-              setAuthed(false);
+    <Layout style={{ minHeight: '100vh' }}>
+      <Layout.Sider
+        width={220}
+        theme="light"
+        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}
+      >
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div
+            style={{
+              padding: '18px 16px',
+              fontSize: 15,
+              fontWeight: 600,
+              borderBottom: '1px solid #f0f0f0',
             }}
           >
-            退出登录
-          </button>
+            agent-sims 后台
+          </div>
+          <Menu
+            mode="inline"
+            items={NAV_ITEMS}
+            selectedKeys={[tab]}
+            onClick={({ key }) => setTab(key as AdminTab)}
+            style={{ flex: 1, borderInlineEnd: 'none' }}
+          />
+          <div
+            style={{
+              padding: '12px 16px',
+              borderTop: '1px solid #f0f0f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <span
+              style={{ fontSize: 12, color: '#57606a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            >
+              {username || '已登录'}
+            </span>
+            <Dropdown
+              menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: logout }] }}
+              trigger={['click']}
+            >
+              <Avatar size="small" icon={<UserOutlined />} style={{ cursor: 'pointer', flexShrink: 0 }} />
+            </Dropdown>
+          </div>
         </div>
-      </aside>
-      <main className="admin-main">
-        <div className="admin-content">
+      </Layout.Sider>
+      <Layout.Content style={{ padding: 24 }}>
+        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           {tab === 'world' ? (
             <WorldPanel />
           ) : tab === 'usage' ? (
@@ -161,7 +212,18 @@ export default function AdminPage() {
             </>
           )}
         </div>
-      </main>
-    </div>
+      </Layout.Content>
+    </Layout>
+  );
+}
+
+/** ConfigProvider/AntdApp 挂在本页内部(非 main.tsx):antd 及其 CSS-in-JS 只进 admin chunk */
+export default function AdminPage() {
+  return (
+    <ConfigProvider locale={zhCN}>
+      <AntdApp>
+        <AdminShell />
+      </AntdApp>
+    </ConfigProvider>
   );
 }
