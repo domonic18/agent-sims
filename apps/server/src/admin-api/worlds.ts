@@ -2,10 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  DEFAULT_WORLD_RULES,
   GENDERS,
   TRAIT_KEYS,
   WORLD_CHARACTER_LIMITS,
+  WORLD_TIME_SCALES,
   type CreateWorldRequest,
+  type WorldRules,
+  type WorldTimeScale,
   type WorldView,
 } from '@sims/shared';
 import { z } from 'zod';
@@ -22,13 +26,35 @@ const characterSchema = z.object({
   modelSlot: z.string().max(40).optional(),
 });
 
+const rulesSchema = z.object({
+  allowDeath: z.boolean(),
+  allowChat: z.boolean(),
+  initialTimeScale: z
+    .number()
+    .int()
+    .refine((value): value is WorldTimeScale =>
+      (WORLD_TIME_SCALES as readonly number[]).includes(value), {
+      message: `可用档位: ${WORLD_TIME_SCALES.join('/')}`,
+    }),
+});
+
 const createSchema = z.object({
   name: z.string().trim().min(1, '世界名不能为空').max(40),
   characters: z
     .array(characterSchema)
     .min(WORLD_CHARACTER_LIMITS.min, `至少 ${WORLD_CHARACTER_LIMITS.min} 个人物`)
     .max(WORLD_CHARACTER_LIMITS.max, `至多 ${WORLD_CHARACTER_LIMITS.max} 个人物`),
+  rules: rulesSchema.partial().optional(),
 });
+
+/** 旧世界无 rules 或部分缺省时逐项兜底默认值 */
+function normalizeRules(partial: Partial<WorldRules> | undefined): WorldRules {
+  return {
+    allowDeath: partial?.allowDeath ?? DEFAULT_WORLD_RULES.allowDeath,
+    allowChat: partial?.allowChat ?? DEFAULT_WORLD_RULES.allowChat,
+    initialTimeScale: partial?.initialTimeScale ?? DEFAULT_WORLD_RULES.initialTimeScale,
+  };
+}
 
 function toView(row: typeof worlds.$inferSelect): WorldView {
   const config = row.config as CreateWorldRequest;
@@ -37,6 +63,7 @@ function toView(row: typeof worlds.$inferSelect): WorldView {
     name: row.name,
     status: row.status as WorldView['status'],
     characters: config.characters ?? [],
+    rules: normalizeRules(config.rules),
     createdAt: row.createdAt.toISOString(),
     closedAt: row.closedAt?.toISOString() ?? null,
   };
@@ -67,7 +94,8 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       }
       return await reply.code(400).send({ error: '请求参数不合法' });
     }
-    const config: CreateWorldRequest = parsed.data;
+    const rules = normalizeRules(parsed.data.rules);
+    const config: CreateWorldRequest = { ...parsed.data, rules };
     // 出生点预检(防御):SPAWN_SPOTS 按序分配,不足或不可行走即拒绝,避免半开世界
     const spots = BALANCE.SPAWN_SPOTS.slice(0, config.characters.length);
     if (spots.length < config.characters.length) {
@@ -93,6 +121,8 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
 
     // 重置模拟现场并按配置批量出生(DB 已落世界记录,sim 侧纯内存操作不再失败)
     app.simulation.reset();
+    app.simulation.rules = rules;
+    app.simulation.timeScale = rules.initialTimeScale;
     const simIds: string[] = [];
     for (const [index, character] of config.characters.entries()) {
       const spot = spots[index]!;
@@ -131,7 +161,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
 
     await handle.db
       .update(worldState)
-      .set({ tick: 0, paused: false, timeScale: BALANCE.DEFAULT_TIME_SCALE, updatedAt: new Date() })
+      .set({ tick: 0, paused: false, timeScale: rules.initialTimeScale, updatedAt: new Date() })
       .where(eq(worldState.id, 1));
 
     return await reply.code(201).send({ ...toView(row), simIds });

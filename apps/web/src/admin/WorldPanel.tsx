@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  DEFAULT_WORLD_RULES,
   GENDERS,
   GENDER_LABELS,
   WORLD_CHARACTER_LIMITS,
+  WORLD_TIME_SCALES,
   pickRandomName,
   type Gender,
   type WorldCharacterConfig,
+  type WorldRules,
   type WorldView,
 } from '@sims/shared';
 import { ApiError, closeWorld, createWorld, deleteWorld, fetchWorlds } from './api';
@@ -28,6 +31,7 @@ function formatTime(iso: string): string {
 export function WorldPanel() {
   const [worlds, setWorlds] = useState<WorldView[] | null>(null);
   const [name, setName] = useState('小镇生活');
+  const [rules, setRules] = useState<WorldRules>({ ...DEFAULT_WORLD_RULES });
   const [drafts, setDrafts] = useState<DraftCharacter[]>([emptyDraft()]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -78,7 +82,7 @@ export function WorldPanel() {
     setError(null);
     setNotice(null);
     try {
-      const created = await createWorld({ name: name.trim(), characters });
+      const created = await createWorld({ name: name.trim(), characters, rules });
       setNotice(`世界「${created.name}」已创建,${created.characters.length} 位居民已入驻`);
       void load();
     } catch (err) {
@@ -149,6 +153,15 @@ export function WorldPanel() {
                 </li>
               ))}
             </ul>
+            <div className="world-rule-chips">
+              <span className={`slot-tag ${active.rules.allowDeath ? 'on' : 'off'}`}>
+                死亡 {active.rules.allowDeath ? '开' : '关'}
+              </span>
+              <span className={`slot-tag ${active.rules.allowChat ? 'on' : 'off'}`}>
+                聊天 {active.rules.allowChat ? '开' : '关'}
+              </span>
+              <span className="slot-tag off">倍率 {active.rules.initialTimeScale}x</span>
+            </div>
           </div>
         )}
       </section>
@@ -226,6 +239,43 @@ export function WorldPanel() {
             </li>
           ))}
         </ul>
+        <div className="world-rules">
+          <span className="world-rules-title">世界规则</span>
+          <label className="world-rules-check">
+            <input
+              type="checkbox"
+              checked={rules.allowDeath}
+              onChange={(e) => setRules((r) => ({ ...r, allowDeath: e.target.checked }))}
+            />
+            允许死亡
+          </label>
+          <label className="world-rules-check">
+            <input
+              type="checkbox"
+              checked={rules.allowChat}
+              onChange={(e) => setRules((r) => ({ ...r, allowChat: e.target.checked }))}
+            />
+            允许角色聊天
+          </label>
+          <label className="world-rules-check">
+            初始倍率
+            <select
+              value={rules.initialTimeScale}
+              onChange={(e) =>
+                setRules((r) => ({ ...r, initialTimeScale: Number(e.target.value) as WorldRules['initialTimeScale'] }))
+              }
+            >
+              {WORLD_TIME_SCALES.map((s) => (
+                <option key={s} value={s}>
+                  {s}x
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="world-hint">
+          规则随本世界创建定格:关闭死亡后体力归 0 只会躺平不会死;关闭聊天后角色聊天指令将被拒绝。
+        </p>
         <button
           type="button"
           className="world-create"

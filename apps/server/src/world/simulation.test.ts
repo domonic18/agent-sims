@@ -57,12 +57,14 @@ describe('世界重置(M3.6k 后台生命周期)', () => {
     sim.advanceTicks(90);
     sim.setTimeScale(16);
     sim.setPaused(true);
+    sim.rules.allowDeath = false;
     sim.reset();
     expect(sim.characters.size).toBe(0);
     expect(sim.tick).toBe(0);
     expect(sim.clock.formatTime()).toBe('08:00');
     expect(sim.timeScale).toBe(1);
     expect(sim.paused).toBe(false);
+    expect(sim.rules).toEqual({ allowDeath: true, allowChat: true, initialTimeScale: 1 });
     expect(events.some((e) => e.type === 'world.reset')).toBe(true);
     // 重置后可正常重建世界
     sim.spawnCharacter('b', 9, 12);
@@ -146,5 +148,19 @@ describe('生死机制(M3.6f 体力区段)', () => {
     expect(sim.character('mort').lifeScore).toBeCloseTo(80, 5); // ×0.8
     sim.debugRevive('mort');
     expect(sim.character('mort').lifeScore).toBeCloseTo(80, 5); // 复活不回补
+  });
+
+  it('世界规则关闭死亡(M5): 体力归 0 躺平,不转幽灵不扣繁荣分', () => {
+    const { sim, events } = simWithMort();
+    sim.rules.allowDeath = false;
+    sim.character('mort').lifeScore = 100;
+    sim.character('mort').happiness = 0; // 隔离质量流,聚焦扣减
+    sim.character('mort').energy = 0.1;
+    sim.advanceTicks(6); // 0.1 - 6*0.02 < 0,若未关规则此刻已死亡
+    const mort = sim.character('mort');
+    expect(mort.alive).toBe(true); // 躺平但存活
+    expect(mort.energy).toBeLessThanOrEqual(0); // 衰减夹取在 0
+    expect(mort.lifeScore).toBeCloseTo(100, 5); // 未扣减
+    expect(events.some((e) => e.type === 'character.died')).toBe(false);
   });
 });

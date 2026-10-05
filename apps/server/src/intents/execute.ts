@@ -90,6 +90,9 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       return { ok: true, message: `${character.name} 买下「${name}」,从此免租金` };
     }
     case 'chat': {
+      if (!sim.rules.allowChat) {
+        return { ok: false, message: '世界规则:角色聊天已关闭' };
+      }
       const content = sim.requestChat(intent.characterId, intent.targetId);
       const from = sim.character(intent.characterId);
       const to = sim.character(intent.targetId);

@@ -46,10 +46,32 @@ export interface WorldCharacterConfig {
 
 export const WORLD_CHARACTER_LIMITS = { min: 1, max: 12 } as const;
 
+/** 世界初始时间倍率档位(与 server TIME_SCALES 同源;rules 随世界定格,不改运行中倍率) */
+export const WORLD_TIME_SCALES = [1, 4, 16] as const;
+
+export type WorldTimeScale = (typeof WORLD_TIME_SCALES)[number];
+
+/** 世界规则(M5):创建世界时一次性配置,随世界快照定格;旧世界无 rules 时兜底默认值 */
+export interface WorldRules {
+  /** 允许死亡:关闭后体力可归 0 但不转幽灵(躺平) */
+  allowDeath: boolean;
+  /** 允许角色间聊天:关闭后 chat 意图直接被世界规则拒绝 */
+  allowChat: boolean;
+  /** 创建世界时的初始时间倍率 */
+  initialTimeScale: WorldTimeScale;
+}
+
+export const DEFAULT_WORLD_RULES: WorldRules = {
+  allowDeath: true,
+  allowChat: true,
+  initialTimeScale: 1,
+};
+
 /** POST /api/admin/worlds 请求体 */
 export interface CreateWorldRequest {
   name: string;
   characters: WorldCharacterConfig[];
+  rules?: WorldRules;
 }
 
 /** 世界记录视图(GET /api/admin/worlds 列表元素) */
@@ -58,6 +80,7 @@ export interface WorldView {
   name: string;
   status: 'active' | 'closed';
   characters: WorldCharacterConfig[];
+  rules: WorldRules;
   createdAt: string;
   closedAt: string | null;
 }

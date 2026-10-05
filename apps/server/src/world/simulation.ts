@@ -6,9 +6,10 @@ import type {
   WorldControlEvent,
   WorldEvent,
   WorldResetEvent,
+  WorldRules,
   WorldSnapshotMessage,
 } from '@sims/shared';
-import { PROPERTY_IDS, TOWN_MAP, getActivityDefinition } from '@sims/shared';
+import { DEFAULT_WORLD_RULES, PROPERTY_IDS, TOWN_MAP, getActivityDefinition } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import {
   finishActivity,
@@ -50,6 +51,8 @@ export class Simulation {
   tick = 0;
   paused = false;
   timeScale: number = BALANCE.DEFAULT_TIME_SCALE;
+  /** 世界规则(M5):默认全开;后台创建世界时随配置覆写,reset 回默认 */
+  rules: WorldRules = { ...DEFAULT_WORLD_RULES };
 
   advanceTicks(n: number): void {
     for (let i = 0; i < n; i += 1) {
@@ -71,6 +74,7 @@ export class Simulation {
     this.clock.reset();
     this.paused = false;
     this.timeScale = BALANCE.DEFAULT_TIME_SCALE;
+    this.rules = { ...DEFAULT_WORLD_RULES };
     const event: WorldResetEvent = { type: 'world.reset', tick: this.tick };
     this.events.emit(event);
     this._emitControl();
@@ -280,6 +284,10 @@ export class Simulation {
 
   /** 体力耗尽即死亡(M3.6f):转幽灵态,清路径/打断活动,等待 Lab 复活 */
   private _checkDeath(character: WorldCharacter): void {
+    // 世界规则关闭死亡(M5):体力卡 0 持续躺平,不转幽灵不扣繁荣分
+    if (!this.rules.allowDeath) {
+      return;
+    }
     if (!character.alive || character.energy > 0) {
       return;
     }

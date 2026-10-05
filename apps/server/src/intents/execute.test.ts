@@ -134,4 +134,15 @@ describe('executeIntent 意图执行', () => {
       executeIntent(sim, chatIntentSchema.parse({ type: 'chat', characterId: 'jev', targetId: 'mia' })),
     ).toThrow(/距离太远/);
   });
+
+  it('世界规则关闭聊天(M5): chat 返回 ok=false 且不产生社交关系', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('jev', 8, 12);
+    sim.spawnCharacter('mia', 9, 12);
+    sim.rules.allowChat = false;
+    const result = executeIntent(sim, chatIntentSchema.parse({ type: 'chat', characterId: 'jev', targetId: 'mia' }));
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('聊天已关闭');
+    expect(sim.socials.size).toBe(0);
+  });
 });

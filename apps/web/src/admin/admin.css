@@ -457,6 +457,42 @@ button.admin-danger {
   align-self: flex-start;
 }
 
+.world-rules {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  border-top: 1px dashed #eaeef2;
+  padding-top: 12px;
+}
+
+.world-rules-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2328;
+}
+
+.world-rules-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #57606a;
+}
+
+.world-rules-check select {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+.world-rule-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .world-history {
   list-style: none;
   margin: 0;

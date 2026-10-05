@@ -5,7 +5,7 @@ import type { CreateWorldRequest, WorldView } from '@sims/shared';
 import { buildApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
-import { adminUsers, characters, worlds } from '../src/db/schema/index.js';
+import { adminUsers, characters, worldState, worlds } from '../src/db/schema/index.js';
 
 // 集成测试:连 dev compose 的 postgres(需已 migrate+seed);库不可达时整组跳过
 const TEST_USERNAME = 'vitest-worlds-admin';
@@ -125,6 +125,52 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     expect(byName.get(`${WORLD_NAME_PREFIX}二号镇`)?.status).toBe('active');
     // 模拟现场已切换为二号镇(3 人,重新出生)
     expect(app.simulation.characters.size).toBe(3);
+    await app.close();
+  });
+
+  it('世界规则:创建时透传生效,非法倍率 400,缺省兜底默认', async () => {
+    const app = buildApp();
+    const auth = { authorization: `Bearer ${await login(app)}` };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: {
+        ...CREATE_BODY,
+        name: `${WORLD_NAME_PREFIX}规则镇`,
+        rules: { allowDeath: false, allowChat: false, initialTimeScale: 4 },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const world = created.json() as WorldView;
+    expect(world.rules).toEqual({ allowDeath: false, allowChat: false, initialTimeScale: 4 });
+    // 模拟层规则与初始倍率即时生效
+    expect(app.simulation.rules.allowDeath).toBe(false);
+    expect(app.simulation.rules.allowChat).toBe(false);
+    expect(app.simulation.timeScale).toBe(4);
+    const [state] = await handle.db.select().from(worldState).where(eq(worldState.id, 1));
+    expect(state?.timeScale).toBe(4);
+
+    const badScale = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: { ...CREATE_BODY, name: `${WORLD_NAME_PREFIX}倍率镇`, rules: { initialTimeScale: 5 } },
+    });
+    expect(badScale.statusCode).toBe(400);
+
+    // 不带 rules → 旧世界语义,逐项兜底默认值
+    const plain = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: { ...CREATE_BODY, name: `${WORLD_NAME_PREFIX}默认镇` },
+    });
+    expect(plain.statusCode).toBe(201);
+    const plainView = plain.json() as WorldView;
+    expect(plainView.rules).toEqual({ allowDeath: true, allowChat: true, initialTimeScale: 1 });
+    expect(app.simulation.rules.allowDeath).toBe(true);
+    expect(app.simulation.timeScale).toBe(1);
     await app.close();
   });
 
