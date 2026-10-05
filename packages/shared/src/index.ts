@@ -16,3 +16,4 @@ export * from './sync.js';
 export * from './sys-config.js';
 export * from './world.js';
 export * from './world-admin.js';
+export * from './worldgen.js';

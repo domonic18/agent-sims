@@ -4,6 +4,7 @@ import { TIME_SCALES } from '../config/balance.js';
 import { runIntent } from '../intents/execute.js';
 import type { ClientRegistry } from '../socket/clients.js';
 import type { Simulation } from '../world/simulation.js';
+import { generateTownMap } from '../world/worldgen/generate.js';
 
 /** 单次手动推进上限,防止误操作打爆 tick */
 const MAX_MANUAL_TICKS = 10_000;
@@ -51,6 +52,20 @@ export function registerDebugRoutes(
   app.get('/debug/clients', async () => {
     const list = clients.list();
     return { total: list.length, clients: list };
+  });
+
+  app.get('/debug/worldgen', async (request) => {
+    const q = request.query as { seed?: string; size?: string; density?: string; gameType?: string; manifestVersion?: string };
+    const result = generateTownMap({
+      seed: q.seed ?? 'demo',
+      gameType: (q.gameType === 'survival' ? 'survival' : 'growth'),
+      params: {
+        size: q.size === 'medium' || q.size === 'large' ? q.size : 'small',
+        density: q.density === 'sparse' || q.density === 'dense' ? q.density : 'normal',
+      },
+      manifestVersion: q.manifestVersion ?? 'debug',
+    });
+    return { report: result.report, map: result.map };
   });
 
   app.get('/debug/map', async () => ({

@@ -3,6 +3,7 @@
  * 定义,避免双端漂移。家具/休息档位见 furniture.ts。
  */
 import type { FurnitureDefinition, FurnitureKind } from './furniture.js';
+import type { DecorDefinition } from './worldgen.js';
 
 /** 场所定义:占地矩形 + 入口格(入口必须在占地外且可行走) */
 export interface PlaceDefinition {
@@ -17,6 +18,9 @@ export interface PlaceDefinition {
   door?: { x: number; y: number };
   /** 室内家具(有内景场所列出;公园/测试地图省略) */
   furniture?: FurnitureDefinition[];
+  /** 内景地板/墙体 tile slug(生成地图携带;缺省由渲染层静态映射兜底) */
+  floorTile?: string;
+  wallTile?: string;
 }
 
 export interface BlockedRect {
@@ -34,6 +38,8 @@ export interface TileMapDefinition {
   /** 铺装矩形(主街/广场/门前小路):仅视觉,可行走,客户端渲染用 */
   paths: BlockedRect[];
   places: PlaceDefinition[];
+  /** 户外装饰坐标(生成地图数据化;内置地图缺省) */
+  decor?: DecorDefinition;
 }
 
 /**
