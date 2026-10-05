@@ -6,7 +6,7 @@ import type {
 } from '@sims/shared';
 import {
   BASIC_ACTIVITY_IDS,
-  FURNITURE_LABELS,
+  furnitureLabel,
   REST_RATES_BY_KIND,
   getActivityDefinition,
 } from '@sims/shared';
@@ -80,7 +80,7 @@ export function startActivity(
     if (anchor === null) {
       const spots = anchors.map((item) => `(${item.x},${item.y})`).join('/');
       throw new Error(
-        `${definition.name} 须站在${FURNITURE_LABELS[anchors[0]!.kind]}旁(使用格: ${spots})`,
+        `${definition.name} 须站在${furnitureLabel(anchors[0]!.kind)}旁(使用格: ${spots})`,
       );
     }
     anchorKind = anchor.kind;

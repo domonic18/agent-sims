@@ -24,6 +24,16 @@ export const FURNITURE_KINDS = [
 
 export type FurnitureKind = (typeof FURNITURE_KINDS)[number];
 
+/**
+ * 扩展家具 kind:全集之外的素材库道具 slug(户外道具池——帐篷/木桶/路灯等,
+ * worldgen 随机选材直挂)。非全集 kind 无活动档位语义(rest 速率回退活动默认),
+ * 标签回退用 slug 本身。
+ */
+export type AnyFurnitureKind = FurnitureKind | (string & {});
+
+export const furnitureLabel = (kind: AnyFurnitureKind): string =>
+  FURNITURE_LABELS[kind as FurnitureKind] ?? kind;
+
 export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
   bed: '床',
   desk: '书桌',
@@ -47,7 +57,7 @@ export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
  * 非锚点家具为室内装饰,仅占格。
  */
 export interface FurnitureDefinition {
-  kind: FurnitureKind;
+  kind: AnyFurnitureKind;
   x: number;
   y: number;
   /** 占地宽高(格,≥1) */

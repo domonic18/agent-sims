@@ -1,5 +1,5 @@
 import {
-  FURNITURE_LABELS,
+  furnitureLabel,
   TOWN_MAP,
   type PlaceDefinition,
   type WorldSnapshotMessage,
@@ -41,7 +41,7 @@ export function activityAnchors(activityId: string): ActivityAnchor[] {
           x: furniture.use.x,
           y: furniture.use.y,
           placeId: place.id,
-          label: FURNITURE_LABELS[furniture.kind],
+          label: furnitureLabel(furniture.kind),
         });
       }
     }

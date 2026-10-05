@@ -3,7 +3,7 @@ import {
   isBesideFootprint,
   wallRectsOf,
   type BlockedRect,
-  type FurnitureKind,
+  type AnyFurnitureKind,
   type PlaceDefinition,
   type TileMapDefinition,
 } from '@sims/shared';
@@ -78,8 +78,8 @@ export class TileMap {
   }
 
   /** 活动锚点使用格全集:各场所锚点家具的 use 格(无锚点活动返回空) */
-  activityAnchors(activityId: string): Array<{ x: number; y: number; placeId: string; kind: FurnitureKind }> {
-    const anchors: Array<{ x: number; y: number; placeId: string; kind: FurnitureKind }> = [];
+  activityAnchors(activityId: string): Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind }> {
+    const anchors: Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind }> = [];
     for (const place of this.places) {
       for (const f of place.furniture ?? []) {
         if (f.activityId === activityId && f.use !== undefined) {
@@ -99,7 +99,7 @@ export class TileMap {
     activityId: string,
     x: number,
     y: number,
-  ): { x: number; y: number; placeId: string; kind: FurnitureKind } | null {
+  ): { x: number; y: number; placeId: string; kind: AnyFurnitureKind } | null {
     for (const place of this.places) {
       for (const f of place.furniture ?? []) {
         if (f.activityId !== activityId || f.use === undefined) continue;

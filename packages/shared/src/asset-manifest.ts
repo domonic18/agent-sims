@@ -45,6 +45,8 @@ export const AssetEntrySchema = z.object({
   domain: z.enum(ASSET_DOMAINS),
   /** 挂载分类 slug(kind 层;tile/props 类挂 theme 层兜底) */
   categorySlug: z.string().min(1),
+  /** 所属主题分类 slug(domain 直接子级;worldgen 主题道具池用) */
+  themeSlug: z.string().min(1),
   /** 相对 manifest.json 的资源路径(如 library/bed.png) */
   url: z.string().min(1),
   width: z.number().int().positive(),
