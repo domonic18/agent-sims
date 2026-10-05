@@ -1,87 +1,111 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
+  App as AntdApp,
+  Button,
+  Card,
+  Col,
+  Flex,
+  Form,
+  Input,
+  InputNumber,
+  Row,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+} from 'antd';
+import {
   SYS_CONFIG_EFFECT_LABELS,
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
+  type SysConfigEffect,
   type SysConfigField,
   type SysConfigView,
 } from '@sims/shared';
 import { changePassword, fetchSysConfig, resetSysConfig, updateSysConfig } from './api';
 
+const EFFECT_TAG_COLORS: Record<SysConfigEffect, string> = {
+  live: 'success',
+  spawn: 'processing',
+  world: 'warning',
+};
+
+interface AccountSecurityValues {
+  oldPassword: string;
+  newPassword: string;
+  confirm: string;
+}
+
 function AccountSecurityCard(props: { username: string }) {
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const { message } = AntdApp.useApp();
+  const [form] = Form.useForm<AccountSecurityValues>();
   const [busy, setBusy] = useState(false);
 
-  const submit = async (): Promise<void> => {
-    if (newPassword !== confirm) {
-      setNotice({ kind: 'error', text: '两次输入的新密码不一致' });
-      return;
-    }
+  const onFinish = async (values: AccountSecurityValues): Promise<void> => {
     setBusy(true);
-    setNotice(null);
     try {
-      await changePassword({ oldPassword, newPassword });
-      setNotice({ kind: 'ok', text: '密码已更新,当前登录态不受影响' });
-      setOldPassword('');
-      setNewPassword('');
-      setConfirm('');
+      await changePassword({ oldPassword: values.oldPassword, newPassword: values.newPassword });
+      message.success('密码已更新,当前登录态不受影响');
+      form.resetFields();
     } catch (err) {
-      setNotice({ kind: 'error', text: err instanceof Error ? err.message : '修改失败' });
+      message.error(err instanceof Error ? err.message : '修改失败');
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <section className="settings-card">
-      <h2>账户安全</h2>
-      <p className="settings-card-sub">
+    <Card title="账户安全">
+      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
         当前账户 <b>{props.username || 'admin'}</b> · 修改后下次登录使用新密码
-      </p>
-      <div className="settings-form">
-        <label>
-          原密码
-          <input
-            type="password"
-            value={oldPassword}
-            autoComplete="current-password"
-            onChange={(e) => setOldPassword(e.target.value)}
-          />
-        </label>
-        <label>
-          新密码(8~64 位)
-          <input
-            type="password"
-            value={newPassword}
-            autoComplete="new-password"
-            placeholder="至少 8 位"
-            onChange={(e) => setNewPassword(e.target.value)}
-          />
-        </label>
-        <label>
-          确认新密码
-          <input
-            type="password"
-            value={confirm}
-            autoComplete="new-password"
-            onChange={(e) => setConfirm(e.target.value)}
-          />
-        </label>
-      </div>
-      {notice && <p className={notice.kind === 'ok' ? 'admin-ok' : 'admin-error'}>{notice.text}</p>}
-      <div className="settings-actions">
-        <button
-          type="button"
-          disabled={busy || !oldPassword || newPassword.length < 8 || !confirm}
-          onClick={() => void submit()}
+      </Typography.Paragraph>
+      <Form<AccountSecurityValues>
+        form={form}
+        layout="vertical"
+        requiredMark={false}
+        style={{ maxWidth: 360 }}
+        onFinish={(values) => void onFinish(values)}
+      >
+        <Form.Item
+          name="oldPassword"
+          label="原密码"
+          rules={[{ required: true, message: '请输入原密码' }]}
         >
-          {busy ? '提交中…' : '修改密码'}
-        </button>
-      </div>
-    </section>
+          <Input.Password autoComplete="current-password" />
+        </Form.Item>
+        <Form.Item
+          name="newPassword"
+          label="新密码(8~64 位)"
+          rules={[
+            { required: true, message: '请输入新密码' },
+            { min: 8, message: '至少 8 位' },
+            { max: 64, message: '至多 64 位' },
+          ]}
+        >
+          <Input.Password autoComplete="new-password" placeholder="至少 8 位" />
+        </Form.Item>
+        <Form.Item
+          name="confirm"
+          label="确认新密码"
+          dependencies={['newPassword']}
+          rules={[
+            { required: true, message: '请再次输入新密码' },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
+                return Promise.reject(new Error('两次输入的新密码不一致'));
+              },
+            }),
+          ]}
+        >
+          <Input.Password autoComplete="new-password" />
+        </Form.Item>
+        <Button type="primary" htmlType="submit" loading={busy}>
+          修改密码
+        </Button>
+      </Form>
+    </Card>
   );
 }
 
@@ -89,6 +113,7 @@ const formatValue = (field: SysConfigField, value: number): string =>
   field.type === 'float' ? String(value) : String(Math.round(value));
 
 function SystemParamsCard() {
+  const { modal } = AntdApp.useApp();
   const [view, setView] = useState<SysConfigView | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -142,19 +167,27 @@ function SystemParamsCard() {
     }
   };
 
-  const restoreDefaults = async (): Promise<void> => {
-    if (!window.confirm('恢复全部系统参数为出厂默认值?')) return;
-    setBusy(true);
-    setError(null);
-    setNotice(null);
-    try {
-      applyView(await resetSysConfig());
-      setNotice('已恢复默认值(覆盖记录已清空)');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '恢复失败');
-    } finally {
-      setBusy(false);
-    }
+  const restoreDefaults = (): void => {
+    modal.confirm({
+      title: '恢复全部系统参数为出厂默认值?',
+      content: '覆盖记录将被清空,所有字段回到内置默认值。',
+      okText: '恢复默认',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        setBusy(true);
+        setError(null);
+        setNotice(null);
+        try {
+          applyView(await resetSysConfig());
+          setNotice('已恢复默认值(覆盖记录已清空)');
+        } catch (err) {
+          setError(err instanceof Error ? err.message : '恢复失败');
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
   };
 
   const dirty =
@@ -164,66 +197,82 @@ function SystemParamsCard() {
     );
 
   return (
-    <section className="settings-card">
-      <h2>系统参数</h2>
-      <p className="settings-card-sub">
+    <Card title="系统参数">
+      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
         运行时数值热调(保存即生效);仅含服务端参数——移速/背包容积/时间倍率档位等双端同源常量与时序基建不开放
-      </p>
-      {error && <p className="admin-error">{error}</p>}
-      {notice && <p className="admin-ok">{notice}</p>}
-      {!view && !error && <p className="admin-muted">加载中…</p>}
+      </Typography.Paragraph>
+      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
+      {notice && <Alert type="success" showIcon message={notice} style={{ marginBottom: 12 }} />}
+      {!view && !error && (
+        <div style={{ textAlign: 'center', padding: 24 }}>
+          <Spin />
+        </div>
+      )}
       {view && (
         <>
           {SYS_CONFIG_GROUPS.map((group) => (
-            <div className="settings-group" key={group}>
-              <h3>{SYS_CONFIG_GROUP_LABELS[group]}</h3>
-              <div className="settings-grid">
+            <div key={group} style={{ marginBottom: 4 }}>
+              <Typography.Text strong style={{ display: 'block', marginBottom: 10 }}>
+                {SYS_CONFIG_GROUP_LABELS[group]}
+              </Typography.Text>
+              <Row gutter={[16, 0]}>
                 {view.fields
                   .filter((field) => field.group === group)
                   .map((field) => (
-                    <label key={field.key} className="settings-field">
-                      <span className="settings-field-head">
-                        <span>{field.label}</span>
-                        <span className={`settings-effect ${field.effect}`}>
-                          {SYS_CONFIG_EFFECT_LABELS[field.effect]}
-                        </span>
-                      </span>
-                      <input
-                        inputMode="decimal"
-                        value={draft[field.key] ?? ''}
-                        onChange={(e) => setDraft((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                      />
-                      <small>
-                        {field.desc} · 范围 {field.min}~{field.max}
-                        {view.overrides[field.key] !== undefined ? ' · 已自定义' : ''}
-                      </small>
-                    </label>
+                    <Col xs={24} sm={12} lg={8} key={field.key}>
+                      <Form.Item
+                        label={
+                          <Space size={6} wrap>
+                            <span>{field.label}</span>
+                            <Tag color={EFFECT_TAG_COLORS[field.effect]} style={{ marginInlineEnd: 0 }}>
+                              {SYS_CONFIG_EFFECT_LABELS[field.effect]}
+                            </Tag>
+                            {view.overrides[field.key] !== undefined && (
+                              <Tag color="purple" style={{ marginInlineEnd: 0 }}>
+                                已自定义
+                              </Tag>
+                            )}
+                          </Space>
+                        }
+                        extra={`${field.desc} · 范围 ${field.min}~${field.max}`}
+                        style={{ marginBottom: 16 }}
+                      >
+                        <InputNumber
+                          value={draft[field.key] ?? ''}
+                          onChange={(value) =>
+                            setDraft((prev) => ({ ...prev, [field.key]: value == null ? '' : String(value) }))
+                          }
+                          style={{ width: '100%' }}
+                          controls={false}
+                        />
+                      </Form.Item>
+                    </Col>
                   ))}
-              </div>
+              </Row>
             </div>
           ))}
-          <div className="settings-actions">
-            <button type="button" disabled={busy || !dirty} onClick={() => void save()}>
-              {busy ? '保存中…' : '保存并生效'}
-            </button>
-            <button type="button" className="admin-secondary" disabled={busy} onClick={() => void restoreDefaults()}>
+          <Space style={{ marginTop: 8 }}>
+            <Button type="primary" loading={busy} disabled={!dirty} onClick={() => void save()}>
+              保存并生效
+            </Button>
+            <Button disabled={busy} onClick={restoreDefaults}>
               恢复默认
-            </button>
-            <button type="button" className="admin-secondary" disabled={busy || !dirty} onClick={() => applyView(view)}>
+            </Button>
+            <Button disabled={busy || !dirty} onClick={() => applyView(view)}>
               放弃改动
-            </button>
-          </div>
+            </Button>
+          </Space>
         </>
       )}
-    </section>
+    </Card>
   );
 }
 
 export function SettingsPanel(props: { username: string }) {
   return (
-    <div className="settings-panel">
+    <Flex vertical gap={16}>
       <AccountSecurityCard username={props.username} />
       <SystemParamsCard />
-    </div>
+    </Flex>
   );
 }
