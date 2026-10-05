@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  TOWN_MAP,
   findActivityAnchorAt,
   getActivityDefinition,
+  placeIdMatches,
   type ActivityDefinition,
   type Intent,
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { sendIntent } from '../../net/socket';
 import { pushToast } from '../../store/toastStore';
-import { activityAnchors, findPlaceAt, type CharacterView } from './place';
+import { useWorldStore } from '../../store/worldStore';
+import { activityAnchors, findPlaceAt, findPlaceByRef, type CharacterView } from './place';
 
 export type RunIntent = (intent: Intent) => Promise<void>;
 
@@ -38,6 +39,7 @@ export function useGoAndDo(
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
   const [pending, setPending] = useState<GoAndDoPending | null>(null);
   const pendingArrivalRef = useRef(false);
+  const map = useWorldStore((state) => state.map);
 
   const run: RunIntent = async (intent) => {
     const ack = await sendIntent(intent);
@@ -47,13 +49,13 @@ export function useGoAndDo(
 
   /** 开始活动:已在锚点位(使用格或紧邻家具占地;无锚点活动已在场所)直接开始;否则先前往最近锚点使用格/场所入口 */
   const startActivity = async (def: ActivityDefinition): Promise<void> => {
-    if (character === null || snapshot === null) return;
-    const anchors = activityAnchors(def.id);
-    const atPlace = findPlaceAt(snapshot, character.x, character.y);
+    if (character === null || snapshot === null || map === null) return;
+    const anchors = activityAnchors(map, def.id);
+    const atPlace = findPlaceAt(map, character.x, character.y);
     const arrived =
       anchors.length > 0
-        ? findActivityAnchorAt(def.id, character.x, character.y) !== null
-        : def.placeIds.includes(atPlace?.id ?? '');
+        ? findActivityAnchorAt(map, def.id, character.x, character.y) !== null
+        : atPlace !== null && def.placeIds.some((id) => placeIdMatches(id, atPlace.id));
     if (arrived) {
       await run({ type: 'start_activity', characterId: character.id, activityId: def.id });
       return;
@@ -72,8 +74,10 @@ export function useGoAndDo(
       nearest !== null
         ? { x: nearest.x, y: nearest.y }
         : (() => {
-            const place = TOWN_MAP.places.find((p) => p.id === def.placeIds[0]);
-            return place !== undefined ? { x: place.entrance.x, y: place.entrance.y } : null;
+            const first = def.placeIds[0];
+            if (first === undefined) return null;
+            const place = findPlaceByRef(map, first);
+            return place !== null ? { x: place.entrance.x, y: place.entrance.y } : null;
           })();
     if (target === null) return;
     const ack = await sendIntent({
@@ -90,13 +94,14 @@ export function useGoAndDo(
 
   /** 购物(M3.6f 店内购约束):已在商店直接购入;否则先前往商店入口,到达后自动接续 buy_item */
   const buyItem = async (itemId: string): Promise<void> => {
-    if (character === null || snapshot === null) return;
-    if (findPlaceAt(snapshot, character.x, character.y)?.id === 'shop') {
+    if (character === null || snapshot === null || map === null) return;
+    const at = findPlaceAt(map, character.x, character.y);
+    if (at !== null && placeIdMatches('shop', at.id)) {
       await run({ type: 'buy_item', characterId: character.id, itemId });
       return;
     }
-    const shop = TOWN_MAP.places.find((p) => p.id === 'shop');
-    if (shop === undefined) return;
+    const shop = findPlaceByRef(map, 'shop');
+    if (shop === null) return;
     const ack = await sendIntent({
       type: 'move_to',
       characterId: character.id,
@@ -117,7 +122,7 @@ export function useGoAndDo(
   // 途中改道/被打断则放弃。pendingArrivalRef 标记"快照已反映行进",
   // 未见行进前不判弃(move_to 刚下发时快照尚未反映移动)。
   useEffect(() => {
-    if (pending === null || character === null || snapshot === null) return;
+    if (pending === null || character === null || snapshot === null || map === null) return;
     if (character.activity !== null) {
       pendingArrivalRef.current = false;
       setPending(null);
@@ -132,7 +137,8 @@ export function useGoAndDo(
       setPending(null);
     };
     if (pending.kind === 'buy') {
-      if (findPlaceAt(snapshot, character.x, character.y)?.id === 'shop') {
+      const at = findPlaceAt(map, character.x, character.y);
+      if (at !== null && placeIdMatches('shop', at.id)) {
         finish();
         void run({ type: 'buy_item', characterId: character.id, itemId: pending.id });
         return;
@@ -143,11 +149,12 @@ export function useGoAndDo(
         finish();
         return;
       }
-      const anchors = activityAnchors(def.id);
+      const anchors = activityAnchors(map, def.id);
+      const atPlace = findPlaceAt(map, character.x, character.y);
       const arrived =
         anchors.length > 0
-          ? findActivityAnchorAt(def.id, character.x, character.y) !== null
-          : def.placeIds.includes(findPlaceAt(snapshot, character.x, character.y)?.id ?? '');
+          ? findActivityAnchorAt(map, def.id, character.x, character.y) !== null
+          : atPlace !== null && def.placeIds.some((id) => placeIdMatches(id, atPlace.id));
       if (arrived) {
         finish();
         void run({ type: 'start_activity', characterId: character.id, activityId: def.id });
@@ -157,7 +164,7 @@ export function useGoAndDo(
     if (pendingArrivalRef.current) {
       finish();
     }
-  }, [pending, character, snapshot]);
+  }, [pending, character, snapshot, map]);
 
   return { feedback, run, startActivity, buyItem, pending };
 }

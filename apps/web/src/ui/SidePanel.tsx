@@ -32,6 +32,7 @@ export function SidePanel() {
   const selectedId = useWorldStore((state) => state.selectedCharacterId);
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
   const focusPlaceId = useWorldStore((state) => state.focusPlaceId);
+  const map = useWorldStore((state) => state.map);
   const [tab, setTab] = useState<PanelTab>('actions');
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
@@ -56,7 +57,7 @@ export function SidePanel() {
     return <aside className="side-panel">等待世界快照…</aside>;
   }
 
-  const atPlace = character !== null ? findPlaceAt(snapshot, character.x, character.y) : null;
+  const atPlace = character !== null && map !== null ? findPlaceAt(map, character.x, character.y) : null;
   const day = snapshot.clock.day;
 
   return (
@@ -81,10 +82,17 @@ export function SidePanel() {
         ))}
       </nav>
 
-      {character !== null && tab === 'actions' && (
+      {character !== null && map !== null && tab === 'actions' && (
         <>
-          <GoSection character={character} atPlace={atPlace} focusPlaceId={focusPlaceId} run={run} />
+          <GoSection
+            map={map}
+            character={character}
+            atPlace={atPlace}
+            focusPlaceId={focusPlaceId}
+            run={run}
+          />
           <ActivitySection
+            map={map}
             character={character}
             atPlace={atPlace}
             pending={pending}

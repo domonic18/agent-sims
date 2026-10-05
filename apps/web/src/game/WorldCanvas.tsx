@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { WorldScene } from './WorldScene';
 import type { TileMapDefinition } from '@sims/shared';
 import { fetchGameAssetRegistry } from './manifest';
+import { useWorldStore } from '../store/worldStore';
 
 /** Phaser 画布宿主:先取素材 manifest 再创建世界场景(主页面与 /lab 调试台复用) */
 /** 当前世界地图定义(M-L.5:创建向导生成的随机地图与内置地图同源渲染) */
@@ -38,6 +39,8 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
         game.registry.set('assets', registry);
         game.registry.set('map', map);
         game.registry.set('interactive', interactive);
+        // React 侧同样持一份(侧面板场所/锚点/商店查此源),与 Phaser registry 同源
+        useWorldStore.getState().setMap(map);
       })
       .catch((err: unknown) => {
         if (!cancelled) setAssetError(err instanceof Error ? err.message : '素材清单加载失败');

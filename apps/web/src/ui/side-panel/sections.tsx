@@ -3,16 +3,17 @@ import {
   CHAT_DAILY_GAINED,
   LOW_ENERGY_THRESHOLD,
   SOCIAL_PRESENCE_DISTANCE,
-  TOWN_MAP,
   findActivityAnchorAt,
   getActivityDefinition,
+  placeIdMatches,
   relationTitle,
   type ActivityDefinition,
   type PlaceDefinition,
+  type TileMapDefinition,
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { formatCoins } from '../../format';
-import { activityAnchors } from './place';
+import { activityAnchors, findPlaceByRef } from './place';
 import type { CharacterView } from './place';
 import type { GoAndDoPending, RunIntent } from './useGoAndDo';
 
@@ -81,11 +82,13 @@ export function CharactersSection({
 }
 
 export function GoSection({
+  map,
   character,
   atPlace,
   focusPlaceId,
   run,
 }: {
+  map: TileMapDefinition;
   character: CharacterView;
   atPlace: PlaceDefinition | null;
   focusPlaceId: string | null;
@@ -97,7 +100,7 @@ export function GoSection({
     <section className="panel-section">
       <h3>前往</h3>
       <ul className="activity-list">
-        {TOWN_MAP.places.map((place) => {
+        {map.places.map((place) => {
           const here = atPlace?.id === place.id;
           return (
             <li
@@ -194,12 +197,14 @@ export function SocialSection({
 }
 
 export function ActivitySection({
+  map,
   character,
   atPlace,
   pending,
   run,
   startActivity,
 }: {
+  map: TileMapDefinition;
   character: CharacterView;
   atPlace: PlaceDefinition | null;
   pending: GoAndDoPending | null;
@@ -233,17 +238,15 @@ export function ActivitySection({
       ) : (
         <ul className="activity-list">
           {ACTIVITY_DEFINITIONS.map((def) => {
-            const anchors = activityAnchors(def.id);
+            const anchors = activityAnchors(map, def.id);
             const targetLabel =
               anchors.length > 0
                 ? anchors.map((a) => a.label).join('/')
-                : def.placeIds
-                    .map((id) => TOWN_MAP.places.find((p) => p.id === id)?.name ?? id)
-                    .join('/');
+                : def.placeIds.map((id) => findPlaceByRef(map, id)?.name ?? id).join('/');
             const here =
               anchors.length > 0
-                ? findActivityAnchorAt(def.id, character.x, character.y) !== null
-                : def.placeIds.includes(atPlace?.id ?? '');
+                ? findActivityAnchorAt(map, def.id, character.x, character.y) !== null
+                : atPlace !== null && def.placeIds.some((id) => placeIdMatches(id, atPlace.id));
             const enRoute = pending?.kind === 'activity' && pending.id === def.id;
             return (
               <li

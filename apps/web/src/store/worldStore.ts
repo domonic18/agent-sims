@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { WorldEvent, WorldSnapshotMessage } from '@sims/shared';
+import type { TileMapDefinition, WorldEvent, WorldSnapshotMessage } from '@sims/shared';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -26,7 +26,10 @@ export interface WorldStore {
   selectedCharacterId: string | null;
   /** 地图点击定位的场所(null=无高亮),侧栏滚动联动 */
   focusPlaceId: string | null;
+  /** 当前世界地图定义(WorldCanvas fetch 后写入;侧面板场所/锚点/商店查此源,不再绑内置图) */
+  map: TileMapDefinition | null;
   setStatus: (status: ConnectionStatus) => void;
+  setMap: (map: TileMapDefinition) => void;
   applySnapshot: (snapshot: WorldSnapshotMessage) => void;
   applyEvent: (event: WorldEvent) => void;
   selectCharacter: (id: string | null) => void;
@@ -43,7 +46,9 @@ export const useWorldStore = create<WorldStore>((set) => ({
   eventSeq: 0,
   selectedCharacterId: null,
   focusPlaceId: null,
+  map: null,
   setStatus: (status) => set({ status }),
+  setMap: (map) => set({ map }),
   applySnapshot: (snapshot) =>
     set((state) => {
       const ids = snapshot.characters.map((character) => character.id);

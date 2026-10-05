@@ -4,6 +4,7 @@ import {
   PROPERTY_DEFINITIONS,
   SHOP_ITEMS,
   inventoryVolume,
+  placeIdMatches,
   type PlaceDefinition,
 } from '@sims/shared';
 import { homeAccess, type CharacterView } from './place';
@@ -93,7 +94,7 @@ export function ShopSection({
 }) {
   const dead = !character.alive;
   const moving = character.pathRemaining > 0;
-  const inShop = atPlace?.id === 'shop';
+  const inShop = atPlace !== null && placeIdMatches('shop', atPlace.id);
   return (
     <section className="panel-section">
       <h3>商店{inShop ? ' · 在店内' : ''}</h3>
