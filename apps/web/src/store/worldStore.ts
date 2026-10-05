@@ -1,5 +1,10 @@
 import { create } from 'zustand';
-import type { TileMapDefinition, WorldEvent, WorldSnapshotMessage } from '@sims/shared';
+import type {
+  TileMapDefinition,
+  WorldEvent,
+  WorldRulesView,
+  WorldSnapshotMessage,
+} from '@sims/shared';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
@@ -28,6 +33,9 @@ export interface WorldStore {
   focusPlaceId: string | null;
   /** 当前世界地图定义(WorldCanvas fetch 后写入;侧面板场所/锚点/商店查此源,不再绑内置图) */
   map: TileMapDefinition | null;
+  /** 世界参数生效全集与规则视图(设置弹窗首开 GET 回填,此后 world.params/rules 事件保鲜) */
+  params: Record<string, number> | null;
+  rules: WorldRulesView | null;
   setStatus: (status: ConnectionStatus) => void;
   setMap: (map: TileMapDefinition) => void;
   applySnapshot: (snapshot: WorldSnapshotMessage) => void;
@@ -36,6 +44,8 @@ export interface WorldStore {
   focusPlace: (id: string | null) => void;
   /** 控制事件就地修正快照(暂停期间无 tick 广播) */
   applyControl: (paused: boolean, timeScale: number) => void;
+  applyParams: (params: Record<string, number>) => void;
+  applyRules: (rules: WorldRulesView) => void;
 }
 
 export const useWorldStore = create<WorldStore>((set) => ({
@@ -47,6 +57,8 @@ export const useWorldStore = create<WorldStore>((set) => ({
   selectedCharacterId: null,
   focusPlaceId: null,
   map: null,
+  params: null,
+  rules: null,
   setStatus: (status) => set({ status }),
   setMap: (map) => set({ map }),
   applySnapshot: (snapshot) =>
@@ -73,4 +85,6 @@ export const useWorldStore = create<WorldStore>((set) => ({
           ? null
           : { ...state.snapshot, paused, timeScale },
     })),
+  applyParams: (params) => set({ params }),
+  applyRules: (rules) => set({ rules }),
 }));

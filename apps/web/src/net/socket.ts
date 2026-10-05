@@ -10,7 +10,8 @@ import {
 } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
 
-const { setStatus, applySnapshot, applyEvent, applyControl } = useWorldStore.getState();
+const { setStatus, applySnapshot, applyEvent, applyControl, applyParams, applyRules } =
+  useWorldStore.getState();
 
 let worldSocket: Socket | null = null;
 
@@ -33,6 +34,10 @@ export function connectWorld(role: SocketRole = 'player'): Socket {
     // 暂停期间 tick 广播停摆,控制事件需就地修正快照,否则 UI 状态滞后一拍
     if (message.event.type === 'world.control') {
       applyControl(message.event.paused, message.event.timeScale);
+    } else if (message.event.type === 'world.params') {
+      applyParams(message.event.params);
+    } else if (message.event.type === 'world.rules') {
+      applyRules(message.event.rules);
     }
   });
   return socket;

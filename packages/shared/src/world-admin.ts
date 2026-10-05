@@ -70,8 +70,16 @@ export const DEFAULT_WORLD_RULES: WorldRules = {
   initialTimeScale: 1,
 };
 
-/** 运行时规则视图(world.rules 事件与设置通道携带;不含 params) */
-export type WorldRulesView = Omit<WorldRules, 'params'>;
+/**
+ * 运行时规则视图(world.rules 事件与设置通道携带;不含 params)。
+ * initialTimeScale 为宽类型:wire 值恒来自 sim.rules(创建时已约束档位),
+ * 运行档位变更走 timeScale 字段,本视图不承担创建期档位约束。
+ */
+export type WorldRulesView = {
+  allowDeath: boolean;
+  allowChat: boolean;
+  initialTimeScale: number;
+};
 
 /** GET/POST /api/world/settings 响应(游戏内设置菜单与 Lab 共用的常开控制通道) */
 export interface WorldSettingsView {
