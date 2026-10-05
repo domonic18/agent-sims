@@ -18,6 +18,7 @@ import {
   type TokenUsageWindow,
   type SysConfigView,
   WORLD_ADMIN_API,
+  type WorldPreviewResponse,
   type WorldView,
 } from '@sims/shared';
 
@@ -163,6 +164,19 @@ export async function fetchWorlds(): Promise<WorldView[]> {
 
 export async function createWorld(payload: CreateWorldRequest): Promise<WorldView> {
   return await adminFetch<WorldView>(WORLD_ADMIN_API.worlds, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export interface WorldPreviewRequest {
+  seed?: string;
+  gameType: 'growth';
+  params: { size: 'small' | 'medium' | 'large'; density: 'sparse' | 'normal' | 'dense' };
+}
+
+export async function previewWorld(payload: WorldPreviewRequest): Promise<WorldPreviewResponse> {
+  return await adminFetch<WorldPreviewResponse>(WORLD_ADMIN_API.worldPreview, {
     method: 'POST',
     body: JSON.stringify(payload),
   });

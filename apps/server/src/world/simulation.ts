@@ -9,7 +9,7 @@ import type {
   WorldRules,
   WorldSnapshotMessage,
 } from '@sims/shared';
-import { DEFAULT_WORLD_RULES, PROPERTY_IDS, TOWN_MAP, getActivityDefinition } from '@sims/shared';
+import { DEFAULT_WORLD_RULES, PROPERTY_IDS, TOWN_MAP, getActivityDefinition, type TileMapDefinition } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import {
   finishActivity,
@@ -42,7 +42,7 @@ import {
  */
 export class Simulation {
   readonly clock = new GameClock();
-  readonly map: TileMap = TileMap.fromDefinition(TOWN_MAP);
+  private _map: TileMap = TileMap.fromDefinition(TOWN_MAP);
   readonly characters = new Map<string, WorldCharacter>();
   /** 有向关系表(社交 v1):key = `fromId|toId`,A→B 与 B→A 各一条 */
   readonly socials = new Map<string, SocialRelation>();
@@ -53,6 +53,15 @@ export class Simulation {
   timeScale: number = BALANCE.DEFAULT_TIME_SCALE;
   /** 世界规则(M5):默认全开;后台创建世界时随配置覆写,reset 回默认 */
   rules: WorldRules = { ...DEFAULT_WORLD_RULES };
+
+  /** 世界地图(M-L.5:创建世界时注入生成地图;缺省内置固定地图) */
+  get map(): TileMap {
+    return this._map;
+  }
+
+  setMap(definition: TileMapDefinition): void {
+    this._map = TileMap.fromDefinition(definition);
+  }
 
   advanceTicks(n: number): void {
     for (let i = 0; i < n; i += 1) {

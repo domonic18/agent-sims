@@ -2,6 +2,7 @@
  * 世界生命周期管理协议(M3.6k):后台创建/关闭/删除世界,替代 debug 脚本开荒。
  * 架构为"单活跃世界+归档":同时至多一个 active 世界,创建新世界时旧的转 closed。
  */
+import type { GameType, WorldgenParams, WorldgenReport } from './worldgen.js';
 
 /** 性别:v1 为数据字段(入库+快照),暂不影响外观(精灵无性别素材) */
 export const GENDERS = ['male', 'female', 'unspecified'] as const;
@@ -68,10 +69,20 @@ export const DEFAULT_WORLD_RULES: WorldRules = {
 };
 
 /** POST /api/admin/worlds 请求体 */
+/** 世界生成配置(缺省=内置固定地图;seed 为随机数数字串,同数复现同图) */
+export interface WorldgenConfig {
+  /** 十进制随机数串(1~10 位);服务端缺省自动生成 */
+  seed?: string;
+  gameType: GameType;
+  params: WorldgenParams;
+}
+
 export interface CreateWorldRequest {
   name: string;
   characters: WorldCharacterConfig[];
   rules?: WorldRules;
+  /** 随机世界生成配置;省略即内置固定地图 */
+  worldgen?: WorldgenConfig;
 }
 
 /** 世界记录视图(GET /api/admin/worlds 列表元素) */
@@ -81,14 +92,27 @@ export interface WorldView {
   status: 'active' | 'closed';
   characters: WorldCharacterConfig[];
   rules: WorldRules;
+  /** 生成配置(随机世界携带;固定地图省略) */
+  worldgen?: Required<Pick<WorldgenConfig, 'seed' | 'gameType'>> & { params: WorldgenParams };
+  /** 生成报告(场所清单/校验,创建时落档) */
+  worldgenReport?: WorldgenReport;
   createdAt: string;
   closedAt: string | null;
+}
+
+/** dry-run 生成预览(POST /api/admin/worlds/preview,不落库) */
+export interface WorldPreviewResponse {
+  report: WorldgenReport;
+  /** 拟出生点前 3 个(示意) */
+  spawnSamples: ReadonlyArray<readonly [number, number]>;
 }
 
 /** 世界生命周期端点(admin 鉴权同模型配置) */
 export const WORLD_ADMIN_API = {
   /** GET 列表 / POST 创建 */
   worlds: '/api/admin/worlds',
+  /** POST 生成预览(dry-run,不落库) */
+  worldPreview: '/api/admin/worlds/preview',
   /** POST 关闭(暂停+归档) */
   worldClose: '/api/admin/worlds/:id/close',
   /** DELETE 删除记录(人物级联清理) */

@@ -1,5 +1,4 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { and, asc, count, eq, ilike, inArray, or } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -8,13 +7,12 @@ import { z } from 'zod';
 import type { DbHandle } from '../db/client.js';
 import { assetCategories, assets } from '../db/schema/index.js';
 import { publishManifest } from '../assets/library.js';
+import { libraryRoot, publishTarget } from '../assets/paths.js';
 import { requireAdmin } from './auth.js';
 
 /** 库根与发布目标:dev 下按源码相对定位;容器部署时发布链路随 M-L.3 渲染对接一并处理 */
-/** dev 按源码相对推导;容器内经 env 覆盖(ASSET_LIBRARY_ROOT/ASSETS_PUBLISH_TARGET) */
-const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
-const LIBRARY_ROOT = process.env.ASSET_LIBRARY_ROOT ?? path.join(repoRoot, 'workspace', 'asset-library');
-const PUBLISH_TARGET = process.env.ASSETS_PUBLISH_TARGET ?? path.join(repoRoot, 'apps', 'web', 'public', 'assets');
+const LIBRARY_ROOT = libraryRoot();
+const PUBLISH_TARGET = publishTarget();
 
 const statusSchema = z.enum(ASSET_STATUSES);
 

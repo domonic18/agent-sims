@@ -12,7 +12,6 @@ import {
   STREET_LAMPS,
 } from './decor';
 import type { PlaceDefinition, TileMapDefinition } from '@sims/shared';
-import { TOWN_MAP } from '@sims/shared';
 import { addFurnitureSprite } from './furniture-art';
 
 const POND_RECT = { x: 4, y: 30, w: 4, h: 4 };
@@ -52,20 +51,22 @@ export const inRect = (
 ): boolean => x >= rect.x && x < rect.x + rect.w && y >= rect.y && y < rect.y + rect.h;
 
 /**
- * 城镇地形绘制(M-L.3 manifest 版):tile 独立纹理(slug 即 key,条带已退役)
- * + 大型 prop 与家具精灵(树/灯/床桌等,底边中心锚定)+ 场所名标注。
+ * 城镇地形绘制(M-L.5 参数化):按传入地图定义绘制(内置/生成地图通用)——
+ * decor 树灯花木与场所 floorTile/wallTile 优先取地图数据,缺省回退静态
+ * 内置映射;tile 独立纹理(slug 即 key)+ 家具精灵底边中心锚定。
  */
-export function drawTownMap(scene: Phaser.Scene): void {
-  const map = TOWN_MAP;
+export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
+  const decor = map.decor;
+  const pondRect = decor?.pond ?? POND_RECT;
   const border = (x: number, y: number): boolean =>
     x === 0 || y === 0 || x === map.width - 1 || y === map.height - 1;
 
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
       const blocked = map.blockedRects.some((r) => inRect(x, y, r));
-      if (blocked && inRect(x, y, POND_RECT)) {
+      if (blocked && inRect(x, y, pondRect)) {
         // 障碍占地现仅池塘(建筑为墙圈内景,由 drawInterior 绘制)
-        pondTile(scene, x, y);
+        pondTile(scene, x, y, pondRect);
         continue;
       }
       ground(scene, x, y, TILE_SLUG.grass);
@@ -98,25 +99,31 @@ export function drawTownMap(scene: Phaser.Scene): void {
       .setStroke('rgba(0,0,0,0.6)', 3);
   }
 
-  for (const [lx, ly] of [...STREET_LAMPS, ...PLAZA_LAMPS, ...PARK_LAMPS, ...FENCE_LAMPS]) {
+  const lamps = decor?.lamps ?? [...STREET_LAMPS, ...PLAZA_LAMPS, ...PARK_LAMPS, ...FENCE_LAMPS];
+  for (const [lx, ly] of lamps) {
     propSprite(scene, lx, ly, 'lamp');
   }
   const flowerFrames = [TILE_SLUG.flowerA, TILE_SLUG.flowerB, TILE_SLUG.flowerC];
-  for (const [fx, fy] of DECOR_FLOWERS) {
+  const flowers = decor?.flowers ?? DECOR_FLOWERS;
+  for (const [fx, fy] of flowers) {
     overlay(scene, fx, fy, flowerFrames[(fx + fy) % flowerFrames.length]!);
   }
-  for (const [tx, ty] of APARTMENT_TREES) {
+  const trees = decor?.trees ?? APARTMENT_TREES;
+  for (const [tx, ty] of trees) {
     propSprite(scene, tx, ty, (tx * 3 + ty) % 2 === 0 ? 'tree-a' : 'tree-b');
+  }
+  if (decor !== undefined) {
+    for (const [bx, by] of decor.bushes) prop(scene, bx, by, TILE_SLUG.bush);
   }
 }
 
 /** 池塘:按格位铺 8 向水岸 + 中心水面 */
-function pondTile(scene: Phaser.Scene, x: number, y: number): void {
+function pondTile(scene: Phaser.Scene, x: number, y: number, pondRect: { x: number; y: number; w: number; h: number }): void {
   const f = TILE_SLUG;
-  const west = x === POND_RECT.x;
-  const east = x === POND_RECT.x + POND_RECT.w - 1;
-  const north = y === POND_RECT.y;
-  const south = y === POND_RECT.y + POND_RECT.h - 1;
+  const west = x === pondRect.x;
+  const east = x === pondRect.x + pondRect.w - 1;
+  const north = y === pondRect.y;
+  const south = y === pondRect.y + pondRect.h - 1;
   const frame = north && west ? f.shoreNW
     : north && east ? f.shoreNE
     : south && west ? f.shoreSW
@@ -134,8 +141,8 @@ function pondTile(scene: Phaser.Scene, x: number, y: number): void {
  * + 家具精灵,角色经门入内。
  */
 function drawInterior(scene: Phaser.Scene, place: PlaceDefinition): void {
-  const floor = FLOOR_OF[place.id] ?? TILE_SLUG.floorWood;
-  const wall = WALL_OF[place.id] ?? TILE_SLUG.wallCream;
+  const floor = place.floorTile ?? FLOOR_OF[place.id] ?? TILE_SLUG.floorWood;
+  const wall = place.wallTile ?? WALL_OF[place.id] ?? TILE_SLUG.wallCream;
   const right = place.x + place.w - 1;
   const bottom = place.y + place.h - 1;
   const isDoor = (x: number, y: number): boolean =>
@@ -168,11 +175,12 @@ function drawInterior(scene: Phaser.Scene, place: PlaceDefinition): void {
 
 /** 公园:草皮 + 稀疏花丛 + 树/灌木/长椅/园灯 + 北缘栅栏(入口列留豁) */
 function drawPark(scene: Phaser.Scene, map: TileMapDefinition, place: PlaceDefinition): void {
+  const pondRect = map.decor?.pond ?? POND_RECT;
   fillPlace(scene, map, place, TILE_SLUG.parkGrass);
   const flowers = [TILE_SLUG.flowerA, TILE_SLUG.flowerB, TILE_SLUG.flowerC];
   for (let y = place.y; y < place.y + place.h; y += 1) {
     for (let x = place.x; x < place.x + place.w; x += 1) {
-      if (inRect(x, y, POND_RECT)) continue;
+      if (inRect(x, y, pondRect)) continue;
       if ((x * 7 + y * 5) % 13 === 0) overlay(scene, x, y, flowers[(x + y) % flowers.length]!);
     }
   }

@@ -23,12 +23,15 @@ export class TileMap {
   readonly width: number;
   readonly height: number;
   readonly places: readonly PlaceDefinition[];
+  /** 原始定义(M-L.5:前端渲染/复现用) */
+  readonly definition: TileMapDefinition;
   private readonly _blocked: readonly BlockedRect[];
 
   private constructor(definition: TileMapDefinition) {
     this.width = definition.width;
     this.height = definition.height;
     this.places = definition.places;
+    this.definition = definition;
     // 边界墙(网格最内一圈,渲染为树林/围墙)+ 定制障碍 + 建筑墙体 + 家具占地
     this._blocked = [
       ...definition.blockedRects,

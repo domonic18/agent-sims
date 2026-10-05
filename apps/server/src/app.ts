@@ -21,6 +21,8 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
 
   app.get('/health', async () => ({ ok: true }));
+  // 当前世界地图定义(M-L.5:前端渲染经 manifest 素材绘制任意生成地图)
+  app.get('/api/world/map', async () => app.simulation.map.definition);
 
   app.decorate('simulation', new Simulation());
   app.decorate('clients', new ClientRegistry());

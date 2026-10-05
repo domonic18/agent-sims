@@ -3,6 +3,7 @@ import { TOWN_MAP, WALK_SPEED_TILES_PER_TICK, type WorldEvent } from '@sims/shar
 import { useWorldStore } from '../store/worldStore';
 import { TILE } from './assets';
 import { registryOf } from './manifest';
+import type { TileMapDefinition } from '@sims/shared';
 import {
   createCharacterAnims,
   syncCharacterViews,
@@ -64,7 +65,7 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor('#8fc978');
-    drawTownMap(this);
+    drawTownMap(this, this.registry.get('map') as TileMapDefinition);
     createCharacterAnims(this);
     this._nightOverlay = this.add
       .rectangle(0, 0, TOWN_MAP.width * TILE, TOWN_MAP.height * TILE, 0x081024, 1)
