@@ -225,6 +225,7 @@
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-10-06 | **游戏内设置菜单**(用户发起插入项):游戏主页面加 SimCity 式配置——状态栏快捷控制条(⏸/1x·4x·16x/⚙)+ESC 设置弹窗(难度预设一键切换/世界规则开关/时间倍率/18 参数分组调节,弹窗打开自动暂停、关闭恢复);难度预设三档「轻松/标准/硬核」落 shared(world-presets.ts,参数+规则一体,resetParams 先复位默认再套用防残留);新常开控制通道 `/api/world/settings`(生产可用,不设 NODE_ENV 门槛)替代 /debug 的 pause/time-scale/params 四路由(/debug 收窄为纯开发工具,Lab UI 零改动仅底层换通道);world.rules 事件广播规则三字段全集并随 param-persist 同链落档;server setParams 增 reset 语义+新增 setRules;集成测试 9 例(world-settings 6+world-presets 3,总 235 绿)+容器走查五项全绿(快捷条/弹窗自动暂停/预设切换无残留/改参与 Lab 同源/Lab 回归) | 用户要求「游戏常见的配置方法重构」;AskUserQuestion 定稿:形态=游戏内设置菜单(Lab 保留不动)、预设=参数+规则一体 |
 | 2026-10-06 | **系统参数世界化**(M-G.1 后插入项,用户发起):后台全局「系统设置」18 参数改为世界级——创建向导步骤 2 增「世界参数」折叠区(默认收起,出厂默认回填),随 WorldRules.params 存档;运行中修改走 Lab 调试台「世界参数」面板(POST /debug/params 仅提交改动键);world.params 事件广播生效全集并入世界事件日志,param-persist 订阅回写活跃世界 config;sys_configs 单行表删除(迁移 0008),目录删 DEFAULT_TIME_SCALE(与 rules.initialTimeScale 重复,18→17)与 world 生效类别;后台「系统设置」页瘦身只留改密、导航更名「账户安全」;集成测试 9 例(重写 4+新增 5)+容器走查五项全绿(创建生效/落档/热调/复位/改密) | 用户要求参数在创建世界时设置而非独立系统设置页;AskUserQuestion 定稿:修改入口=Lab 调试台、设置页只留改密更名账户安全 |
 | 2026-10-06 | M-G.1 日志系统**已完成**(三日志表+查询 API+世界事件落库+telemetry 三埋点+操作审计 hook+后台运行日志页;9 集成测试+容器走查全绿) | M-G 首个子阶段交付;验收项"三日志页可查可筛/异常与操作各留痕"逐条过 |
 | 2026-10-05 | M-G 新增 M-G.4 职业阶梯与知识子阶段(knowledge+岗位分家四档+知识门槛,规模 M);建议执行序先于 M-G.3 | 用户脑暴三决策定稿: 岗位分家到场所/越高阶越省力/手动选岗+知识门槛(设计 goal-design §4.2、numerical §5.1、worldgen §3) |
