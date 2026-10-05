@@ -25,3 +25,7 @@ build/
 .idea/
 .vscode/*
 !.vscode/settings.json
+
+# 素材库发布产物(从库幂等重建,不入库;源头在 workspace/asset-library + DB)
+apps/web/public/assets/library/
+apps/web/public/assets/manifest.json

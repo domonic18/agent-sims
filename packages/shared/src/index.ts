@@ -4,6 +4,7 @@
  * (MODEL_PROTOCOL_BASE_URL_HINT 定义后漏出口零消费的事故)。
  */
 export * from './admin.js';
+export * from './asset-manifest.js';
 export * from './activities.js';
 export * from './balances.js';
 export * from './events.js';
