@@ -3,14 +3,14 @@
 ## 1. 项目概览
 
 - **愿景**: 像素风模拟人生网页游戏:玩家在模拟城市中学习/工作/生活,体力值+幸福值驱动活动反馈,打工赚金币用于消费、租房、买房、买家具;核心差异化——角色可随时托管给 AI Agent 代玩、也可随时接管,Agent 是玩家"人格的衍生",社交行为符合玩家人设,玩家之间可文字交流
-- **架构**: 单进程单体——Node.js + TypeScript + Fastify 服务端(世界模拟+Agent内核) + Vite/React/Phaser 3 客户端;Postgres(pgvector)+Drizzle;Socket.IO 快照+增量;Docker Compose 交付(app+postgres)。详见 docs/arch/00
+- **架构**: 单进程单体——Node.js + TypeScript + Fastify 服务端(世界模拟+Agent内核) + Vite/React/Phaser 4 客户端;Postgres(pgvector)+Drizzle;Socket.IO 快照+增量;Docker Compose 交付(app+postgres)。详见 docs/arch/00
 - **关键约束**: 模型与 API-Key 一律经后台管理配置(AES 加密存储),不进 env/代码;DB 迁移 forward-only,禁止手改已应用迁移;成本分级(规则→Jev→轻量LLM→慢思考LLM)是架构级设计
 
 ## 2. 项目结构
 
 **⚠️ 执行任何任务前,先读本文件;涉及哪一层,再读 docs/ 对应 arch 文档(按需,勿全量加载)。**
 
-- `apps/web/` 游戏客户端(Vite + React + Phaser 3;src 下 game/ui/admin/store/net) — 详见 [apps/web/CLAUDE.md](apps/web/CLAUDE.md)
+- `apps/web/` 游戏客户端(Vite + React + Phaser 4;src 下 game/ui/admin/store/net) — 详见 [apps/web/CLAUDE.md](apps/web/CLAUDE.md)
 - `apps/server/` 游戏服务端(单进程;src 下 world/agents/intents/llm/api/admin-api/socket/notify/db) — 详见 [apps/server/CLAUDE.md](apps/server/CLAUDE.md)
 - `packages/shared/` 前后端共享 Zod 协议(意图指令集/事件/状态类型) — 详见 [packages/shared/CLAUDE.md](packages/shared/CLAUDE.md)
 - `docker/` Dockerfile 与 compose(生产 app+postgres / 开发仅 db)

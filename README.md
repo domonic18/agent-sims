@@ -4,7 +4,7 @@
 
 ## 技术栈
 
-- 客户端: Vite + React + Phaser 3(Zustand 唯一状态源)
+- 客户端: Vite + React + Phaser 4(Zustand 唯一状态源)
 - 服务端: Node.js + TypeScript + Fastify 单进程(世界模拟 + Agent 内核)
 - 数据: PostgreSQL + pgvector(Drizzle ORM,迁移 forward-only)
 - 实时: Socket.IO(快照+增量,玩家/参观者同流)
@@ -39,7 +39,7 @@ pnpm dev
 ## 目录结构
 
 ```
-apps/web/        游戏客户端(Vite + React + Phaser 3)
+apps/web/        游戏客户端(Vite + React + Phaser 4)
 apps/server/     游戏服务端(世界模拟/Agent内核/接口,单进程)
 packages/shared/ 前后端共享 Zod 协议
 docker/          Dockerfile 与 compose(生产/开发)

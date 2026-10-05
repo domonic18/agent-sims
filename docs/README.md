@@ -58,6 +58,6 @@
 ## 背景速览(新会话先看这里)
 
 - **由来**: 创意池创意1,2026-10-03 立项
-- **技术路线(2026-10-03 定)**: Phaser 3 渲染 + React UI 外壳;Agent 代玩走**原生集成路线**(状态 API+意图指令集);Agent 内核参照 Generative Agents;**成本分级是硬约束**
-- **架构定稿(arch/00)**: 单体单进程(Node+Fastify);Socket.IO 快照+增量;Postgres+pgvector+Drizzle;四层决策路由(规则→Jev→轻量 LLM→慢思考 LLM);React Admin 后台(antd v5);Docker Compose 交付
-- **当前阶段(2026-10-05)**: M0~M3.6 完成(世界模拟/核心玩法/视觉打磨/人工验证);游戏界面已全套切换 LimeZu 素材;后台五项重构+antd v5 迁移完成;M4(Agent 内核)设计已定稿待实现;**v1.5 新增 M-L 素材库与随机世界体系**(M4 后)与 **M-S 末日生存**(远期)
+- **技术路线(2026-10-03 定,现 Phaser 4)**: Phaser 渲染 + React UI 外壳;Agent 代玩走**原生集成路线**(状态 API+意图指令集);Agent 内核参照 Generative Agents;**成本分级是硬约束**
+- **架构定稿(arch/00)**: 单体单进程(Node+Fastify);Socket.IO 快照+增量;Postgres+pgvector+Drizzle;四层决策路由(规则→Jev→轻量 LLM→慢思考 LLM);antd v5 后台;Docker Compose 交付
+- **当前阶段(2026-10-05)**: M0~M3.6 完成(世界模拟/核心玩法/视觉打磨/人工验证);游戏界面已全套切换 LimeZu 素材;后台五项重构+antd v5 迁移完成;**M4(Agent 内核)进行中**——设计定稿+M4a(llm 基座)完成,M4b(记忆流)起未开始;**v1.5 新增 M-L 素材库与随机世界体系**(M4 后)与 **M-S 末日生存**(远期)

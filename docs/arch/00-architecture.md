@@ -7,9 +7,9 @@
 
 | 层 | 选型 | 说明 |
 |---|------|------|
-| 客户端渲染 | Phaser 3 | 2D 像素世界;update() 读 store 插值渲染 |
+| 客户端渲染 | Phaser 4 | 2D 像素世界;update() 读 store 插值渲染 |
 | 客户端 UI | React + Vite + Zustand | HUD/面板;Zustand 为唯一状态源 |
-| 后台管理 | React Admin | 挂 /admin 路由级懒加载,同一构建产物 |
+| 后台管理 | React + antd v5 自建 | 挂 /admin 路由级懒加载,同一构建产物,游戏 bundle 零 antd |
 | 服务端 | Node.js + TypeScript + Fastify | 单进程单体 |
 | 实时同步 | Socket.IO | JSON 快照+增量;玩家/参观者同一条流 |
 | 数据库 | PostgreSQL 16 + pgvector | ORM: Drizzle;迁移: drizzle-kit |
@@ -35,7 +35,7 @@
 │  postgres 容器(pgvector) ← Drizzle migrate / seed               │
 └─────────────────────────────────────────────────────────────────┘
    ▲ Socket.IO 快照+增量              ▲ HTTP
-apps/web(React+Phaser3+Zustand)    参观者浏览器 / 管理员后台
+apps/web(React+Phaser4+Zustand)    参观者浏览器 / 管理员后台
 ```
 
 ## 3. 目录组织
@@ -43,11 +43,11 @@ apps/web(React+Phaser3+Zustand)    参观者浏览器 / 管理员后台
 ```
 agent-sims/
 ├─ apps/
-│  ├─ web/                        # 游戏客户端(Vite + React + Phaser 3)
+│  ├─ web/                        # 游戏客户端(Vite + React + Phaser 4)
 │  │  └─ src/
 │  │     ├─ game/                 # Phaser:场景/地图/角色渲染/路径插值
 │  │     ├─ ui/                   # React:HUD、记忆/日程/对话面板
-│  │     ├─ admin/                # React Admin 后台(路由级懒加载)
+│  │     ├─ admin/                # antd v5 后台(路由级懒加载,游戏 chunk 零 antd)
 │  │     ├─ store/                # Zustand(唯一状态源)
 │  │     ├─ net/                  # Socket.IO client
 │  │     └─ main.tsx
@@ -91,7 +91,7 @@ agent-sims/
 
 ## 5. 意图指令层(托管/接管的根基)
 
-- 指令集(Zod schema,packages/shared 为唯一协议源): `move_to / do_activity / say / buy / sleep / ...`
+- 指令集(Zod schema,packages/shared 为唯一协议源;现行 11 意图): `move_to / stop_move / start_activity / stop_activity / buy_item / eat_item / store_item / take_item / rent_property / buy_property / chat`
 - **双来源**: 玩家输入与 Agent 规划器是同一指令层的两个来源;**托管⇄接管 = 指令来源原子切换**(纯状态翻转,<1s,世界状态不丢)
 - 指令执行产生事件 → 写入记忆流 → 影响后续决策
 - **决策气泡** = 当前意图 + 决策理由(来自规划文本/方针缓存/模板拼装)
@@ -172,7 +172,7 @@ agent-sims/
 - **迁移纪律**: forward-only,drizzle-kit 生成入 git,禁止手改已应用迁移;0000 迁移含 `CREATE EXTENSION vector`
 - 启动顺序: **migrate → seed(幂等基础数据) → 世界循环**;备份 pg_dump
 
-## 9. 后台管理(React Admin @ /admin)
+## 9. 后台管理(React + antd v5 @ /admin)
 
 - 模型配置: 角色槽位 CRUD,Key AES 加密存储,页面不明文回显
 - NPC 管理: 人设卡/tier/作息 CRUD,新增入场、删除退出
@@ -202,5 +202,6 @@ agent-sims/
 | 2026-10-03 | 睡觉=记忆固化主窗口,dream 条目可查看 | 用户定稿 v1.4;确定性调度窗口成本低,Sleep-time Compute 背书 |
 | 2026-10-03 | React Admin 后台 | 自定义表单友好,复用 React 栈与 shared 类型 |
 | 2026-10-03 | pnpm workspace + Docker Compose 交付 | 行业主流;用户定稿 |
+| 2026-10-05 | 后台迁移 antd v5(游戏路由零 antd,manualChunks 隔离) | 用户拍板 UI 技术栈分层:后台成熟组件库+游戏界面零依赖兼得 |
 | 2026-10-05 | 素材库=管理侧唯一源头,发布幂等重建 public/assets+manifest,游戏运行时零 DB 依赖 | 盲裁返工教训治本;前端零依赖与加载性能保住 |
 | 2026-10-05 | worldgen 纯函数(seed+manifestVersion 派生),生成结果落现行 TileMapDefinition | 种子可复现硬需求;世界模拟层零改动风险隔离 |
