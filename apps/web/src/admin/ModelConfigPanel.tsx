@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import {
-  MODEL_PROVIDER_PRESETS,
   MODEL_PROTOCOL_BASE_URL_HINT,
   MODEL_PROTOCOL_LABELS,
+  MODEL_PROVIDER_PRESETS,
+  MODEL_SLOT_GROUPS,
   MODEL_SLOT_LABELS,
-  MODEL_SLOTS,
   MODEL_SLOT_PROTOCOLS,
   type ModelConfigInvokeResult,
   type ModelConfigTestResult,
@@ -20,7 +20,25 @@ interface SlotCardProps {
   onChanged: (view: ModelConfigView) => void;
 }
 
+function statusTag(view: ModelConfigView): { text: string; kind: 'on' | 'off' | 'fail' } {
+  if (!view.enabled) return { text: '未启用', kind: 'off' };
+  if (view.lastTestStatus === 'failed') return { text: '测试失败', kind: 'fail' };
+  return { text: '已启用', kind: 'on' };
+}
+
+function DescRow(props: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="slot-view-row">
+      <span>{props.label}</span>
+      <span className={props.mono ? 'mono' : undefined} title={props.value}>
+        {props.value}
+      </span>
+    </div>
+  );
+}
+
 function SlotCard({ view, onChanged }: SlotCardProps) {
+  const [editing, setEditing] = useState(false);
   const [protocol, setProtocol] = useState<ModelProtocol>(view.protocol);
   const [providerId, setProviderId] = useState('');
   const [baseUrl, setBaseUrl] = useState(view.baseUrl);
@@ -37,18 +55,16 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
 
   const allowedProtocols = MODEL_SLOT_PROTOCOLS[view.slot];
 
-  useEffect(() => {
-    setProtocol((prev) =>
-      allowedProtocols.includes(prev) ? prev : allowedProtocols[0]!,
-    );
+  const startEdit = (): void => {
+    setProtocol((prev) => (allowedProtocols.includes(prev) ? prev : allowedProtocols[0]!));
     setProviderId('');
     setBaseUrl(view.baseUrl);
     setModel(view.model);
     setEnabled(view.enabled);
     setApiKey('');
-  }, [view, allowedProtocols]);
-
-  const isEmbedding = view.slot === 'embedding';
+    setMessage(null);
+    setEditing(true);
+  };
 
   /** 选供应商预设即按当前协议自动填 Base URL(可再手改,ai-invest 同款交互) */
   const handleProviderChange = (id: string): void => {
@@ -73,6 +89,7 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
       if (allowedProtocols.length > 1) payload.protocol = protocol;
       if (apiKey) payload.apiKey = apiKey;
       onChanged(await updateModelConfig(view.slot, payload));
+      setEditing(false);
       setMessage({ kind: 'ok', text: '已保存' });
     } catch (err) {
       setMessage({ kind: 'error', text: err instanceof Error ? err.message : '保存失败' });
@@ -108,93 +125,117 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
     }
   };
 
+  const tag = statusTag(view);
+  const isEmbedding = view.slot === 'embedding';
+
   return (
     <section className="slot-card">
       <div className="slot-card-header">
         <h2>{MODEL_SLOT_LABELS[view.slot]}</h2>
-        <label className="slot-enabled">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-          />
-          启用
-        </label>
+        <span className={`slot-tag ${tag.kind}`}>{tag.text}</span>
       </div>
-      {allowedProtocols.length > 1 && (
-        <label>
-          接入协议
-          <select value={protocol} onChange={(e) => handleProtocolChange(e.target.value as ModelProtocol)}>
-            {allowedProtocols.map((p) => (
-              <option key={p} value={p}>
-                {MODEL_PROTOCOL_LABELS[p]}
-              </option>
-            ))}
-          </select>
-        </label>
+
+      {editing ? (
+        <>
+          {allowedProtocols.length > 1 && (
+            <label>
+              接入协议
+              <select value={protocol} onChange={(e) => handleProtocolChange(e.target.value as ModelProtocol)}>
+                {allowedProtocols.map((p) => (
+                  <option key={p} value={p}>
+                    {MODEL_PROTOCOL_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label>
+            供应商预设
+            <select value={providerId} onChange={(e) => handleProviderChange(e.target.value)}>
+              <option value="">自定义(手动填 Base URL)</option>
+              {MODEL_PROVIDER_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Base URL
+            <input
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              placeholder={MODEL_PROTOCOL_BASE_URL_HINT[protocol]}
+            />
+          </label>
+          <label>
+            模型名
+            <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" />
+          </label>
+          <label>
+            API Key{view.apiKeyConfigured ? `(已配置 ${view.apiKeyMasked},留空保留)` : '(未配置)'}
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={view.apiKeyConfigured ? '••••••••' : 'sk-...'}
+              autoComplete="off"
+            />
+          </label>
+          <label className="slot-enabled">
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+            启用该槽位
+          </label>
+          <div className="slot-actions">
+            <button onClick={() => void handleSave()} disabled={saving}>
+              {saving ? '保存中…' : '保存'}
+            </button>
+            <button className="admin-secondary" onClick={() => setEditing(false)}>
+              取消
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="slot-view">
+            <DescRow label="接入协议" value={MODEL_PROTOCOL_LABELS[view.protocol]} />
+            <DescRow label="Base URL" value={view.baseUrl || '(未填写)'} mono />
+            <DescRow label="模型名" value={view.model || '(未填写)'} mono />
+            <DescRow label="API Key" value={view.apiKeyConfigured ? view.apiKeyMasked : '未配置'} mono />
+            <DescRow
+              label="上次测试"
+              value={
+                view.lastTestStatus
+                  ? `${view.lastTestStatus === 'success' ? '成功' : '失败'}${view.lastTestedAt ? ` · ${new Date(view.lastTestedAt).toLocaleString()}` : ''}${view.lastTestStatus === 'failed' && view.lastTestError ? ` · ${view.lastTestError}` : ''}`
+                  : '未测试'
+              }
+            />
+          </div>
+          <label className="slot-invoke-prompt">
+            试调用 Prompt{isEmbedding ? '(向量化输入)' : '(留空用默认)'}
+            <input
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="用一句话介绍你自己"
+            />
+          </label>
+          <div className="slot-actions">
+            <button className="admin-secondary" onClick={startEdit}>
+              编辑
+            </button>
+            <button className="admin-secondary" onClick={() => void handleTest()} disabled={testing}>
+              {testing ? '测试中…' : '测试连通'}
+            </button>
+            <button className="admin-secondary" onClick={() => void handleInvoke()} disabled={invoking}>
+              {invoking ? '调用中…' : '试调用'}
+            </button>
+          </div>
+        </>
       )}
-      <label>
-        供应商预设
-        <select value={providerId} onChange={(e) => handleProviderChange(e.target.value)}>
-          <option value="">自定义(手动填 Base URL)</option>
-          {MODEL_PROVIDER_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Base URL
-        <input
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={MODEL_PROTOCOL_BASE_URL_HINT[protocol]}
-        />
-      </label>
-      <label>
-        模型名
-        <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" />
-      </label>
-      <label>
-        API Key{view.apiKeyConfigured ? `(已配置 ${view.apiKeyMasked},留空保留)` : '(未配置)'}
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={view.apiKeyConfigured ? '••••••••' : 'sk-...'}
-          autoComplete="off"
-        />
-      </label>
-      <label>
-        试调用 Prompt{isEmbedding ? '(向量化输入)' : '(留空用默认)'}
-        <input
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="用一句话介绍你自己"
-        />
-      </label>
-      <div className="slot-actions">
-        <button onClick={() => void handleSave()} disabled={saving}>
-          {saving ? '保存中…' : '保存'}
-        </button>
-        <button className="admin-secondary" onClick={() => void handleTest()} disabled={testing}>
-          {testing ? '测试中…' : '测试连通'}
-        </button>
-        <button className="admin-secondary" onClick={() => void handleInvoke()} disabled={invoking}>
-          {invoking ? '调用中…' : '试调用'}
-        </button>
-      </div>
+
       {testResult && (
         <p className={testResult.ok ? 'admin-ok' : 'admin-error'}>
           测试({testResult.latencyMs}ms): {testResult.detail}
-        </p>
-      )}
-      {!testResult && view.lastTestStatus && (
-        <p className="admin-muted">
-          上次测试: {view.lastTestStatus === 'success' ? '✓ 成功' : '✗ 失败'}
-          {view.lastTestedAt ? ` · ${new Date(view.lastTestedAt).toLocaleString()}` : ''}
-          {view.lastTestStatus === 'failed' && view.lastTestError ? ` · ${view.lastTestError}` : ''}
         </p>
       )}
       {invokeResult && (
@@ -231,17 +272,32 @@ export function ModelConfigPanel({ configs, onChanged }: ModelConfigPanelProps) 
   }, [configs]);
 
   return (
-    <div className="slot-grid">
-      {MODEL_SLOTS.map((slot) => (
-        <SlotCard
-          key={slot}
-          view={views[slot]!}
-          onChanged={(view) => {
-            setViews((prev) => ({ ...prev, [slot]: view }));
-            onChanged();
-          }}
-        />
+    <div className="model-panel">
+      {MODEL_SLOT_GROUPS.map((group) => (
+        <section className="model-group" key={group.id}>
+          <div className="model-group-head">
+            <h2>{group.label}</h2>
+            <span>{group.desc}</span>
+          </div>
+          <div className="slot-grid">
+            {group.slots.map((slot) => (
+              <SlotCard
+                key={slot}
+                view={views[slot]!}
+                onChanged={(view) => {
+                  setViews((prev) => ({ ...prev, [slot]: view }));
+                  onChanged();
+                }}
+              />
+            ))}
+          </div>
+        </section>
       ))}
+      <p className="settings-note">
+        各槽位独立启用:未配置或未启用的槽位,对应调用将直接报错(不会自动回落其他槽位)。
+        「测试连通」校验配置可达性;「试调用」走真实调用链并计入 Token 用量。
+        未来新增模型类型(如语音合成/识别)将以新槽位挂入对应分组。
+      </p>
     </div>
   );
 }

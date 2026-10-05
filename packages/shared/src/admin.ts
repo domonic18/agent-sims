@@ -43,6 +43,16 @@ export const MODEL_PROTOCOL_BASE_URL_HINT: Record<ModelProtocol, string> = {
   systemone: '填到 /v1 为止,如 https://api.codiv.ai/v1',
 };
 
+/** 模型能力分组(后台页按组渲染;新增模型类型=新槽位挂入对应组) */
+export const MODEL_SLOT_GROUPS = [
+  { id: 'language', label: '语言模型', desc: '认知推理、对话与行为决策', slots: ['slow', 'light', 'jev'] },
+  { id: 'embedding', label: '向量化', desc: '记忆检索的语义索引', slots: ['embedding'] },
+] as const;
+
+export type ModelSlotGroupId = (typeof MODEL_SLOT_GROUPS)[number]['id'];
+
+export type ModelSlotGroup = (typeof MODEL_SLOT_GROUPS)[number];
+
 /** 供应商预设(选即自动填 Base URL;协议无对应端点时不填) */
 export interface ModelProviderPreset {
   id: string;
