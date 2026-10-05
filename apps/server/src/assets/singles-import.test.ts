@@ -30,6 +30,13 @@ describe('parseOutdoorFilename 户外语义文件名', () => {
     expect(parsed?.grid).toEqual({ w: 2, h: 2 });
   });
 
+  it('ME_Singles 16x16 是 tile 尺寸标记而非占地,grid 省略(按像素重算)', () => {
+    const parsed = parseOutdoorFilename('ME_Singles_Camping_16x16_Apples_1.png');
+    expect(parsed?.theme).toBe('camping');
+    expect(parsed?.kindSlug).toBe('apples');
+    expect(parsed?.grid).toBeUndefined();
+  });
+
   it('ME_Singles 形态尾部多组编号并入变体', () => {
     const parsed = parseOutdoorFilename('ME_Singles_City_Terrains_1x1_Sidewalk_2_1.png');
     expect(parsed?.theme).toBe('city-terrains');

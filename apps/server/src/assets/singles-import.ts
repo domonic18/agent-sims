@@ -73,11 +73,15 @@ export function parseOutdoorFilename(file: string): OutdoorParseResult | null {
     const theme = kebab(matchB[1]!);
     const rest = matchB[4]!;
     const kindSource = rest.replace(/((_\d+)+)?(_Sand|_Stone|_Wood)?$/, '');
+    // 16x16 是 tile 尺寸标记(LimeZu 统一 16px 格),非占地格数——占地组用小值 NxN
+    const gw = Number(matchB[2]);
+    const gh = Number(matchB[3]);
+    const grid = gw === 16 && gh === 16 ? undefined : { w: gw, h: gh };
     return {
       theme,
       kindSlug: kebab(kindSource) || theme,
       name: rest.replace(/_/g, ' ').trim(),
-      grid: { w: Number(matchB[2]), h: Number(matchB[3]) },
+      ...(grid !== undefined ? { grid } : {}),
     };
   }
   return null;
