@@ -8,6 +8,7 @@ import {
   furnitureRectsOf,
   getActivityDefinition,
   isBesideFootprint,
+  placeIdMatches,
   wallRectsOf,
   type BlockedRect,
   type PlaceDefinition,
@@ -152,12 +153,20 @@ describe('锚点命中(M3.6i 放宽: 使用格或紧邻占地)', () => {
   });
 
   it('findActivityAnchorAt: 使用格与紧邻格命中同锚点,间隙/远处未命中', () => {
-    const hitUse = findActivityAnchorAt('workout', 45, 27);
+    const hitUse = findActivityAnchorAt(TOWN_MAP, 'workout', 45, 27);
     expect(hitUse).toMatchObject({ placeId: 'gym', kind: 'treadmill' });
-    expect(findActivityAnchorAt('workout', 45, 28)).toMatchObject({ placeId: 'gym' });
-    expect(findActivityAnchorAt('workout', 46, 27)).toBeNull();
-    expect(findActivityAnchorAt('workout', 10, 10)).toBeNull();
-    expect(findActivityAnchorAt('stroll', 45, 27)).toBeNull(); // 无锚点活动
+    expect(findActivityAnchorAt(TOWN_MAP, 'workout', 45, 28)).toMatchObject({ placeId: 'gym' });
+    expect(findActivityAnchorAt(TOWN_MAP, 'workout', 46, 27)).toBeNull();
+    expect(findActivityAnchorAt(TOWN_MAP, 'workout', 10, 10)).toBeNull();
+    expect(findActivityAnchorAt(TOWN_MAP, 'stroll', 45, 27)).toBeNull(); // 无锚点活动
+  });
+
+  it('placeIdMatches: 精确 id 命中,kind 前缀命中生成图命名,非前缀不误伤', () => {
+    expect(placeIdMatches('park', 'park')).toBe(true); // 内置图精确 id
+    expect(placeIdMatches('park', 'park-a')).toBe(true); // 生成图 kind-N
+    expect(placeIdMatches('home-a', 'home-a')).toBe(true);
+    expect(placeIdMatches('shop', 'workshop-a')).toBe(false); // 仅前缀,非子串
+    expect(placeIdMatches('park', 'plaza-a')).toBe(false);
   });
 });
 

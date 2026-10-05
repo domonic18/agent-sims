@@ -83,16 +83,17 @@ export function isBesideFootprint(f: FurnitureDefinition, x: number, y: number):
 }
 
 /**
- * 点位的活动锚点命中(TOWN_MAP 直查,客户端 go-and-do 判定用):
+ * 点位的活动锚点命中(按给定地图直查,客户端 go-and-do 判定用;内置/生成地图通用):
  * 站在声明使用格,或紧邻锚点家具占地(四邻)均算命中(M3.6i 放宽——
  * "站在跑步机旁"即可开始,不再要求精确踩中声明格);未命中返回 null。
  */
 export function findActivityAnchorAt(
+  map: TileMapDefinition,
   activityId: string,
   x: number,
   y: number,
 ): { placeId: string; kind: AnyFurnitureKind } | null {
-  for (const place of TOWN_MAP.places) {
+  for (const place of map.places) {
     for (const f of place.furniture ?? []) {
       if (f.activityId !== activityId || f.use === undefined) continue;
       if ((x === f.use.x && y === f.use.y) || isBesideFootprint(f, x, y)) {
@@ -101,6 +102,15 @@ export function findActivityAnchorAt(
     }
   }
   return null;
+}
+
+/**
+ * placeId 语义匹配: 精确 id 或 kind 前缀(park → park-a)。
+ * 活动 placeIds/店内购等声明在内置图语境(裸 kind),生成地图场所为 kind-N 命名,
+ * 按前缀回落匹配,内置与生成地图共用同一判定语义。
+ */
+export function placeIdMatches(placeId: string, id: string): boolean {
+  return id === placeId || id.startsWith(`${placeId}-`);
 }
 
 /**
