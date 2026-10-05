@@ -17,7 +17,7 @@ const KIND_SIZE_FINGERPRINTS: ReadonlyArray<{ kind: string; w: number; h: number
   { kind: 'bed', w: 32, h: 38 },
   { kind: 'fridge', w: 16, h: 38 },
   { kind: 'bookshelf', w: 32, h: 34 },
-  { kind: 'treadmill', w: 16, h: 28 },
+  { kind: 'treadmill', w: 20, h: 36 },
   { kind: 'desk', w: 32, h: 19 },
   { kind: 'shelf', w: 14, h: 40 },
   { kind: 'counter', w: 30, h: 26 },
@@ -77,7 +77,7 @@ export function matchKindBySize(
   h: number,
 ): string | null {
   const hit = KIND_SIZE_FINGERPRINTS.find(
-    (f) => Math.abs(f.w - w) <= (f.tol ?? 1) && Math.abs(f.h - h) <= (f.tol ?? 1),
+    (f) => Math.abs(f.w - w) <= (f.tol ?? 0) && Math.abs(f.h - h) <= (f.tol ?? 0),
   );
   return hit?.kind ?? null;
 }
