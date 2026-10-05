@@ -136,6 +136,32 @@
 
 - 状态: M4a 已完成(2026-10-05),M4b 起未开始
 
+### M-L: 素材库与随机世界体系(v1.5 插入,用户需求驱动)
+
+- 规模: L
+- **动机**: 素材"盲裁无校验"链路反复出错(床/冰箱/工作站错位返工,923bef9)的治本方案;同时支撑随机世界生成与两演进(建筑升级/末日生存)的素材地基
+- 设计依据: design/asset-library-design.md + design/worldgen-design.md;需求基准 v1.5 §2.8/§2.9
+- 子阶段(串行小步提交):
+
+| 子阶段 | 规模 | 实现内容 | 验收抓手 |
+|--------|------|----------|----------|
+| M-L.1 库与导入器 | M | asset 域 schema(分类树+素材表,迁移)+库存储(workspace/asset-library)+批量导入脚本(LimeZu Singles 首批 15 类家具+户外件)+manifest 生成器 | 导入后 DB 可查;manifest Zod schema 入 shared |
+| M-L.2 管理界面 | M | admin /admin/assets:树形分类 CRUD+素材表格+放大校验(SpriteInspector 像素放大/动画帧逐帧)+元数据编辑+draft→active 启用流+发布按钮 | 后台可视化校验并启用全部在用素材 |
+| M-L.3 渲染层对接 | S | assets.ts registry 改消费 manifest;tile 条带由发布器生成(裁切脚本退役);现有 30 tile+15 家具+6 角色迁入库发布,渲染结果等价回归 | 游戏画面与迁移前一致(截图对比) |
+| M-L.4 世界生成器 | L | 纯函数管线(seed→PRNG→骨架/场所/室内/装饰/校验修复)+布局模板首批 9 类场所+worldgenParams+内置固定地图种子化 | 单测(同种子一致性/连通性/锚点齐备)+同种子双世界浏览器对比 |
+| M-L.5 创建向导 | S | WorldPanel 单表单重构为 Steps 五步(类型/人数/人物/种子/确认)+创建 API 扩展(gameType/seed/params)+生成报告与 dry-run 预览 | 端到端创建随机世界并游玩;旧配置项全保留 |
+
+- 验收标准: requirement §11 v1.5 三条(素材管理/种子一致性/向导流程)
+- 状态: 未开始
+
+### M-S: 末日生存玩法(v1.5 插入,远期)
+
+- 规模: XL
+- **时间定位(用户定稿)**: 远期立项——排在成长线核心(M4~M6)验收之后;依赖 M-L(survival 素材域+worldgen 生存分支)
+- 设计依据: design/survival-design.md(概要级,细化时再拆子阶段)
+- 分阶段路径(占位): S1 实体与采集(和平生存)→ S2 合成与制造(庇护所建造)→ S3 僵尸波次(防守闭环)→ S4 合作与平衡(分工/曲线调优)
+- 状态: 未开始(设计文档已立)
+
 ### M5: 睡眠与梦境记忆
 
 - 规模: S
@@ -232,3 +258,4 @@
 | 2026-10-05 | **后台系统五项重构**(用户 5 条反馈驱动:①传统左侧导航布局 ②模型配置仿 ai-invest-assisstant 且可扩展 ③管理员改密码 ④系统参数去 hardcode 后台化 ⑤功能开关随世界创建配置): 五阶段落地——**P1 左侧导航**: AdminPage 重构为 admin-shell(220px 侧边栏[运营:世界管理/模型配置/Token 用量 + 系统:系统设置] + 右侧 1080px 内容区),active 左缘高亮条,底部用户区/退出登录;**P2 账户安全**: hashPassword 提升至 utils/crypto,GET /auth/me + POST /auth/change-password(旧密码校验 401/8~64 位校验/token 与密码无关改后不掉线),系统设置页「账户安全」卡三栏表单;**P3 模型配置重构**: shared MODEL_SLOT_GROUPS(语言模型[slow/light/jev]+向量化[embedding],未来语音=TTS/ASR 槽位入新组即可),SlotCard 查看/编辑双态(查看态=状态 Tag+五行参数+测试连通/试调用,编辑态=表单+保存/取消),底部说明框(无回落语义);**P4 系统参数后台化**: 配置三层模型定稿(全局 sys_configs 热调/世界规则快照/双端常量不开放),shared sys-config.ts 参数目录 19 项元数据驱动(key/label/group/type/min/max/effect[立即/新角色/下个世界]),balance.ts 去 as const 改 mutable+applyBalanceOverrides,迁移 0004 sys_configs 表,GET/PUT/reset 三路由(按目录动态校验,全量替换语义),启动 loadSysConfigOverridesOnce(once 守卫防测试多 app 实例竞态),系统设置页分组表单+生效时机 badge+已自定义标记;**P5 世界规则**: shared WorldRules{allowDeath/allowChat/initialTimeScale}+DEFAULT_WORLD_RULES,CreateWorldRequest.rules? 旧世界 normalizeRules 逐项兜底,simulation.rules 字段(reset 回默认)+_checkDeath 首行拦截(关死亡=体力卡 0 躺平不死不扣繁荣分)+execute chat 分支拦截(ok:false 文案拒绝),worlds.ts rulesSchema(倍率 refine WORLD_TIME_SCALES)+创建后 sim.rules/sim.timeScale 同步,创建表单「世界规则」段(两开关+倍率 select)+当前世界规则 chips。门禁 190 测试全绿(净增 7: 改密 5+sys-config 5+规则 6,重构竞态修复: 共享 vitest-admin 改 onConflictDoUpdate 不删号);容器重建+Playwright 七项走查(四页导航切换/改密双向流程/模型配置分组双态/系统参数改 0.05 落库生效+越界 400+恢复默认/创建世界带开关→DB rules 快照+worldState 4x+chips 显示)四页截图验收,走查后已恢复原「社交演示镇」 | 后台从开发者工具升级为可运营配置台;参数分层(全局热调/世界快照/双端常量)保证热调不破坏一致性 |
 | 2026-10-05 | **后台管理系统迁移 antd v5**(用户拍板 UI 技术栈分层: 后台引入成熟组件库「零依赖但看着简陋」,游戏界面暂保持现状;视觉风格 antd 默认蓝,参照 ai-invest-assisstant): 六步串行提交——①依赖 antd@^5.18+@ant-design/icons@^5.3+dayjs,vite manualChunks 独立 antd vendor chunk,ConfigProvider(zhCN)+AntdApp 挂 AdminPage 内部(非 main.tsx,游戏 bundle 零 antd);②WorldPanel(Form.List 动态居民行+Popconfirm 替代 window.confirm+Tag chips);③ModelConfigPanel(Descriptions 查看态+双态切换保留);④TokenUsagePanel(Segmented/Statistic/Progress/Table 服务端分页,趋势柱保留手写 div);⑤SettingsPanel(**draft Record<string,string> 受控语义原样保留**——InputNumber onChange `v==null?'':String(v)`,未改时保存/放弃禁用,越界报错走 Alert)+账户安全改 Form rules(确认密码 dependencies 校验器)+恢复默认走 modal.confirm;⑥整删 admin.css 885 行(趋势柱颜色内联,AdminPage 报错行改 Alert)。要点——Menu 必用 items 数组(type:'group' 分组)、message/modal 一律 App.useApp() 取(防静态方法 context 警告)、LoginForm 同步迁移(Card+Form initialValues username=admin)。门禁每步全绿(190 测试);容器重建+Playwright 全链走查(登录→四页导航→模型双态→Token 三窗口→系统参数越界 400+放弃改动→改密双向→创建「UI 走查镇」关聊天规则 chips 验证→删记录),场景已恢复(社交演示镇活跃/密码 change-me);chunk 对比——游戏侧 WorldCanvas 1755KB/index 41.6KB 与迁移前完全一致,antd 1103KB 只进 /admin 懒加载链,AdminPage 手写 CSS(10.6KB)归零 | 手写后台 UI 全量替换为组件库,维护成本大降;游戏端零依赖原则不破 |
 | 2026-10-05 | **游戏界面全套切换 LimeZu 素材**(用户拍板采购完整版 Modern Interiors+Exteriors):tiles.png 重裁 30 帧(草地/路径/广场/水岸 8 向/花丛/栅栏+地板×6/墙×6);新增 props(圆树×2/柏树/路灯)与 furniture 15 种精灵,底边中心锚定占地底边,程序化家具绘制与 palette.ts 整体移除;角色表破解 premade 行对结构(896x656=56 列×41 行,窗口 16x27)——walk=T2 四向×6/idle=T26 呼吸×2/躺卧=T6(表内无坐姿,rest 以躺卧帧呈现并去掉 90° 旋转 hack,sit 组移除);内景改 LimeZu 地板/墙 tile 按场所分配配色;授权文件更新(LimeZu 可商用需署名禁转售)。门禁全绿,容器重建+浏览器实测(躺卧长椅/跑步机原地跑/昼夜)截图验收 | 付费素材包到货,视觉整体升级 |
+| 2026-10-05 | **需求基准 v1.5 + 新增两个里程碑**(用户 3 条问题 4 条需求驱动:素材盲裁反复出错/素材库体系/随机世界/生存玩法):需求基准新增 §2.8 素材库与后台素材管理(树形 CRUD+放大校验+批量导入为主手动上传为辅+tier/domain 预留)、§2.9 随机世界生成(种子驱动整图随机,用户定稿)+游戏模式与引导式创建向导、§2.10 末日生存玩法(远期立项先立设计文档,用户定稿);修订 §6 世界内容与 §8 一期范围(增 13/14 两项 P1)、二期池(增生存玩法/建筑升级)。里程碑插入 M-L 素材库与随机世界体系(5 子阶段,M4 后)与 M-S 末日生存玩法(远期);新增设计文档 design/{asset-library-design,worldgen-design,survival-design}.md | 素材链路治本(盲裁→库+可视化校验)与游戏多样性演进 |
