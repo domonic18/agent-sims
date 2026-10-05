@@ -132,7 +132,7 @@ export function buildImportPlan(source: string): ImportItem[] {
       theme: 'furniture',
       kind: slug,
       sourcePath: `${source}/furniture/${slug}.png`,
-      source: 'public-migration',
+      source: 'limezu-singles(verified)',
       gridW,
       gridH,
       status: 'active',
