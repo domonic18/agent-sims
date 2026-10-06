@@ -1,4 +1,4 @@
-import { getShopItem, inventoryVolume } from '@sims/shared';
+import { getItem, inventoryVolume } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import { clampVital, ensureAlive, type WorldCharacter } from './character.js';
 import { ensureAtOwnHome } from './housing.js';
@@ -9,9 +9,12 @@ import type { Simulation } from './simulation.js';
  * 体积超限拒绝;经 eat_item 意图随时进食(任意地点)。
  */
 export function buyItem(sim: Simulation, characterId: string, itemId: string): WorldCharacter {
-  const item = getShopItem(itemId);
+  const item = getItem(itemId);
   if (item === null) {
     throw new Error(`未知商品: ${itemId}`);
+  }
+  if (item.price === undefined) {
+    throw new Error(`「${item.name}」非商店货架物品,不可购买`);
   }
   const character = sim.character(characterId);
   ensureAlive(character);
@@ -34,14 +37,18 @@ export function buyItem(sim: Simulation, characterId: string, itemId: string): W
   return character;
 }
 
-/** 吃背包食物(M3.6g):任意地点可吃;扣背包并结算一次性效果 */
+/** 吃背包食物(M3.6g):任意地点可吃;扣背包并结算一次性效果;material 不可食用 */
 export function eatItem(sim: Simulation, characterId: string, itemId: string): WorldCharacter {
-  const item = getShopItem(itemId);
+  const item = getItem(itemId);
   if (item === null) {
     throw new Error(`未知商品: ${itemId}`);
   }
   const character = sim.character(characterId);
   ensureAlive(character);
+  const effects = item.effects;
+  if (effects === undefined) {
+    throw new Error(`「${item.name}」不可食用`);
+  }
   if ((character.backpack[itemId] ?? 0) <= 0) {
     throw new Error(`${character.name} 背包里没有「${item.name}」(先到商店购买)`);
   }
@@ -49,8 +56,8 @@ export function eatItem(sim: Simulation, characterId: string, itemId: string): W
   if (character.backpack[itemId]! <= 0) {
     delete character.backpack[itemId];
   }
-  character.energy = clampVital(character.energy + item.effects.energy);
-  character.happiness = clampVital(character.happiness + item.effects.happiness);
+  character.energy = clampVital(character.energy + effects.energy);
+  character.happiness = clampVital(character.happiness + effects.happiness);
   return character;
 }
 
@@ -61,7 +68,7 @@ export function storeItem(
   itemId: string,
   count: number,
 ): WorldCharacter {
-  const item = getShopItem(itemId);
+  const item = getItem(itemId);
   if (item === null) {
     throw new Error(`未知商品: ${itemId}`);
   }
@@ -92,7 +99,7 @@ export function takeItem(
   itemId: string,
   count: number,
 ): WorldCharacter {
-  const item = getShopItem(itemId);
+  const item = getItem(itemId);
   if (item === null) {
     throw new Error(`未知商品: ${itemId}`);
   }

@@ -4,7 +4,7 @@
  * 仅上提双端消费项;服务端专属数值(tick/衰减/昼夜)仍在 apps/server config/balance.ts。
  * 数值口径见 docs/design/04-numerical-design.md(改数值先改文档)。
  */
-import { getShopItem } from './shop.js';
+import { getItem } from './items.js';
 
 /** 步行速度:格/游戏分钟(1 tick = 1 游戏分钟,即每 tick 移动格数) */
 export const WALK_SPEED_TILES_PER_TICK = 2;
@@ -21,11 +21,11 @@ export const CHAT_DAILY_GAINED = 6;
 /** 死亡救治窗口(goal-design §7,M-G.5):24 游戏小时——窗口内救治免扣繁荣分,超时自动复活并按现值扣减 */
 export const REVIVE_WINDOW_MINUTES = 1440;
 
-/** 库存体积求和(Σ份数×单件体积);未知商品按 0 计(调用方保证 id 合法) */
+/** 库存体积求和(Σ份数×单件体积);未知物品按 0 计(调用方保证 id 合法) */
 export function inventoryVolume(record: Record<string, number>): number {
   let volume = 0;
   for (const [itemId, count] of Object.entries(record)) {
-    const item = getShopItem(itemId);
+    const item = getItem(itemId);
     if (item !== null) {
       volume += item.volume * count;
     }

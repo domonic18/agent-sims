@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
-import { SHOP_ITEMS, getShopItem } from '@sims/shared';
+import { ITEMS, SHOP_ITEMS, getItem, getShopItem } from '@sims/shared';
 import { Simulation } from './simulation.js';
 
 /** 商店内部可行走格(x21..25/y27..32 内圈,避开柜台/货架) */
@@ -142,5 +142,54 @@ describe('商店背包制(M3.2 店内购买;M3.6g 背包/冰箱两级库存+体�
     // 背包至少装得下任意单件商品(体积上限 > 最大单件体积)
     const maxVolume = Math.max(...SHOP_ITEMS.map((item) => item.volume));
     expect(BALANCE.BACKPACK_VOLUME_LIMIT).toBeGreaterThan(maxVolume);
+  });
+});
+
+describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () => {
+  it('目录完整性: 13 项,food 必带 effects,material 不可食用,货架恰为 8 项派生', () => {
+    expect(ITEMS).toHaveLength(13);
+    expect(SHOP_ITEMS).toHaveLength(8); // 货架=带定价子集(引用一致)
+    for (const item of ITEMS) {
+      expect(getItem(item.id)).toBe(item);
+      expect(item.volume).toBeGreaterThanOrEqual(1);
+      if (item.category === 'food') {
+        expect(item.effects).toBeDefined();
+      } else {
+        expect(item.effects).toBeUndefined();
+        expect(item.price).toBeUndefined();
+      }
+    }
+  });
+
+  it('浆果派(制作食物): 任意地点可食 +8 体力/+4 幸福', () => {
+    const { sim, id } = simWith('liam', 50);
+    sim.character(id).backpack = { berry_pie: 1 };
+    sim.character(id).energy = 50;
+    sim.character(id).happiness = 50;
+    sim.requestEatItem(id, 'berry_pie');
+    expect(sim.character(id).energy).toBe(58);
+    expect(sim.character(id).happiness).toBe(54);
+  });
+
+  it('非货架物品不可购买;material 不可食用', () => {
+    const { sim, id } = simWith('mia', 50);
+    expect(() => sim.requestBuyItem(id, 'berry')).toThrow(/非商店货架/);
+    expect(() => sim.requestBuyItem(id, 'repair_kit')).toThrow(/非商店货架/);
+    sim.character(id).backpack = { scrap: 1 };
+    expect(() => sim.requestEatItem(id, 'scrap')).toThrow(/不可食用/);
+    expect(sim.character(id).backpack).toEqual({ scrap: 1 }); // 拒绝不动库存
+  });
+
+  it('新材料计入背包容积: 采集品/耗材按注册表体积占格', () => {
+    const { sim, id } = simWith('noah', 50);
+    const noah = sim.character(id);
+    noah.backpack = { berry: 6 }; // 6/8
+    noah.fridge = { scrap: 3 };
+    noah.x = IN_HOME_A.x;
+    noah.y = IN_HOME_A.y;
+    noah.housing!.paidThroughDay = 2;
+    sim.requestTakeItem(id, 'scrap', 2); // 6+2=8 ≤ 8 放行
+    expect(noah.backpack).toEqual({ berry: 6, scrap: 2 });
+    expect(() => sim.requestTakeItem(id, 'scrap', 1)).toThrow(/背包已满\(8\/8\)/);
   });
 });

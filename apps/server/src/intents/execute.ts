@@ -1,7 +1,7 @@
 import {
   getActivityDefinition,
+  getItem,
   getPropertyDefinition,
-  getShopItem,
   intentSchema,
   type Intent,
 } from '@sims/shared';
@@ -57,24 +57,24 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
     }
     case 'buy_item': {
       const character = sim.requestBuyItem(intent.characterId, intent.itemId);
-      const name = getShopItem(intent.itemId)?.name ?? intent.itemId;
+      const name = getItem(intent.itemId)?.name ?? intent.itemId;
       const stocked = character.backpack[intent.itemId] ?? 0;
       return { ok: true, message: `${character.name} 购入「${name}」放入背包(现有 ${stocked} 份)` };
     }
     case 'eat_item': {
       const character = sim.requestEatItem(intent.characterId, intent.itemId);
-      const name = getShopItem(intent.itemId)?.name ?? intent.itemId;
+      const name = getItem(intent.itemId)?.name ?? intent.itemId;
       return { ok: true, message: `${character.name} 吃掉「${name}」(背包)` };
     }
     case 'store_item': {
       const character = sim.requestStoreItem(intent.characterId, intent.itemId, intent.count);
-      const name = getShopItem(intent.itemId)?.name ?? intent.itemId;
+      const name = getItem(intent.itemId)?.name ?? intent.itemId;
       const stored = character.fridge[intent.itemId] ?? 0;
       return { ok: true, message: `${character.name} 存入冰箱「${name}」×${intent.count}(冰箱现有 ${stored} 份)` };
     }
     case 'take_item': {
       const character = sim.requestTakeItem(intent.characterId, intent.itemId, intent.count);
-      const name = getShopItem(intent.itemId)?.name ?? intent.itemId;
+      const name = getItem(intent.itemId)?.name ?? intent.itemId;
       const carried = character.backpack[intent.itemId] ?? 0;
       return { ok: true, message: `${character.name} 从冰箱取出「${name}」×${intent.count}(背包现有 ${carried} 份)` };
     }
