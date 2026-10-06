@@ -144,6 +144,7 @@ export class WorldScene extends Phaser.Scene {
         }
         cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, minZoom, ZOOM_MAX));
         if (cam.zoom <= minZoom + 0.001) {
+          cam.removeBounds(); // 同 overview:解除边界负 scroll 才能真居中
           cam.centerOn((map.width * TILE) / 2, (map.height * TILE) / 2);
           if (store.cameraMode !== 'overview') store.setCameraMode('overview');
         } else {
@@ -210,6 +211,8 @@ export class WorldScene extends Phaser.Scene {
     const cam = this.cameras.main;
     const minZoom = this._minZoom();
     if (cameraMode === 'overview') {
+      // 地图小于视口时居中需要负 scroll,setBounds 会把它钳到 0(地图钉左上角)——概览态解除边界
+      cam.removeBounds();
       cam.stopFollow();
       cam.setZoom(minZoom);
       cam.centerOn((this._map.width * TILE) / 2, (this._map.height * TILE) / 2);
@@ -218,6 +221,9 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     if (this._appliedMode !== 'follow') {
+      if (this._map !== null) {
+        cam.setBounds(0, 0, this._map.width * TILE, this._map.height * TILE);
+      }
       cam.setZoom(Math.max(ZOOM_DEFAULT, minZoom));
       this._appliedMode = 'follow';
     }
