@@ -4,9 +4,11 @@ import {
   getActivityDefinition,
   placeIdMatches,
   type ActivityDefinition,
+  type CraftRecipeId,
   type Intent,
-  type MaintenanceTaskId,
+  type WorkTaskId,
   type WorldSnapshotMessage,
+  getRecipe,
 } from '@sims/shared';
 import { sendIntent } from '../../net/socket';
 import { pushToast } from '../../store/toastStore';
@@ -16,11 +18,12 @@ import { activityAnchors, findPlaceAt, findPlaceByRef, type CharacterView } from
 export type RunIntent = (intent: Intent) => Promise<void>;
 
 /**
- * 最近同岗工单目标(M-G.5):clean→杂物点/repair→围栏破损/救治→窗口内幽灵,
- * 按曼哈顿距离取最近;无候选返回 null(自动接单与按钮置灰共用)。
+ * 最近同岗工单目标(M-G.5/M-G.6):clean→杂物点/repair→围栏破损/救治→窗口内幽灵/
+ * 采集→资源节点(浆果丛只挑有存量,枯竭格不可接),按曼哈顿距离取最近;
+ * 无候选返回 null(自动接单与按钮置灰共用)。
  */
 export function nearestWorkTarget(
-  task: MaintenanceTaskId,
+  task: WorkTaskId,
   character: { x: number; y: number },
   snapshot: WorldSnapshotMessage,
 ): { targetId: string; distance: number } | null {
@@ -29,6 +32,14 @@ export function nearestWorkTarget(
       ? snapshot.characters
           .filter((c) => !c.alive && c.diedAtGameMinutes !== null)
           .map((c) => ({ targetId: c.id, x: c.x, y: c.y }))
+      : task === 'gather_berry' || task === 'scavenge'
+        ? snapshot.resources
+            .filter(
+              (node) =>
+                node.kind === (task === 'gather_berry' ? 'berry_bush' : 'junk_pile') &&
+                (task === 'scavenge' || (node.charges ?? 0) > 0),
+            )
+            .map((node) => ({ targetId: node.id, x: node.x, y: node.y }))
       : snapshot.maintenance
           .filter((spot) => spot.kind === (task === 'clean' ? 'litter' : 'fence_damage'))
           .map((spot) => ({ targetId: spot.id, x: spot.x, y: spot.y }));
@@ -43,8 +54,8 @@ export function nearestWorkTarget(
 }
 
 export interface GoAndDoPending {
-  /** go-and-do 待办: 到达目标后自动接续(activity=开始活动 / buy=店内购入) */
-  kind: 'activity' | 'buy';
+  /** go-and-do 待办: 到达目标后自动接续(activity=开始活动 / buy=店内购入 / craft=到站制作) */
+  kind: 'activity' | 'buy' | 'craft';
   id: string;
 }
 
@@ -62,7 +73,8 @@ export function useGoAndDo(
   run: RunIntent;
   startActivity: (def: ActivityDefinition) => Promise<void>;
   buyItem: (itemId: string) => Promise<void>;
-  startWorkTask: (task: MaintenanceTaskId) => Promise<void>;
+  startWorkTask: (task: WorkTaskId) => Promise<void>;
+  startCraft: (recipeId: CraftRecipeId) => Promise<void>;
   pending: GoAndDoPending | null;
 } {
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
@@ -143,12 +155,42 @@ export function useGoAndDo(
     setPending(ack.ok ? { kind: 'buy', id: itemId } : null);
   };
 
-  /** 接维护工单(M-G.5):单意图自带寻路,选最近同岗目标直接下发,无目标静默 */
-  const startWorkTask = async (task: MaintenanceTaskId): Promise<void> => {
+  /** 接工单(M-G.5/M-G.6):单意图自带寻路,选最近同岗目标直接下发,无目标静默 */
+  const startWorkTask = async (task: WorkTaskId): Promise<void> => {
     if (character === null || snapshot === null) return;
     const target = nearestWorkTarget(task, character, snapshot);
     if (target === null) return;
     await run({ type: 'work_task', characterId: character.id, targetId: target.targetId });
+  };
+
+  /** 配方制作(M-G.6):已在站点使用格直接开始;否则先前往最近使用格,到达后自动下发 craft */
+  const startCraft = async (recipeId: CraftRecipeId): Promise<void> => {
+    if (character === null || snapshot === null || map === null) return;
+    if (findActivityAnchorAt(map, recipeId, character.x, character.y) !== null) {
+      await run({ type: 'craft', characterId: character.id, recipeId });
+      return;
+    }
+    const anchors = activityAnchors(map, recipeId);
+    const nearest =
+      anchors.length > 0
+        ? anchors.reduce((best, a) =>
+            Math.abs(a.x - character.x) + Math.abs(a.y - character.y) <
+            Math.abs(best.x - character.x) + Math.abs(best.y - character.y)
+              ? a
+              : best,
+          )
+        : null;
+    if (nearest === null) return;
+    const ack = await sendIntent({
+      type: 'move_to',
+      characterId: character.id,
+      x: nearest.x,
+      y: nearest.y,
+    });
+    setFeedback(ack);
+    pushToast(ack.ok, ack.ok ? '前往制作站点,到达后自动开始制作' : ack.message);
+    pendingArrivalRef.current = false;
+    setPending(ack.ok ? { kind: 'craft', id: recipeId } : null);
   };
 
   useEffect(() => {
@@ -180,6 +222,16 @@ export function useGoAndDo(
         void run({ type: 'buy_item', characterId: character.id, itemId: pending.id });
         return;
       }
+    } else if (pending.kind === 'craft') {
+      const recipe = getRecipe(pending.id);
+      if (
+        recipe !== null &&
+        findActivityAnchorAt(map, recipe.id, character.x, character.y) !== null
+      ) {
+        finish();
+        void run({ type: 'craft', characterId: character.id, recipeId: recipe.id });
+        return;
+      }
     } else {
       const def = getActivityDefinition(pending.id);
       if (def === null) {
@@ -203,5 +255,5 @@ export function useGoAndDo(
     }
   }, [pending, character, snapshot, map]);
 
-  return { feedback, run, startActivity, buyItem, startWorkTask, pending };
+  return { feedback, run, startActivity, buyItem, startWorkTask, startCraft, pending };
 }

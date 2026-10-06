@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { LOW_ENERGY_THRESHOLD, type MaintenanceTaskId } from '@sims/shared';
+import { LOW_ENERGY_THRESHOLD, type WorkTaskId } from '@sims/shared';
 import { sendIntent } from '../net/socket';
 import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
@@ -9,7 +9,13 @@ import {
   GoSection,
   SocialSection,
 } from './side-panel/sections';
-import { AssetsSection, BackpackSection, FridgeSection, ShopSection } from './side-panel/shop';
+import {
+  AssetsSection,
+  BackpackSection,
+  CraftSection,
+  FridgeSection,
+  ShopSection,
+} from './side-panel/shop';
 import { findPlaceAt } from './side-panel/place';
 import { nearestWorkTarget, useGoAndDo } from './side-panel/useGoAndDo';
 import './side-panel.css';
@@ -41,7 +47,7 @@ export function SidePanel() {
   const [tab, setTab] = useState<PanelTab>('actions');
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
-  const { feedback, run, startActivity, buyItem, startWorkTask, pending } = useGoAndDo(
+  const { feedback, run, startActivity, buyItem, startWorkTask, startCraft, pending } = useGoAndDo(
     character,
     snapshot,
     selectedId,
@@ -70,7 +76,7 @@ export function SidePanel() {
       });
   }, [character, snapshot, continuousWork]);
 
-  const toggleContinuous = (task: MaintenanceTaskId | null): void => {
+  const toggleContinuous = (task: WorkTaskId | null): void => {
     if (character === null) return;
     autoFailedRef.current.clear();
     toggleContinuousWork(character.id, task);
@@ -144,6 +150,7 @@ export function SidePanel() {
       {character !== null && tab === 'items' && (
         <>
           <ShopSection character={character} atPlace={atPlace} pending={pending} buyItem={buyItem} />
+          <CraftSection character={character} pending={pending} startCraft={startCraft} />
           <BackpackSection character={character} atPlace={atPlace} day={day} run={run} />
           <FridgeSection character={character} atPlace={atPlace} day={day} run={run} />
         </>

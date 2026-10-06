@@ -1,6 +1,7 @@
 import {
   ACTIVITY_DEFINITIONS,
   CHAT_DAILY_GAINED,
+  GATHER_TASKS,
   JOB_CATEGORIES,
   LOW_ENERGY_THRESHOLD,
   MAINTENANCE_TASKS,
@@ -12,9 +13,9 @@ import {
   relationTitle,
   type ActivityDefinition,
   type JobCategoryId,
-  type MaintenanceTaskId,
   type PlaceDefinition,
   type TileMapDefinition,
+  type WorkTaskId,
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { formatCoins } from '../../format';
@@ -244,9 +245,9 @@ export function ActivitySection({
   pending: GoAndDoPending | null;
   run: RunIntent;
   startActivity: (def: ActivityDefinition) => Promise<void>;
-  startWorkTask: (task: MaintenanceTaskId) => Promise<void>;
-  continuousTask: MaintenanceTaskId | null;
-  toggleContinuous: (task: MaintenanceTaskId | null) => void;
+  startWorkTask: (task: WorkTaskId) => Promise<void>;
+  continuousTask: WorkTaskId | null;
+  toggleContinuous: (task: WorkTaskId | null) => void;
 }) {
   const dead = !character.alive;
   const moving = character.pathRemaining > 0;
@@ -265,27 +266,41 @@ export function ActivitySection({
       defs: ACTIVITY_DEFINITIONS.filter((def) => def.category === id),
     }))
     .filter((group) => group.defs.length > 0);
-  /** 同岗目标计数(维护行标签):clean/repair 查 maintenance,rescue 查窗口内幽灵 */
-  const workTargetCount = (task: MaintenanceTaskId): number => {
+  /** 同岗目标计数(工单行标签):clean/repair 查 maintenance,gather 查资源节点,rescue 查窗口内幽灵 */
+  const workTargetCount = (task: WorkTaskId): number => {
     if (task === 'rescue') {
       return snapshot.characters.filter((c) => !c.alive && c.diedAtGameMinutes !== null).length;
+    }
+    if (task === 'gather_berry') {
+      return snapshot.resources.filter((n) => n.kind === 'berry_bush' && (n.charges ?? 0) > 0).length;
+    }
+    if (task === 'scavenge') {
+      return snapshot.resources.filter((n) => n.kind === 'junk_pile').length;
     }
     const kind = task === 'clean' ? 'litter' : 'fence_damage';
     return snapshot.maintenance.filter((spot) => spot.kind === kind).length;
   };
-  // 维护工单三岗(M-G.5):目标在快照上(非地图锚点),接单自带寻路,行内带连续作业开关
+  // 工单五岗(M-G.5 维护 + M-G.6 采集):目标在快照上(非地图锚点),接单自带寻路,行内带连续作业开关
   const renderWorkRow = (def: ActivityDefinition, locked: boolean) => {
-    const task = def.id as MaintenanceTaskId;
-    const meta = MAINTENANCE_TASKS[task];
+    const task = def.id as WorkTaskId;
     const count = workTargetCount(task);
+    const gather = task === 'gather_berry' || task === 'scavenge';
+    const durationMinutes = gather
+      ? GATHER_TASKS[task].durationMinutes
+      : MAINTENANCE_TASKS[task].durationMinutes;
+    const reward = gather ? '以物代薪' : `+${MAINTENANCE_TASKS[task].pay}币/单`;
     const label =
-      task === 'clean' ? `杂物 ${count} 处` : task === 'repair' ? `破损 ${count} 处` : `待救 ${count} 人`;
+      task === 'gather_berry' ? `浆果丛 ${count} 处`
+      : task === 'scavenge' ? `拾荒堆 ${count} 处`
+      : task === 'clean' ? `杂物 ${count} 处`
+      : task === 'repair' ? `破损 ${count} 处`
+      : `待救 ${count} 人`;
     return (
       <li key={def.id} id={`activity-row-${def.id}`}>
         <span>
           {def.name}
           <small>
-            {label} · {meta.durationMinutes}分 +{meta.pay}币/单
+            {label} · {durationMinutes}分 {reward}
           </small>
         </span>
         <label className="continuous-toggle">
@@ -306,7 +321,7 @@ export function ActivitySection({
               ? `知识不足: 需学习 ${JOB_CATEGORIES[def.category!].requiredKnowledge} 班`
               : count === 0
                 ? '当前无工单目标'
-                : `前往最近目标作业,完成 +${meta.pay} 币`
+                : `前往最近目标作业,${reward}`
           }
           onClick={() => void startWorkTask(task)}
         >
@@ -316,7 +331,7 @@ export function ActivitySection({
     );
   };
   const renderRow = (def: ActivityDefinition, locked: boolean) => {
-    if (def.id in MAINTENANCE_TASKS) {
+    if (def.id in MAINTENANCE_TASKS || def.id === 'gather_berry' || def.id === 'scavenge') {
       return renderWorkRow(def, locked);
     }
     const anchors = activityAnchors(map, def.id);

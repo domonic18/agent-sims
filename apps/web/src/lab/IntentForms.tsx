@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import {
   ACTIVITY_DEFINITIONS,
+  CRAFT_RECIPE_IDS,
   CHAT_DAILY_GAINED,
   PROPERTY_DEFINITIONS,
+  RECIPES,
   SHOP_ITEMS,
+  type CraftRecipeId,
   type Intent,
   type WorldSnapshotMessage,
 } from '@sims/shared';
@@ -12,7 +15,7 @@ type CharacterSnapshot = WorldSnapshotMessage['characters'][number];
 
 export type RunFn = (intent: Intent, summary: string) => void;
 
-/** 12 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
+/** 13 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
 export function IntentForms({
   character,
   snapshot,
@@ -47,6 +50,10 @@ export function IntentForms({
       <div className="intent-group">
         <span className="intent-name">work_task</span>
         <WorkTaskForm character={character} snapshot={snapshot} onRun={onRun} />
+      </div>
+      <div className="intent-group">
+        <span className="intent-name">craft</span>
+        <CraftForm character={character} onRun={onRun} />
       </div>
     </div>
   );
@@ -280,6 +287,7 @@ function WorkTaskForm({
 }) {
   const [targetId, setTargetId] = useState('');
   const spots = snapshot?.maintenance ?? [];
+  const nodes = snapshot?.resources ?? [];
   const ghosts = (snapshot?.characters ?? []).filter(
     (c) => !c.alive && c.diedAtGameMinutes !== null,
   );
@@ -296,6 +304,11 @@ function WorkTaskForm({
         {spots.map((spot) => (
           <option key={spot.id} value={spot.id}>
             {spot.id}({spot.kind})
+          </option>
+        ))}
+        {nodes.map((node) => (
+          <option key={node.id} value={node.id}>
+            {node.id}({node.kind === 'berry_bush' ? `浆果丛·存量${node.charges ?? 0}` : '拾荒堆'})
           </option>
         ))}
         {ghosts.map((c) => (
@@ -316,6 +329,32 @@ function WorkTaskForm({
         }
       >
         接单
+      </button>
+    </span>
+  );
+}
+
+function CraftForm({ character, onRun }: { character: CharacterSnapshot; onRun: RunFn }) {
+  const [recipeId, setRecipeId] = useState<CraftRecipeId>(CRAFT_RECIPE_IDS[0] ?? 'craft_berry_pie');
+  return (
+    <span className="intent-controls">
+      <select
+        value={recipeId}
+        onChange={(e) => setRecipeId(e.target.value as CraftRecipeId)}
+        title="须站在站点家具(灶台/木工台)使用格或四邻"
+      >
+        {CRAFT_RECIPE_IDS.map((id) => (
+          <option key={id} value={id}>
+            {RECIPES[id].name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        disabled={!character.alive}
+        onClick={() => void onRun({ type: 'craft', characterId: character.id, recipeId }, `craft(${recipeId})`)}
+      >
+        制作
       </button>
     </span>
   );

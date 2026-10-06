@@ -65,6 +65,24 @@ export function handleMapClick(
     return;
   }
 
+  // 点资源节点(M-G.6): 浆果丛/拾荒堆命中即让选中角色接采集单(枯竭格服务端拒绝)
+  const resource = useWorldStore.getState().snapshot?.resources.find(
+    (item) => item.x === tx && item.y === ty,
+  );
+  if (resource !== undefined) {
+    const { selectedCharacterId } = useWorldStore.getState();
+    if (selectedCharacterId === null) {
+      pushToast(false, '先点击角色选中,再采集资源');
+      return;
+    }
+    void sendIntent({
+      type: 'work_task',
+      characterId: selectedCharacterId,
+      targetId: resource.id,
+    }).then((ack) => pushToast(ack.ok, ack.message));
+    return;
+  }
+
   const place = map.places.find((p) => p.door !== undefined && inRect(tx, ty, p));
   if (place !== undefined) {
     useWorldStore.getState().focusPlace(place.id);

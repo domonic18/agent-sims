@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
-  MaintenanceTaskId,
   TileMapDefinition,
+  WorkTaskId,
   WorldEvent,
   WorldRulesView,
   WorldSnapshotMessage,
@@ -37,9 +37,9 @@ export interface WorldStore {
   /** 世界参数生效全集与规则视图(设置弹窗首开 GET 回填,此后 world.params/rules 事件保鲜) */
   params: Record<string, number> | null;
   rules: WorldRulesView | null;
-  /** 连续作业开关(M-G.5):key=characterId,开启后该角色空闲即自动接最近同岗单 */
-  continuousWork: Record<string, MaintenanceTaskId>;
-  toggleContinuousWork: (characterId: string, task: MaintenanceTaskId | null) => void;
+  /** 连续作业开关(M-G.5/M-G.6):key=characterId,开启后该角色空闲即自动接最近同岗单(含采集岗) */
+  continuousWork: Record<string, WorkTaskId>;
+  toggleContinuousWork: (characterId: string, task: WorkTaskId | null) => void;
   setStatus: (status: ConnectionStatus) => void;
   setMap: (map: TileMapDefinition) => void;
   applySnapshot: (snapshot: WorldSnapshotMessage) => void;

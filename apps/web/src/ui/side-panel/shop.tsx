@@ -1,14 +1,81 @@
 import {
   BACKPACK_VOLUME_LIMIT,
+  CRAFT_RECIPE_IDS,
   FRIDGE_VOLUME_LIMIT,
   PROPERTY_DEFINITIONS,
+  RECIPES,
   SHOP_ITEMS,
+  getItem,
   inventoryVolume,
   placeIdMatches,
+  type CraftRecipeId,
   type PlaceDefinition,
 } from '@sims/shared';
 import { homeAccess, type CharacterView } from './place';
 import type { GoAndDoPending, RunIntent } from './useGoAndDo';
+
+/** 站点家具中文名(制作面板站点标注) */
+const STATION_LABEL: Record<'stove' | 'workbench', string> = {
+  stove: '灶台',
+  workbench: '木工台',
+};
+
+/**
+ * 制作面板(M-G.6):配方材料持有/需求与产出一目了然,
+ * 制作按钮复用 go-and-do——不在站点先前往最近使用格,到站自动下发 craft。
+ */
+export function CraftSection({
+  character,
+  pending,
+  startCraft,
+}: {
+  character: CharacterView;
+  pending: GoAndDoPending | null;
+  startCraft: (recipeId: CraftRecipeId) => Promise<void>;
+}) {
+  const dead = !character.alive;
+  const moving = character.pathRemaining > 0;
+  return (
+    <section className="panel-section">
+      <h3>制作</h3>
+      <ul className="shop-list">
+        {CRAFT_RECIPE_IDS.map((id) => RECIPES[id]).map((recipe) => {
+          const pendingCraft = pending?.kind === 'craft' && pending.id === recipe.id;
+          const materials = recipe.inputs
+            .map(
+              (input) =>
+                `${getItem(input.itemId)?.name ?? input.itemId} ${character.backpack[input.itemId] ?? 0}/${input.count}`,
+            )
+            .join(' ');
+          const ready = recipe.inputs.every(
+            (input) => (character.backpack[input.itemId] ?? 0) >= input.count,
+          );
+          const outputs = recipe.outputs
+            .map((o) => `${getItem(o.itemId)?.name ?? o.itemId}×${o.count}`)
+            .join(' ');
+          return (
+            <li key={recipe.id}>
+              <span>
+                {recipe.name}
+                <small>
+                  {STATION_LABEL[recipe.stationKind]} · {materials} → {outputs}
+                </small>
+              </span>
+              <button
+                type="button"
+                disabled={moving || dead || !ready}
+                title={ready ? '自动前往站点使用格开始制作(中断退料)' : '材料不足——先采集或拾荒'}
+                onClick={() => void startCraft(recipe.id)}
+              >
+                {pendingCraft ? '途中…' : '制作'}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
 
 export function AssetsSection({
   character,
@@ -151,7 +218,7 @@ export function BackpackSection({
       ) : (
         <ul className="shop-list">
           {entries.map(([itemId, count]) => {
-            const item = SHOP_ITEMS.find((i) => i.id === itemId);
+            const item = getItem(itemId);
             return (
               <li key={itemId}>
                 <span>
@@ -163,8 +230,12 @@ export function BackpackSection({
                 <span className="housing-actions">
                   <button
                     type="button"
-                    disabled={dead}
-                    title={`体力+${item?.effects.energy ?? 0}(任意地点可吃)`}
+                    disabled={dead || item?.effects === undefined}
+                    title={
+                      item?.effects === undefined
+                        ? '材料不可食用(制作/修补耗材)'
+                        : `体力+${item.effects.energy}(任意地点可吃)`
+                    }
                     onClick={() => void run({ type: 'eat_item', characterId: character.id, itemId })}
                   >
                     吃
@@ -222,7 +293,7 @@ export function FridgeSection({
       ) : (
         <ul className="shop-list">
           {entries.map(([itemId, count]) => {
-            const item = SHOP_ITEMS.find((i) => i.id === itemId);
+            const item = getItem(itemId);
             const canTake = !dead && atHome && leaseValid;
             return (
               <li key={itemId}>
