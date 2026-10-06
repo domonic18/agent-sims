@@ -219,7 +219,7 @@ export function AnimPreviewPanel() {
                   {GROUP_LABEL[g]}
                   <div style={{ fontSize: 11, color: '#8b949e', fontWeight: 400 }}>{g}</div>
                 </div>
-                <div className="anim-preview-grid">
+                <div style={{ display: 'flex', gap: 14, overflowX: 'auto' }}>
                   {DIRS.map((d) => (
                     <AnimCell
                       key={d}
