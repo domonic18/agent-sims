@@ -6,28 +6,26 @@ import {
   LOW_ENERGY_THRESHOLD,
   MAINTENANCE_TASKS,
   REVIVE_WINDOW_MINUTES,
+  WORK_TARGETS,
+  isGatherTask,
   type GatherTaskId,
   type JobCategoryId,
   type WorkTaskAcceptedEvent,
   type WorkTaskId,
 } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
-import { ensureAlive, type CharacterActivity, type WorldCharacter } from './character.js';
+import { ensureAlive, reviveCharacter, type CharacterActivity, type WorldCharacter } from './character.js';
 import type { Point } from './pathfinding.js';
 import { findPath } from './pathfinding.js';
 import type { Simulation } from './simulation.js';
-
-/** 类型守卫:采集两岗(M-G.6)——联合查表与结算分流共用 */
-export function isGatherTask(task: WorkTaskId): task is GatherTaskId {
-  return task === 'gather_berry' || task === 'scavenge';
-}
 
 /**
  * 工单(M-G.5 维护三岗+M-G.6 采集两岗,design/08 §4+09 §2):
  * 单意图内含寻路→到位作业计时→按单结算。
  * 校验序:目标解析→存活→互斥(无活动/非移动中)→体力线→类别知识门槛→
  * 采集背包产出空间→可达。
- * 目标解析:维护点→clean/repair;幽灵态角色(窗口内)→rescue;资源节点→采集岗。
+ * 目标解析与站位均按 shared WORK_TARGETS 注册表(TD-1)的 source/kind 表驱动,
+ * 新增工单只扩注册表,此处不改分支。
  */
 export function requestWorkTask(
   sim: Simulation,
@@ -85,18 +83,26 @@ export function requestWorkTask(
   return character;
 }
 
-/** 工单目标→岗位:维护点按 kind 分派;幽灵角色进救治单;资源节点按 kind 进采集岗 */
+/** 按 source/kind 反查注册任务 id(TD-1):新 kind 注册进 WORK_TARGETS 即自动分派 */
 function resolveTask(sim: Simulation, targetId: string): WorkTaskId {
   const spot = sim.maintenanceSpots.get(targetId);
   if (spot !== undefined) {
-    return spot.kind === 'litter' ? 'clean' : 'repair';
+    const task = findTaskBy('maintenance', spot.kind);
+    if (task === null) {
+      throw new Error(`未注册的维护点类型: ${spot.kind}`);
+    }
+    return task;
   }
   const node = sim.resourceNodes.get(targetId);
   if (node !== undefined) {
-    if (node.charges === 0) {
+    const task = findTaskBy('resources', node.kind);
+    if (task === null) {
+      throw new Error(`未注册的资源节点类型: ${node.kind}`);
+    }
+    if (WORK_TARGETS[task].requireCharges && node.charges === 0) {
       throw new Error('该节点已采完,等待重生后再来');
     }
-    return Object.values(GATHER_TASKS).find((def) => def.nodeKind === node.kind)!.id;
+    return task;
   }
   const target = sim.characters.get(targetId);
   if (target !== undefined) {
@@ -109,6 +115,13 @@ function resolveTask(sim: Simulation, targetId: string): WorkTaskId {
     return 'rescue';
   }
   throw new Error(`工单目标不存在: ${targetId}`);
+}
+
+function findTaskBy(source: 'maintenance' | 'resources', kind: string): WorkTaskId | null {
+  const entry = Object.entries(WORK_TARGETS).find(
+    ([, meta]) => meta.source === source && meta.kind === kind,
+  );
+  return entry === undefined ? null : (entry[0] as WorkTaskId);
 }
 
 /** 工单类别查表:采集两岗走 GATHER_TASKS,维护三岗走 MAINTENANCE_TASKS */
@@ -132,7 +145,7 @@ function ensureBackpackRoomForYields(character: WorldCharacter, task: GatherTask
   }
 }
 
-/** 作业站位:杂物站维护点格(不阻塞通行);围栏/幽灵/资源节点站目标四邻可行走格 */
+/** 作业站位:杂物站维护点格(不阻塞通行);其余按 meta.source 取目标中心后站四邻最近可行走格 */
 function standTileFor(
   sim: Simulation,
   character: WorldCharacter,
@@ -143,10 +156,11 @@ function standTileFor(
     const spot = sim.maintenanceSpots.get(targetId)!;
     return { x: spot.x, y: spot.y };
   }
+  const source = WORK_TARGETS[task].source;
   const center =
-    task === 'repair'
+    source === 'maintenance'
       ? sim.maintenanceSpots.get(targetId)!
-      : isGatherTask(task)
+      : source === 'resources'
         ? sim.resourceNodes.get(targetId)!
         : sim.characters.get(targetId)!;
   const neighbors: Point[] = [
@@ -169,4 +183,71 @@ function standTileFor(
   }
   // 全部四邻不可达:抛最近格让 findPath 在外层给出「不可达」报错
   return reachable[0] ?? { x: center.x, y: center.y };
+}
+
+/** 工单完成钩子上下文:debtFactor=缺觉系数(M-G.2,调用方按结算时刻计算传入) */
+export interface WorkTaskCompletionContext {
+  sim: Simulation;
+  character: WorldCharacter;
+  task: WorkTaskId;
+  targetId: string;
+  debtFactor: number;
+}
+
+/**
+ * 完成钩子注册表(TD-1):只做世界侧变更(消目标/耗钉/复活/产出),
+ * 返回 'ok' 走通用结算尾段(金币+completed 事件),'cancelled' 由调用方
+ * 发 work_task.cancelled 并按 interrupted 收尾——repair 完成时刻钉被转移即此路。
+ */
+type WorkTaskCompletion = (ctx: WorkTaskCompletionContext) => 'ok' | 'cancelled';
+
+const WORK_TASK_COMPLETIONS: Record<WorkTaskId, WorkTaskCompletion> = {
+  clean: ({ sim, targetId }) => {
+    sim.maintenanceSpots.delete(targetId);
+    return 'ok';
+  },
+  repair: ({ sim, character, targetId }) => {
+    // 修补钉闭环(M-G.6):完成时刻再验(作业期间存入冰箱等转移→无薪中断)
+    const kit = character.backpack.repair_kit ?? 0;
+    if (kit < 1) {
+      return 'cancelled';
+    }
+    if (kit > 1) {
+      character.backpack.repair_kit = kit - 1;
+    } else {
+      delete character.backpack.repair_kit;
+    }
+    sim.maintenanceSpots.delete(targetId);
+    return 'ok';
+  },
+  rescue: ({ sim, targetId }) => {
+    reviveCharacter(sim, sim.characters.get(targetId)!, 'rescue'); // 免扣复活
+    return 'ok';
+  },
+  gather_berry: completeGather,
+  scavenge: completeGather,
+};
+
+export function completeWorkTask(ctx: WorkTaskCompletionContext): 'ok' | 'cancelled' {
+  return WORK_TASK_COMPLETIONS[ctx.task](ctx);
+}
+
+/** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭记次日重生。
+ * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(有意);以物代薪 pay=0 */
+function completeGather({ sim, character, task, targetId, debtFactor }: WorkTaskCompletionContext): 'ok' {
+  const node = sim.resourceNodes.get(targetId)!;
+  for (const yieldDef of GATHER_TASKS[task as GatherTaskId].yields) {
+    if (yieldDef.chance !== undefined && sim.rng() >= yieldDef.chance) {
+      continue;
+    }
+    character.backpack[yieldDef.itemId] =
+      (character.backpack[yieldDef.itemId] ?? 0) + Math.floor(yieldDef.count * debtFactor);
+  }
+  if (node.charges !== null) {
+    node.charges -= 1;
+    if (node.charges <= 0) {
+      node.respawnAtDay = sim.clock.day + 1;
+    }
+  }
+  return 'ok';
 }

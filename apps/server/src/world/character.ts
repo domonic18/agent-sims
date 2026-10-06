@@ -1,6 +1,7 @@
-import type { CraftRecipeId, TraitVector } from '@sims/shared';
+import type { CharacterAutoRevivedEvent, CharacterRevivedEvent, CraftRecipeId, TraitVector } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import type { Point } from './pathfinding.js';
+import type { Simulation } from './simulation.js';
 
 /** 角色进行中活动(elapsed 为已进行游戏分钟;anchorKind=rest 档位家具 kind;
  * targetId=work_task 工单目标[维护点 id/待救角色 id],null=普通活动,M-G.5;
@@ -96,4 +97,31 @@ export function applyVitalDecay(character: WorldCharacter, gameMinutes: number):
 export function applyLifeScoreTick(character: WorldCharacter): void {
   if (!character.alive) return;
   character.lifeScore += character.happiness / BALANCE.DAY_MINUTES;
+}
+
+/** 复活公共路径(M-G.5):满状态回归+清死亡时刻;救治/debug 免扣,timeout 已在调用方扣减 */
+export function reviveCharacter(
+  sim: Simulation,
+  character: WorldCharacter,
+  source: 'rescue' | 'debug' | 'timeout',
+): void {
+  character.alive = true;
+  character.energy = BALANCE.REVIVE_ENERGY;
+  character.happiness = BALANCE.REVIVE_HAPPINESS;
+  character.diedAtGameMinutes = null;
+  if (source === 'timeout') {
+    const event: CharacterAutoRevivedEvent = {
+      type: 'character.auto_revived',
+      characterId: character.id,
+      tick: sim.tick,
+    };
+    sim.events.emit(event);
+  } else {
+    const event: CharacterRevivedEvent = {
+      type: 'character.revived',
+      characterId: character.id,
+      tick: sim.tick,
+    };
+    sim.events.emit(event);
+  }
 }

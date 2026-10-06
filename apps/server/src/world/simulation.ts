@@ -1,11 +1,8 @@
 import type {
   ActivityDefinition,
   CharacterArrivedEvent,
-  CharacterAutoRevivedEvent,
   CharacterDiedEvent,
-  CharacterRevivedEvent,
   CraftCompletedEvent,
-  GatherTaskId,
   MaintenanceSpot,
   ResourceNode,
   SleepDebtAppliedEvent,
@@ -24,13 +21,14 @@ import type {
 import {
   BUSH_MAX_CHARGES,
   DEFAULT_WORLD_RULES,
-  GATHER_TASKS,
   MAINTENANCE_TASKS,
   PROPERTY_IDS,
   RECIPES,
   REVIVE_WINDOW_MINUTES,
   TOWN_MAP,
+  WORK_TARGETS,
   getActivityDefinition,
+  isGatherTask,
   type TileMapDefinition,
 } from '@sims/shared';
 import { applyBalanceOverrides, applyWorldParams, BALANCE, currentWorldParams } from '../config/balance.js';
@@ -44,6 +42,7 @@ import { GameClock } from './clock.js';
 import {
   applyLifeScoreTick,
   applyVitalDecay,
+  reviveCharacter,
   stepMovement,
   type WorldCharacter,
 } from './character.js';
@@ -54,7 +53,7 @@ import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
 import { stepMaintenance, type RandomFn } from './maintenance.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
-import { isGatherTask, requestWorkTask } from './task.js';
+import { completeWorkTask, requestWorkTask } from './work-task.js';
 import { worldSnapshot } from './snapshot.js';
 import {
   applySocialDailyRollover,
@@ -89,7 +88,7 @@ export class Simulation {
   /** 世界规则(M5):默认全开;后台创建世界时随配置覆写,reset 回默认 */
   rules: WorldRules = { ...DEFAULT_WORLD_RULES };
   /** 随机源(损耗生成器 roll;默认 Math.random,测试注入确定性实现) */
-  private readonly rng: RandomFn;
+  readonly rng: RandomFn;
 
   constructor(rng: RandomFn = Math.random) {
     this.rng = rng;
@@ -410,7 +409,8 @@ export class Simulation {
   /**
    * 维护/采集工单逐分钟结算(M-G.5/M-G.6):在途不计时;到位先验目标仍有效——
    * 维护点被清/幽灵被抢先救治或窗口超时/节点被采空→无薪中断发 work_task.cancelled;
-   * 完成→按任务分流:维护消目标+按单入账,采集产出入背包+节点扣存量(以物代薪 pay=0)。
+   * 完成→世界侧变更走完成钩子注册表(TD-1,work-task.ts),此后统一结算尾段:
+   * 采集以物代薪 pay=0,维护岗按单入账,金币均乘缺觉系数(M-G.2)。
    */
   private _stepWorkTask(character: WorldCharacter, definition: ActivityDefinition): void {
     const activity = character.activity;
@@ -419,7 +419,7 @@ export class Simulation {
     }
     const targetId = activity.targetId!;
     const task = activity.activityId as WorkTaskId;
-    if (!this._workTargetValid(task, targetId)) {
+    const cancel = (): void => {
       const event: WorkTaskCancelledEvent = {
         type: 'work_task.cancelled',
         characterId: character.id,
@@ -428,42 +428,27 @@ export class Simulation {
       };
       this.events.emit(event);
       finishActivity(this, character, 'interrupted');
+    };
+    if (!this._workTargetValid(task, targetId)) {
+      cancel();
       return;
     }
     const result = settleActivityMinute(activity, character, definition);
     if (result !== 'completed') {
       return;
     }
-    if (isGatherTask(task)) {
-      this._completeGather(character, task, targetId);
+    const outcome = completeWorkTask({
+      sim: this,
+      character,
+      task,
+      targetId,
+      debtFactor: this._debtFactor(character),
+    });
+    if (outcome === 'cancelled') {
+      cancel();
       return;
     }
-    if (task === 'rescue') {
-      reviveCharacter(this, this.characters.get(targetId)!, 'rescue'); // 免扣复活
-    } else {
-      if (task === 'repair') {
-        // 修补钉闭环(M-G.6):完成时刻再验(作业期间存入冰箱等转移→无薪中断)
-        const kit = character.backpack.repair_kit ?? 0;
-        if (kit < 1) {
-          const event: WorkTaskCancelledEvent = {
-            type: 'work_task.cancelled',
-            characterId: character.id,
-            targetId,
-            tick: this.tick,
-          };
-          this.events.emit(event);
-          finishActivity(this, character, 'interrupted');
-          return;
-        }
-        if (kit > 1) {
-          character.backpack.repair_kit = kit - 1;
-        } else {
-          delete character.backpack.repair_kit;
-        }
-      }
-      this.maintenanceSpots.delete(targetId);
-    }
-    const pay = MAINTENANCE_TASKS[task].pay * this._debtFactor(character);
+    const pay = (isGatherTask(task) ? 0 : MAINTENANCE_TASKS[task].pay) * this._debtFactor(character);
     character.coins += pay;
     const event: WorkTaskCompletedEvent = {
       type: 'work_task.completed',
@@ -498,43 +483,11 @@ export class Simulation {
     this.events.emit(event);
   }
 
-  /** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭记次日重生。
-   * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(有意) */
-  private _completeGather(
-    character: WorldCharacter,
-    task: GatherTaskId,
-    targetId: string,
-  ): void {
-    const node = this.resourceNodes.get(targetId)!;
-    const factor = this._debtFactor(character);
-    for (const yieldDef of GATHER_TASKS[task].yields) {
-      if (yieldDef.chance !== undefined && this.rng() >= yieldDef.chance) {
-        continue;
-      }
-      character.backpack[yieldDef.itemId] =
-        (character.backpack[yieldDef.itemId] ?? 0) + Math.floor(yieldDef.count * factor);
-    }
-    if (node.charges !== null) {
-      node.charges -= 1;
-      if (node.charges <= 0) {
-        node.respawnAtDay = this.clock.day + 1;
-      }
-    }
-    const event: WorkTaskCompletedEvent = {
-      type: 'work_task.completed',
-      characterId: character.id,
-      targetId,
-      task,
-      pay: 0,
-      tick: this.tick,
-    };
-    this.events.emit(event);
-    finishActivity(this, character, 'completed');
-  }
-
-  /** 工单目标仍有效:维护点在场;待救角色仍处幽灵救治窗口内;节点存在且未枯竭 */
+  /** 工单目标仍有效(TD-1 按 WORK_TARGETS.source 分派):维护点在场;
+   * 待救角色仍处幽灵救治窗口内;节点存在且未枯竭 */
   private _workTargetValid(task: WorkTaskId, targetId: string): boolean {
-    if (task === 'rescue') {
+    const source = WORK_TARGETS[task].source;
+    if (source === 'characters') {
       const target = this.characters.get(targetId);
       return (
         target !== undefined &&
@@ -543,7 +496,7 @@ export class Simulation {
         this.clock.gameMinutes - target.diedAtGameMinutes < REVIVE_WINDOW_MINUTES
       );
     }
-    if (isGatherTask(task)) {
+    if (source === 'resources') {
       const node = this.resourceNodes.get(targetId);
       return node !== undefined && (node.charges === null || node.charges > 0);
     }
@@ -650,32 +603,5 @@ export class Simulation {
     // 繁荣分死亡扣减(M3.6j 方案B): 比例扣无套利——活得越厚实,死亡的绝对损失越大
     character.lifeScore *= 1 - BALANCE.LIFE_SCORE_DEATH_DEDUCTION;
     reviveCharacter(this, character, 'timeout');
-  }
-}
-
-/** 复活公共路径(M-G.5):满状态回归+清死亡时刻;救治/debug 免扣,timeout 已在调用方扣减 */
-function reviveCharacter(
-  sim: Simulation,
-  character: WorldCharacter,
-  source: 'rescue' | 'debug' | 'timeout',
-): void {
-  character.alive = true;
-  character.energy = BALANCE.REVIVE_ENERGY;
-  character.happiness = BALANCE.REVIVE_HAPPINESS;
-  character.diedAtGameMinutes = null;
-  if (source === 'timeout') {
-    const event: CharacterAutoRevivedEvent = {
-      type: 'character.auto_revived',
-      characterId: character.id,
-      tick: sim.tick,
-    };
-    sim.events.emit(event);
-  } else {
-    const event: CharacterRevivedEvent = {
-      type: 'character.revived',
-      characterId: character.id,
-      tick: sim.tick,
-    };
-    sim.events.emit(event);
   }
 }
