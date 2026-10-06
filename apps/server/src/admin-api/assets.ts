@@ -238,13 +238,22 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
     const parsed = assetPatchSchema.safeParse(request.body);
     if (!parsed.success) return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
     if (parsed.data.categoryId !== undefined) {
-      const cat = await db
-        .select({ level: assetCategories.level })
-        .from(assetCategories)
-        .where(eq(assetCategories.id, parsed.data.categoryId))
+      // 仅实际迁移分类时要求目标为 kind 层——表单原样回传现有 categoryId(可能挂在中层级)不算迁移
+      const existing = await db
+        .select({ categoryId: assets.categoryId })
+        .from(assets)
+        .where(eq(assets.id, id))
         .limit(1);
-      if (cat.length === 0 || cat[0]!.level !== 2) {
-        return parseError(reply, '目标分类不存在或不是 kind 层');
+      if (existing.length === 0) return parseError(reply, '素材不存在');
+      if (existing[0]!.categoryId !== parsed.data.categoryId) {
+        const cat = await db
+          .select({ level: assetCategories.level })
+          .from(assetCategories)
+          .where(eq(assetCategories.id, parsed.data.categoryId))
+          .limit(1);
+        if (cat.length === 0 || cat[0]!.level !== 2) {
+          return parseError(reply, '目标分类不存在或不是 kind 层');
+        }
       }
     }
     const updated = await db

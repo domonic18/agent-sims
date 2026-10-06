@@ -38,6 +38,7 @@ import type {
 import {
   bulkAssetStatus,
   createAssetCategory,
+  createAssetIssue,
   deleteAssetCategory,
   fetchAssetCategories,
   fetchAssetImage,
@@ -111,6 +112,7 @@ export function AssetsPanel() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [detail, setDetail] = useState<AssetAdminView | null>(null);
   const [detailImage, setDetailImage] = useState<string | null>(null);
+  const [issueState, setIssueState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
   const [thumbUrls, setThumbUrls] = useState<Record<number, string>>({});
   const [editing, setEditing] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
@@ -290,10 +292,30 @@ export function AssetsPanel() {
     setDetail(asset);
     setEditing(false);
     setDetailImage(null);
+    setIssueState('idle');
     try {
       setDetailImage(await fetchAssetImage(asset.id));
     } catch {
       setDetailImage(null);
+    }
+  };
+
+  const reportDetailIssue = async () => {
+    if (detail === null) return;
+    setIssueState('sending');
+    try {
+      await createAssetIssue({
+        scope: 'asset',
+        refSlug: detail.slug,
+        refId: detail.id,
+        context: { key: detail.categorySlug, kind: 'asset', name: detail.name },
+      });
+      setIssueState('done');
+      message.success('已上报到素材问题清单');
+      void refreshOpenIssues();
+    } catch (err) {
+      setIssueState('error');
+      message.error(err instanceof Error ? err.message : '上报失败');
     }
   };
 
@@ -326,7 +348,7 @@ export function AssetsPanel() {
         .map((tag) => tag.trim())
         .filter((tag) => tag !== ''),
       status: values.status,
-      categoryId: values.categoryId,
+      ...(values.categoryId !== detail.categoryId ? { categoryId: values.categoryId } : {}),
     });
     message.success('已保存');
     setEditing(false);
@@ -702,9 +724,22 @@ export function AssetsPanel() {
                     { key: 'source', label: '来源', children: detail.source, span: 2 },
                   ]}
                 />
-                <Button type="primary" style={{ marginTop: 12 }} onClick={startEdit}>
-                  编辑元数据
-                </Button>
+                <Space style={{ marginTop: 12 }}>
+                  <Button type="primary" onClick={startEdit}>
+                    编辑元数据
+                  </Button>
+                  <Button
+                    icon={<WarningOutlined />}
+                    disabled={issueState === 'sending'}
+                    onClick={() => void reportDetailIssue()}
+                  >
+                    {issueState === 'done'
+                      ? '✓ 已上报'
+                      : issueState === 'error'
+                        ? '✕ 失败,重试'
+                        : '⚠ 标记问题'}
+                  </Button>
+                </Space>
               </>
             )}
           </>
