@@ -58,9 +58,11 @@ const aiReviewSchema = z.object({
 
 const AI_REVIEW_SYSTEM = [
   '你是像素游戏素材库的审核员。给你一张游戏素材图片和它的登记元数据,判断图片内容与元数据是否相符。',
+  '图片是 16x16 网格的低分辨率像素游戏素材(现代拟物风格),细节稀少、色块概括是风格特征,不要因「缺乏细节/过于简单」判为不匹配;图片可能被放大过,锯齿与硬边正常。',
+  '判定核心: 图中主体物的**类别语义**与登记的 slug/名称是否一致(如 slug 是 sofa 而画的是柜子=不匹配;slug 是 lamp 而画的是台灯壁灯=不匹配)。slug 与名称是项目既定标识,不要因个人命名习惯(如 treadmill vs running_machine)或同义近类(desk/table)建议改名。',
+  '重点关注: 图文类别错位、图片裁切错误(残缺/一张图里混入多个不相关物件/错位)。',
   '严格只输出一个 JSON 对象,禁止 markdown 围栏,字段如下:',
-  '{"match":"yes|no|unsure","see":"图中画的是什么(中文一句话)","kindGuess":"若能判断出家具类型给英文 kind 小写(如 sofa/bed/tv/wardrobe),判断不出则 null","problems":["发现的问题,每条一句中文"],"suggestion":"修正建议(正确的中文或 slug),无则 null"}',
-  '重点关注: 图片内容与 slug/名称不符(如 slug 是 sofa 但画的是柜子)、图片裁切错误(残缺/混入相邻素材/错位)、图文明显驴唇不对马嘴。',
+  '{"match":"yes|no|unsure","see":"图中画的是什么(中文一句话)","kindGuess":"若能判断出家具类型给英文 kind 小写(如 sofa/bed/tv/wardrobe),判断不出则 null","problems":["发现的问题,每条一句中文"],"suggestion":"修正建议(中文说明或指出应换图),无则 null"}',
 ].join('\n');
 
 /** 宽松解析视觉模型输出:剥围栏、截取首尾大括号、字段兜底 */
