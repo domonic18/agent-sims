@@ -49,6 +49,22 @@ export function handleMapClick(
   // 纯观看页(主页面): 点选角色跟随即可,不下发移动/定位
   if (!interactive) return;
 
+  // 点维护点(M-G.5): 命中损耗点即让选中角色接对应工单(杂物→清洁/破损→修理)
+  const spot = useWorldStore.getState().snapshot?.maintenance.find(
+    (item) => item.x === tx && item.y === ty,
+  );
+  if (spot !== undefined) {
+    const { selectedCharacterId } = useWorldStore.getState();
+    if (selectedCharacterId === null) {
+      pushToast(false, '先点击角色选中,再接维护工单');
+      return;
+    }
+    void sendIntent({ type: 'work_task', characterId: selectedCharacterId, targetId: spot.id }).then(
+      (ack) => pushToast(ack.ok, ack.message),
+    );
+    return;
+  }
+
   const place = map.places.find((p) => p.door !== undefined && inRect(tx, ty, p));
   if (place !== undefined) {
     useWorldStore.getState().focusPlace(place.id);

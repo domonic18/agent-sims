@@ -2,11 +2,13 @@ import type { TraitVector } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import type { Point } from './pathfinding.js';
 
-/** 角色进行中活动(elapsed 为已进行游戏分钟;anchorKind=rest 档位家具 kind) */
+/** 角色进行中活动(elapsed 为已进行游戏分钟;anchorKind=rest 档位家具 kind;
+ * targetId=work_task 工单目标[维护点 id/待救角色 id],null=普通活动,M-G.5) */
 export interface CharacterActivity {
   activityId: string;
   elapsed: number;
   anchorKind: string | null;
+  targetId: string | null;
 }
 
 /** 住宿状态: 租约付到日(含)或自有 */

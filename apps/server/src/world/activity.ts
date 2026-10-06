@@ -7,6 +7,7 @@ import type {
 import {
   BASIC_ACTIVITY_IDS,
   JOB_CATEGORIES,
+  MAINTENANCE_TASKS,
   furnitureLabel,
   REST_RATES_BY_KIND,
   getActivityDefinition,
@@ -59,6 +60,10 @@ export function startActivity(
   if (definition === null) {
     throw new Error(`未知活动: ${activityId}`);
   }
+  // 维护工单三岗(M-G.5)无场所锚点,必须经 work_task 接单(寻路+按单结算)
+  if (activityId in MAINTENANCE_TASKS) {
+    throw new Error(`${definition.name} 为维护工单,须经 work_task 接单`);
+  }
   const character = sim.character(characterId);
   ensureAlive(character);
   if (character.activity !== null) {
@@ -103,7 +108,7 @@ export function startActivity(
   ) {
     throw new Error(`${definition.name} 须在场所 ${definition.placeIds.join('、')} 入口或范围内`);
   }
-  character.activity = { activityId, elapsed: 0, anchorKind };
+  character.activity = { activityId, elapsed: 0, anchorKind, targetId: null };
   const event: ActivityStartedEvent = {
     type: 'activity.started',
     characterId: character.id,

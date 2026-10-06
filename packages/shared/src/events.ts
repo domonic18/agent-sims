@@ -150,6 +150,42 @@ export const maintenanceSpawnedEventSchema = z.object({
 export type MaintenanceSpawnedEvent = z.infer<typeof maintenanceSpawnedEventSchema>;
 export type { MaintenanceSpot };
 
+/** 维护工单任务 id(M-G.5 三岗) */
+export type WorkTaskId = 'clean' | 'repair' | 'rescue';
+
+/** 工单受理:寻路前往,到位后计时作业 */
+export const workTaskAcceptedEventSchema = z.object({
+  type: z.literal('work_task.accepted'),
+  characterId: z.string().min(1),
+  targetId: z.string().min(1),
+  task: z.enum(['clean', 'repair', 'rescue']),
+  tick: z.number().int(),
+});
+
+export type WorkTaskAcceptedEvent = z.infer<typeof workTaskAcceptedEventSchema>;
+
+/** 工单目标失效:维护点被清/幽灵被抢先救治,无薪中断 */
+export const workTaskCancelledEventSchema = z.object({
+  type: z.literal('work_task.cancelled'),
+  characterId: z.string().min(1),
+  targetId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type WorkTaskCancelledEvent = z.infer<typeof workTaskCancelledEventSchema>;
+
+/** 工单完成:维护点清除或救治复活,按单结算 */
+export const workTaskCompletedEventSchema = z.object({
+  type: z.literal('work_task.completed'),
+  characterId: z.string().min(1),
+  targetId: z.string().min(1),
+  task: z.enum(['clean', 'repair', 'rescue']),
+  pay: z.number(),
+  tick: z.number().int(),
+});
+
+export type WorkTaskCompletedEvent = z.infer<typeof workTaskCompletedEventSchema>;
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -164,6 +200,9 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   socialChatEventSchema,
   friendshipFormedEventSchema,
   maintenanceSpawnedEventSchema,
+  workTaskAcceptedEventSchema,
+  workTaskCancelledEventSchema,
+  workTaskCompletedEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;

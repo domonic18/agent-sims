@@ -3,6 +3,7 @@ import {
   CHAT_DAILY_GAINED,
   JOB_CATEGORIES,
   LOW_ENERGY_THRESHOLD,
+  MAINTENANCE_TASKS,
   REVIVE_WINDOW_MINUTES,
   SOCIAL_PRESENCE_DISTANCE,
   findActivityAnchorAt,
@@ -11,6 +12,7 @@ import {
   relationTitle,
   type ActivityDefinition,
   type JobCategoryId,
+  type MaintenanceTaskId,
   type PlaceDefinition,
   type TileMapDefinition,
   type WorldSnapshotMessage,
@@ -227,16 +229,24 @@ export function ActivitySection({
   map,
   character,
   atPlace,
+  snapshot,
   pending,
   run,
   startActivity,
+  startWorkTask,
+  continuousTask,
+  toggleContinuous,
 }: {
   map: TileMapDefinition;
   character: CharacterView;
   atPlace: PlaceDefinition | null;
+  snapshot: WorldSnapshotMessage;
   pending: GoAndDoPending | null;
   run: RunIntent;
   startActivity: (def: ActivityDefinition) => Promise<void>;
+  startWorkTask: (task: MaintenanceTaskId) => Promise<void>;
+  continuousTask: MaintenanceTaskId | null;
+  toggleContinuous: (task: MaintenanceTaskId | null) => void;
 }) {
   const dead = !character.alive;
   const moving = character.pathRemaining > 0;
@@ -255,7 +265,60 @@ export function ActivitySection({
       defs: ACTIVITY_DEFINITIONS.filter((def) => def.category === id),
     }))
     .filter((group) => group.defs.length > 0);
+  /** 同岗目标计数(维护行标签):clean/repair 查 maintenance,rescue 查窗口内幽灵 */
+  const workTargetCount = (task: MaintenanceTaskId): number => {
+    if (task === 'rescue') {
+      return snapshot.characters.filter((c) => !c.alive && c.diedAtGameMinutes !== null).length;
+    }
+    const kind = task === 'clean' ? 'litter' : 'fence_damage';
+    return snapshot.maintenance.filter((spot) => spot.kind === kind).length;
+  };
+  // 维护工单三岗(M-G.5):目标在快照上(非地图锚点),接单自带寻路,行内带连续作业开关
+  const renderWorkRow = (def: ActivityDefinition, locked: boolean) => {
+    const task = def.id as MaintenanceTaskId;
+    const meta = MAINTENANCE_TASKS[task];
+    const count = workTargetCount(task);
+    const label =
+      task === 'clean' ? `杂物 ${count} 处` : task === 'repair' ? `破损 ${count} 处` : `待救 ${count} 人`;
+    return (
+      <li key={def.id} id={`activity-row-${def.id}`}>
+        <span>
+          {def.name}
+          <small>
+            {label} · {meta.durationMinutes}分 +{meta.pay}币/单
+          </small>
+        </span>
+        <label className="continuous-toggle">
+          <input
+            type="checkbox"
+            checked={continuousTask === task}
+            disabled={locked || dead}
+            title="开启后该角色空闲时自动接最近同岗单"
+            onChange={(event) => toggleContinuous(event.target.checked ? task : null)}
+          />
+          连续
+        </label>
+        <button
+          type="button"
+          disabled={moving || dead || locked || count === 0}
+          title={
+            locked
+              ? `知识不足: 需学习 ${JOB_CATEGORIES[def.category!].requiredKnowledge} 班`
+              : count === 0
+                ? '当前无工单目标'
+                : `前往最近目标作业,完成 +${meta.pay} 币`
+          }
+          onClick={() => void startWorkTask(task)}
+        >
+          接单
+        </button>
+      </li>
+    );
+  };
   const renderRow = (def: ActivityDefinition, locked: boolean) => {
+    if (def.id in MAINTENANCE_TASKS) {
+      return renderWorkRow(def, locked);
+    }
     const anchors = activityAnchors(map, def.id);
     const targetLabel =
       anchors.length > 0

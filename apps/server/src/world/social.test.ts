@@ -155,7 +155,7 @@ describe('同场增益(social-design §3.2)', () => {
   });
   const busy = (characterId: string): void => {
     const character = sim.character(characterId);
-    character.activity = { activityId: 'stroll', elapsed: 0, anchorKind: null };
+    character.activity = { activityId: 'stroll', elapsed: 0, anchorKind: null, targetId: null };
     character.happiness = 50;
   };
 

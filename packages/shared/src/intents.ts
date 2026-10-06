@@ -95,6 +95,15 @@ export const chatIntentSchema = z.object({
 
 export type ChatIntent = z.infer<typeof chatIntentSchema>;
 
+/** 维护工单(M-G.5):targetId=维护点 id(litter/fence_damage→clean/repair)或待救治角色 id(rescue) */
+export const workTaskIntentSchema = z.object({
+  type: z.literal('work_task'),
+  characterId: z.string().min(1),
+  targetId: z.string().min(1),
+});
+
+export type WorkTaskIntent = z.infer<typeof workTaskIntentSchema>;
+
 export const intentSchema = z.discriminatedUnion('type', [
   moveToIntentSchema,
   stopMoveIntentSchema,
@@ -107,6 +116,7 @@ export const intentSchema = z.discriminatedUnion('type', [
   rentPropertyIntentSchema,
   buyPropertyIntentSchema,
   chatIntentSchema,
+  workTaskIntentSchema,
 ]);
 
 export type Intent = z.infer<typeof intentSchema>;

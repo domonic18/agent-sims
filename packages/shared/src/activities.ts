@@ -18,6 +18,9 @@ export const ACTIVITY_IDS = [
   'waiter',
   'vendor',
   'librarian',
+  'clean',
+  'repair',
+  'rescue',
 ] as const;
 
 export type ActivityId = (typeof ACTIVITY_IDS)[number];
@@ -126,6 +129,32 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     durationMinutes: 120,
     effects: { energy: -0.15, happiness: -0.05, coins: 1.0 },
     category: 'service',
+  },
+  // 维护工单三岗(M-G.5,design/08 §4/numerical §5.1):无场所锚点,经 work_task
+  // 接单寻路作业,直发 start_activity 拒绝;金币不走每分钟速率,完成按单结算
+  {
+    id: 'clean',
+    name: '清洁',
+    placeIds: [],
+    durationMinutes: 15,
+    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    category: 'fallback',
+  },
+  {
+    id: 'repair',
+    name: '修理',
+    placeIds: [],
+    durationMinutes: 30,
+    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    category: 'build',
+  },
+  {
+    id: 'rescue',
+    name: '救治',
+    placeIds: [],
+    durationMinutes: 30,
+    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    category: 'medical',
   },
 ];
 

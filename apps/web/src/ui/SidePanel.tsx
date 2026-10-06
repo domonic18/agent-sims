@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { LOW_ENERGY_THRESHOLD, type MaintenanceTaskId } from '@sims/shared';
+import { sendIntent } from '../net/socket';
+import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
 import {
   ActivitySection,
@@ -8,7 +11,7 @@ import {
 } from './side-panel/sections';
 import { AssetsSection, BackpackSection, FridgeSection, ShopSection } from './side-panel/shop';
 import { findPlaceAt } from './side-panel/place';
-import { useGoAndDo } from './side-panel/useGoAndDo';
+import { nearestWorkTarget, useGoAndDo } from './side-panel/useGoAndDo';
 import './side-panel.css';
 
 /** 面板分页: 行动(前往/活动/社交) · 物品(商店/背包/冰箱) · 资产(住房) */
@@ -33,14 +36,45 @@ export function SidePanel() {
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
   const focusPlaceId = useWorldStore((state) => state.focusPlaceId);
   const map = useWorldStore((state) => state.map);
+  const continuousWork = useWorldStore((state) => state.continuousWork);
+  const toggleContinuousWork = useWorldStore((state) => state.toggleContinuousWork);
   const [tab, setTab] = useState<PanelTab>('actions');
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
-  const { feedback, run, startActivity, buyItem, pending } = useGoAndDo(
+  const { feedback, run, startActivity, buyItem, startWorkTask, pending } = useGoAndDo(
     character,
     snapshot,
     selectedId,
   );
+
+  // 连续作业自动接单(M-G.5):开关角色空闲(无活动/不在途/存活/体力高于阈值)即
+  // 自动接最近同岗单;被服务端拒绝的目标记入黑名单防逐 tick 重试,重开开关清空。
+  const autoFailedRef = useRef<Set<string>>(new Set());
+  const autoBusyRef = useRef(false);
+  useEffect(() => {
+    if (character === null || snapshot === null || !character.alive) return;
+    const task = continuousWork[character.id];
+    if (task === undefined || autoBusyRef.current) return;
+    if (character.activity !== null || character.pathRemaining > 0) return;
+    if (character.energy <= LOW_ENERGY_THRESHOLD) return;
+    const target = nearestWorkTarget(task, character, snapshot);
+    if (target === null || autoFailedRef.current.has(target.targetId)) return;
+    autoBusyRef.current = true;
+    void sendIntent({ type: 'work_task', characterId: character.id, targetId: target.targetId })
+      .then((ack) => {
+        if (!ack.ok) autoFailedRef.current.add(target.targetId);
+        pushToast(ack.ok, ack.ok ? `连续作业 · ${ack.message}` : ack.message);
+      })
+      .finally(() => {
+        autoBusyRef.current = false;
+      });
+  }, [character, snapshot, continuousWork]);
+
+  const toggleContinuous = (task: MaintenanceTaskId | null): void => {
+    if (character === null) return;
+    autoFailedRef.current.clear();
+    toggleContinuousWork(character.id, task);
+  };
 
   useEffect(() => {
     if (focusPlaceId === null) return;
@@ -95,9 +129,13 @@ export function SidePanel() {
             map={map}
             character={character}
             atPlace={atPlace}
+            snapshot={snapshot}
             pending={pending}
             run={run}
             startActivity={startActivity}
+            startWorkTask={startWorkTask}
+            continuousTask={continuousWork[character.id] ?? null}
+            toggleContinuous={toggleContinuous}
           />
           <SocialSection snapshot={snapshot} character={character} run={run} />
         </>

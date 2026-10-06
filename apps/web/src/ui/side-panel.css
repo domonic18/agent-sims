@@ -248,3 +248,19 @@
 .job-group.locked .activity-list li {
   opacity: 0.55;
 }
+
+/* 连续作业开关(M-G.5):维护工单行内 checkbox,不随 span flex 拉伸 */
+.continuous-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #555;
+  cursor: pointer;
+  user-select: none;
+}
+.continuous-toggle input {
+  margin: 0;
+  cursor: pointer;
+}

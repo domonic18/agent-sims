@@ -98,5 +98,9 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       const to = sim.character(intent.targetId);
       return { ok: true, message: `${from.name} 对 ${to.name} 说:「${content}」` };
     }
+    case 'work_task': {
+      const character = sim.requestWorkTask(intent.characterId, intent.targetId);
+      return { ok: true, message: `${character.name} 接下工单 ${intent.targetId},前往作业` };
+    }
   }
 }

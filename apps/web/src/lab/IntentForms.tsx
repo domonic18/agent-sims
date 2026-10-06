@@ -12,7 +12,7 @@ type CharacterSnapshot = WorldSnapshotMessage['characters'][number];
 
 export type RunFn = (intent: Intent, summary: string) => void;
 
-/** 11 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
+/** 12 意图分组表单(buy/eat/store/take 同组);key=character.id 挂载,切角色时表单自动重置 */
 export function IntentForms({
   character,
   snapshot,
@@ -43,6 +43,10 @@ export function IntentForms({
       <div className="intent-group">
         <span className="intent-name">rent/buy_property</span>
         <PropertyForm character={character} onRun={onRun} />
+      </div>
+      <div className="intent-group">
+        <span className="intent-name">work_task</span>
+        <WorkTaskForm character={character} snapshot={snapshot} onRun={onRun} />
       </div>
     </div>
   );
@@ -226,8 +230,7 @@ function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: R
 }
 
 function PropertyForm({ character, onRun }: { character: CharacterSnapshot; onRun: RunFn }) {
-  const [propertyId, setPropertyId] = useState(PROPERTY_DEFINITIONS[0]?.id ?? '');
-  return (
+  const [propertyId, setPropertyId] = useState(PROPERTY_DEFINITIONS[0]?.id ?? '');  return (
     <span className="intent-controls">
       <select value={propertyId} onChange={(e) => setPropertyId(e.target.value)}>
         {PROPERTY_DEFINITIONS.map((property) => (
@@ -261,6 +264,58 @@ function PropertyForm({ character, onRun }: { character: CharacterSnapshot; onRu
         }
       >
         买断
+      </button>
+    </span>
+  );
+}
+
+function WorkTaskForm({
+  character,
+  snapshot,
+  onRun,
+}: {
+  character: CharacterSnapshot;
+  snapshot: WorldSnapshotMessage | null;
+  onRun: RunFn;
+}) {
+  const [targetId, setTargetId] = useState('');
+  const spots = snapshot?.maintenance ?? [];
+  const ghosts = (snapshot?.characters ?? []).filter(
+    (c) => !c.alive && c.diedAtGameMinutes !== null,
+  );
+  return (
+    <span className="intent-controls">
+      <input
+        type="text"
+        value={targetId}
+        placeholder="目标 id(如 litter:10:14)"
+        onChange={(e) => setTargetId(e.target.value)}
+      />
+      <select value="" onChange={(e) => setTargetId(e.target.value)}>
+        <option value="">选择在场目标…</option>
+        {spots.map((spot) => (
+          <option key={spot.id} value={spot.id}>
+            {spot.id}({spot.kind})
+          </option>
+        ))}
+        {ghosts.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}(幽灵待救)
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        disabled={targetId === '' || !character.alive}
+        onClick={() =>
+          targetId !== '' &&
+          void onRun(
+            { type: 'work_task', characterId: character.id, targetId },
+            `work_task(${targetId})`,
+          )
+        }
+      >
+        接单
       </button>
     </span>
   );

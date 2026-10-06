@@ -1,10 +1,14 @@
 import type {
+  ActivityDefinition,
   CharacterArrivedEvent,
   CharacterAutoRevivedEvent,
   CharacterDiedEvent,
   CharacterRevivedEvent,
   MaintenanceSpot,
   TraitVector,
+  WorkTaskCancelledEvent,
+  WorkTaskCompletedEvent,
+  WorkTaskId,
   WorldControlEvent,
   WorldEvent,
   WorldParamsEvent,
@@ -15,6 +19,7 @@ import type {
 } from '@sims/shared';
 import {
   DEFAULT_WORLD_RULES,
+  MAINTENANCE_TASKS,
   PROPERTY_IDS,
   REVIVE_WINDOW_MINUTES,
   TOWN_MAP,
@@ -29,13 +34,19 @@ import {
   stopActivity,
 } from './activity.js';
 import { GameClock } from './clock.js';
-import { applyLifeScoreTick, applyVitalDecay, stepMovement, type WorldCharacter } from './character.js';
+import {
+  applyLifeScoreTick,
+  applyVitalDecay,
+  stepMovement,
+  type WorldCharacter,
+} from './character.js';
 import { EventBus } from './event-bus.js';
 import { buyProperty, rentProperty } from './housing.js';
 import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
 import { stepMaintenance, type RandomFn } from './maintenance.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
+import { requestWorkTask } from './task.js';
 import { worldSnapshot } from './snapshot.js';
 import {
   applySocialDailyRollover,
@@ -197,6 +208,11 @@ export class Simulation {
     return chat(this, characterId, targetId);
   }
 
+  /** 维护工单(M-G.5):接单寻路,到位后由 _stepWorkTask 计时结算 */
+  requestWorkTask(characterId: string, targetId: string): WorldCharacter {
+    return requestWorkTask(this, characterId, targetId);
+  }
+
   /** 重新规划到目标的路径(意图指令层校验后调用);移动打断进行中活动 */
   requestMoveTo(characterId: string, x: number, y: number): WorldCharacter {
     const character = this.character(characterId);
@@ -324,17 +340,22 @@ export class Simulation {
       if (character.activity !== null) {
         const definition = getActivityDefinition(character.activity.activityId);
         if (definition !== null) {
-          const result = settleActivityMinute(character.activity, character, definition);
-          if (result !== 'continue') {
-            // 知识(M-G.4): 完成一次完整学习 +1,中断不计(goal-design §4.2)
-            if (result === 'completed' && definition.id === 'study') {
-              character.knowledge += 1;
+          if (character.activity.targetId !== null) {
+            // 维护工单(M-G.5):在途不结算;到位每分钟先验目标有效再计时
+            this._stepWorkTask(character, definition);
+          } else {
+            const result = settleActivityMinute(character.activity, character, definition);
+            if (result !== 'continue') {
+              // 知识(M-G.4): 完成一次完整学习 +1,中断不计(goal-design §4.2)
+              if (result === 'completed' && definition.id === 'study') {
+                character.knowledge += 1;
+              }
+              finishActivity(
+                this,
+                character,
+                result === 'completed' ? 'completed' : 'insufficient_coins',
+              );
             }
-            finishActivity(
-              this,
-              character,
-              result === 'completed' ? 'completed' : 'insufficient_coins',
-            );
           }
         }
       }
@@ -345,6 +366,66 @@ export class Simulation {
       this._checkDeath(character);
       this._checkReviveWindow(character);
     }
+  }
+
+  /**
+   * 维护工单逐分钟结算(M-G.5):在途不计时;到位先验目标仍有效——
+   * 维护点被清/幽灵被抢先救治或窗口超时→无薪中断发 work_task.cancelled;
+   * 完成→消除目标(救治免扣复活)+按单入账发 work_task.completed。
+   */
+  private _stepWorkTask(character: WorldCharacter, definition: ActivityDefinition): void {
+    const activity = character.activity;
+    if (activity === null || character.path.length > 0) {
+      return; // 在途不结算
+    }
+    const targetId = activity.targetId!;
+    const task = activity.activityId as WorkTaskId;
+    if (!this._workTargetValid(task, targetId)) {
+      const event: WorkTaskCancelledEvent = {
+        type: 'work_task.cancelled',
+        characterId: character.id,
+        targetId,
+        tick: this.tick,
+      };
+      this.events.emit(event);
+      finishActivity(this, character, 'interrupted');
+      return;
+    }
+    const result = settleActivityMinute(activity, character, definition);
+    if (result !== 'completed') {
+      return;
+    }
+    if (task === 'rescue') {
+      reviveCharacter(this, this.characters.get(targetId)!, 'rescue'); // 免扣复活
+    } else {
+      this.maintenanceSpots.delete(targetId);
+    }
+    const pay = MAINTENANCE_TASKS[task].pay;
+    character.coins += pay;
+    const event: WorkTaskCompletedEvent = {
+      type: 'work_task.completed',
+      characterId: character.id,
+      targetId,
+      task,
+      pay,
+      tick: this.tick,
+    };
+    this.events.emit(event);
+    finishActivity(this, character, 'completed');
+  }
+
+  /** 工单目标仍有效:维护点在场;待救角色仍处幽灵救治窗口内 */
+  private _workTargetValid(task: WorkTaskId, targetId: string): boolean {
+    if (task === 'rescue') {
+      const target = this.characters.get(targetId);
+      return (
+        target !== undefined &&
+        !target.alive &&
+        target.diedAtGameMinutes !== null &&
+        this.clock.gameMinutes - target.diedAtGameMinutes < REVIVE_WINDOW_MINUTES
+      );
+    }
+    return this.maintenanceSpots.has(targetId);
   }
 
   /**
