@@ -542,14 +542,28 @@ export function WorldPanel() {
           {step === 1 && (
             <>
           <Card type="inner" title="世界规则" style={{ marginTop: 8, marginBottom: 16 }}>
-            <Flex gap={24} wrap="wrap" align="center">
-              <Form.Item name={['rules', 'allowDeath']} label="允许死亡" valuePropName="checked" noStyle>
+            <Flex gap={24} wrap="wrap">
+              <Form.Item
+                name={['rules', 'allowDeath']}
+                label={<Tooltip title="关闭后体力归 0 只会躺平不会死(世界规则关闭死亡)">允许死亡</Tooltip>}
+                valuePropName="checked"
+                style={{ marginBottom: 0 }}
+              >
                 <Switch size="small" disabled={busy} />
               </Form.Item>
-              <Form.Item name={['rules', 'allowChat']} label="允许角色聊天" valuePropName="checked" noStyle>
+              <Form.Item
+                name={['rules', 'allowChat']}
+                label={<Tooltip title="关闭后角色间聊天指令将被世界规则拒绝">允许角色聊天</Tooltip>}
+                valuePropName="checked"
+                style={{ marginBottom: 0 }}
+              >
                 <Switch size="small" disabled={busy} />
               </Form.Item>
-              <Form.Item name={['rules', 'initialTimeScale']} label="初始倍率" noStyle>
+              <Form.Item
+                name={['rules', 'initialTimeScale']}
+                label="初始倍率"
+                style={{ marginBottom: 0 }}
+              >
                 <Select
                   style={{ width: 90 }}
                   disabled={busy}
