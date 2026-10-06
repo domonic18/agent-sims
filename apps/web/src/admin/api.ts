@@ -2,6 +2,10 @@ import {
   ADMIN_API,
   type AssetBulkStatusResult,
   type AssetCategoryView,
+  type AssetIssueListResponse,
+  type AssetIssueScope,
+  type AssetIssueStatus,
+  type AssetIssueView,
   type AssetListResponse,
   type AssetPublishResult,
   type AssetStatus,
@@ -216,6 +220,7 @@ export interface AssetPatch {
   tier?: number;
   tags?: string[];
   status?: AssetStatus;
+  categoryId?: number;
 }
 
 export async function updateAsset(id: number, patch: AssetPatch): Promise<void> {
@@ -253,6 +258,39 @@ export async function renameAssetCategory(id: number, name: string): Promise<voi
 
 export async function deleteAssetCategory(id: number): Promise<void> {
   await adminFetch<unknown>(`${ADMIN_API.assetCategories}/${id}`, { method: 'DELETE' });
+}
+
+// ============ 素材问题单(UI-2 报错闭环) ============
+
+export async function fetchAssetIssues(
+  query: { status?: string; scope?: string; refSlug?: string } = {},
+): Promise<AssetIssueListResponse> {
+  const params = new URLSearchParams();
+  if (query.status) params.set('status', query.status);
+  if (query.scope) params.set('scope', query.scope);
+  if (query.refSlug) params.set('refSlug', query.refSlug);
+  const qs = params.toString();
+  return await adminFetch<AssetIssueListResponse>(`${ADMIN_API.assetIssues}${qs !== '' ? `?${qs}` : ''}`);
+}
+
+export async function createAssetIssue(payload: {
+  scope: AssetIssueScope;
+  refSlug: string;
+  refId?: number | null;
+  context?: Record<string, unknown> | null;
+  note?: string | null;
+}): Promise<AssetIssueView> {
+  return await adminFetch<AssetIssueView>(ADMIN_API.assetIssues, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAssetIssue(id: number, status: AssetIssueStatus): Promise<AssetIssueView> {
+  return await adminFetch<AssetIssueView>(ADMIN_API.assetIssue(id), {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
 }
 
 // ============ 三日志查询(M-G.1) ============

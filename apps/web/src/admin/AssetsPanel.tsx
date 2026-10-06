@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   App as AntdApp,
+  Badge,
   Button,
   Card,
   Descriptions,
@@ -16,8 +17,8 @@ import {
   Space,
   Table,
   Tag,
-  Tree,
   Tooltip,
+  Tree,
   type TreeDataNode,
 } from 'antd';
 import {
@@ -26,18 +27,26 @@ import {
   EditOutlined,
   ReloadOutlined,
   SearchOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
-import type { AssetAdminView, AssetCategoryView, AssetStatus } from '@sims/shared';
+import type {
+  AssetAdminView,
+  AssetCategoryView,
+  AssetIssueView,
+  AssetStatus,
+} from '@sims/shared';
 import {
   bulkAssetStatus,
   createAssetCategory,
   deleteAssetCategory,
   fetchAssetCategories,
   fetchAssetImage,
+  fetchAssetIssues,
   fetchAssets,
   publishAssets,
   renameAssetCategory,
   updateAsset,
+  updateAssetIssue,
 } from './api';
 import { SpriteInspector } from './SpriteInspector';
 
@@ -52,6 +61,40 @@ const LEVEL_NAMES = ['域', '主题', '类别'];
 interface CategoryTreeNode extends TreeDataNode {
   key: number;
   category: AssetCategoryView;
+}
+
+/** 占地预览:图按 16px/格 网格叠加,红框 = gridW×gridH 占地(锚点换算),图错/占地错一眼即见 */
+function GridPreview({ asset, url, scale }: { asset: AssetAdminView; url: string; scale: number }) {
+  const cell = 16 * scale;
+  const w = asset.width * scale;
+  const h = asset.height * scale;
+  const gw = asset.gridW * cell;
+  const gh = asset.gridH * cell;
+  const left = asset.anchor === 'top-left' ? 0 : (w - gw) / 2;
+  const top = asset.anchor === 'top-left' ? 0 : h - gh;
+  return (
+    <div style={{ position: 'relative', width: w, height: h, flex: 'none' }}>
+      <img src={url} width={w} height={h} alt={asset.slug} style={{ imageRendering: 'pixelated', display: 'block' }} />
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: `repeating-linear-gradient(0deg, rgba(64,120,255,.28) 0 1px, transparent 1px ${cell}px), repeating-linear-gradient(90deg, rgba(64,120,255,.28) 0 1px, transparent 1px ${cell}px)`,
+        }}
+      />
+      <div
+        style={{
+          position: 'absolute',
+          left,
+          top,
+          width: gw,
+          height: gh,
+          border: '2px solid rgba(217,45,32,.9)',
+          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.55)',
+        }}
+      />
+    </div>
+  );
 }
 
 /** 素材管理面板(M-L.2):左树(分类 CRUD)右表(筛选/批量/详情校验/发布) */
@@ -70,11 +113,24 @@ export function AssetsPanel() {
   const [detailImage, setDetailImage] = useState<string | null>(null);
   const [thumbUrls, setThumbUrls] = useState<Record<number, string>>({});
   const [editing, setEditing] = useState(false);
+  const [showIssues, setShowIssues] = useState(false);
+  const [issues, setIssues] = useState<AssetIssueView[]>([]);
+  const [openCount, setOpenCount] = useState(0);
   const [categoryModal, setCategoryModal] = useState<{
     parent: AssetCategoryView | null;
   } | null>(null);
   const [categoryForm] = Form.useForm();
   const [form] = Form.useForm();
+
+  const refreshOpenIssues = useCallback(async () => {
+    try {
+      const list = await fetchAssetIssues({ status: 'open' });
+      setIssues(list.items);
+      setOpenCount(list.total);
+    } catch {
+      // 角标失败不打扰主流程(问题清单打开时会再报错提示)
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,6 +164,10 @@ export function AssetsPanel() {
     void load();
     // thumbUrls 为会话级缓存,刻意不进依赖(缓存 miss 由 fetchAssetImage 兜底)
   }, [categoryId, status, keyword, page]);
+
+  useEffect(() => {
+    void refreshOpenIssues();
+  }, [refreshOpenIssues]);
 
   const treeData = useMemo<CategoryTreeNode[]>(() => {
     const build = (parentId: number | null): CategoryTreeNode[] =>
@@ -248,6 +308,7 @@ export function AssetsPanel() {
       tier: detail.tier,
       tags: detail.tags.join(', '),
       status: detail.status,
+      categoryId: detail.categoryId,
     });
   };
 
@@ -265,11 +326,29 @@ export function AssetsPanel() {
         .map((tag) => tag.trim())
         .filter((tag) => tag !== ''),
       status: values.status,
+      categoryId: values.categoryId,
     });
     message.success('已保存');
     setEditing(false);
     await openDetail({ ...detail, ...values, tags: values.tags });
     void load();
+  };
+
+  const resolveIssue = async (issue: AssetIssueView) => {
+    try {
+      await updateAssetIssue(issue.id, 'resolved');
+      message.success('已标记处理完成');
+      await refreshOpenIssues();
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '操作失败');
+    }
+  };
+
+  const locateIssueAsset = (issue: AssetIssueView) => {
+    setKeyword(issue.refSlug);
+    setStatus('');
+    setPage(1);
+    setShowIssues(false);
   };
 
   const bulkStatus = async (target: AssetStatus) => {
@@ -325,10 +404,20 @@ export function AssetsPanel() {
 
       <Card
         size="small"
-        title={`素材库(${total})`}
+        title={showIssues ? '待处理素材问题' : `素材库(${total})`}
         style={{ flex: 1, minWidth: 0 }}
         extra={
           <Space>
+            <Badge count={openCount} size="small" offset={[-4, 0]}>
+              <Button
+                size="small"
+                icon={<WarningOutlined />}
+                type={showIssues ? 'primary' : 'default'}
+                onClick={() => setShowIssues((v) => !v)}
+              >
+                问题清单
+              </Button>
+            </Badge>
             <Button
               size="small"
               icon={<SearchOutlined />}
@@ -348,7 +437,69 @@ export function AssetsPanel() {
           </Space>
         }
       >
-        <Space style={{ marginBottom: 12 }} wrap>
+        {showIssues ? (
+          <Table<AssetIssueView>
+            rowKey="id"
+            size="small"
+            dataSource={issues}
+            pagination={false}
+            locale={{ emptyText: <Empty description="没有待处理的问题,游戏内「⚠ 报错」上报会汇聚到这里" /> }}
+            columns={[
+              {
+                title: '作用域',
+                width: 80,
+                render: (_, record) => (
+                  <Tag color={record.scope === 'asset' ? 'gold' : 'purple'}>
+                    {record.scope === 'asset' ? '素材图' : '动画'}
+                  </Tag>
+                ),
+              },
+              {
+                title: '对象',
+                dataIndex: 'refSlug',
+                width: 170,
+                render: (slug: string) => <code style={{ fontSize: 12 }}>{slug}</code>,
+              },
+              {
+                title: '上下文',
+                width: 190,
+                render: (_, record) => {
+                  const ctx = record.context ?? {};
+                  const parts = Object.entries(ctx)
+                    .filter(([key]) => key !== 'key')
+                    .map(([key, value]) => `${key}=${String(value)}`);
+                  return <span style={{ fontSize: 12, color: '#57606a' }}>{parts.join(' · ') || '—'}</span>;
+                },
+              },
+              { title: '备注', dataIndex: 'note', ellipsis: true },
+              {
+                title: '上报时间',
+                width: 110,
+                render: (_, record) => (
+                  <span style={{ fontSize: 12 }}>{new Date(record.createdAt).toLocaleString()}</span>
+                ),
+              },
+              {
+                title: '操作',
+                width: 170,
+                render: (_, record) => (
+                  <Space>
+                    {record.scope === 'asset' && (
+                      <Button size="small" onClick={() => locateIssueAsset(record)}>
+                        定位素材
+                      </Button>
+                    )}
+                    <Button size="small" type="primary" onClick={() => void resolveIssue(record)}>
+                      标已处理
+                    </Button>
+                  </Space>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <>
+            <Space style={{ marginBottom: 12 }} wrap>
           <Select<AssetStatus | ''>
             style={{ width: 120 }}
             value={status}
@@ -406,21 +557,11 @@ export function AssetsPanel() {
           onRow={(record) => ({ onClick: () => void openDetail(record), style: { cursor: 'pointer' } })}
           columns={[
             {
-              title: '预览',
-              width: 64,
+              title: '预览(红框=占地)',
+              width: 96,
               render: (_, record) =>
                 thumbUrls[record.id] !== undefined ? (
-                  <img
-                    src={thumbUrls[record.id]}
-                    alt={record.slug}
-                    style={{
-                      maxWidth: 48,
-                      maxHeight: 48,
-                      imageRendering: 'pixelated',
-                      background:
-                        'repeating-conic-gradient(#eee 0% 25%, #fafafa 0% 50%) 0 0 / 8px 8px',
-                    }}
-                  />
+                  <GridPreview asset={record} url={thumbUrls[record.id]!} scale={1.5} />
                 ) : (
                   <span style={{ color: '#ccc', fontSize: 12 }}>…</span>
                 ),
@@ -458,6 +599,8 @@ export function AssetsPanel() {
           ]}
           locale={{ emptyText: <Empty description="该分类下暂无素材" /> }}
         />
+          </>
+        )}
       </Card>
 
       <Drawer
@@ -470,12 +613,20 @@ export function AssetsPanel() {
         {detail !== null && (
           <>
             {detailImage !== null ? (
-              <SpriteInspector
-                url={detailImage}
-                width={detail.width}
-                height={detail.height}
-                anim={detail.anim}
-              />
+              <>
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
+                  <GridPreview asset={detail} url={detailImage} scale={3} />
+                </div>
+                <div style={{ fontSize: 12, color: '#8b949e', textAlign: 'center' }}>
+                  红框 = 占地 {detail.gridW}×{detail.gridH} 格(16px/格)
+                </div>
+                <SpriteInspector
+                  url={detailImage}
+                  width={detail.width}
+                  height={detail.height}
+                  anim={detail.anim}
+                />
+              </>
             ) : (
               <p style={{ color: '#999' }}>图片加载中…</p>
             )}
@@ -514,6 +665,18 @@ export function AssetsPanel() {
                       { value: 'active', label: '已启用(进入发布)' },
                       { value: 'retired', label: '已下架' },
                     ]}
+                  />
+                </Form.Item>
+                <Form.Item name="categoryId" label="分类迁移(改 kind,决定进哪个 worldgen 池)">
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    options={(categories ?? [])
+                      .filter((cat) => cat.level === 2)
+                      .map((cat) => {
+                        const parent = (categories ?? []).find((p) => p.id === cat.parentId);
+                        return { value: cat.id, label: `${parent?.name ?? '?'}/${cat.name}` };
+                      })}
                   />
                 </Form.Item>
                 <Space>

@@ -35,6 +35,8 @@ const assetPatchSchema = z.object({
   tier: z.number().int().min(1).max(10).optional(),
   tags: z.array(z.string().trim().min(1).max(20)).max(10).optional(),
   status: statusSchema.optional(),
+  // 分类迁移(审查视图改 kind):只允许挂到 kind 层(level 2)
+  categoryId: z.number().int().positive().optional(),
 });
 
 const bulkStatusSchema = z.object({
@@ -235,6 +237,16 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
     const id = Number((request.params as { id: string }).id);
     const parsed = assetPatchSchema.safeParse(request.body);
     if (!parsed.success) return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
+    if (parsed.data.categoryId !== undefined) {
+      const cat = await db
+        .select({ level: assetCategories.level })
+        .from(assetCategories)
+        .where(eq(assetCategories.id, parsed.data.categoryId))
+        .limit(1);
+      if (cat.length === 0 || cat[0]!.level !== 2) {
+        return parseError(reply, '目标分类不存在或不是 kind 层');
+      }
+    }
     const updated = await db
       .update(assets)
       .set(parsed.data)
