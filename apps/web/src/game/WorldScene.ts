@@ -188,8 +188,12 @@ export class WorldScene extends Phaser.Scene {
         const anchor = cam.getWorldPoint(pointer.x, pointer.y);
         cam.removeBounds();
         cam.setZoom(nextZoom);
-        // 保持指针下的世界坐标不动(围绕指针缩放)
-        cam.setScroll(anchor.x - pointer.x / nextZoom, anchor.y - pointer.y / nextZoom);
+        // 保持指针下的世界坐标不动(围绕指针缩放);Phaser setZoom 以视口中心为锚,
+        // scroll 语义含中心偏移 c*(1-1/zoom),补偿须扣掉该项
+        cam.setScroll(
+          anchor.x - pointer.x / nextZoom - (cam.width / 2) * (1 - 1 / nextZoom),
+          anchor.y - pointer.y / nextZoom - (cam.height / 2) * (1 - 1 / nextZoom),
+        );
         this._clampFreeScroll();
       },
     );
@@ -286,26 +290,31 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  /** 自由视角软钳制:视口小于地图时钳在图内,大于地图时允许负 scroll 让地图居中 */
+  /** 自由视角软钳制:视口小于地图时钳在图内,大于地图时地图居中。
+   * Phaser setZoom 以视口中心为锚,scroll 语义含中心偏移 c*(1-1/zoom),钳制按换算后的真实范围 */
   private _clampFreeScroll(): void {
     if (this._map === null) return;
     const cam = this.cameras.main;
-    const clampAxis = (mapPx: number, viewPx: number, scroll: number): number => {
+    const clampAxis = (mapPx: number, viewPx: number, scroll: number, halfView: number, zoom: number): number => {
+      const offset = halfView * (1 - 1 / zoom); // scroll → 世界左上角的中心偏移
       const over = mapPx - viewPx;
-      return over >= 0 ? Phaser.Math.Clamp(scroll, 0, over) : over / 2;
+      // 视口小于地图:钳在图内;视口盖过地图:自由度塌缩为居中一点(lo=hi)
+      const lo = over >= 0 ? -offset : over / 2 - offset;
+      const hi = over >= 0 ? over - offset : over / 2 - offset;
+      return Phaser.Math.Clamp(scroll, lo, hi);
     };
     cam.setScroll(
-      clampAxis(this._map.width * TILE, cam.width / cam.zoom, cam.scrollX),
-      clampAxis(this._map.height * TILE, cam.height / cam.zoom, cam.scrollY),
+      clampAxis(this._map.width * TILE, cam.width / cam.zoom, cam.scrollX, cam.width / 2, cam.zoom),
+      clampAxis(this._map.height * TILE, cam.height / cam.zoom, cam.scrollY, cam.height / 2, cam.zoom),
     );
   }
 
-  /** 缩放下限: 视口恰好容下全图(小窗时允许 <1x,保证 overview 始终能看到完整地图) */
+  /** 缩放下限: 全图恰好贴合视口(overview/自由缩放共用;大屏看小地图时可 >1,撑满一侧不留大片空底) */
   private _minZoom(): number {
     const cam = this.cameras.main;
     if (this._map === null) return ZOOM_MIN;
     const mapWidth = this._map.width * TILE;
     const mapHeight = this._map.height * TILE;
-    return Phaser.Math.Clamp(Math.min(cam.width / mapWidth, cam.height / mapHeight), 0.25, ZOOM_MIN);
+    return Phaser.Math.Clamp(Math.min(cam.width / mapWidth, cam.height / mapHeight), 0.25, ZOOM_MAX);
   }
 }
