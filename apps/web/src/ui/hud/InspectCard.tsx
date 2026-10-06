@@ -16,6 +16,7 @@ import {
 import { BERRY_BUSH_SPRITE, JUNK_PILE_SPRITE } from '../../game/resources-view';
 import { FENCE_DAMAGE_SPRITE, LITTER_SPRITES } from '../../game/maintenance-view';
 import type { CharacterView } from '../side-panel/place';
+import { reportAssetIssue } from '../../net/issueApi';
 import { useInspectStore, type InspectTarget } from '../../store/inspectStore';
 
 /** 家具 emoji 兜底(素材缺失/清单滞后时) */
@@ -112,7 +113,27 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
   const close = useInspectStore((state) => state.close);
   const slug = target !== null ? iconSlugOf(target) : null;
   const iconUrl = useIconUrl(slug);
+  const [reportState, setReportState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+  useEffect(() => {
+    setReportState('idle');
+  }, [target]);
   if (target === null) return null;
+
+  const reportIssue = (): void => {
+    if (slug === null) return;
+    setReportState('sending');
+    void reportAssetIssue({
+      scope: 'asset',
+      refSlug: slug,
+      context: {
+        key: target.kind === 'furniture' ? target.furniture.kind : target.kind,
+        kind: target.kind,
+        place: target.kind === 'furniture' ? target.placeName : '',
+      },
+    })
+      .then(() => setReportState('done'))
+      .catch(() => setReportState('error'));
+  };
 
   const { character, isAdmin } = props;
   const disabled = character === null;
@@ -225,18 +246,39 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
           ))}
         </div>
         <p className="inspect-desc">{desc}</p>
-        {isAdmin && action !== null && (
+        {isAdmin && (action !== null || slug !== null) && (
           <div className="inspect-admin">
-            <span>管理员</span>
-            <button
-              type="button"
-              className="px-btn"
-              disabled={disabled}
-              title={disabled ? '先点击角色选中' : undefined}
-              onClick={action.run}
-            >
-              {action.label}
-            </button>
+            {action !== null && (
+              <>
+                <span>管理员</span>
+                <button
+                  type="button"
+                  className="px-btn"
+                  disabled={disabled}
+                  title={disabled ? '先点击角色选中' : undefined}
+                  onClick={action.run}
+                >
+                  {action.label}
+                </button>
+              </>
+            )}
+            {slug !== null && (
+              <button
+                type="button"
+                className="px-btn"
+                disabled={reportState === 'sending' || reportState === 'done'}
+                title="这张图的显示内容不对?上报到后台素材问题清单"
+                onClick={reportIssue}
+              >
+                {reportState === 'done'
+                  ? '✓ 已上报'
+                  : reportState === 'error'
+                    ? '✕ 失败,重试'
+                    : reportState === 'sending'
+                      ? '…'
+                      : '⚠ 图不对'}
+              </button>
+            )}
           </div>
         )}
       </div>
