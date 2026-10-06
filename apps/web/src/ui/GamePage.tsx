@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { WORLD_TIME_SCALES } from '@sims/shared';
-import { formatCoins } from '../format';
 import { connectWorld } from '../net/socket';
 import { updateWorldSettings } from '../net/worldApi';
 import { useWorldStore } from '../store/worldStore';
 import { WorldCanvas } from '../game/WorldCanvas';
 import { WorldSettingsModal } from './WorldSettingsModal';
+import { CharacterHud } from './hud/CharacterHud';
+import { ActionBar } from './hud/ActionBar';
+import { useGoAndDo } from './side-panel/useGoAndDo';
 import './game-page.css';
 import './world-settings.css';
 
@@ -17,19 +18,26 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /**
- * 世界观察页: 画布+状态栏+角色条+游戏内设置菜单(SimCity 式)。
- * 画布仅支持点选角色跟随与滚轮缩放,不下发任何意图;意图操控收口 /lab。
- * 设置菜单经 /api/world/settings 常开通道调暂停/倍率/规则/参数/难度预设,
- * 弹窗打开自动暂停世界,关闭恢复(模拟人生习惯)。
+ * 游戏主界面(UI-1): 全屏像素画布打底,HUD 悬浮——左上角色面板(‹›切换)、
+ * 顶中时钟/倍率、右上日志与设置、底部快捷动作条。
+ * 意图经 useGoAndDo 下发(与侧面板同一动作层);画布仅点选角色/缩放,无地图操控。
  */
 export default function GamePage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
-  const lastEvent = useWorldStore((state) => state.lastEvent);
+  const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlError, setControlError] = useState<string | null>(null);
   // 弹窗打开前世界在运行则自动暂停,关闭时恢复(若期间被他人恢复则不双写)
   const resumeOnCloseRef = useRef(false);
+
+  const character =
+    snapshot?.characters.find((item) => item.id === selectedCharacterId) ?? null;
+  const { run, startActivity, startWorkTask, startSleep, pending } = useGoAndDo(
+    character,
+    snapshot,
+    selectedCharacterId,
+  );
 
   useEffect(() => {
     const socket = connectWorld();
@@ -100,89 +108,70 @@ export default function GamePage() {
 
   return (
     <main className="game-page">
-      <div className="status-bar">
-        <span className="title">
-          agent-sims<Link className="lab-link" to="/lab">lab 调试台</Link>
-        </span>
-        {snapshot !== null ? (
-          <span>
-            第 {snapshot.clock.day} 天 {snapshot.clock.time} {snapshot.clock.isNight ? '🌙' : '☀️'} ·
-            tick {snapshot.tick}
-            {snapshot.paused ? ' · 已暂停' : ` · ${snapshot.timeScale}x`}
-          </span>
-        ) : (
-          <span>等待世界快照…</span>
-        )}
-        <span className={status}>{STATUS_LABEL[status] ?? status}</span>
-        <span className="quick-controls">
+      <WorldCanvas interactive={false} />
+
+      <CharacterHud />
+
+      <div className="px-box hud-clock">
+        <div className="px-inner hud-clock-inner">
           <button
             type="button"
+            className="px-btn sq"
             disabled={snapshot === null}
             title={snapshot?.paused ? '继续' : '暂停'}
             onClick={() => void togglePause()}
           >
             {snapshot?.paused ? '▶' : '⏸'}
           </button>
+          {snapshot !== null ? (
+            <div className="hud-clock-date">
+              <small>DAY {snapshot.clock.day}</small>
+              <b className="px-num">{snapshot.clock.time}</b>
+            </div>
+          ) : (
+            <div className="hud-clock-date">
+              <small>WAIT</small>
+              <b className="px-num">--:--</b>
+            </div>
+          )}
           {WORLD_TIME_SCALES.map((scale) => (
             <button
               key={scale}
               type="button"
-              className={snapshot?.timeScale === scale ? 'active' : ''}
+              className={`px-btn${snapshot?.timeScale === scale ? ' on' : ''}`}
               disabled={snapshot === null}
               onClick={() => void changeScale(scale)}
             >
               {scale}x
             </button>
           ))}
-          <button
-            type="button"
-            title="世界设置(ESC)"
-            onClick={() => void openSettings()}
-          >
-            ⚙
-          </button>
-        </span>
-        {controlError !== null && <span className="quick-error">{controlError}</span>}
-      </div>
-
-      <div className="game-main">
-        <div className="canvas-wrap">
-          <WorldCanvas interactive={false} />
         </div>
       </div>
+      {controlError !== null && <p className="hud-error">{controlError}</p>}
 
-      {snapshot !== null && snapshot.characters.length > 0 && (
-        <div className="character-strip">
-          {snapshot.characters.map((character) => (
-            <div key={character.id} className="card">
-              <div className="card-title">
-                {character.name} <small>({character.x},{character.y})</small>
-              </div>
-              <VitalBar label="体力" value={character.energy} />
-              <VitalBar label="幸福" value={character.happiness} />
-              <div className="coins">金币 {formatCoins(character.coins)}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {lastEvent !== null && (
-        <p className="last-event">最近事件: {JSON.stringify(lastEvent)}</p>
-      )}
+      <div className="hud-topright">
+        <span className={`hud-net ${status}`} title={STATUS_LABEL[status] ?? status} />
+        <button
+          type="button"
+          className="px-btn big"
+          title="世界设置(ESC)"
+          onClick={() => void openSettings()}
+        >
+          ⚙
+        </button>
+      </div>
+
+      <ActionBar
+        character={character}
+        snapshot={snapshot}
+        pending={pending}
+        run={run}
+        startActivity={startActivity}
+        startSleep={startSleep}
+        startWorkTask={startWorkTask}
+      />
 
       {settingsOpen && <WorldSettingsModal onClose={() => void closeSettings()} />}
     </main>
-  );
-}
-
-function VitalBar({ label, value }: { label: string; value: number }) {
-  const clamped = Math.max(0, Math.min(100, value));
-  return (
-    <div className="vital">
-      <span className="vital-label">{label}</span>
-      <div className="vital-track">
-        <div className="vital-fill" style={{ width: `${clamped}%` }} />
-      </div>
-      <span className="vital-value">{Math.round(value)}</span>
-    </div>
   );
 }
