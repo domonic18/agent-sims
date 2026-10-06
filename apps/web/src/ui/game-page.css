@@ -1,11 +1,11 @@
 /* 全屏游戏布局(验收反馈①): 画布铺满浏览器视口,状态栏/操作/侧栏/角色条悬浮其上 */
 .game-page {
-  font-family: monospace;
+  font-family: var(--px-font-ui);
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #14171f;
-  color: #e8e8e8;
+  background: var(--px-ink);
+  color: var(--px-text);
 }
 
 .status-bar {
@@ -52,6 +52,7 @@
 }
 
 .canvas-host {
+  position: relative;
   width: 100%;
   height: 100%;
 }

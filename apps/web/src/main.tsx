@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import './ui/theme.css';
 
 const GamePage = lazy(() => import('./ui/GamePage'));
 const LabPage = lazy(() => import('./lab/LabPage'));

@@ -1,11 +1,11 @@
 /* /lab 调试台全屏布局(M3.6d): 画布铺满视口,状态栏/倍率控制/操作列/日志悬浮其上 */
 .lab-page {
-  font-family: monospace;
+  font-family: var(--px-font-ui);
   position: fixed;
   inset: 0;
   overflow: hidden;
-  background: #14171f;
-  color: #e8e8e8;
+  background: var(--px-ink);
+  color: var(--px-text);
 }
 
 .lab-page .status-bar {
@@ -93,13 +93,14 @@
   white-space: nowrap;
 }
 
-/* 画布铺满视口,Phaser Scale.FIT 在其内等比缩放并 letterbox(底色与页面一致) */
+/* 画布铺满视口,Phaser Scale.RESIZE 随窗口自适应(UI-1),相机跟随角色 */
 .canvas-wrap {
   position: absolute;
   inset: 0;
 }
 
 .canvas-host {
+  position: relative;
   width: 100%;
   height: 100%;
 }

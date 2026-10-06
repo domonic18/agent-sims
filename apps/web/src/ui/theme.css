@@ -1,0 +1,188 @@
+/*
+ * UI-1 像素主题基座: Sweetie-16 调色板变量 + 像素面板/按钮/分格条公共类。
+ * 全游戏 HUD 共用;页面私有布局仍放各自 css 文件。
+ * 像素感三板斧: 零圆角、八角切角 clip-path、硬阴影 box-shadow。
+ */
+
+:root {
+  /* Sweetie-16 调色板(与 LimeZu 复古素材同气质) */
+  --px-ink: #1a1c2c;
+  --px-plum: #5d275d;
+  --px-red: #b13e53;
+  --px-orange: #ef7d57;
+  --px-gold: #ffcd75;
+  --px-lime: #a7f070;
+  --px-green: #38b764;
+  --px-teal: #257179;
+  --px-navy: #29366f;
+  --px-blue: #41a6f6;
+  --px-cyan: #73eff7;
+  --px-white: #f4f4f4;
+  --px-gray: #94b0c2;
+  --px-slate: #566c86;
+  --px-panel: #333c57;
+
+  /* 语义别名 */
+  --px-text: var(--px-white);
+  --px-dim: var(--px-gray);
+  --px-ok: #8ee6a1;
+  --px-bad: #ff9b9b;
+
+  --px-font-ui: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --px-font-pixel: 'px-font', var(--px-font-ui);
+}
+
+@font-face {
+  font-family: 'px-font';
+  src: url('../assets/fonts/press-start-2p.woff2') format('woff2');
+  font-display: swap;
+}
+
+/* ---- 像素面板: 外层深色描边盒 + 内层面板,四角八角切角 ---- */
+.px-box {
+  background: var(--px-ink);
+  padding: 4px;
+  clip-path: polygon(
+    6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px),
+    calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px
+  );
+}
+
+.px-inner {
+  background: var(--px-panel);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+  clip-path: polygon(
+    4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px),
+    calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px
+  );
+}
+
+/* ---- 像素按钮: 硬阴影按压感; .on 为选中态 ---- */
+.px-btn {
+  font-family: var(--px-font-ui);
+  font-size: 13px;
+  color: var(--px-text);
+  background: var(--px-navy);
+  border: 2px solid var(--px-ink);
+  box-shadow: 0 3px 0 var(--px-ink);
+  padding: 6px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  user-select: none;
+  line-height: 1.2;
+}
+
+.px-btn:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
+.px-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.px-btn.on {
+  background: var(--px-gold);
+  color: var(--px-ink);
+}
+
+.px-btn.go {
+  background: var(--px-green);
+  color: var(--px-ink);
+  font-weight: bold;
+}
+
+.px-btn.danger {
+  background: var(--px-red);
+  color: var(--px-white);
+}
+
+.px-btn.sq {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 15px;
+}
+
+.px-btn.big {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 19px;
+  position: relative;
+}
+
+/* 角标(未读数等) */
+.px-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 3px;
+  background: var(--px-red);
+  color: var(--px-white);
+  font-size: 10px;
+  font-style: normal;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--px-ink);
+}
+
+/* ---- 分格条(体力/幸福): 底槽 + 填充 + 等距格线 ---- */
+.px-bar {
+  position: relative;
+  flex: 1;
+  height: 14px;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+}
+
+.px-bar > i {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  background: var(--px-green);
+}
+
+.px-bar.gold > i {
+  background: var(--px-gold);
+}
+
+.px-bar > u {
+  position: absolute;
+  inset: 2px;
+  background: repeating-linear-gradient(90deg, transparent 0 11px, var(--px-ink) 11px 13px);
+  text-decoration: none;
+}
+
+/* ---- 通用文本 ---- */
+.px-num {
+  font-family: var(--px-font-pixel);
+  letter-spacing: 1px;
+}
+
+.px-title-shadow {
+  text-shadow: 2px 2px 0 var(--px-ink);
+}
+
+/* ---- 相机模式 chip(画布右下角悬浮) ---- */
+.cam-chip {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 5;
+  font-family: var(--px-font-ui);
+  font-size: 12px;
+  color: var(--px-cyan);
+  background: rgba(26, 28, 44, 0.85);
+  border: 2px solid var(--px-slate);
+  padding: 4px 10px;
+  cursor: pointer;
+}

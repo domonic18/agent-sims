@@ -9,6 +9,9 @@ import type {
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
+/** 相机模式(UI-1): follow=2x 跟随选中角色,overview=缩到最小看全图 */
+export type CameraMode = 'follow' | 'overview';
+
 /** 带递增序号的事件条目:消费者按 seq 增量拉取,同 tick 多事件不丢 */
 export interface SequencedEvent {
   seq: number;
@@ -30,6 +33,9 @@ export interface WorldStore {
   eventSeq: number;
   /** 面板当前操作的角色(null=未选,快照到位后自动选首个) */
   selectedCharacterId: string | null;
+  /** 相机模式(UI-1),Phaser 场景每帧消费;滚轮缩到最小自动切 overview */
+  cameraMode: CameraMode;
+  setCameraMode: (mode: CameraMode) => void;
   /** 地图点击定位的场所(null=无高亮),侧栏滚动联动 */
   focusPlaceId: string | null;
   /** 当前世界地图定义(WorldCanvas fetch 后写入;侧面板场所/锚点/商店查此源,不再绑内置图) */
@@ -59,6 +65,8 @@ export const useWorldStore = create<WorldStore>((set) => ({
   events: [],
   eventSeq: 0,
   selectedCharacterId: null,
+  cameraMode: 'follow',
+  setCameraMode: (mode) => set({ cameraMode: mode }),
   focusPlaceId: null,
   map: null,
   params: null,

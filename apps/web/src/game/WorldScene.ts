@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { WALK_SPEED_TILES_PER_TICK, type TileMapDefinition, type WorldEvent } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
+import type { CameraMode } from '../store/worldStore';
 import { TILE } from './assets';
 import { registryOf } from './manifest';
 import {
@@ -16,7 +17,7 @@ import { RESOURCE_SPRITES, syncResourceViews } from './resources-view';
 import { drawTownMap } from './terrain';
 import { showSpeechBubble } from './speech';
 
-/** 相机:默认 2x 跟随选中角色,滚轮在 1x~4x 间缩放,1x 为全图概览 */
+/** 相机(UI-1 全屏模式):默认 2x 跟随选中角色;缩放下限动态=视口能容下全图;overview 模式缩到下限居中 */
 const ZOOM_DEFAULT = 2;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
@@ -43,8 +44,10 @@ export class WorldScene extends Phaser.Scene {
   private _fountain = new FountainFx(null);
   /** 方向键/WASD 连续移动控制器(仅 /lab 交互模式挂载) */
   private _keyboard: KeyboardController | null = null;
-  /** 当前相机跟随的角色 id,null = 全图概览 */
+  /** 当前相机跟随的角色 id,null = 未跟随 */
   private _followId: string | null = null;
+  /** 已落实到相机的模式(防逐帧重复 startFollow/centerOn) */
+  private _appliedMode: CameraMode | null = null;
   /** 交互开关: 主页面纯观看(仅点选角色/缩放),/lab 调试台全量操控(地图移动/方向键) */
   private _interactive = true;
   /** 已消费的事件序号(事件队列增量拉取,同 tick 多事件不丢) */
@@ -125,9 +128,17 @@ export class WorldScene extends Phaser.Scene {
       ) => {
         const anchor = cam.getWorldPoint(pointer.x, pointer.y);
         const factor = dy > 0 ? 0.85 : 1.18;
-        cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, ZOOM_MIN, ZOOM_MAX));
-        if (cam.zoom <= ZOOM_MIN) {
+        const minZoom = this._minZoom();
+        const store = useWorldStore.getState();
+        if (store.cameraMode === 'overview' && dy < 0) {
+          // 概览态滚轮放大 = 一键回到跟随(由 _updateCamera 跳到默认倍率)
+          store.setCameraMode('follow');
+          return;
+        }
+        cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, minZoom, ZOOM_MAX));
+        if (cam.zoom <= minZoom + 0.001) {
           cam.centerOn((map.width * TILE) / 2, (map.height * TILE) / 2);
+          if (store.cameraMode !== 'overview') store.setCameraMode('overview');
         } else {
           // 保持指针下的世界坐标不动(围绕指针缩放)
           cam.setScroll(anchor.x - pointer.x / cam.zoom, anchor.y - pointer.y / cam.zoom);
@@ -139,13 +150,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    const { snapshot, selectedCharacterId, events } = useWorldStore.getState();
+    const { snapshot, selectedCharacterId, events, cameraMode } = useWorldStore.getState();
     syncCharacterViews(this, this._views, snapshot?.characters ?? [], snapshot?.clock.gameMinutes ?? 0);
     syncMaintenanceViews(this, this._maintenanceViews, snapshot?.maintenance ?? []);
     syncResourceViews(this, this._resourceViews, snapshot?.resources ?? []);
     this._drainSocialEvents(events);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;
-    this._updateCamera(selectedCharacterId);
+    this._updateCamera(selectedCharacterId, cameraMode);
     this._keyboard?.step(time);
     if (this._nightOverlay !== null) {
       // 昼夜色调平滑过渡(M3.6f 加深夜色)
@@ -186,19 +197,40 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  private _updateCamera(selectedId: string | null): void {
+  /** 相机模式驱动(UI-1): follow=跟随选中角色(切换瞬间跳回默认倍率),overview=缩到下限看全图 */
+  private _updateCamera(selectedId: string | null, cameraMode: CameraMode): void {
     if (this._map === null) return;
     const cam = this.cameras.main;
-    const desired = cam.zoom > ZOOM_MIN && selectedId !== null ? selectedId : null;
-    if (desired === this._followId) return;
-    const view = desired !== null ? this._views.get(desired) : undefined;
-    if (desired === null) {
+    const minZoom = this._minZoom();
+    if (cameraMode === 'overview') {
       cam.stopFollow();
+      cam.setZoom(minZoom);
       cam.centerOn((this._map.width * TILE) / 2, (this._map.height * TILE) / 2);
+      this._appliedMode = 'overview';
+      this._followId = null;
+      return;
+    }
+    if (this._appliedMode !== 'follow') {
+      cam.setZoom(Math.max(ZOOM_DEFAULT, minZoom));
+      this._appliedMode = 'follow';
+    }
+    if (selectedId === this._followId) return;
+    const view = selectedId !== null ? this._views.get(selectedId) : undefined;
+    if (selectedId === null) {
+      cam.stopFollow();
       this._followId = null;
     } else if (view !== undefined) {
       cam.startFollow(view.node, true, 0.15, 0.15);
-      this._followId = desired;
+      this._followId = selectedId;
     }
+  }
+
+  /** 缩放下限: 视口恰好容下全图(小窗时允许 <1x,保证 overview 始终能看到完整地图) */
+  private _minZoom(): number {
+    const cam = this.cameras.main;
+    if (this._map === null) return ZOOM_MIN;
+    const mapWidth = this._map.width * TILE;
+    const mapHeight = this._map.height * TILE;
+    return Phaser.Math.Clamp(Math.min(cam.width / mapWidth, cam.height / mapHeight), 0.25, ZOOM_MIN);
   }
 }

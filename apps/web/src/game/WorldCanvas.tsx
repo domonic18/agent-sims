@@ -4,6 +4,7 @@ import { WorldScene } from './WorldScene';
 import type { TileMapDefinition } from '@sims/shared';
 import { fetchGameAssetRegistry } from './manifest';
 import { useWorldStore } from '../store/worldStore';
+import { CameraModeChip } from '../ui/hud/CameraModeChip';
 
 /** Phaser 画布宿主:先取素材 manifest 再创建世界场景(主页面与 /lab 调试台复用) */
 /** 当前世界地图定义(M-L.5:创建向导生成的随机地图与内置地图同源渲染) */
@@ -28,11 +29,12 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
         game = new Phaser.Game({
           type: Phaser.AUTO,
           parent: host,
-          width: map.width * 16,
-          height: map.height * 16,
+          // UI-1: 画布=视口尺寸(Scale.RESIZE 随窗口自适应),相机跟随角色,不再整图 letterbox
+          width: host.clientWidth,
+          height: host.clientHeight,
           pixelArt: true,
           backgroundColor: '#8fc978',
-          scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+          scale: { mode: Phaser.Scale.RESIZE },
           scene: [WorldScene],
         });
         // create() 在 boot 后异步执行,先写入再启动不会丢
@@ -58,5 +60,9 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
       </div>
     );
   }
-  return <div ref={hostRef} className="canvas-host" />;
+  return (
+    <div ref={hostRef} className="canvas-host">
+      <CameraModeChip />
+    </div>
+  );
 }
