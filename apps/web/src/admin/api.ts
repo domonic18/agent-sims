@@ -1,5 +1,6 @@
 import {
   ADMIN_API,
+  type AssetAiReviewResponse,
   type AssetBulkStatusResult,
   type AssetCategoryView,
   type AssetIssueListResponse,
@@ -290,6 +291,13 @@ export async function updateAssetIssue(id: number, status: AssetIssueStatus): Pr
   return await adminFetch<AssetIssueView>(ADMIN_API.assetIssue(id), {
     method: 'PATCH',
     body: JSON.stringify({ status }),
+  });
+}
+
+export async function aiReviewAssets(ids: number[]): Promise<AssetAiReviewResponse> {
+  return await adminFetch<AssetAiReviewResponse>(ADMIN_API.assetAiReview, {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
   });
 }
 

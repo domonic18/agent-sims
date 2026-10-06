@@ -26,16 +26,19 @@ import {
   DeleteOutlined,
   EditOutlined,
   ReloadOutlined,
+  RobotOutlined,
   SearchOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import type {
   AssetAdminView,
+  AssetAiReviewItem,
   AssetCategoryView,
   AssetIssueView,
   AssetStatus,
 } from '@sims/shared';
 import {
+  aiReviewAssets,
   bulkAssetStatus,
   createAssetCategory,
   createAssetIssue,
@@ -113,6 +116,9 @@ export function AssetsPanel() {
   const [detail, setDetail] = useState<AssetAdminView | null>(null);
   const [detailImage, setDetailImage] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiRunning, setAiRunning] = useState(false);
+  const [aiItems, setAiItems] = useState<AssetAiReviewItem[]>([]);
   const [thumbUrls, setThumbUrls] = useState<Record<number, string>>({});
   const [editing, setEditing] = useState(false);
   const [showIssues, setShowIssues] = useState(false);
@@ -315,6 +321,46 @@ export function AssetsPanel() {
       void refreshOpenIssues();
     } catch (err) {
       setIssueState('error');
+      message.error(err instanceof Error ? err.message : '上报失败');
+    }
+  };
+
+  const runAiReview = async (ids: number[]) => {
+    if (ids.length === 0) return;
+    setAiOpen(true);
+    setAiRunning(true);
+    setAiItems(ids.map((id) => ({ id, slug: String(id), ok: false, error: '审核中…' })));
+    try {
+      const body = await aiReviewAssets(ids);
+      setAiItems(body.items);
+    } catch (err) {
+      setAiItems(ids.map((id) => ({ id, slug: String(id), ok: false, error: err instanceof Error ? err.message : '审核失败' })));
+    } finally {
+      setAiRunning(false);
+    }
+  };
+
+  const reportAiIssue = async (item: AssetAiReviewItem) => {
+    const result = item.result;
+    if (result === undefined) return;
+    try {
+      await createAssetIssue({
+        scope: 'asset',
+        refSlug: item.slug,
+        refId: item.id,
+        context: {
+          key: items.find((a) => a.id === item.id)?.categorySlug ?? '',
+          ai: 'vision',
+          match: result.match,
+          see: result.see,
+          kindGuess: result.kindGuess,
+          problems: result.problems,
+          suggestion: result.suggestion,
+        },
+      });
+      message.success(`${item.slug} 已上报到素材问题清单`);
+      void refreshOpenIssues();
+    } catch (err) {
       message.error(err instanceof Error ? err.message : '上报失败');
     }
   };
@@ -559,6 +605,22 @@ export function AssetsPanel() {
               批量下架
             </Button>
           )}
+          {selectedIds.length > 0 && (
+            <Tooltip title="勾选素材交给视觉模型识别,校验图片与 slug/元数据是否相符(单批最多 10 件)">
+              <Button
+                size="small"
+                icon={<RobotOutlined />}
+                loading={aiRunning}
+                onClick={() => {
+                  const ids = selectedIds.slice(0, 10);
+                  if (selectedIds.length > 10) message.info(`单批最多 10 件,已取前 10 件`);
+                  void runAiReview(ids);
+                }}
+              >
+                AI 审核({Math.min(selectedIds.length, 10)})
+              </Button>
+            </Tooltip>
+          )}
         </Space>
         <Table<AssetAdminView>
           rowKey="id"
@@ -724,7 +786,7 @@ export function AssetsPanel() {
                     { key: 'source', label: '来源', children: detail.source, span: 2 },
                   ]}
                 />
-                <Space style={{ marginTop: 12 }}>
+                <Space style={{ marginTop: 12 }} wrap>
                   <Button type="primary" onClick={startEdit}>
                     编辑元数据
                   </Button>
@@ -739,12 +801,97 @@ export function AssetsPanel() {
                         ? '✕ 失败,重试'
                         : '⚠ 标记问题'}
                   </Button>
+                  <Tooltip title="视觉模型识别这张图,校验 slug/元数据是否相符">
+                    <Button
+                      icon={<RobotOutlined />}
+                      loading={aiRunning}
+                      onClick={() => void runAiReview([detail.id])}
+                    >
+                      AI 识别
+                    </Button>
+                  </Tooltip>
                 </Space>
               </>
             )}
           </>
         )}
       </Drawer>
+      <Modal
+        title="AI 审核结果"
+        open={aiOpen}
+        onCancel={() => setAiOpen(false)}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setAiOpen(false)}>
+            关闭
+          </Button>,
+        ]}
+        width={760}
+      >
+        <p style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
+          结论由视觉模型(vision 槽)生成,仅供参考;「上报」会把结论写入素材问题清单。
+        </p>
+        <Table<AssetAiReviewItem>
+          rowKey="id"
+          size="small"
+          loading={aiRunning}
+          dataSource={aiItems}
+          pagination={false}
+          columns={[
+            {
+              title: '图',
+              width: 64,
+              render: (_, item) =>
+                thumbUrls[item.id] !== undefined ? (
+                  <img src={thumbUrls[item.id]} alt="" style={{ imageRendering: 'pixelated', width: 48 }} />
+                ) : (
+                  '—'
+                ),
+            },
+            { title: 'slug', dataIndex: 'slug', width: 160, ellipsis: true },
+            {
+              title: '结论',
+              width: 84,
+              render: (_, item) => {
+                if (!item.ok) return <Tag>失败</Tag>;
+                const match = item.result?.match ?? 'unsure';
+                return match === 'yes' ? (
+                  <Tag color="green">匹配</Tag>
+                ) : match === 'no' ? (
+                  <Tag color="red">不匹配</Tag>
+                ) : (
+                  <Tag color="orange">不确定</Tag>
+                );
+              },
+            },
+            {
+              title: '模型判断',
+              render: (_, item) => {
+                if (!item.ok) return <span style={{ color: '#c00' }}>{item.error}</span>;
+                const r = item.result;
+                if (r === undefined) return '—';
+                return (
+                  <div style={{ fontSize: 12 }}>
+                    <div>图里是: {r.see || '—'}</div>
+                    {r.kindGuess !== null && <div>kind 猜测: {r.kindGuess}</div>}
+                    {r.problems.length > 0 && <div>问题: {r.problems.join(';')}</div>}
+                    {r.suggestion !== null && <div>建议: {r.suggestion}</div>}
+                  </div>
+                );
+              },
+            },
+            {
+              title: '操作',
+              width: 84,
+              render: (_, item) =>
+                item.ok && item.result !== undefined && item.result.match !== 'yes' ? (
+                  <Button size="small" icon={<WarningOutlined />} onClick={() => void reportAiIssue(item)}>
+                    上报
+                  </Button>
+                ) : null,
+            },
+          ]}
+        />
+      </Modal>
       <Modal
         title={`新增${categoryModal?.parent ? `${LEVEL_NAMES[categoryModal.parent.level]}的子` : '顶层'}分类`}
         open={categoryModal !== null}
