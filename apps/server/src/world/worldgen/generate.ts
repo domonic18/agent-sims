@@ -4,6 +4,7 @@ import {
   WORLDGEN_SIZE_GRIDS,
   type GameType,
   type PlaceDefinition,
+  type ResourceNodeSeed,
   type TileMapDefinition,
   type WorldgenParams,
   type WorldgenReport,
@@ -174,7 +175,10 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   // ④ 户外装饰
   const decor = buildDecor(rng, width, height, places, paths, pond);
 
-  const map: TileMapDefinition = { width, height, blockedRects, paths, places, decor, fences };
+  // ④.5 资源节点撒点(M-G.6):公园浆果丛/街道拾荒堆,占格不可行走站四邻作业
+  const resources = scatterResources(rng, width, height, places, paths, fences, pond);
+
+  const map: TileMapDefinition = { width, height, blockedRects, paths, places, decor, fences, resources };
   // ⑤ 校验:TileMap 构造即校验(入口/门洞/家具/室内连通);再验锚点与全局连通
   const tileMap = TileMap.fromDefinition(map);
   const anchorsComplete = checkAnchors(places);
@@ -515,6 +519,75 @@ function buildDecor(
 
 function nearestRoadRow(roadRows: number[], y: number): number {
   return roadRows.reduce((best, row) => (Math.abs(row - y) < Math.abs(best - y) ? row : best), roadRows[0] ?? 0);
+}
+
+/**
+ * 资源节点撒点(M-G.6):浆果丛 3~6 落公园空地(避池塘/家具/使用格三邻域),
+ * 拾荒堆 2~4 落街道空地(避场所缓冲带/道路/围栏);占格不可行走,重摇尽力放置。
+ */
+function scatterResources(
+  rng: Rng,
+  width: number,
+  height: number,
+  places: PlaceDefinition[],
+  paths: BlockedRect[],
+  fences: BlockedRect[],
+  pond: BlockedRect | null,
+): ResourceNodeSeed[] {
+  const parkBlocked = new Set<string>();
+  for (const path of paths) mark0(parkBlocked, path); // 浆果丛不落路面
+  for (const fence of fences) mark0(parkBlocked, fence); // 公园北缘围栏段
+  if (pond !== null) {
+    mark0(parkBlocked, { x: pond.x - 1, y: pond.y - 1, w: pond.w + 2, h: pond.h + 2 });
+  }
+  const streetBlocked = new Set<string>();
+  for (const path of paths) mark0(streetBlocked, path); // 拾荒堆不上路面
+  if (pond !== null) mark0(streetBlocked, pond);
+  const parks = places.filter((p) => p.id.startsWith('park'));
+  for (const park of parks) {
+    for (const fence of fences) mark0(parkBlocked, fence);
+    for (const f of park.furniture ?? []) {
+      mark0(parkBlocked, { x: f.x, y: f.y, w: f.w, h: f.h });
+      if (f.use !== undefined) {
+        mark0(parkBlocked, { x: f.use.x - 1, y: f.use.y - 1, w: 3, h: 3 }); // 使用格保持四邻可站
+      }
+    }
+    mark0(parkBlocked, { x: park.entrance.x - 1, y: park.entrance.y - 1, w: 3, h: 2 });
+    // 街道侧:场所占格 ±1 缓冲,拾荒堆不贴墙堵门口
+    mark0(streetBlocked, { x: park.x - 1, y: park.y - 1, w: park.w + 2, h: park.h + 2 });
+  }
+  for (const place of places) {
+    if (place.id.startsWith('park')) continue;
+    mark0(streetBlocked, { x: place.x - 1, y: place.y - 1, w: place.w + 2, h: place.h + 2 });
+  }
+  const taken = new Set<string>();
+  const seeds: ResourceNodeSeed[] = [];
+  const berryCount = rng.int(3, 6);
+  for (let n = 0; n < berryCount && parks.length > 0; n += 1) {
+    const park = rng.pick(parks);
+    for (let tries = 0; tries < 20; tries += 1) {
+      const x = rng.int(park.x + 1, park.x + park.w - 2);
+      const y = rng.int(park.y + 1, park.y + park.h - 2);
+      const key = cellKey(x, y);
+      if (parkBlocked.has(key) || taken.has(key)) continue;
+      taken.add(key);
+      seeds.push({ kind: 'berry_bush', x, y });
+      break;
+    }
+  }
+  const junkCount = rng.int(2, 4);
+  for (let n = 0; n < junkCount; n += 1) {
+    for (let tries = 0; tries < 30; tries += 1) {
+      const x = rng.int(2, width - 3);
+      const y = rng.int(2, height - 3);
+      const key = cellKey(x, y);
+      if (streetBlocked.has(key) || taken.has(key)) continue;
+      taken.add(key);
+      seeds.push({ kind: 'junk_pile', x, y });
+      break;
+    }
+  }
+  return seeds;
 }
 
 /** 各场所必需活动锚点齐备校验 */

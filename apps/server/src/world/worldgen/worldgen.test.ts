@@ -116,6 +116,59 @@ describe('generateTownMap 生成质量(50 种子批量)', () => {
   });
 });
 
+describe('站点与资源节点撒点(M-G.6)', () => {
+  const results = Array.from({ length: 20 }, (_, i) => generateTownMap(input(`mg6-${i}`)));
+
+  it('餐厅灶台/办公楼木工台必生成(绑定 craft 活动锚点且带使用格)', () => {
+    for (const result of results) {
+      const restaurant = result.map.places.find((p) => p.id.startsWith('restaurant'));
+      const office = result.map.places.find((p) => p.id.startsWith('office'));
+      expect(restaurant).toBeDefined();
+      expect(office).toBeDefined();
+      expect(
+        restaurant!.furniture?.some(
+          (f) => f.kind === 'stove' && f.activityId === 'craft_berry_pie' && f.use !== undefined,
+        ),
+      ).toBe(true);
+      expect(
+        office!.furniture?.some(
+          (f) => f.kind === 'workbench' && f.activityId === 'craft_repair_kit' && f.use !== undefined,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('资源节点: 浆果丛 3~6 全落公园内部,拾荒堆 2~4 全落场所外,同格不重叠', () => {
+    for (const result of results) {
+      const resources = result.map.resources ?? [];
+      const berries = resources.filter((r) => r.kind === 'berry_bush');
+      const junk = resources.filter((r) => r.kind === 'junk_pile');
+      expect(berries.length).toBeGreaterThanOrEqual(3);
+      expect(berries.length).toBeLessThanOrEqual(6);
+      expect(junk.length).toBeGreaterThanOrEqual(2);
+      expect(junk.length).toBeLessThanOrEqual(4);
+      const parks = result.map.places.filter((p) => p.id.startsWith('park'));
+      for (const berry of berries) {
+        expect(
+          parks.some(
+            (p) =>
+              berry.x > p.x && berry.x < p.x + p.w - 1 && berry.y > p.y && berry.y < p.y + p.h - 1,
+          ),
+        ).toBe(true);
+      }
+      for (const node of junk) {
+        expect(
+          result.map.places.some(
+            (p) => node.x >= p.x && node.x < p.x + p.w && node.y >= p.y && node.y < p.y + p.h,
+          ),
+        ).toBe(false);
+      }
+      const keys = new Set(resources.map((r) => `${r.x},${r.y}`));
+      expect(keys.size).toBe(resources.length);
+    }
+  });
+});
+
 describe('鲁棒性扩量(300 例:100 种子×3 密度)', () => {
   it('零兜底回退', () => {
     let fallback = 0;
@@ -133,7 +186,7 @@ describe('全量素材驱动的场所扩展(重规划)', () => {
   /** 全 kind 全域素材池(键与 worlds.ts loadAssetsByKind 契约一致) */
   const POOLS: Record<string, string[]> = {
     ...Object.fromEntries(
-      ['bed', 'desk', 'workstation', 'treadmill', 'table', 'bookshelf', 'shelf', 'counter', 'sofa', 'plant', 'fridge', 'tv', 'wardrobe', 'bench'].map(
+      ['bed', 'desk', 'workstation', 'treadmill', 'table', 'bookshelf', 'shelf', 'counter', 'sofa', 'plant', 'fridge', 'tv', 'wardrobe', 'bench', 'stove', 'workbench'].map(
         (k) => [`indoor/${k}`, [`${k}-a`, `${k}-b`]],
       ),
     ),

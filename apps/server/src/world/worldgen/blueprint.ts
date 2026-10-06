@@ -108,6 +108,7 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'table', w: 3, h: 1, anchor: 'center', chance: 1 },
       { kind: 'counter', w: 2, h: 1, anchor: 'west', chance: 1 },
       { kind: 'fridge', w: 1, h: 1, anchor: 'west', chance: 1 },
+      { kind: 'workbench', w: 2, h: 1, anchor: 'east', activityId: 'craft_repair_kit' },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.6 },
     ],
   },
@@ -133,6 +134,7 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
     furniture: [
       { kind: 'counter', w: 2, h: 1, anchor: 'north', chance: 1, activityId: 'waiter' },
       { kind: 'tv', w: 2, h: 1, anchor: 'east', chance: 1 },
+      { kind: 'stove', w: 1, h: 2, anchor: 'east', activityId: 'craft_berry_pie' },
       { kind: 'table', w: 2, h: 1, anchor: 'center', activityId: 'meal' },
       { kind: 'table', w: 2, h: 1, anchor: 'center', activityId: 'meal' },
       { kind: 'kitchen-prop', w: 1, h: 1, anchor: 'west', themePick: { theme: 'kitchen', maxTiles: 2 }, chance: 0.8 },
