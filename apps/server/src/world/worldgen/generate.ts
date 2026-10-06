@@ -32,6 +32,9 @@ export const BUILTIN_SEED = '__builtin__';
  * 浆果丛易枯竭(重生次日)、拾荒堆无限,数量太少则以物代薪无目标可接 */
 const BERRY_BUSH_COUNT: readonly [number, number] = [3, 6];
 const JUNK_PILE_COUNT: readonly [number, number] = [2, 4];
+/** 末日生存档:资源采集区加密(废土拾荒) */
+const SURVIVAL_BERRY_BUSH_COUNT: readonly [number, number] = [4, 8];
+const SURVIVAL_JUNK_PILE_COUNT: readonly [number, number] = [5, 9];
 
 export interface WorldgenInput {
   seed: string;
@@ -156,8 +159,8 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
       }
       const place = buildPlace(rng, quota.kind, id, spot.x, spot.y, w, h, pond, input.assetsByKind);
       places.push(place);
-      if (quota.kind === 'park') {
-        const fenceRects = parkFences(place);
+      if (quota.kind === 'park' || quota.kind === 'graveyard') {
+        const fenceRects = quota.kind === 'park' ? parkFences(place) : graveyardFences(place);
         fences.push(...fenceRects);
         for (const fence of fenceRects) reserve(fence); // 后放场所不压栅栏
       }
@@ -183,11 +186,11 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   }
 
   // ④ 资源节点撒点(M-G.6):公园浆果丛/街道拾荒堆,占格不可行走站四邻作业
-  const resources = scatterResources(rng, width, height, places, paths, fences, pond);
+  const resources = scatterResources(rng, input.gameType, width, height, places, paths, fences, pond);
 
   // ⑤ 户外装饰(池驱动五 pass):decor 避让资源与全部既有占用
   const decor = buildDecor(
-    rng, width, height, densityIndex,
+    rng, width, height, densityIndex, input.gameType,
     places, paths, plaza, pond, fences, resources, input.assetsByKind,
   );
 
@@ -309,6 +312,30 @@ function parkFences(place: PlaceDefinition): BlockedRect[] {
     ...(westW > 0 ? [{ x: place.x, y: place.y, w: westW, h: 1 }] : []),
     ...(eastW > 0 ? [{ x: gap + 1, y: place.y, w: eastW, h: 1 }] : []),
   ];
+}
+
+/** 墓地四边围栏(survival):每边中央 3 格豁口,北缝盖住入口列(entrance 天然连通);
+ * 四向开口+确定性豁口免围死,connectivity 校验兜底 */
+function graveyardFences(place: PlaceDefinition): BlockedRect[] {
+  const rects: BlockedRect[] = [];
+  const pushH = (y: number, x0: number, x1: number): void => {
+    if (x1 >= x0) rects.push({ x: x0, y, w: x1 - x0 + 1, h: 1 });
+  };
+  const pushV = (x: number, y0: number, y1: number): void => {
+    if (y1 >= y0) rects.push({ x, y: y0, w: 1, h: y1 - y0 + 1 });
+  };
+  const gapX = place.entrance.x - 1; // 北缝 [gapX, gapX+2] 盖入口
+  pushH(place.y, place.x, gapX - 1);
+  pushH(place.y, gapX + 3, place.x + place.w - 1);
+  const midX = place.x + Math.floor(place.w / 2) - 1;
+  pushH(place.y + place.h - 1, place.x, midX - 1);
+  pushH(place.y + place.h - 1, midX + 3, place.x + place.w - 1);
+  const midY = place.y + Math.floor(place.h / 2) - 1;
+  pushV(place.x, place.y, midY - 1);
+  pushV(place.x, midY + 3, place.y + place.h - 1);
+  pushV(place.x + place.w - 1, place.y, midY - 1);
+  pushV(place.x + place.w - 1, midY + 3, place.y + place.h - 1);
+  return rects;
 }
 
 /** 槽位素材池解析:主题道具池(theme/{slug}@{maxTiles})或域分键 kind 池({domain}/{kind}) */
@@ -577,6 +604,7 @@ function buildDecor(
   width: number,
   height: number,
   densityIndex: number,
+  gameType: GameType,
   places: PlaceDefinition[],
   paths: BlockedRect[],
   plaza: BlockedRect,
@@ -633,12 +661,13 @@ function buildDecor(
     x >= 1 && y >= 1 && x <= width - 2 && y <= height - 2 &&
     !taken.has(cellKey(x, y)) && !noGo.has(cellKey(x, y)) && !inAnyPlace(x, y);
 
-  // pass1 街道:沿路段 12~18 格间隔一侧落路灯(30% 换街具),广场四角灯
+  // pass1 街道:沿路段间隔一侧落路灯(survival 更稀疏,荒凉感;30% 换街具),广场四角灯
+  const [lampGapMin, lampGapMax] = gameType === 'survival' ? [18, 27] : [12, 18];
   for (const road of paths) {
     if (road === plaza) continue;
     const horizontal = road.h <= road.w;
     const span = horizontal ? road.w : road.h;
-    for (let s = 2; s < span - 1; s += rng.int(12, 18)) {
+    for (let s = 2; s < span - 1; s += rng.int(lampGapMin, lampGapMax)) {
       const side = rng.chance(0.5) ? -2 : 3;
       const x = horizontal ? road.x + s : road.x + side;
       const y = horizontal ? road.y + side : road.y + s;
@@ -655,12 +684,13 @@ function buildDecor(
     if (free(cx2, cy2)) addStanding(cx2, cy2, 'lamp');
   }
 
-  // pass2 宅前庭院:有门场所门前三邻(先跑,再补入口门邻域禁放)
+  // pass2 宅前庭院:有门场所门前三邻(先跑,再补入口门邻域禁放;survival 减半显荒凉)
   for (const place of places) {
     if (place.door === undefined) continue;
     const e = place.entrance;
     const n = rng.int(1, 3);
     for (let i = 0; i < n; i += 1) {
+      if (gameType === 'survival' && !rng.chance(0.5)) continue;
       const x = e.x + rng.pick([-2, -1, 1, 2]);
       const y = e.y + (rng.chance(0.3) ? rng.int(0, 1) : 0);
       if (x === e.x && y === e.y) continue;
@@ -874,11 +904,13 @@ function nearestRoadCell(
 }
 
 /**
- * 资源节点撒点(M-G.6):浆果丛 3~6 落公园空地(避池塘/家具/使用格三邻域),
- * 拾荒堆 2~4 落街道空地(避场所缓冲带/道路/围栏);占格不可行走,重摇尽力放置。
+ * 资源节点撒点(M-G.6):浆果丛落公园空地(survival 加落幸存者营地),拾荒堆落街道空地
+ * (避池塘/家具/使用格三邻域、场所缓冲带/道路/围栏);占格不可行走,重摇尽力放置。
+ * survival 模式数量加密(资源采集区),growth 保持原档。
  */
 function scatterResources(
   rng: Rng,
+  gameType: GameType,
   width: number,
   height: number,
   places: PlaceDefinition[],
@@ -895,7 +927,9 @@ function scatterResources(
   const streetBlocked = new Set<string>();
   for (const path of paths) mark0(streetBlocked, path); // 拾荒堆不上路面
   if (pond !== null) mark0(streetBlocked, pond);
-  const parks = places.filter((p) => p.id.startsWith('park'));
+  const parks = places.filter(
+    (p) => p.id.startsWith('park') || (gameType === 'survival' && p.id.startsWith('camping')),
+  );
   for (const park of parks) {
     for (const fence of fences) mark0(parkBlocked, fence);
     for (const f of park.furniture ?? []) {
@@ -914,8 +948,8 @@ function scatterResources(
   }
   const taken = new Set<string>();
   const seeds: ResourceNodeSeed[] = [];
-  const berryCount = rng.int(...BERRY_BUSH_COUNT);
-  const junkCount = rng.int(...JUNK_PILE_COUNT);
+  const berryCount = rng.int(...(gameType === 'survival' ? SURVIVAL_BERRY_BUSH_COUNT : BERRY_BUSH_COUNT));
+  const junkCount = rng.int(...(gameType === 'survival' ? SURVIVAL_JUNK_PILE_COUNT : JUNK_PILE_COUNT));
   for (let n = 0; n < berryCount && parks.length > 0; n += 1) {
     const park = rng.pick(parks);
     for (let tries = 0; tries < 20; tries += 1) {
