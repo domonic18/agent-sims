@@ -57,6 +57,45 @@ function readOpenAiUsage(data: unknown): RawUsage {
   };
 }
 
+/** 视觉消息序列化:附图消息转多模态 content(OpenAI parts / Anthropic blocks),纯文本消息原样 */
+function serializeOpenAiMessages(messages: LlmMessage[]): unknown[] {
+  return messages.map((m) => {
+    if (m.images === undefined || m.images.length === 0) return { role: m.role, content: m.content };
+    return {
+      role: m.role,
+      content: [
+        { type: 'text', text: m.content },
+        ...m.images.map((url) => ({ type: 'image_url', image_url: { url } })),
+      ],
+    };
+  });
+}
+
+function serializeAnthropicMessages(messages: LlmMessage[]): Array<{ role: string; content: unknown }> {
+  return messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => {
+      if (m.images === undefined || m.images.length === 0) {
+        return { role: m.role, content: m.content };
+      }
+      const mediaTypeOf = (url: string): string => {
+        const hit = /^data:(image\/[a-zA-Z0-9.+-]+);base64,/.exec(url);
+        return hit?.[1] ?? 'image/png';
+      };
+      const base64Of = (url: string): string => url.slice(url.indexOf(';base64,') + 8);
+      return {
+        role: m.role,
+        content: [
+          ...m.images.map((url) => ({
+            type: 'image',
+            source: { type: 'base64', media_type: mediaTypeOf(url), data: base64Of(url) },
+          })),
+          { type: 'text', text: m.content },
+        ],
+      };
+    });
+}
+
 /** OpenAI 兼容 /chat/completions(deepseek/zhipu/minimax-openai/codiv 双轨之兼容轨) */
 export async function chatViaOpenAi(
   cfg: SlotRuntimeConfig,
@@ -70,7 +109,7 @@ export async function chatViaOpenAi(
     { authorization: `Bearer ${cfg.apiKey}` },
     {
       model: cfg.model,
-      messages,
+      messages: serializeOpenAiMessages(messages),
       ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
       ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     },
@@ -113,9 +152,7 @@ export async function chatViaAnthropic(
       model: cfg.model,
       max_tokens: opts.maxTokens ?? 1024,
       ...(system !== '' ? { system } : {}),
-      messages: messages
-        .filter((m) => m.role !== 'system')
-        .map((m) => ({ role: m.role, content: m.content })),
+      messages: serializeAnthropicMessages(messages),
       ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
     },
     opts.timeoutMs,

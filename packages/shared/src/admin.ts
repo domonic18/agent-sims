@@ -1,10 +1,10 @@
 import type { AssetAnimConfig, AssetStatus } from './asset-manifest.js';
 
 /**
- * 后台模型槽位:四类模型(慢思考/轻量对话/Jev/embedding)的后台配置键,
+ * 后台模型槽位:五类模型(慢思考/轻量对话/Jev/视觉审核/embedding)的后台配置键,
  * model_configs.slot 与后台表单共用此枚举。
  */
-export const MODEL_SLOTS = ['slow', 'light', 'jev', 'embedding'] as const;
+export const MODEL_SLOTS = ['slow', 'light', 'jev', 'vision', 'embedding'] as const;
 
 export type ModelSlot = (typeof MODEL_SLOTS)[number];
 
@@ -12,6 +12,7 @@ export const MODEL_SLOT_LABELS: Record<ModelSlot, string> = {
   slow: '慢思考 LLM',
   light: '轻量 LLM',
   jev: 'Jev(systemone)',
+  vision: '视觉审核(多模态)',
   embedding: 'Embedding',
 };
 
@@ -35,6 +36,7 @@ export const MODEL_SLOT_PROTOCOLS: Record<ModelSlot, readonly ModelProtocol[]> =
   slow: ['openai', 'anthropic'],
   light: ['openai', 'anthropic'],
   jev: ['openai', 'systemone'],
+  vision: ['openai', 'anthropic'],
   embedding: ['openai'],
 };
 
@@ -48,6 +50,7 @@ export const MODEL_PROTOCOL_BASE_URL_HINT: Record<ModelProtocol, string> = {
 /** 模型能力分组(后台页按组渲染;新增模型类型=新槽位挂入对应组) */
 export const MODEL_SLOT_GROUPS = [
   { id: 'language', label: '语言模型', desc: '认知推理、对话与行为决策', slots: ['slow', 'light', 'jev'] },
+  { id: 'vision', label: '多模态', desc: '图片素材识别与 AI 审核', slots: ['vision'] },
   { id: 'embedding', label: '向量化', desc: '记忆检索的语义索引', slots: ['embedding'] },
 ] as const;
 
@@ -121,6 +124,27 @@ export interface ModelConfigInvokeResult {
   usage?: { promptTokens: number; completionTokens: number };
 }
 
+/** POST /api/admin/assets/ai-review 单件结论(视觉模型审核) */
+export interface AssetAiReviewResult {
+  match: 'yes' | 'no' | 'unsure';
+  see: string;
+  kindGuess: string | null;
+  problems: string[];
+  suggestion: string | null;
+}
+
+export interface AssetAiReviewItem {
+  id: number;
+  slug: string;
+  ok: boolean;
+  error?: string;
+  result?: AssetAiReviewResult;
+}
+
+export interface AssetAiReviewResponse {
+  items: AssetAiReviewItem[];
+}
+
 /** POST /api/admin/auth/login 请求/响应 */
 export interface AdminLoginRequest {
   username: string;
@@ -152,6 +176,7 @@ export const ADMIN_API = {
   assetPublish: '/api/admin/assets/publish',
   assetIssues: '/api/admin/asset-issues',
   assetIssue: (id: number) => `/api/admin/asset-issues/${id}`,
+  assetAiReview: '/api/admin/assets/ai-review',
   logWorldEvents: '/api/admin/logs/world-events',
   logTechLogs: '/api/admin/logs/tech-logs',
   logAuditLogs: '/api/admin/logs/audit-logs',

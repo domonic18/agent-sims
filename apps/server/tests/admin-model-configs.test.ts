@@ -105,7 +105,7 @@ describe.skipIf(!dbUp)('admin 登录与模型配置 API', () => {
     });
     expect(list.statusCode).toBe(200);
     const views = list.json() as ModelConfigView[];
-    expect(views.map((view) => view.slot)).toEqual(['slow', 'light', 'jev', 'embedding']);
+    expect(views.map((view) => view.slot)).toEqual(['slow', 'light', 'jev', 'vision', 'embedding']);
 
     const put = await app.inject({
       method: 'PUT',

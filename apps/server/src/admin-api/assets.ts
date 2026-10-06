@@ -2,12 +2,20 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { and, asc, count, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { ADMIN_API, ASSET_STATUSES, type AssetStatus } from '@sims/shared';
+import {
+  ADMIN_API,
+  ASSET_STATUSES,
+  type AssetAiReviewItem,
+  type AssetAiReviewResult,
+  type AssetStatus,
+} from '@sims/shared';
 import { z } from 'zod';
 import type { DbHandle } from '../db/client.js';
 import { assetCategories, assets } from '../db/schema/index.js';
 import { publishManifest } from '../assets/library.js';
 import { libraryRoot, publishTarget } from '../assets/paths.js';
+import { ModelRouter } from '../llm/router.js';
+import { LlmError } from '../llm/types.js';
 import { requireAdmin } from './auth.js';
 
 /** 库根与发布目标:dev 下按源码相对定位;容器部署时发布链路随 M-L.3 渲染对接一并处理 */
@@ -43,6 +51,41 @@ const bulkStatusSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, '至少选择一件素材').max(500),
   status: statusSchema,
 });
+
+const aiReviewSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, '至少选择一件素材').max(10, '单批最多 10 件'),
+});
+
+const AI_REVIEW_SYSTEM = [
+  '你是像素游戏素材库的审核员。给你一张游戏素材图片和它的登记元数据,判断图片内容与元数据是否相符。',
+  '严格只输出一个 JSON 对象,禁止 markdown 围栏,字段如下:',
+  '{"match":"yes|no|unsure","see":"图中画的是什么(中文一句话)","kindGuess":"若能判断出家具类型给英文 kind 小写(如 sofa/bed/tv/wardrobe),判断不出则 null","problems":["发现的问题,每条一句中文"],"suggestion":"修正建议(正确的中文或 slug),无则 null"}',
+  '重点关注: 图片内容与 slug/名称不符(如 slug 是 sofa 但画的是柜子)、图片裁切错误(残缺/混入相邻素材/错位)、图文明显驴唇不对马嘴。',
+].join('\n');
+
+/** 宽松解析视觉模型输出:剥围栏、截取首尾大括号、字段兜底 */
+function parseAiReview(content: string): AssetAiReviewResult {
+  const text = content
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '');
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) {
+    throw new Error(`模型输出非 JSON: ${content.slice(0, 80)}`);
+  }
+  const raw = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+  return {
+    match: raw.match === 'yes' || raw.match === 'no' ? raw.match : 'unsure',
+    see: typeof raw.see === 'string' ? raw.see : '',
+    kindGuess: typeof raw.kindGuess === 'string' && raw.kindGuess !== '' ? raw.kindGuess : null,
+    problems: Array.isArray(raw.problems)
+      ? raw.problems.filter((p): p is string => typeof p === 'string')
+      : [],
+    suggestion:
+      typeof raw.suggestion === 'string' && raw.suggestion !== '' ? raw.suggestion : null,
+  };
+}
 
 interface CategoryRow {
   id: number;
@@ -89,6 +132,7 @@ function parseError(reply: FastifyReply, message: string): null {
 
 export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): void {
   const { db } = handle;
+  const modelRouter = new ModelRouter(handle);
 
   app.get(ADMIN_API.assetCategories, async (request, reply) => {
     if (!requireAdmin(request, reply)) return null;
@@ -263,6 +307,66 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
       .returning({ id: assets.id });
     if (updated.length === 0) return parseError(reply, '素材不存在');
     return reply.send({ ok: true });
+  });
+
+  app.post(ADMIN_API.assetAiReview, async (request, reply) => {
+    if (!requireAdmin(request, reply)) return null;
+    const parsed = aiReviewSchema.safeParse(request.body);
+    if (!parsed.success) return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
+    const rows = await db
+      .select({
+        id: assets.id,
+        slug: assets.slug,
+        name: assets.name,
+        filePath: assets.filePath,
+        gridW: assets.gridW,
+        gridH: assets.gridH,
+        tags: assets.tags,
+        source: assets.source,
+        categorySlug: assetCategories.slug,
+      })
+      .from(assets)
+      .leftJoin(assetCategories, eq(assetCategories.id, assets.categoryId))
+      .where(inArray(assets.id, parsed.data.ids));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const items: AssetAiReviewItem[] = [];
+    for (const id of parsed.data.ids) {
+      const asset = byId.get(id);
+      if (asset === undefined) {
+        items.push({ id, slug: '', ok: false, error: '素材不存在' });
+        continue;
+      }
+      try {
+        const buffer = readFileSync(path.join(LIBRARY_ROOT, asset.filePath));
+        const dataUrl = `data:image/png;base64,${buffer.toString('base64')}`;
+        const meta = [
+          `slug: ${asset.slug}`,
+          `名称: ${asset.name}`,
+          `分类: ${asset.categorySlug ?? '(未分类)'}`,
+          `占地: ${asset.gridW}x${asset.gridH} 格`,
+          `标签: ${asset.tags.length > 0 ? asset.tags.join('/') : '无'}`,
+          `来源: ${asset.source}`,
+        ].join('\n');
+        const result = await modelRouter.chat(
+          'vision',
+          [
+            { role: 'system', content: AI_REVIEW_SYSTEM },
+            { role: 'user', content: `审核这张素材图片。登记元数据:\n${meta}`, images: [dataUrl] },
+          ],
+          { taskType: 'asset_ai_review', maxTokens: 800, temperature: 0 },
+        );
+        items.push({ id, slug: asset.slug, ok: true, result: parseAiReview(result.content) });
+      } catch (err) {
+        const message =
+          err instanceof LlmError
+            ? `视觉模型调用失败(${err.slot}): ${err.message}`
+            : err instanceof Error
+              ? err.message
+              : String(err);
+        items.push({ id, slug: asset.slug, ok: false, error: message });
+      }
+    }
+    return reply.send({ items });
   });
 
   app.post(ADMIN_API.assetBulkStatus, async (request, reply) => {

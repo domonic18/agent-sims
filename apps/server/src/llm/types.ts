@@ -3,6 +3,8 @@
 export interface LlmMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  /** 视觉消息附图(data URL,如 data:image/png;base64,...);仅 openai/anthropic 协议序列化 */
+  images?: string[];
 }
 
 export interface LlmChatResult {
