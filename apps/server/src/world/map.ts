@@ -33,7 +33,7 @@ export class TileMap {
     this.height = definition.height;
     this.places = definition.places;
     this.definition = definition;
-    // 边界墙(网格最内一圈,渲染为树林/围墙)+ 定制障碍 + 建筑墙体 + 家具占地
+    // 边界墙(网格最内一圈,渲染为树林/围墙)+ 定制障碍 + 建筑墙体 + 家具占地 + 围栏段
     this._blocked = [
       ...definition.blockedRects,
       { x: 0, y: 0, w: definition.width, h: 1 }, // 上
@@ -42,6 +42,7 @@ export class TileMap {
       { x: definition.width - 1, y: 0, w: 1, h: definition.height }, // 右
       ...definition.places.flatMap(wallRectsOf),
       ...definition.places.flatMap(furnitureRectsOf),
+      ...(definition.fences ?? []),
     ];
     this._validatePlaces();
   }
@@ -64,6 +65,19 @@ export class TileMap {
 
   placeById(id: string): PlaceDefinition | null {
     return this.places.find((place) => place.id === id) ?? null;
+  }
+
+  /** 围栏段展开格全集(M-G.5:修理工破损点候选集,破损 spot 坐标从此取样) */
+  fenceTiles(): Array<{ x: number; y: number }> {
+    const tiles: Array<{ x: number; y: number }> = [];
+    for (const fence of this.definition.fences ?? []) {
+      for (let y = fence.y; y < fence.y + fence.h; y += 1) {
+        for (let x = fence.x; x < fence.x + fence.w; x += 1) {
+          tiles.push({ x, y });
+        }
+      }
+    }
+    return tiles;
   }
 
   /** 位置判定: 位于场所矩形内(内景建筑含室内)或其入口格;placeId 按 id/kind 前缀匹配(生成地图 kind-N 命名) */

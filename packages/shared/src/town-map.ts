@@ -30,6 +30,9 @@ export interface BlockedRect {
   h: number;
 }
 
+/** 围栏段(M-G.5):整段一条矩形(横栏 h=1/竖栏 w=1),阻塞;修理工破损目标注册表 */
+export type FenceRect = BlockedRect;
+
 /** 地图定义:网格尺寸 + 障碍占地(默认全图可行走;建筑墙体由 door 场所展开) + 铺装 + 场所 */
 export interface TileMapDefinition {
   width: number;
@@ -38,6 +41,8 @@ export interface TileMapDefinition {
   /** 铺装矩形(主街/广场/门前小路):仅视觉,可行走,客户端渲染用 */
   paths: BlockedRect[];
   places: PlaceDefinition[];
+  /** 围栏段清单(M-G.5 数据化):公园北缘等;缺省=无围栏 */
+  fences?: FenceRect[];
   /** 户外装饰坐标(生成地图数据化;内置地图缺省) */
   decor?: DecorDefinition;
 }
@@ -320,5 +325,10 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'bench', x: 8, y: 32, w: 1, h: 1, activityId: 'rest', use: { x: 9, y: 32 } },
       ],
     },
+  ],
+  // 公园北缘栅栏(M-G.5 数据化,原为客户端硬编码装饰):入口列 x=9 留豁口
+  fences: [
+    { x: 3, y: 26, w: 6, h: 1 },
+    { x: 10, y: 26, w: 5, h: 1 },
   ],
 };

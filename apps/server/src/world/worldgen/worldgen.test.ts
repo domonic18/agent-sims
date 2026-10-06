@@ -95,6 +95,25 @@ describe('generateTownMap 生成质量(50 种子批量)', () => {
       }
     }
   });
+
+  it('公园北缘围栏段(M-G.5 数据化): 覆盖=宽-1,入口列豁口,段在场所北缘内', () => {
+    for (const result of results) {
+      const park = result.map.places.find((p) => p.id.startsWith('park'));
+      if (park === undefined) continue;
+      const fences = result.map.fences ?? [];
+      expect(fences.length).toBeGreaterThanOrEqual(1);
+      let covered = 0;
+      for (const fence of fences) {
+        expect(fence.y).toBe(park.y);
+        expect(fence.x).toBeGreaterThanOrEqual(park.x);
+        expect(fence.x + fence.w).toBeLessThanOrEqual(park.x + park.w);
+        covered += fence.w;
+      }
+      expect(covered).toBe(park.w - 1);
+      const gap = park.entrance.x;
+      expect(fences.some((f) => gap >= f.x && gap < f.x + f.w)).toBe(false);
+    }
+  });
 });
 
 describe('鲁棒性扩量(300 例:100 种子×3 密度)', () => {

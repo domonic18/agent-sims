@@ -19,6 +19,12 @@ describe('可行走判定', () => {
     expect(isWalkable(31, 19)).toBe(false); // 广场喷泉
   });
 
+  it('公园北缘围栏段阻塞,入口列豁口通行(M-G.5 数据化)', () => {
+    expect(isWalkable(4, 26)).toBe(false);
+    expect(isWalkable(12, 26)).toBe(false);
+    expect(isWalkable(9, 26)).toBe(true);
+  });
+
   it('全部场所入口可行走(寻路可达的前提)', () => {
     for (const place of TOWN_MAP.places) {
       expect(isWalkable(place.entrance.x, place.entrance.y), place.id).toBe(true);

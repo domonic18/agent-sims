@@ -109,6 +109,15 @@ export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
       .setStroke('rgba(0,0,0,0.6)', 3);
   }
 
+  // 围栏段(M-G.5 数据化:内置/生成公园统一由地图定义驱动,入口豁口已在段划分中)
+  for (const fence of map.fences ?? []) {
+    for (let y = fence.y; y < fence.y + fence.h; y += 1) {
+      for (let x = fence.x; x < fence.x + fence.w; x += 1) {
+        prop(scene, x, y, TILE_SLUG.fence);
+      }
+    }
+  }
+
   const lamps = decor?.lamps ?? [...STREET_LAMPS, ...PLAZA_LAMPS, ...PARK_LAMPS, ...FENCE_LAMPS];
   for (const [lx, ly] of lamps) {
     propSprite(scene, lx, ly, 'lamp');
@@ -222,10 +231,6 @@ function drawPark(scene: Phaser.Scene, map: TileMapDefinition, place: PlaceDefin
   for (const [bx, by] of PARK_BUSHES) prop(scene, bx, by, TILE_SLUG.bush);
   for (const [bx, by] of PARK_BENCHES) propSprite(scene, bx, by, 'bench');
   for (const [lx, ly] of PARK_LAMPS) propSprite(scene, lx, ly, 'lamp');
-  for (let x = place.x; x < place.x + place.w; x += 1) {
-    if (x === place.entrance.x) continue;
-    prop(scene, x, place.y, TILE_SLUG.fence);
-  }
 }
 
 function ground(scene: Phaser.Scene, x: number, y: number, slug: string): void {

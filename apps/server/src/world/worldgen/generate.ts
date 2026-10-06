@@ -100,6 +100,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   const paths: BlockedRect[] = [];
   const blockedRects: BlockedRect[] = [];
   const places: PlaceDefinition[] = [];
+  const fences: BlockedRect[] = [];
 
   // ① 骨架:十字主街(宽 2,居中) + 密度支路
   const midX = Math.floor(width / 2);
@@ -153,6 +154,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
       if (quota.kind === 'park') pond = parkPond(rng, cursor.x, cursor.y, w, h);
       const place = buildPlace(rng, quota.kind, id, cursor.x, cursor.y, w, h, pond, input.assetsByKind);
       places.push(place);
+      if (quota.kind === 'park') fences.push(...parkFences(place));
       cursor.x += w + 2;
       cursor.rowHeight = Math.max(cursor.rowHeight, h);
     }
@@ -172,7 +174,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   // ④ 户外装饰
   const decor = buildDecor(rng, width, height, places, paths, pond);
 
-  const map: TileMapDefinition = { width, height, blockedRects, paths, places, decor };
+  const map: TileMapDefinition = { width, height, blockedRects, paths, places, decor, fences };
   // ⑤ 校验:TileMap 构造即校验(入口/门洞/家具/室内连通);再验锚点与全局连通
   const tileMap = TileMap.fromDefinition(map);
   const anchorsComplete = checkAnchors(places);
@@ -198,6 +200,17 @@ function parkPond(rng: Rng, x: number, y: number, w: number, h: number): Blocked
   const pondW = rng.int(3, 4);
   const pondH = rng.int(3, 4);
   return { x: x + 1, y: rng.int(y + 2, Math.max(y + 2, y + h - pondH - 1)), w: pondW, h: pondH };
+}
+
+/** 公园北缘栅栏段(M-G.5 数据化):沿场所北缘两段,入口列留豁口(开放场所入口在上缘 x+1) */
+function parkFences(place: PlaceDefinition): BlockedRect[] {
+  const gap = place.entrance.x;
+  const westW = gap - place.x;
+  const eastW = place.x + place.w - (gap + 1);
+  return [
+    ...(westW > 0 ? [{ x: place.x, y: place.y, w: westW, h: 1 }] : []),
+    ...(eastW > 0 ? [{ x: gap + 1, y: place.y, w: eastW, h: 1 }] : []),
+  ];
 }
 
 /** 槽位素材池解析:主题道具池(theme/{slug}@{maxTiles})或域分键 kind 池({domain}/{kind}) */

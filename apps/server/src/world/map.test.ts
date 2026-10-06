@@ -127,6 +127,24 @@ describe('TileMap 可行走层', () => {
     expect(map.isWalkable(29, 19)).toBe(true); // 喷泉西侧环道
     expect(map.isWalkable(33, 18)).toBe(true);
   });
+
+  it('围栏段(M-G.5 数据化): 北缘阻塞,入口列豁口通行,fenceTiles 展开全集', () => {
+    const map = TileMap.fromDefinition(TOWN_MAP);
+    expect(map.isWalkable(4, 26)).toBe(false); // 入口西侧段
+    expect(map.isWalkable(12, 26)).toBe(false); // 入口东侧段
+    expect(map.isWalkable(9, 26)).toBe(true); // 入口列豁口
+    expect(map.isWalkable(9, 25)).toBe(true); // 入口格在豁口正上方
+    const tiles = map.fenceTiles();
+    expect(tiles).toHaveLength(11); // 6+5
+    expect(tiles).toContainEqual({ x: 3, y: 26 });
+    expect(tiles).toContainEqual({ x: 14, y: 26 });
+    expect(tiles).not.toContainEqual({ x: 9, y: 26 });
+  });
+
+  it('围栏段缺省地图 fenceTiles 为空(旧定义兼容)', () => {
+    const map = TileMap.fromDefinition(miniMap);
+    expect(map.fenceTiles()).toEqual([]);
+  });
 });
 
 describe('TileMap 内景层(M3.6e)', () => {
