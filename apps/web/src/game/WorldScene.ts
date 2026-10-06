@@ -10,7 +10,7 @@ import {
   updateCharacterView,
   type CharacterRender,
 } from './character-view';
-import { buildLightLayer, drawSelectionRing, FOUNTAIN_RECT, FountainFx } from './effects';
+import { buildLightLayer, drawSelectionMarker, FOUNTAIN_RECT, FountainFx } from './effects';
 import { handleMapClick, KeyboardController } from './input';
 import { MAINTENANCE_SPRITES, syncMaintenanceViews } from './maintenance-view';
 import { RESOURCE_SPRITES, syncResourceViews } from './resources-view';
@@ -39,7 +39,7 @@ export class WorldScene extends Phaser.Scene {
   /** 夜间灯光层(户外光圈+整屋暖光矩形),alpha 随 isNight 插值 */
   private _lightLayer: Phaser.GameObjects.Container | null = null;
   /** 选中角色脚下呼吸椭圆环 */
-  private _selectionRing: Phaser.GameObjects.Graphics | null = null;
+  private _selectionMarker: Phaser.GameObjects.Graphics | null = null;
   /** 广场喷泉波纹动画(仅内置地图有喷泉;生成地图置 null 不绘制) */
   private _fountain = new FountainFx(null);
   /** 方向键/WASD 连续移动控制器(仅 /lab 交互模式挂载) */
@@ -104,7 +104,7 @@ export class WorldScene extends Phaser.Scene {
       .setAlpha(0)
       .setDepth(100);
     this._lightLayer = buildLightLayer(this, map);
-    this._selectionRing = this.add.graphics().setDepth(9);
+    this._selectionMarker = this.add.graphics().setDepth(9);
     // 喷泉是内置地图广场的固定装饰;生成地图无此物件不绘制
     this._fountain = new FountainFx(map.places.some((p) => p.id === 'park') ? FOUNTAIN_RECT : null);
 
@@ -176,8 +176,8 @@ export class WorldScene extends Phaser.Scene {
         updateCharacterView(this, view, step, now, this._map);
       }
     }
-    if (this._selectionRing !== null) {
-      drawSelectionRing(this._selectionRing, now, selectedCharacterId, this._views);
+    if (this._selectionMarker !== null) {
+      drawSelectionMarker(this._selectionMarker, now, selectedCharacterId, this._views);
     }
     this._fountain.update(this, now);
   }

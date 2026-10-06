@@ -69,10 +69,11 @@ export class FountainFx {
 }
 
 /**
- * 选中角色指示(游戏通用设计): 脚下淡光底+金色脉动线环,头顶浮动金色倒三角箭头
- * (bob 上下漂移;深色描边防夜间/浅色地面看不清)。箭头悬于头顶上方,不遮角色。
+ * 选中角色指示(反馈轮定稿): 仅头顶浮动金色倒三角箭头(圆环已去——箭头已足够醒目,
+ * 双指示显冗余),对齐容器中心即帧艺术区中心(表内容统一贴 x8 居中);bob 上下漂移,
+ * 深色描边防夜间/浅色地面看不清。箭头悬于头顶上方,不遮角色。
  */
-export function drawSelectionRing(
+export function drawSelectionMarker(
   ring: Phaser.GameObjects.Graphics,
   now: number,
   selectedId: string | null,
@@ -84,12 +85,7 @@ export function drawSelectionRing(
   if (view === undefined) return;
   const bob = Math.sin(now / 320) * 2;
   const cx = view.node.x;
-  const fy = view.node.y + 8;
-  ring.fillStyle(0xffcd75, 0.16);
-  ring.fillEllipse(cx, fy, 27, 13);
-  ring.lineStyle(2, 0xffcd75, 0.65 + 0.35 * Math.sin(now / 320));
-  ring.strokeEllipse(cx, fy, 24 + bob, 11 + bob * 0.5);
-  const ay = view.node.y - 36 + bob;
+  const ay = view.node.y - 32 + bob;
   ring.fillStyle(0x1a1c2c, 0.9);
   ring.fillTriangle(cx - 7, ay - 6, cx + 7, ay - 6, cx, ay + 5);
   ring.fillStyle(0xffcd75, 1);
