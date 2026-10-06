@@ -32,8 +32,10 @@ export interface WorldCharacter {
   activity: CharacterActivity | null;
   /** 住宿状态(null=无住宿) */
   housing: CharacterHousing | null;
-  /** 存活状态(false=幽灵态 M3.6f:拒绝一切意图,等待 Lab 复活) */
+  /** 存活状态(false=幽灵态 M-G.5:拒绝一切意图,等待救治/超时自动复活) */
   alive: boolean;
+  /** 死亡时刻(纪元起游戏分钟,null=存活);救治窗口结算基准(M-G.5,goal-design §7) */
+  diedAtGameMinutes: number | null;
   /** 随身背包(itemId→数量):买入入库,任意地点 eat_item 消耗;体积受 BACKPACK_VOLUME_LIMIT */
   backpack: Record<string, number>;
   /** 家中冰箱库存(itemId→数量):store_item/take_item 在家存取;体积受 FRIDGE_VOLUME_LIMIT */
@@ -81,7 +83,9 @@ export function applyVitalDecay(character: WorldCharacter, gameMinutes: number):
   );
 }
 
-/** 繁荣分质量流(M3.6j):每游戏分钟按当前幸福累计,≈等效幸福天(幸福 80 活一天 ≈ +80 分) */
+/** 繁荣分质量流(M3.6j):每游戏分钟按当前幸福累计,≈等效幸福天(幸福 80 活一天 ≈ +80 分);
+ * 幽灵态停计(M-G.5)——死亡已挂起扣分,窗口期间再赚分会削弱死亡惩罚 */
 export function applyLifeScoreTick(character: WorldCharacter): void {
+  if (!character.alive) return;
   character.lifeScore += character.happiness / BALANCE.DAY_MINUTES;
 }

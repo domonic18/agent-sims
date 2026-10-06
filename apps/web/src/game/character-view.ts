@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   LOW_ENERGY_THRESHOLD,
+  REVIVE_WINDOW_MINUTES,
   getActivityDefinition,
   type ActivityId,
   type TileMapDefinition,
@@ -52,6 +53,10 @@ export interface CharacterRender {
   animKey: string | null;
   /** 存活状态(false=幽灵态: 半透明+飘浮+👻) */
   alive: boolean;
+  /** 当前游戏分钟(纪元起累计,救治倒计时基准) */
+  gameMinutes: number;
+  /** 死亡时刻(纪元起游戏分钟,null=存活);👻 徽标倒计时用 */
+  diedAtGameMinutes: number | null;
   /** 最新体力值(≤LOW_ENERGY_THRESHOLD 低体力警示) */
   energy: number;
   /** rest 到位后横躺于床/长椅(吸附锚点中心+旋转 90°) */
@@ -70,6 +75,7 @@ export interface CharacterSnapshotView {
   y: number;
   energy: number;
   alive: boolean;
+  diedAtGameMinutes: number | null;
   activity: { activityId: string; elapsedMinutes: number; anchorKind: string | null } | null;
 }
 
@@ -107,6 +113,7 @@ export function syncCharacterViews(
   scene: Phaser.Scene,
   views: Map<string, CharacterRender>,
   characters: CharacterSnapshotView[],
+  gameMinutes: number,
 ): void {
   const seen = new Set<string>();
   for (const character of characters) {
@@ -131,6 +138,8 @@ export function syncCharacterViews(
         animKey: null,
         alive: character.alive,
         energy: character.energy,
+        gameMinutes,
+        diedAtGameMinutes: character.diedAtGameMinutes,
         resting: false,
         ghostBadge: null,
         warnBadge: null,
@@ -146,6 +155,8 @@ export function syncCharacterViews(
     view.elapsedMinutes = character.activity?.elapsedMinutes ?? 0;
     view.alive = character.alive;
     view.energy = character.energy;
+    view.gameMinutes = gameMinutes;
+    view.diedAtGameMinutes = character.diedAtGameMinutes;
   }
   for (const [id, view] of views) {
     if (!seen.has(id)) {
@@ -260,13 +271,20 @@ function facingAnchorDir(
   return null;
 }
 
-/** 幽灵 👻 与低体力 ⚡ 徽标(懒创建,闪烁驱动) */
+/** 幽灵 👻(带救治倒计时)与低体力 ⚡ 徽标(懒创建,闪烁驱动) */
 function updateBadges(scene: Phaser.Scene, view: CharacterRender, now: number): void {
+  const remaining =
+    !view.alive && view.diedAtGameMinutes !== null
+      ? Math.max(0, REVIVE_WINDOW_MINUTES - (view.gameMinutes - view.diedAtGameMinutes))
+      : null;
+  const ghostText = remaining === null ? '👻' : `👻${Math.ceil(remaining / 60)}h`;
   if (view.ghostBadge === null) {
     view.ghostBadge = scene.add
-      .text(0, BUBBLE_Y - 14, '👻', { fontSize: '10px' })
+      .text(0, BUBBLE_Y - 14, ghostText, { fontSize: '10px' })
       .setOrigin(0.5, 0.5);
     view.node.add(view.ghostBadge);
+  } else if (view.ghostBadge.text !== ghostText) {
+    view.ghostBadge.setText(ghostText);
   }
   view.ghostBadge.setVisible(!view.alive);
   view.sprite.setTint(view.alive ? 0xffffff : 0x8899aa);

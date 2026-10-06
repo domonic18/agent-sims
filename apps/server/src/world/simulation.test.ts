@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { REVIVE_WINDOW_MINUTES } from '@sims/shared';
 import { Simulation } from './simulation.js';
 
 describe('Simulation 模拟核心', () => {
@@ -137,17 +138,45 @@ describe('生死机制(M3.6f 体力区段)', () => {
     expect(sim.snapshot().characters[0]!.lifeScore).toBeCloseTo(expected, 1);
   });
 
-  it('死亡繁荣分扣减 20%(方案B): 复活账本保留其余', () => {
+  it('死亡扣减挂起(M-G.5): 死亡不即扣,幽灵停计,救治免扣满状态回归', () => {
     const sim = new Simulation();
     sim.spawnCharacter('mort', 8, 12, '莫特');
     sim.character('mort').lifeScore = 100;
     sim.character('mort').happiness = 0; // 质量流归零,隔离扣减验证
     sim.character('mort').energy = 0.1;
     sim.advanceTicks(6); // 途中死亡
-    expect(sim.character('mort').alive).toBe(false);
-    expect(sim.character('mort').lifeScore).toBeCloseTo(80, 5); // ×0.8
-    sim.debugRevive('mort');
-    expect(sim.character('mort').lifeScore).toBeCloseTo(80, 5); // 复活不回补
+    const mort = sim.character('mort');
+    expect(mort.alive).toBe(false);
+    expect(mort.diedAtGameMinutes).not.toBeNull();
+    expect(mort.lifeScore).toBeCloseTo(100, 5); // 挂起未扣
+    sim.character('mort').happiness = 50;
+    sim.advanceTicks(10); // 幽灵期间质量流停计(不停计会 +50*10/1440)
+    expect(sim.character('mort').lifeScore).toBeCloseTo(100, 5);
+    sim.debugRevive('mort'); // 救治视同免扣
+    expect(sim.character('mort').lifeScore).toBeCloseTo(100, 5);
+    expect(sim.character('mort').diedAtGameMinutes).toBeNull();
+  });
+
+  it('救治窗口超时: 挂起扣减按现值 ×0.8 生效,自动复活发 auto_revived', () => {
+    const { sim, events } = simWithMort();
+    sim.character('mort').lifeScore = 100;
+    sim.character('mort').happiness = 0;
+    sim.character('mort').energy = 0.1;
+    sim.advanceTicks(6); // 死亡(扣减挂起)
+    expect(sim.character('mort').lifeScore).toBeCloseTo(100, 5);
+    // 锚定实际死亡时刻推到届满前 1 分钟,隔离复活后剩余 tick 的待机代谢
+    const elapsed = sim.clock.gameMinutes - sim.character('mort').diedAtGameMinutes!;
+    sim.advanceTicks(REVIVE_WINDOW_MINUTES - elapsed - 1);
+    expect(sim.character('mort').alive).toBe(false); // 窗口内仍挂起
+    sim.advanceTicks(1); // 届满:自动复活+扣减生效
+    const mort = sim.character('mort');
+    expect(mort.alive).toBe(true);
+    expect(mort.energy).toBe(100);
+    expect(mort.happiness).toBe(80);
+    expect(mort.lifeScore).toBeCloseTo(80, 5); // 现值 ×0.8 生效
+    expect(mort.diedAtGameMinutes).toBeNull();
+    expect(events.some((e) => e.type === 'character.auto_revived')).toBe(true);
+    expect(() => sim.debugRevive('mort')).toThrow(/尚存活/);
   });
 
   it('世界规则关闭死亡(M5): 体力归 0 躺平,不转幽灵不扣繁荣分', () => {

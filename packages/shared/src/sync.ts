@@ -51,8 +51,10 @@ export interface WorldSnapshotMessage {
     energy: number;
     happiness: number;
     coins: number;
-    /** 存活状态(false=幽灵态,拒绝一切意图,等待复活) */
+    /** 存活状态(false=幽灵态,拒绝一切意图,等待救治/超时自动复活) */
     alive: boolean;
+    /** 死亡时刻(纪元起游戏分钟,null=存活);救治倒计时 = 窗口 - (当前 - 此值)(M-G.5) */
+    diedAtGameMinutes: number | null;
     /** 随身背包(itemId→数量,仅 >0 项);买入入此,任意地点可吃 */
     backpack: Record<string, number>;
     /** 家中冰箱库存(itemId→数量,仅 >0 项);须在家经 store_item/take_item 存取 */

@@ -3,6 +3,7 @@ import {
   CHAT_DAILY_GAINED,
   JOB_CATEGORIES,
   LOW_ENERGY_THRESHOLD,
+  REVIVE_WINDOW_MINUTES,
   SOCIAL_PRESENCE_DISTANCE,
   findActivityAnchorAt,
   getActivityDefinition,
@@ -21,6 +22,16 @@ import type { GoAndDoPending, RunIntent } from './useGoAndDo';
 
 /** 体力危急值(红档配色): ≤该值红,≤LOW_ENERGY_THRESHOLD 橙 */
 const CRITICAL_ENERGY_LEVEL = 5;
+
+/** 死亡救治窗口倒计时(横幅内联):剩余不足 2 游戏小时红色警示 */
+function DeathCountdown({ remaining }: { remaining: number }) {
+  const hours = remaining / 60;
+  return (
+    <span className={hours < 2 ? 'death-urgent' : undefined}>
+      {hours < 2 ? `救治窗口仅剩 ${Math.ceil(remaining)} 分钟` : `救治窗口剩余 ${Math.ceil(hours)} 小时`}
+    </span>
+  );
+}
 
 function VitalBar({ label, value }: { label: string; value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
@@ -78,7 +89,18 @@ export function CharactersSection({
             知识 {character.knowledge} 班
           </div>
           {!character.alive && (
-            <div className="death-banner">☠️ 已死亡(幽灵态),等待复活(/lab 可复活)</div>
+            <div className="death-banner">
+              ☠️ 已死亡(幽灵态)
+              {character.diedAtGameMinutes !== null && (
+                <DeathCountdown
+                  remaining={Math.max(
+                    0,
+                    REVIVE_WINDOW_MINUTES -
+                      (snapshot.clock.gameMinutes - character.diedAtGameMinutes),
+                  )}
+                />
+              )}
+            </div>
           )}
         </div>
       )}

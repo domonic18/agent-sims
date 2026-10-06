@@ -1,5 +1,6 @@
 import type {
   CharacterArrivedEvent,
+  CharacterAutoRevivedEvent,
   CharacterDiedEvent,
   CharacterRevivedEvent,
   TraitVector,
@@ -11,7 +12,14 @@ import type {
   WorldRulesEvent,
   WorldSnapshotMessage,
 } from '@sims/shared';
-import { DEFAULT_WORLD_RULES, PROPERTY_IDS, TOWN_MAP, getActivityDefinition, type TileMapDefinition } from '@sims/shared';
+import {
+  DEFAULT_WORLD_RULES,
+  PROPERTY_IDS,
+  REVIVE_WINDOW_MINUTES,
+  TOWN_MAP,
+  getActivityDefinition,
+  type TileMapDefinition,
+} from '@sims/shared';
 import { applyBalanceOverrides, applyWorldParams, BALANCE, currentWorldParams } from '../config/balance.js';
 import {
   finishActivity,
@@ -121,6 +129,7 @@ export class Simulation {
         paidThroughDay: this.clock.day + BALANCE.SPAWN_PREPAID_DAYS,
       },
       alive: true,
+      diedAtGameMinutes: null,
       backpack: {},
       fridge: {},
       lifeScore: 0,
@@ -206,21 +215,13 @@ export class Simulation {
     return character;
   }
 
-  /** 复活(debug 通道,经 /debug/revive 暴露):幽灵态解除,恢复满状态 */
+  /** 复活(debug 通道,经 /debug/revive 暴露):视同救治(M-G.5),免扣繁荣分满状态回归 */
   debugRevive(characterId: string): WorldCharacter {
     const character = this.character(characterId);
     if (character.alive) {
       throw new Error(`${character.name} 尚存活,无需复活`);
     }
-    character.alive = true;
-    character.energy = BALANCE.REVIVE_ENERGY;
-    character.happiness = BALANCE.REVIVE_HAPPINESS;
-    const event: CharacterRevivedEvent = {
-      type: 'character.revived',
-      characterId: character.id,
-      tick: this.tick,
-    };
-    this.events.emit(event);
+    reviveCharacter(this, character, 'debug');
     return character;
   }
 
@@ -330,10 +331,14 @@ export class Simulation {
       // 同场增益(社交 v1): 活动角色按附近活动人数得幸福修正
       applySocialPresenceBonus(this, character);
       this._checkDeath(character);
+      this._checkReviveWindow(character);
     }
   }
 
-  /** 体力耗尽即死亡(M3.6f):转幽灵态,清路径/打断活动,等待 Lab 复活 */
+  /**
+   * 体力耗尽死亡(M-G.5 救治窗口,goal-design §7):转幽灵态,清路径/打断活动,
+   * 繁荣分扣减**挂起**——窗口内救治/debug 免扣,超时按现值生效。
+   */
   private _checkDeath(character: WorldCharacter): void {
     // 世界规则关闭死亡(M5):体力卡 0 持续躺平,不转幽灵不扣繁荣分
     if (!this.rules.allowDeath) {
@@ -344,14 +349,54 @@ export class Simulation {
     }
     character.alive = false;
     character.path = [];
-    // 繁荣分死亡扣减(M3.6j 方案B): 比例扣无套利——活得越厚实,死亡的绝对损失越大
-    character.lifeScore *= 1 - BALANCE.LIFE_SCORE_DEATH_DEDUCTION;
+    character.diedAtGameMinutes = this.clock.gameMinutes;
     finishActivity(this, character, 'died');
     const event: CharacterDiedEvent = {
       type: 'character.died',
       characterId: character.id,
       tick: this.tick,
+      revivable: true,
     };
     this.events.emit(event);
+  }
+
+  /** 救治窗口超时结算(M-G.5):挂起扣减按超时时刻现值 ×(1-比例) 生效,自动复活 */
+  private _checkReviveWindow(character: WorldCharacter): void {
+    if (character.alive || character.diedAtGameMinutes === null) {
+      return;
+    }
+    if (this.clock.gameMinutes - character.diedAtGameMinutes < REVIVE_WINDOW_MINUTES) {
+      return;
+    }
+    // 繁荣分死亡扣减(M3.6j 方案B): 比例扣无套利——活得越厚实,死亡的绝对损失越大
+    character.lifeScore *= 1 - BALANCE.LIFE_SCORE_DEATH_DEDUCTION;
+    reviveCharacter(this, character, 'timeout');
+  }
+}
+
+/** 复活公共路径(M-G.5):满状态回归+清死亡时刻;救治/debug 免扣,timeout 已在调用方扣减 */
+function reviveCharacter(
+  sim: Simulation,
+  character: WorldCharacter,
+  source: 'rescue' | 'debug' | 'timeout',
+): void {
+  character.alive = true;
+  character.energy = BALANCE.REVIVE_ENERGY;
+  character.happiness = BALANCE.REVIVE_HAPPINESS;
+  character.diedAtGameMinutes = null;
+  if (source === 'timeout') {
+    const event: CharacterAutoRevivedEvent = {
+      type: 'character.auto_revived',
+      characterId: character.id,
+      tick: sim.tick,
+    };
+    sim.events.emit(event);
+  } else {
+    const event: CharacterRevivedEvent = {
+      type: 'character.revived',
+      characterId: character.id,
+      tick: sim.tick,
+    };
+    sim.events.emit(event);
   }
 }

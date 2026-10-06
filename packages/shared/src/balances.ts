@@ -18,6 +18,8 @@ export const LOW_ENERGY_THRESHOLD = 20;
 export const SOCIAL_PRESENCE_DISTANCE = 2;
 /** 同对角色每日「有收益」闲聊次数(数值文档 §6.2);超出可继续聊但收益为 0,UI 提示同源 */
 export const CHAT_DAILY_GAINED = 6;
+/** 死亡救治窗口(goal-design §7,M-G.5):24 游戏小时——窗口内救治免扣繁荣分,超时自动复活并按现值扣减 */
+export const REVIVE_WINDOW_MINUTES = 1440;
 
 /** 库存体积求和(Σ份数×单件体积);未知商品按 0 计(调用方保证 id 合法) */
 export function inventoryVolume(record: Record<string, number>): number {

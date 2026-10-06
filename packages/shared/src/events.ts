@@ -47,16 +47,18 @@ export const activityFinishedEventSchema = z.object({
 
 export type ActivityFinishedEvent = z.infer<typeof activityFinishedEventSchema>;
 
-/** 体力耗尽死亡:角色转幽灵态(M3.6f 生存机制) */
+/** 体力耗尽死亡:角色转幽灵态,繁荣分扣减挂起进入救治窗口(M-G.5,goal-design §7) */
 export const characterDiedEventSchema = z.object({
   type: z.literal('character.died'),
   characterId: z.string().min(1),
   tick: z.number().int(),
+  /** 本次死亡可被救治(窗口内 rescue/debug 免扣复活);超时后走 auto_revived */
+  revivable: z.boolean(),
 });
 
 export type CharacterDiedEvent = z.infer<typeof characterDiedEventSchema>;
 
-/** 复活(debug 通道):幽灵态解除,满状态回归 */
+/** 复活(救治/debug 通道):幽灵态解除,满状态回归且免扣繁荣分 */
 export const characterRevivedEventSchema = z.object({
   type: z.literal('character.revived'),
   characterId: z.string().min(1),
@@ -64,6 +66,15 @@ export const characterRevivedEventSchema = z.object({
 });
 
 export type CharacterRevivedEvent = z.infer<typeof characterRevivedEventSchema>;
+
+/** 救治窗口超时自动复活(M-G.5):挂起的繁荣分扣减按超时时刻现值生效 */
+export const characterAutoRevivedEventSchema = z.object({
+  type: z.literal('character.auto_revived'),
+  characterId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type CharacterAutoRevivedEvent = z.infer<typeof characterAutoRevivedEventSchema>;
 
 /** 暂停/倍率变更广播:多端 HUD 状态对齐 */
 export const worldControlEventSchema = z.object({
@@ -134,6 +145,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   activityFinishedEventSchema,
   characterDiedEventSchema,
   characterRevivedEventSchema,
+  characterAutoRevivedEventSchema,
   worldControlEventSchema,
   worldParamsEventSchema,
   worldRulesEventSchema,

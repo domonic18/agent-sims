@@ -132,7 +132,7 @@ export class WorldScene extends Phaser.Scene {
 
   override update(time: number, delta: number): void {
     const { snapshot, selectedCharacterId, events } = useWorldStore.getState();
-    syncCharacterViews(this, this._views, snapshot?.characters ?? []);
+    syncCharacterViews(this, this._views, snapshot?.characters ?? [], snapshot?.clock.gameMinutes ?? 0);
     this._drainSocialEvents(events);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;
     this._updateCamera(selectedCharacterId);

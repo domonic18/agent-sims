@@ -199,6 +199,15 @@
   text-align: center;
 }
 
+/* 救治窗口临近超时(剩余 <2 游戏小时)红色警示 */
+.death-banner .death-urgent {
+  color: #ff5252;
+  animation: death-urgent-blink 1s step-end infinite;
+}
+@keyframes death-urgent-blink {
+  50% { opacity: 0.35; }
+}
+
 /* 资产列表: 租约过期红警 / 自有徽标 */
 .activity-list li.expired span {
   color: #c62828;
