@@ -27,8 +27,8 @@ const TIME_SCALES = [1, 4, 16] as const;
 
 /**
  * /lab 独立调试台(M3.6b;M3.6d 全屏化+操作收口;M3.6e 六意图;M3.6h 拆分
- * IntentForms/LogPanel;社交 v1 增 11 意图与事件日志流):全屏画布+悬浮 HUD,
- * 右列=快捷操作面板(前往/活动/社交/资产/商店)+11 意图协议表单+世界状态只读表,
+ * IntentForms/LogPanel;社交 v1 增 12 意图与事件日志流):全屏画布+悬浮 HUD,
+ * 右列=快捷操作面板(前往/活动/社交/资产/商店)+12 意图协议表单+世界状态只读表,
  * 左下=回执与社交事件日志。
  * 暂停/倍率经 /debug 联调通道(M4 换正式指令)。
  * 地图全量操控(点击移动/方向键步进)仅此页开启,主页面纯观看。
@@ -236,7 +236,7 @@ export default function LabPage() {
         <SidePanel />
         {character !== null && (
           <section className="lab-panel">
-            <h3>意图操作台(11 意图全量)</h3>
+            <h3>意图操作台(12 意图全量)</h3>
             <IntentForms
               key={character.id}
               character={character}
