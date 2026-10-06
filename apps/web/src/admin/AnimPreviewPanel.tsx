@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Segmented, Select, Switch, Tooltip } from 'antd';
-import { CaretRightOutlined, PauseOutlined } from '@ant-design/icons';
+import { Alert, App as AntdApp, Button, Segmented, Select, Switch, Tooltip } from 'antd';
+import { CaretRightOutlined, PauseOutlined, WarningOutlined } from '@ant-design/icons';
 import type { AssetEntry } from '@sims/shared';
 import { CHARACTER_ROW_OFFSETS } from '../game/assets';
 import { fetchGameAssetRegistry, type GameAssetRegistry } from '../game/manifest';
+import { createAssetIssue } from './api';
 import './anim-preview.css';
 
 /**
@@ -57,12 +58,28 @@ function AnimCell({
   showRibbon: boolean;
   heading?: string;
 }) {
+  const { message } = AntdApp.useApp();
+  const [reported, setReported] = useState(false);
   const anim = entry.anim;
   if (anim === null) return null;
   const fps = anim.fps[group] ?? 4;
   const frames = anim.framesPerGroup[group] ?? 1;
   const row = (anim.groups[group] ?? 0) + CHARACTER_ROW_OFFSETS[dir];
   const url = `/assets/${entry.url}`;
+  const report = (): void => {
+    createAssetIssue({
+      scope: 'anim',
+      refSlug: entry.slug,
+      context: { key: `${group}/${dir}`, group, dir, row, frames, fps },
+    })
+      .then(() => {
+        setReported(true);
+        message.success(`${entry.slug} ${group}/${dir} 已上报`);
+      })
+      .catch((err: unknown) => {
+        message.error(err instanceof Error ? err.message : '上报失败');
+      });
+  };
   return (
     <div className="anim-cell">
       <div className="anim-cell-label">
@@ -71,6 +88,15 @@ function AnimCell({
           {group}·{dir} 行{row} · {frames}帧 {fps}fps
         </span>
       </div>
+      <Tooltip title="该行动画有问题(朝向反/残帧/错组)?上报到素材问题清单">
+        <Button
+          size="small"
+          type="text"
+          icon={reported ? <span style={{ color: '#389e0d' }}>✓</span> : <WarningOutlined />}
+          onClick={report}
+          style={{ position: 'absolute', top: 2, right: 2, padding: '0 4px', height: 18 }}
+        />
+      </Tooltip>
       <div className="anim-preview-viewport" style={{ width: 32 * scale, height: 32 * scale }}>
         <div
           style={{
