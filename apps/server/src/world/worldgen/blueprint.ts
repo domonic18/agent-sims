@@ -269,22 +269,28 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
 };
 
 /** growth 配额:各分区场所清单(数量区间由密度参数在生成器内定;
- * [0,n] 区间为锦上添花型新场所——空间不足自然裁掉,不挤占核心七类) */
-export const GROWTH_QUOTA: ReadonlyArray<{ kind: PlaceKind; zone: Zone; count: [number, number] }> = [
-  { kind: 'home', zone: 'sw', count: [3, 4] },
-  { kind: 'park', zone: 'se', count: [1, 1] },
-  { kind: 'library', zone: 'nw', count: [1, 1] },
-  { kind: 'office', zone: 'nw', count: [1, 1] },
-  { kind: 'hotel', zone: 'nw', count: [0, 1] },
-  { kind: 'school', zone: 'nw', count: [0, 1] },
-  { kind: 'shop', zone: 'ne', count: [1, 1] },
-  { kind: 'restaurant', zone: 'ne', count: [1, 1] },
-  { kind: 'gym', zone: 'ne', count: [1, 1] },
-  { kind: 'clinic', zone: 'ne', count: [1, 1] },
-  { kind: 'cafe', zone: 'ne', count: [0, 1] },
-  { kind: 'beach', zone: 'se', count: [0, 1] },
-  { kind: 'plaza', zone: 'se', count: [0, 1] },
-  { kind: 'camping', zone: 'sw', count: [0, 1] },
+ * [0,n] 区间为锦上添花型新场所——空间不足自然裁掉,不挤占核心八类;
+ * essential=核心活动场所,随机撒放空间不足时确定性兜底必须放得下) */
+export const GROWTH_QUOTA: ReadonlyArray<{
+  kind: PlaceKind;
+  zone: Zone;
+  count: [number, number];
+  essential: boolean;
+}> = [
+  { kind: 'home', zone: 'sw', count: [3, 4], essential: true },
+  { kind: 'park', zone: 'se', count: [1, 1], essential: true },
+  { kind: 'library', zone: 'nw', count: [1, 1], essential: true },
+  { kind: 'office', zone: 'nw', count: [1, 1], essential: true },
+  { kind: 'hotel', zone: 'nw', count: [0, 1], essential: false },
+  { kind: 'school', zone: 'nw', count: [0, 1], essential: false },
+  { kind: 'shop', zone: 'ne', count: [1, 1], essential: true },
+  { kind: 'restaurant', zone: 'ne', count: [1, 1], essential: true },
+  { kind: 'gym', zone: 'ne', count: [1, 1], essential: true },
+  { kind: 'clinic', zone: 'ne', count: [1, 1], essential: true },
+  { kind: 'cafe', zone: 'ne', count: [0, 1], essential: false },
+  { kind: 'beach', zone: 'se', count: [0, 1], essential: false },
+  { kind: 'plaza', zone: 'se', count: [0, 1], essential: false },
+  { kind: 'camping', zone: 'sw', count: [0, 1], essential: false },
 ];
 
 /** 内景地板/墙体 tile 池(与素材库 tile slug 对应) */

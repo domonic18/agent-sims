@@ -77,7 +77,7 @@ export function generateTownMap(input: WorldgenInput): WorldgenResult {
   }
   // 偶发布局可能围死使用格:确定性整图重试(attempt 入种子派生,保持纯函数);
   // 连续失败才兜底回内置固定地图(世界可用性优先)
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
     try {
       return generate(input, attempt);
     } catch {
@@ -108,64 +108,85 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   const places: PlaceDefinition[] = [];
   const fences: BlockedRect[] = [];
 
-  // ① 骨架:十字主街(宽 2,居中) + 密度支路
+  // ① 骨架:十字主街(宽 2,居中) + 密度短枝路(自主干道边垂直引出,长 5~10,
+  // 不再通贯全图——通贯支路会把分区切碎成窄条,撒放空间碎片化)
   const midX = Math.floor(width / 2);
   const midY = Math.floor(height / 2);
   paths.push({ x: 2, y: midY, w: width - 4, h: 2 });
   paths.push({ x: midX, y: 2, w: 2, h: height - 4 });
   const branchCount = densityIndex; // sparse=0 / normal=2 / dense=4
   for (let i = 0; i < branchCount; i += 1) {
-    if (i % 2 === 0) {
-      const bx = rng.int(8, width - 10);
-      if (Math.abs(bx - midX) < 6) continue;
-      paths.push({ x: bx, y: 2, w: 2, h: height - 4 });
+    const base = paths[i % 2]!; // 交替自横/纵主干道引出
+    const horizontalBase = base.h <= base.w;
+    const len = rng.int(5, 10);
+    if (horizontalBase) {
+      const bx = rng.int(base.x + 4, base.x + base.w - 6);
+      if (bx + 2 >= midX - 2 && bx <= midX + 2) continue; // 不压路口
+      const up = rng.chance(0.5);
+      const y = up ? Math.max(2, base.y - len) : base.y + base.h;
+      const h = up ? base.y - y : Math.min(len, height - 2 - y);
+      if (h < 3) continue;
+      paths.push({ x: bx, y, w: 2, h });
     } else {
-      const by = rng.int(6, height - 8);
-      if (Math.abs(by - midY) < 5) continue;
-      paths.push({ x: 2, y: by, w: width - 4, h: 2 });
+      const by = rng.int(base.y + 4, base.y + base.h - 6);
+      if (by + 2 >= midY - 2 && by <= midY + 2) continue;
+      const left = rng.chance(0.5);
+      const x = left ? Math.max(2, base.x - len) : base.x + base.w;
+      const w = left ? base.x - x : Math.min(len, width - 2 - x);
+      if (w < 3) continue;
+      paths.push({ x, y: by, w, h: 2 });
     }
   }
 
-  // ② 分区行排场所:四象限(主街分割),每分区内场所按行排布
+  // ② 场所随机撒放:四象限为偏好区(主街分割),核心场所必得、可选场所放不下即裁;
+  // 占用网格含 ±1 缓冲(场所间不贴脸、不压路、不越界),撒放顺序即配额顺序
   const zones: Record<Zone, { x: number; y: number; w: number; h: number }> = {
     nw: { x: 2, y: 2, w: midX - 4, h: midY - 4 },
     ne: { x: midX + 2, y: 2, w: width - midX - 4, h: midY - 4 },
     sw: { x: 2, y: midY + 2, w: midX - 4, h: height - midY - 4 },
     se: { x: midX + 2, y: midY + 2, w: width - midX - 4, h: height - midY - 4 },
   };
-  const counters = new Map<PlaceKind, number>();
-  // 分区级共享行排游标:同分区多 quota 场所依次接排,杜绝互相重叠
-  const cursors = {
-    nw: { x: zones.nw.x, y: zones.nw.y, rowHeight: 0 },
-    ne: { x: zones.ne.x, y: zones.ne.y, rowHeight: 0 },
-    sw: { x: zones.sw.x, y: zones.sw.y, rowHeight: 0 },
-    se: { x: zones.se.x, y: zones.se.y, rowHeight: 0 },
+  const occupied = new Set<string>();
+  /** 核心占用(无缓冲):兜底扫描只查矩形本身不重叠 */
+  const occupiedCore = new Set<string>();
+  /** 已放场所入口格:双级占用均不含他人入口,后放矩形须单查不得覆盖 */
+  const entrances = new Set<string>();
+  /** 预留矩形外扩一圈缓冲(场所间自然留缝) */
+  const reserve = (rect: BlockedRect): void => {
+    mark0(occupied, { x: rect.x - 1, y: rect.y - 1, w: rect.w + 2, h: rect.h + 2 });
+    mark0(occupiedCore, rect);
   };
+  for (const path of paths) reserve(path);
+  const counters = new Map<PlaceKind, number>();
   let pond: BlockedRect | null = null;
   for (const quota of GROWTH_QUOTA) {
     const count = densityIndex === 0 ? quota.count[0] : rng.int(quota.count[0], quota.count[1]);
     const zone = zones[quota.zone];
-    const cursor = cursors[quota.zone];
     for (let n = 0; n < count; n += 1) {
       const [w, h] = rng.pick(PLACE_BLUEPRINTS[quota.kind].size);
-      if (cursor.x + w > zone.x + zone.w) {
-        cursor.x = zone.x;
-        cursor.y += cursor.rowHeight + 2;
-        cursor.rowHeight = 0;
-      }
-      if (cursor.y + h > zone.y + zone.h) break;
+      const spot = tryScatterPlace(
+        rng, zone, width, height, w, h, occupied, occupiedCore, entrances, quota.essential,
+      );
+      if (spot === null) break;
       const seq = (counters.get(quota.kind) ?? 0) + 1;
       counters.set(quota.kind, seq);
       const id = `${quota.kind}-${String.fromCharCode(96 + seq)}`;
-      if (quota.kind === 'park') pond = parkPond(rng, cursor.x, cursor.y, w, h);
-      const place = buildPlace(rng, quota.kind, id, cursor.x, cursor.y, w, h, pond, input.assetsByKind);
+      if (quota.kind === 'park') {
+        pond = parkPond(rng, spot.x, spot.y, w, h);
+        blockedRects.push(pond);
+        reserve(pond);
+      }
+      const place = buildPlace(rng, quota.kind, id, spot.x, spot.y, w, h, pond, input.assetsByKind);
       places.push(place);
-      if (quota.kind === 'park') fences.push(...parkFences(place));
-      cursor.x += w + 2;
-      cursor.rowHeight = Math.max(cursor.rowHeight, h);
+      if (quota.kind === 'park') {
+        const fenceRects = parkFences(place);
+        fences.push(...fenceRects);
+        for (const fence of fenceRects) reserve(fence); // 后放场所不压栅栏
+      }
+      entrances.add(cellKey(place.entrance.x, place.entrance.y));
+      reserve(place);
     }
   }
-  if (pond !== null) blockedRects.push(pond);
 
   // ③ 门前小路:entrance 竖向连到最近道路 y
   const roadRows = paths.filter((p) => p.h <= 2).map((p) => p.y);
@@ -202,6 +223,77 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
       checks: { connectivity, anchorsComplete, fallback: false },
     },
   };
+}
+
+/**
+ * 随机撒放坐标:偏好象限试 20 次 → 全图再试 60 次 → 核心场所无缓冲确定性扫描(必得);
+ * 可选场所两轮皆败即裁(锦上添花型,空间不足自然消失)。随机轮查缓冲占用
+ * (场所间留缝/不贴路),兜底轮只查核心占用(矩形本身不重叠)——支路把象限切成
+ * 窄条时核心场所允许贴路而立,不再触发整图重试。
+ */
+function tryScatterPlace(
+  rng: Rng,
+  zone: { x: number; y: number; w: number; h: number },
+  width: number,
+  height: number,
+  w: number,
+  h: number,
+  occupied: Set<string>,
+  occupiedCore: Set<string>,
+  entrances: Set<string>,
+  essential: boolean,
+): { x: number; y: number } | null {
+  // y 界保持 2/height-2:入口格在 y-1 或 y+h 行,须落在可行走带内(0/末行为边界墙)
+  const inBounds = (x: number, y: number): boolean =>
+    x >= 1 && y >= 2 && x + w <= width - 1 && y + h <= height - 2;
+  /** 入口/门前格自由:有门场所入口在 (中列, y+h),开放场所入口在 (x+1, y-1) */
+  const entranceFree = (x: number, y: number, grid: Set<string>): boolean =>
+    !grid.has(cellKey(x + Math.floor(w / 2), y + h)) && !grid.has(cellKey(x + 1, y - 1));
+  /** 新矩形不得覆盖任何已放场所入口格(先放者的入口不在占用网格里) */
+  const coversEntrance = (x: number, y: number): boolean => {
+    for (const key of entrances) {
+      const comma = key.indexOf(',');
+      const ex = Number(key.slice(0, comma));
+      const ey = Number(key.slice(comma + 1));
+      if (ex >= x && ex < x + w && ey >= y && ey < y + h) return true;
+    }
+    return false;
+  };
+  const fits = (x: number, y: number, grid: Set<string>): boolean => {
+    if (!inBounds(x, y)) return false;
+    if (coversEntrance(x, y)) return false;
+    const pad = grid === occupiedCore ? 0 : 1;
+    for (let yy = y - pad; yy <= y + h - 1 + pad; yy += 1) {
+      for (let xx = x - pad; xx <= x + w - 1 + pad; xx += 1) {
+        if (grid.has(cellKey(xx, yy))) return false;
+      }
+    }
+    return entranceFree(x, y, grid);
+  };
+  const randSpot = (zx: number, zy: number, zw: number, zh: number): { x: number; y: number } | null => {
+    const x0 = Math.max(zx, 1);
+    const y0 = Math.max(zy, 2);
+    const x1 = Math.min(zx + zw - w, width - 1 - w);
+    const y1 = Math.min(zy + zh - h, height - 2 - h);
+    if (x1 < x0 || y1 < y0) return null;
+    return { x: rng.int(x0, x1), y: rng.int(y0, y1) };
+  };
+  for (let i = 0; i < 20; i += 1) {
+    const spot = randSpot(zone.x, zone.y, zone.w, zone.h);
+    if (spot !== null && fits(spot.x, spot.y, occupied)) return spot;
+  }
+  for (let i = 0; i < 60; i += 1) {
+    const spot = randSpot(1, 2, width - 2, height - 4);
+    if (spot !== null && fits(spot.x, spot.y, occupied)) return spot;
+  }
+  // 可选场所也兜底一次无缓冲扫描(紧凑贴靠优于整段缺席);扫无可选即裁,核心必得
+  for (let y = 2; y + h <= height - 2; y += 1) {
+    for (let x = 1; x + w <= width - 1; x += 1) {
+      if (fits(x, y, occupiedCore)) return { x, y };
+    }
+  }
+  if (!essential) return null;
+  throw new Error('撒放空间不足');
 }
 
 /** 公园水系:先定池塘(家具/花木布局避开) */

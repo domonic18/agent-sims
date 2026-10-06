@@ -144,11 +144,12 @@ function loadAssetsByKind(): Record<string, string[]> | undefined {
   }
 }
 
-/** 生成地图出生点:自主街中心 BFS 收集前 N 个可行走格(静态 SPAWN_SPOTS 仅内置地图用) */
+/** 生成地图出生点:自地图中心环形扩散找最近可行走格作 BFS 起点(随机撒放后中心可能被场所占据),
+ * 再从该点 BFS 收集前 N 个可行走格(静态 SPAWN_SPOTS 仅内置地图用) */
 function generateSpawnSpots(map: TileMapDefinition, count: number): Array<{ x: number; y: number }> {
   const tm = TileMap.fromDefinition(map);
-  const start = { x: Math.floor(map.width / 2), y: Math.floor(map.height / 2) };
-  if (!tm.isWalkable(start.x, start.y)) return [];
+  const start = nearestWalkable(tm, Math.floor(map.width / 2), Math.floor(map.height / 2));
+  if (start === null) return [];
   const seen = new Set<string>([`${start.x},${start.y}`]);
   const queue = [start];
   const spots: Array<{ x: number; y: number }> = [start];
@@ -166,6 +167,26 @@ function generateSpawnSpots(map: TileMapDefinition, count: number): Array<{ x: n
     }
   }
   return spots.slice(0, count);
+}
+
+/** 曼哈顿环扩散:距 (cx,cy) 切比雪夫半径从小到大,首个界内可行走格 */
+function nearestWalkable(
+  tm: TileMap,
+  cx: number,
+  cy: number,
+): { x: number; y: number } | null {
+  for (let r = 0; r <= Math.max(tm.width, tm.height); r += 1) {
+    for (let dy = -r; dy <= r; dy += 1) {
+      for (let dx = -r; dx <= r; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (x < 0 || y < 0 || x >= tm.width || y >= tm.height) continue;
+        if (tm.isWalkable(x, y)) return { x, y };
+      }
+    }
+  }
+  return null;
 }
 
 /** 简短角色 id(模拟层 Map key/前端配色哈希种子):8 位随机十六进制 */

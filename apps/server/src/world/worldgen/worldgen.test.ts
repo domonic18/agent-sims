@@ -85,6 +85,19 @@ describe('generateTownMap 生成质量(50 种子批量)', () => {
     }
   });
 
+  it('场所撒放非行排(同 kind 不同行/列,防回归回退到行排布局)', () => {
+    for (const result of results) {
+      const homes = result.map.places.filter((p) => p.id.startsWith('home'));
+      expect(homes.length).toBeGreaterThanOrEqual(3);
+      // 旧行排:同 kind 全部同一 y(依次排开);撒放后纵/横向至少两个不同坐标
+      expect(new Set(homes.map((p) => p.y)).size).toBeGreaterThanOrEqual(2);
+      expect(new Set(homes.map((p) => p.x)).size).toBeGreaterThanOrEqual(2);
+      // 全图场所不同时压在同一条横带上(旧布局四象限各一行的退化形态)
+      const rows = new Set(result.map.places.map((p) => p.y));
+      expect(rows.size).toBeGreaterThanOrEqual(4);
+    }
+  });
+
   it('有门场所携带地板/墙 tile(渲染直配)', () => {
     for (const result of results) {
       for (const place of result.map.places) {
