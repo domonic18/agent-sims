@@ -26,6 +26,9 @@ const dotEnv = loadDotEnv();
 
 export default defineConfig({
   test: {
+    // 集成测试文件共享同一 dev 库(活跃世界/worldState 单例行),文件级并行互相踩
+    // (admin-worlds 建世界关闭旧活跃 vs world-settings 改规则读到串档),故串行执行
+    fileParallelism: false,
     env: {
       NODE_ENV: 'test',
       DATABASE_URL: dotEnv.DATABASE_URL ?? 'postgres://vitest:vitest@localhost:5432/vitest',
