@@ -83,7 +83,10 @@ function normalizeRules(partial: Partial<WorldRules> | undefined): WorldRules {
 }
 
 function toView(row: typeof worlds.$inferSelect): WorldView {
-  const config = row.config as CreateWorldRequest & { worldgenReport?: WorldgenReport };
+  const config = row.config as CreateWorldRequest & {
+    worldgenReport?: WorldgenReport;
+    map?: TileMapDefinition;
+  };
   return {
     id: row.id,
     name: row.name,
@@ -215,6 +218,36 @@ function shortId(): string {
   return randomUUID().replace(/-/g, '').slice(0, 8);
 }
 
+/**
+ * 启动恢复(C4):进程重启后按 active 世界的 config.map 复原地图现场
+ * (同种子可重生成,但落库直读免重算且与创建时严格一致);
+ * 无 active/旧世界无 map/定义非法 → 静默保持内置地图,世界可用性优先。
+ * 角色与数值现场恢复不在本次(follow-up),恢复后冻结待角色创建。
+ */
+export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle): Promise<void> {
+  const [row] = await handle.db
+    .select()
+    .from(worlds)
+    .where(eq(worlds.status, 'active'))
+    .orderBy(desc(worlds.createdAt))
+    .limit(1);
+  if (!row) return;
+  const config = row.config as CreateWorldRequest & { map?: TileMapDefinition };
+  if (config.map === undefined) return;
+  try {
+    TileMap.fromDefinition(config.map); // 先验定义合法性(非法即走兜底)
+    const rules = normalizeRules(config.rules);
+    app.simulation.reset();
+    app.simulation.setMap(config.map);
+    app.simulation.rules = rules;
+    applyWorldParams(rules.params);
+    app.simulation.timeScale = rules.initialTimeScale;
+    app.simulation.setPaused(true);
+  } catch {
+    // 地图定义非法(协议变更/损坏):静默回内置地图
+  }
+}
+
 export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): void {
   app.get('/api/admin/worlds', async (request, reply) => {
     if (!requireAdmin(request, reply)) return;
@@ -279,10 +312,15 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       worldgenReport = result.report;
       parsed.data.worldgen = { ...parsed.data.worldgen, seed };
     }
-    const config: CreateWorldRequest & { worldgenReport?: WorldgenReport } = {
+    const config: CreateWorldRequest & {
+      worldgenReport?: WorldgenReport;
+      map?: TileMapDefinition;
+    } = {
       ...parsed.data,
       rules,
       ...(worldgenReport !== undefined ? { worldgenReport } : {}),
+      // 地图定义落库(C4):server 重启后按 active 世界恢复现场(角色恢复见 follow-up)
+      ...(mapDefinition !== null ? { map: mapDefinition } : {}),
     };
     // 出生点:生成地图 BFS 动态收集;内置固定地图沿用静态 SPAWN_SPOTS
     const spots =

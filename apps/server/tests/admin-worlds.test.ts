@@ -3,6 +3,7 @@ import { eq, like } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CreateWorldRequest, WorldView } from '@sims/shared';
 import { buildApp } from '../src/app.js';
+import { restoreActiveWorld } from '../src/admin-api/worlds.js';
 import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
 import { adminUsers, characters, worldState, worlds } from '../src/db/schema/index.js';
@@ -125,6 +126,38 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     expect(byName.get(`${WORLD_NAME_PREFIX}二号镇`)?.status).toBe('active');
     // 模拟现场已切换为二号镇(3 人,重新出生)
     expect(app.simulation.characters.size).toBe(3);
+    await app.close();
+  });
+
+  it('生成地图落库+启动恢复:config.map 与对外地图一致,重建 app 恢复同图', async () => {
+    const app = buildApp();
+    const auth = { authorization: `Bearer ${await login(app)}` };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: {
+        ...CREATE_BODY,
+        name: `${WORLD_NAME_PREFIX}恢复镇`,
+        worldgen: { gameType: 'growth', params: { size: 'small', density: 'normal' } },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const world = created.json() as WorldView & { simIds: string[] };
+    expect(world.worldgen).toBeDefined();
+
+    const servedMap = (await app.inject({ method: 'GET', url: '/api/world/map' })).json();
+    // config.map 落库且深等于对外地图;视图不透出 map 字段
+    const [row] = await handle.db.select().from(worlds).where(eq(worlds.id, world.id));
+    expect((row.config as { map?: unknown }).map).toEqual(servedMap);
+    expect('map' in world).toBe(false);
+
+    // 重建 app + restoreActiveWorld 后地图与重启前一致
+    const app2 = buildApp();
+    await restoreActiveWorld(app2, app2.db);
+    const restoredMap = (await app2.inject({ method: 'GET', url: '/api/world/map' })).json();
+    expect(restoredMap).toEqual(servedMap);
+    await app2.close();
     await app.close();
   });
 

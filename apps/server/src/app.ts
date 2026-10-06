@@ -2,7 +2,7 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import type { Server } from 'socket.io';
 import { registerAdminApi } from './admin-api/index.js';
 import { env } from './config/env.js';
-import { createDb } from './db/client.js';
+import { createDb, type DbHandle } from './db/client.js';
 import { registerDebugRoutes } from './api/debug.js';
 import { registerWorldEventRoutes } from './api/world-events.js';
 import { registerWorldSettingsRoutes } from './api/world-settings.js';
@@ -18,6 +18,7 @@ declare module 'fastify' {
     simulation: Simulation;
     clients: ClientRegistry;
     io: Server;
+    db: DbHandle;
   }
 }
 
@@ -33,6 +34,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   app.decorate('io', attachSocketGateway(app.server, app.simulation, app.clients));
 
   const handle = createDb(env.DATABASE_URL);
+  app.decorate('db', handle);
   initTechLog(handle);
   // 未捕获异常统一落技术日志(M-G.1②):4xx 透传原因,5xx 概括避免泄漏内部细节
   app.setErrorHandler((err: FastifyError, request, reply) => {
