@@ -383,22 +383,23 @@ export function AssetsPanel() {
   const saveEdit = async () => {
     if (detail === null) return;
     const values = await form.validateFields();
+    const tagList = (values.tags as string)
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag !== '');
     await updateAsset(detail.id, {
       name: values.name,
       gridW: values.gridW,
       gridH: values.gridH,
       anchor: values.anchor,
       tier: values.tier,
-      tags: (values.tags as string)
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter((tag) => tag !== ''),
+      tags: tagList,
       status: values.status,
       ...(values.categoryId !== detail.categoryId ? { categoryId: values.categoryId } : {}),
     });
     message.success('已保存');
     setEditing(false);
-    await openDetail({ ...detail, ...values, tags: values.tags });
+    await openDetail({ ...detail, ...values, tags: tagList });
     void load();
   };
 
