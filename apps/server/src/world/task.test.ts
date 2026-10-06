@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { WorldEvent } from '@sims/shared';
+import { BUSH_MAX_CHARGES, type WorldEvent } from '@sims/shared';
 import { Simulation } from './simulation.js';
 
 const LITTER_ID = 'litter:10:14';
@@ -159,5 +159,121 @@ describe('work_task 维护工单(M-G.5)', () => {
     expect(mow.activity).toBeNull();
     expect(events.some((e) => e.type === 'character.died')).toBe(true);
     expect(sim.maintenanceSpots.has(LITTER_ID)).toBe(true);
+  });
+});
+
+describe('work_task 采集两岗(M-G.6)', () => {
+  function simWithGatherer(): { sim: Simulation; events: WorldEvent[] } {
+    const sim = new Simulation();
+    const events: WorldEvent[] = [];
+    sim.events.subscribe((event) => events.push(event));
+    sim.spawnCharacter('mow', 8, 12, '小满');
+    sim.character('mow').knowledge = 3; // 采集类门槛 3 班
+    return { sim, events };
+  }
+
+  it('直发 start_activity 拒绝;门槛/枯竭/背包满 逐环拒绝', () => {
+    const { sim } = simWithGatherer();
+    expect(() => sim.requestStartActivity('mow', 'gather_berry')).toThrow(/work_task/);
+    expect(() => sim.requestStartActivity('mow', 'scavenge')).toThrow(/work_task/);
+    sim.character('mow').knowledge = 0;
+    expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/知识不足/);
+    sim.character('mow').knowledge = 3;
+    sim.resourceNodes.get('berry_bush:5:27')!.charges = 0;
+    expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/已采完/);
+    sim.resourceNodes.get('berry_bush:5:27')!.charges = BUSH_MAX_CHARGES;
+    sim.character('mow').backpack = { berry: 7 }; // 最坏产出 2 体积,7+2>8 放不下
+    expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/背包/);
+  });
+
+  it('采集浆果闭环: 寻路在途不计时,作业 20 分浆果×2 入包,丛存量递减,以物代薪不发币', () => {
+    const { sim, events } = simWithGatherer();
+    const node = sim.resourceNodes.get('berry_bush:5:27')!;
+    sim.requestWorkTask('mow', 'berry_bush:5:27');
+    expect(sim.character('mow').path.length).toBeGreaterThan(0);
+    sim.advanceTicks(60);
+    const mow = sim.character('mow');
+    expect(mow.activity).toBeNull();
+    expect(mow.backpack.berry).toBe(2);
+    expect(mow.coins).toBe(0);
+    expect(node.charges).toBe(2);
+    expect(node.respawnAtDay).toBeNull();
+    expect(events.some((e) => e.type === 'work_task.completed')).toBe(true);
+  });
+
+  it('存量采竭与跨日重生: 3 次采完记 respawnAtDay,次日 00:00 翻滚回满', () => {
+    const { sim } = simWithGatherer();
+    const node = sim.resourceNodes.get('berry_bush:5:27')!;
+    for (let round = BUSH_MAX_CHARGES; round > 0; round -= 1) {
+      expect(node.charges).toBe(round);
+      sim.requestWorkTask('mow', 'berry_bush:5:27');
+      sim.advanceTicks(60);
+    }
+    expect(node.charges).toBe(0);
+    expect(node.respawnAtDay).toBe(sim.clock.day + 1);
+    sim.advanceTicks(1440); // 跨过次日 00:00
+    expect(node.charges).toBe(BUSH_MAX_CHARGES);
+    expect(node.respawnAtDay).toBeNull();
+  });
+
+  it('拾荒: 废料必得;30% 树枝由 rng 决定;拾荒堆存量 null 永不枯竭', () => {
+    const lucky = new Simulation(() => 0.1); // roll < 0.3 → 树枝必出
+    lucky.spawnCharacter('sca', 8, 12, '鲁大');
+    lucky.character('sca').knowledge = 3;
+    lucky.requestWorkTask('sca', 'junk_pile:25:20');
+    lucky.advanceTicks(60);
+    expect(lucky.character('sca').backpack.scrap).toBe(1);
+    expect(lucky.character('sca').backpack.twig).toBe(1);
+    expect(lucky.resourceNodes.get('junk_pile:25:20')!.charges).toBeNull();
+
+    const unlucky = new Simulation(() => 0.9); // roll ≥ 0.3 → 树枝不出
+    unlucky.spawnCharacter('sca', 8, 12, '鲁大');
+    unlucky.character('sca').knowledge = 3;
+    unlucky.requestWorkTask('sca', 'junk_pile:25:20');
+    unlucky.advanceTicks(60);
+    expect(unlucky.character('sca').backpack.scrap).toBe(1);
+    expect(unlucky.character('sca').backpack.twig).toBeUndefined();
+  });
+
+  it('竞态-节点被采空: 作业中存量归零→cancelled 无产出', () => {
+    const { sim, events } = simWithGatherer();
+    sim.requestWorkTask('mow', 'berry_bush:5:27');
+    sim.advanceTicks(20); // 到位作业中(约 10 tick 到位+作业 10 分,未满 20 分)
+    sim.resourceNodes.get('berry_bush:5:27')!.charges = 0;
+    sim.advanceTicks(2);
+    expect(sim.character('mow').activity).toBeNull();
+    expect(sim.character('mow').backpack.berry).toBeUndefined();
+    expect(events.some((e) => e.type === 'work_task.cancelled')).toBe(true);
+  });
+
+  it('reset 从地图种子重建节点,存量回满', () => {
+    const { sim } = simWithGatherer();
+    const node = sim.resourceNodes.get('berry_bush:5:27')!;
+    node.charges = 0;
+    node.respawnAtDay = 5;
+    sim.reset();
+    expect(sim.resourceNodes.get('berry_bush:5:27')).toEqual({
+      id: 'berry_bush:5:27',
+      kind: 'berry_bush',
+      x: 5,
+      y: 27,
+      charges: BUSH_MAX_CHARGES,
+      respawnAtDay: null,
+    });
+  });
+
+  it('快照透传 resources 全集', () => {
+    const { sim } = simWithGatherer();
+    expect(sim.snapshot().resources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'berry_bush:5:27',
+          kind: 'berry_bush',
+          charges: BUSH_MAX_CHARGES,
+          respawnAtDay: null,
+        }),
+        expect.objectContaining({ id: 'junk_pile:55:30', kind: 'junk_pile', charges: null }),
+      ]),
+    );
   });
 });

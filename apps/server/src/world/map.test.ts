@@ -145,6 +145,26 @@ describe('TileMap 可行走层', () => {
     const map = TileMap.fromDefinition(miniMap);
     expect(map.fenceTiles()).toEqual([]);
   });
+
+  it('资源节点种子(M-G.6): 占格阻塞并随 definition 暴露;重叠/被覆盖构造即抛错', () => {
+    const map = TileMap.fromDefinition(TOWN_MAP);
+    expect(map.resourceSeeds).toHaveLength(6); // 公园 3 丛浆果+街道 3 堆拾荒
+    for (const seed of map.resourceSeeds) {
+      expect(map.isWalkable(seed.x, seed.y), `(${seed.x},${seed.y}) 须阻塞`).toBe(false);
+    }
+    expect(() =>
+      TileMap.fromDefinition({
+        ...miniMap,
+        resources: [
+          { kind: 'berry_bush', x: 1, y: 1 },
+          { kind: 'junk_pile', x: 1, y: 1 },
+        ],
+      }),
+    ).toThrow(/重叠/);
+    expect(() =>
+      TileMap.fromDefinition({ ...miniMap, resources: [{ kind: 'berry_bush', x: 3, y: 1 }] }),
+    ).toThrow(/被既有障碍覆盖/);
+  });
 });
 
 describe('TileMap 内景层(M3.6e)', () => {

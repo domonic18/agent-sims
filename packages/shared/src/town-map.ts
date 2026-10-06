@@ -4,6 +4,7 @@
  */
 import type { AnyFurnitureKind, FurnitureDefinition } from './furniture.js';
 import type { DecorDefinition } from './worldgen.js';
+import type { ResourceNodeSeed } from './production.js';
 
 /** 场所定义:占地矩形 + 入口格(入口必须在占地外且可行走) */
 export interface PlaceDefinition {
@@ -43,6 +44,8 @@ export interface TileMapDefinition {
   places: PlaceDefinition[];
   /** 围栏段清单(M-G.5 数据化):公园北缘等;缺省=无围栏 */
   fences?: FenceRect[];
+  /** 资源节点种子(M-G.6 生产系统):浆果丛/拾荒堆,占格不可行走;缺省=无节点 */
+  resources?: ResourceNodeSeed[];
   /** 户外装饰坐标(生成地图数据化;内置地图缺省) */
   decor?: DecorDefinition;
 }
@@ -330,5 +333,14 @@ export const TOWN_MAP: TileMapDefinition = {
   fences: [
     { x: 3, y: 26, w: 6, h: 1 },
     { x: 10, y: 26, w: 5, h: 1 },
+  ],
+  // 资源节点种子(M-G.6):公园浆果丛 3 丛(避开池塘/长椅)+ 街道拾荒堆 3 处
+  resources: [
+    { kind: 'berry_bush', x: 5, y: 27 },
+    { kind: 'berry_bush', x: 13, y: 34 },
+    { kind: 'berry_bush', x: 15, y: 29 },
+    { kind: 'junk_pile', x: 25, y: 20 },
+    { kind: 'junk_pile', x: 40, y: 15 },
+    { kind: 'junk_pile', x: 55, y: 30 },
   ],
 };

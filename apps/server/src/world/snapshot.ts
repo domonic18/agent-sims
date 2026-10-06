@@ -56,5 +56,6 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
       affinity: round(relation.affinity),
     })),
     maintenance: [...sim.maintenanceSpots.values()].map((spot) => ({ ...spot })),
+    resources: [...sim.resourceNodes.values()].map((node) => ({ ...node })),
   };
 }

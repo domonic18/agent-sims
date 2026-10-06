@@ -6,6 +6,7 @@ import {
   type BlockedRect,
   type AnyFurnitureKind,
   type PlaceDefinition,
+  type ResourceNodeSeed,
   type TileMapDefinition,
 } from '@sims/shared';
 
@@ -24,6 +25,8 @@ export class TileMap {
   readonly width: number;
   readonly height: number;
   readonly places: readonly PlaceDefinition[];
+  /** 资源节点种子(M-G.6:采集目标注册表,占格不可行走) */
+  readonly resourceSeeds: readonly ResourceNodeSeed[];
   /** 原始定义(M-L.5:前端渲染/复现用) */
   readonly definition: TileMapDefinition;
   private readonly _blocked: readonly BlockedRect[];
@@ -33,8 +36,10 @@ export class TileMap {
     this.height = definition.height;
     this.places = definition.places;
     this.definition = definition;
-    // 边界墙(网格最内一圈,渲染为树林/围墙)+ 定制障碍 + 建筑墙体 + 家具占地 + 围栏段
-    this._blocked = [
+    this.resourceSeeds = definition.resources ?? [];
+    const resourceRects: BlockedRect[] = this.resourceSeeds.map((r) => ({ x: r.x, y: r.y, w: 1, h: 1 }));
+    // 边界墙(网格最内一圈,渲染为树林/围墙)+ 定制障碍 + 建筑墙体 + 家具占地 + 围栏段 + 资源节点
+    const others: BlockedRect[] = [
       ...definition.blockedRects,
       { x: 0, y: 0, w: definition.width, h: 1 }, // 上
       { x: 0, y: definition.height - 1, w: definition.width, h: 1 }, // 下
@@ -44,7 +49,9 @@ export class TileMap {
       ...definition.places.flatMap(furnitureRectsOf),
       ...(definition.fences ?? []),
     ];
+    this._blocked = [...others, ...resourceRects];
     this._validatePlaces();
+    this._validateResources(resourceRects, others);
   }
 
   static fromDefinition(definition: TileMapDefinition): TileMap {
@@ -157,6 +164,21 @@ export class TileMap {
       } else if ((place.furniture ?? []).length > 0) {
         // 无墙场所(公园)家具: 户外长椅等锚点,仅校验矩形内+使用格紧邻可行走(无室内圈/门/连通约束)
         this._validateFurniture(place, false);
+      }
+    }
+  }
+
+  /** 资源节点种子校验: 须落在可行走格(不被墙体/家具/围栏等既有障碍覆盖)且互不重叠 */
+  private _validateResources(resourceRects: readonly BlockedRect[], others: readonly BlockedRect[]): void {
+    const seen = new Set<string>();
+    for (const rect of resourceRects) {
+      const key = `${rect.x},${rect.y}`;
+      if (seen.has(key)) {
+        throw new Error(`资源节点重叠: (${rect.x},${rect.y}) 重复种种子`);
+      }
+      seen.add(key);
+      if (others.some((other) => inRect(rect.x, rect.y, other))) {
+        throw new Error(`资源节点落点非法: (${rect.x},${rect.y}) 被既有障碍覆盖`);
       }
     }
   }

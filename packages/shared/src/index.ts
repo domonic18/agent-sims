@@ -12,6 +12,7 @@ export * from './intents.js';
 export * from './items.js';
 export * from './maintenance.js';
 export * from './property.js';
+export * from './production.js';
 export * from './shop.js';
 export * from './social.js';
 export * from './sync.js';

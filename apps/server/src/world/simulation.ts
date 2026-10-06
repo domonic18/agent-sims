@@ -4,7 +4,9 @@ import type {
   CharacterAutoRevivedEvent,
   CharacterDiedEvent,
   CharacterRevivedEvent,
+  GatherTaskId,
   MaintenanceSpot,
+  ResourceNode,
   TraitVector,
   WorkTaskCancelledEvent,
   WorkTaskCompletedEvent,
@@ -18,7 +20,9 @@ import type {
   WorldSnapshotMessage,
 } from '@sims/shared';
 import {
+  BUSH_MAX_CHARGES,
   DEFAULT_WORLD_RULES,
+  GATHER_TASKS,
   MAINTENANCE_TASKS,
   PROPERTY_IDS,
   REVIVE_WINDOW_MINUTES,
@@ -46,7 +50,7 @@ import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
 import { stepMaintenance, type RandomFn } from './maintenance.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
-import { requestWorkTask } from './task.js';
+import { isGatherTask, requestWorkTask } from './task.js';
 import { worldSnapshot } from './snapshot.js';
 import {
   applySocialDailyRollover,
@@ -71,6 +75,8 @@ export class Simulation {
   readonly socials = new Map<string, SocialRelation>();
   /** 世界维护点(M-G.5 损耗系统):key = `kind:x:y`,reset 清空 */
   readonly maintenanceSpots = new Map<string, MaintenanceSpot>();
+  /** 资源节点(M-G.6 生产系统):key = 节点 id `kind:x:y`,reset 从地图种子重建(存量回满) */
+  readonly resourceNodes = new Map<string, ResourceNode>();
   /** 世界事件总线:离散事件与控制变更即时分发,感知/同步层订阅 */
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
@@ -83,6 +89,7 @@ export class Simulation {
 
   constructor(rng: RandomFn = Math.random) {
     this.rng = rng;
+    this._rebuildResourceNodes();
   }
 
   /** 世界地图(M-L.5:创建世界时注入生成地图;缺省内置固定地图) */
@@ -92,6 +99,7 @@ export class Simulation {
 
   setMap(definition: TileMapDefinition): void {
     this._map = TileMap.fromDefinition(definition);
+    this._rebuildResourceNodes();
   }
 
   advanceTicks(n: number): void {
@@ -112,6 +120,7 @@ export class Simulation {
     this.characters.clear();
     this.socials.clear();
     this.maintenanceSpots.clear();
+    this._rebuildResourceNodes();
     this.tick = 0;
     this.clock.reset();
     this.paused = false;
@@ -317,9 +326,11 @@ export class Simulation {
   }
 
   private _stepCharacters(): void {
-    // 世界日翻转(00:00)社交结算:熟悉度衰减+聊天防刷计数跨日自然重置
+    // 世界日翻转(00:00)社交结算+资源重生:熟悉度衰减/聊天防刷计数跨日自然重置,
+    // 枯竭浆果丛回满(design/09 §2)
     if (this.clock.minuteOfDay === 0) {
       applySocialDailyRollover(this);
+      this._respawnResourceNodes();
     }
     for (const character of this.characters.values()) {
       // 净速率模型(M3.6g):活动数值已含代谢,仅待机走基础代谢衰减
@@ -369,9 +380,9 @@ export class Simulation {
   }
 
   /**
-   * 维护工单逐分钟结算(M-G.5):在途不计时;到位先验目标仍有效——
-   * 维护点被清/幽灵被抢先救治或窗口超时→无薪中断发 work_task.cancelled;
-   * 完成→消除目标(救治免扣复活)+按单入账发 work_task.completed。
+   * 维护/采集工单逐分钟结算(M-G.5/M-G.6):在途不计时;到位先验目标仍有效——
+   * 维护点被清/幽灵被抢先救治或窗口超时/节点被采空→无薪中断发 work_task.cancelled;
+   * 完成→按任务分流:维护消目标+按单入账,采集产出入背包+节点扣存量(以物代薪 pay=0)。
    */
   private _stepWorkTask(character: WorldCharacter, definition: ActivityDefinition): void {
     const activity = character.activity;
@@ -395,6 +406,10 @@ export class Simulation {
     if (result !== 'completed') {
       return;
     }
+    if (isGatherTask(task)) {
+      this._completeGather(character, task, targetId);
+      return;
+    }
     if (task === 'rescue') {
       reviveCharacter(this, this.characters.get(targetId)!, 'rescue'); // 免扣复活
     } else {
@@ -414,7 +429,38 @@ export class Simulation {
     finishActivity(this, character, 'completed');
   }
 
-  /** 工单目标仍有效:维护点在场;待救角色仍处幽灵救治窗口内 */
+  /** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭记次日重生 */
+  private _completeGather(
+    character: WorldCharacter,
+    task: GatherTaskId,
+    targetId: string,
+  ): void {
+    const node = this.resourceNodes.get(targetId)!;
+    for (const yieldDef of GATHER_TASKS[task].yields) {
+      if (yieldDef.chance !== undefined && this.rng() >= yieldDef.chance) {
+        continue;
+      }
+      character.backpack[yieldDef.itemId] = (character.backpack[yieldDef.itemId] ?? 0) + yieldDef.count;
+    }
+    if (node.charges !== null) {
+      node.charges -= 1;
+      if (node.charges <= 0) {
+        node.respawnAtDay = this.clock.day + 1;
+      }
+    }
+    const event: WorkTaskCompletedEvent = {
+      type: 'work_task.completed',
+      characterId: character.id,
+      targetId,
+      task,
+      pay: 0,
+      tick: this.tick,
+    };
+    this.events.emit(event);
+    finishActivity(this, character, 'completed');
+  }
+
+  /** 工单目标仍有效:维护点在场;待救角色仍处幽灵救治窗口内;节点存在且未枯竭 */
   private _workTargetValid(task: WorkTaskId, targetId: string): boolean {
     if (task === 'rescue') {
       const target = this.characters.get(targetId);
@@ -425,7 +471,37 @@ export class Simulation {
         this.clock.gameMinutes - target.diedAtGameMinutes < REVIVE_WINDOW_MINUTES
       );
     }
+    if (isGatherTask(task)) {
+      const node = this.resourceNodes.get(targetId);
+      return node !== undefined && (node.charges === null || node.charges > 0);
+    }
     return this.maintenanceSpots.has(targetId);
+  }
+
+  /** 资源节点从地图种子重建(构造/setMap/reset 共用):浆果丛满存量,拾荒堆无限 */
+  private _rebuildResourceNodes(): void {
+    this.resourceNodes.clear();
+    for (const seed of this._map.resourceSeeds) {
+      const id = `${seed.kind}:${seed.x}:${seed.y}`;
+      this.resourceNodes.set(id, {
+        id,
+        kind: seed.kind,
+        x: seed.x,
+        y: seed.y,
+        charges: seed.kind === 'berry_bush' ? BUSH_MAX_CHARGES : null,
+        respawnAtDay: null,
+      });
+    }
+  }
+
+  /** 跨日 00:00 重生(design/09 §2):到日枯竭浆果丛回满;拾荒堆无需重生 */
+  private _respawnResourceNodes(): void {
+    for (const node of this.resourceNodes.values()) {
+      if (node.respawnAtDay !== null && this.clock.day >= node.respawnAtDay) {
+        node.charges = BUSH_MAX_CHARGES;
+        node.respawnAtDay = null;
+      }
+    }
   }
 
   /**

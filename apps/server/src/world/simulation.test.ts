@@ -46,6 +46,7 @@ describe('Simulation 模拟核心', () => {
       characters: [],
       socials: [],
       maintenance: expect.any(Array), // 60 tick 恰逢杂物周期界,内容随默认 rng 不定
+      resources: expect.any(Array), // M-G.6 资源节点从 TOWN_MAP 种子重建
     });
   });
 });

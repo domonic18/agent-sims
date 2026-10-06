@@ -150,15 +150,17 @@ export const maintenanceSpawnedEventSchema = z.object({
 export type MaintenanceSpawnedEvent = z.infer<typeof maintenanceSpawnedEventSchema>;
 export type { MaintenanceSpot };
 
-/** 维护工单任务 id(M-G.5 三岗) */
-export type WorkTaskId = 'clean' | 'repair' | 'rescue';
+/** 工单任务全集(M-G.5 维护三岗+M-G.6 采集两岗):事件与门槛查表共用 */
+const workTaskIdSchema = z.enum(['clean', 'repair', 'rescue', 'gather_berry', 'scavenge']);
+
+export type WorkTaskId = z.infer<typeof workTaskIdSchema>;
 
 /** 工单受理:寻路前往,到位后计时作业 */
 export const workTaskAcceptedEventSchema = z.object({
   type: z.literal('work_task.accepted'),
   characterId: z.string().min(1),
   targetId: z.string().min(1),
-  task: z.enum(['clean', 'repair', 'rescue']),
+  task: workTaskIdSchema,
   tick: z.number().int(),
 });
 
@@ -174,12 +176,12 @@ export const workTaskCancelledEventSchema = z.object({
 
 export type WorkTaskCancelledEvent = z.infer<typeof workTaskCancelledEventSchema>;
 
-/** 工单完成:维护点清除或救治复活,按单结算 */
+/** 工单完成:维护点清除/救治复活/采集入包,按单结算(采集 pay=0 以物代薪) */
 export const workTaskCompletedEventSchema = z.object({
   type: z.literal('work_task.completed'),
   characterId: z.string().min(1),
   targetId: z.string().min(1),
-  task: z.enum(['clean', 'repair', 'rescue']),
+  task: workTaskIdSchema,
   pay: z.number(),
   tick: z.number().int(),
 });

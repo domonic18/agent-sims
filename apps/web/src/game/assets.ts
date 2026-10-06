@@ -59,6 +59,10 @@ export const ACTIVITY_EMOJI: Record<ActivityId, string> = {
   clean: '🧹',
   repair: '🔧',
   rescue: '🚑',
+  gather_berry: '🧺',
+  scavenge: '♻️',
+  craft_berry_pie: '🥧',
+  craft_repair_kit: '🔨',
 };
 
 /** 活动 → 静止姿态:躺(lie,rest 横卧床/长椅)/原地跑(run,workout)/坐(sit,桌台/柜台类)/站立(idle) */
@@ -75,6 +79,10 @@ export const ACTIVITY_POSES: Record<ActivityId, 'idle' | 'run' | 'lie' | 'sit'> 
   clean: 'idle',
   repair: 'idle',
   rescue: 'idle',
+  gather_berry: 'idle',
+  scavenge: 'idle',
+  craft_berry_pie: 'idle',
+  craft_repair_kit: 'idle',
 };
 
 /** 角色 id → 配色变体 slug(稳定哈希,同一角色始终同一套衣服;变体列表来自 manifest) */

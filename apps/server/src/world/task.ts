@@ -1,20 +1,33 @@
 import {
+  GATHER_TASKS,
+  getItem,
+  inventoryVolume,
   JOB_CATEGORIES,
   LOW_ENERGY_THRESHOLD,
   MAINTENANCE_TASKS,
   REVIVE_WINDOW_MINUTES,
+  type GatherTaskId,
+  type JobCategoryId,
   type WorkTaskAcceptedEvent,
   type WorkTaskId,
 } from '@sims/shared';
+import { BALANCE } from '../config/balance.js';
 import { ensureAlive, type CharacterActivity, type WorldCharacter } from './character.js';
 import type { Point } from './pathfinding.js';
 import { findPath } from './pathfinding.js';
 import type { Simulation } from './simulation.js';
 
+/** 类型守卫:采集两岗(M-G.6)——联合查表与结算分流共用 */
+export function isGatherTask(task: WorkTaskId): task is GatherTaskId {
+  return task === 'gather_berry' || task === 'scavenge';
+}
+
 /**
- * 维护工单(M-G.5,design/08 §4):单意图内含寻路→到位作业计时→按单结算。
- * 校验序:目标解析→存活→互斥(无活动/非移动中)→体力线→类别知识门槛→可达。
- * 目标解析:litter/fence_damage 维护点→clean/repair;幽灵态角色(窗口内)→rescue。
+ * 工单(M-G.5 维护三岗+M-G.6 采集两岗,design/08 §4+09 §2):
+ * 单意图内含寻路→到位作业计时→按单结算。
+ * 校验序:目标解析→存活→互斥(无活动/非移动中)→体力线→类别知识门槛→
+ * 采集背包产出空间→可达。
+ * 目标解析:维护点→clean/repair;幽灵态角色(窗口内)→rescue;资源节点→采集岗。
  */
 export function requestWorkTask(
   sim: Simulation,
@@ -35,11 +48,14 @@ export function requestWorkTask(
       `${character.name} 体力过低(${Math.floor(character.energy)}≤${LOW_ENERGY_THRESHOLD}),先休息再接单`,
     );
   }
-  const required = JOB_CATEGORIES[MAINTENANCE_TASKS[task].category].requiredKnowledge;
+  const required = JOB_CATEGORIES[taskCategory(task)].requiredKnowledge;
   if (character.knowledge < required) {
     throw new Error(
-      `${character.name} 知识不足: ${JOB_CATEGORIES[MAINTENANCE_TASKS[task].category].label}类岗位需学习 ${required} 班(当前 ${character.knowledge})`,
+      `${character.name} 知识不足: ${JOB_CATEGORIES[taskCategory(task)].label}类岗位需学习 ${required} 班(当前 ${character.knowledge})`,
     );
+  }
+  if (isGatherTask(task)) {
+    ensureBackpackRoomForYields(character, task);
   }
   const standTile = standTileFor(sim, character, task, targetId);
   const path = findPath(sim.map, { x: character.x, y: character.y }, standTile);
@@ -65,11 +81,18 @@ export function requestWorkTask(
   return character;
 }
 
-/** 工单目标→岗位:维护点按 kind 分派;幽灵角色进救治单(窗口外报错) */
+/** 工单目标→岗位:维护点按 kind 分派;幽灵角色进救治单;资源节点按 kind 进采集岗 */
 function resolveTask(sim: Simulation, targetId: string): WorkTaskId {
   const spot = sim.maintenanceSpots.get(targetId);
   if (spot !== undefined) {
     return spot.kind === 'litter' ? 'clean' : 'repair';
+  }
+  const node = sim.resourceNodes.get(targetId);
+  if (node !== undefined) {
+    if (node.charges === 0) {
+      throw new Error('该节点已采完,等待重生后再来');
+    }
+    return Object.values(GATHER_TASKS).find((def) => def.nodeKind === node.kind)!.id;
   }
   const target = sim.characters.get(targetId);
   if (target !== undefined) {
@@ -84,7 +107,28 @@ function resolveTask(sim: Simulation, targetId: string): WorkTaskId {
   throw new Error(`工单目标不存在: ${targetId}`);
 }
 
-/** 作业站位:杂物站维护点格(不阻塞通行);围栏/幽灵站目标四邻可行走格 */
+/** 工单类别查表:采集两岗走 GATHER_TASKS,维护三岗走 MAINTENANCE_TASKS */
+function taskCategory(task: WorkTaskId): JobCategoryId {
+  return isGatherTask(task)
+    ? GATHER_TASKS[task].category
+    : MAINTENANCE_TASKS[task].category;
+}
+
+/** 采集接单背包预检:按最坏产出总体积校验(附带概率产出按必得计) */
+function ensureBackpackRoomForYields(character: WorldCharacter, task: GatherTaskId): void {
+  const worst = GATHER_TASKS[task].yields.reduce(
+    (sum, y) => sum + y.count * (getItem(y.itemId)?.volume ?? 0),
+    0,
+  );
+  const used = inventoryVolume(character.backpack);
+  if (used + worst > BALANCE.BACKPACK_VOLUME_LIMIT) {
+    throw new Error(
+      `${character.name} 背包放不下产出(需 ${worst} 格,余 ${BALANCE.BACKPACK_VOLUME_LIMIT - used}),先吃点或回家存冰箱`,
+    );
+  }
+}
+
+/** 作业站位:杂物站维护点格(不阻塞通行);围栏/幽灵/资源节点站目标四邻可行走格 */
 function standTileFor(
   sim: Simulation,
   character: WorldCharacter,
@@ -98,7 +142,9 @@ function standTileFor(
   const center =
     task === 'repair'
       ? sim.maintenanceSpots.get(targetId)!
-      : sim.characters.get(targetId)!;
+      : isGatherTask(task)
+        ? sim.resourceNodes.get(targetId)!
+        : sim.characters.get(targetId)!;
   const neighbors: Point[] = [
     { x: center.x - 1, y: center.y },
     { x: center.x + 1, y: center.y },

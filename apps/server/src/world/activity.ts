@@ -6,6 +6,7 @@ import type {
 } from '@sims/shared';
 import {
   BASIC_ACTIVITY_IDS,
+  GATHER_TASKS,
   JOB_CATEGORIES,
   MAINTENANCE_TASKS,
   furnitureLabel,
@@ -60,9 +61,9 @@ export function startActivity(
   if (definition === null) {
     throw new Error(`未知活动: ${activityId}`);
   }
-  // 维护工单三岗(M-G.5)无场所锚点,必须经 work_task 接单(寻路+按单结算)
-  if (activityId in MAINTENANCE_TASKS) {
-    throw new Error(`${definition.name} 为维护工单,须经 work_task 接单`);
+  // 维护三岗(M-G.5)与采集两岗(M-G.6)无场所锚点,必须经 work_task 接单(寻路+按单结算)
+  if (activityId in MAINTENANCE_TASKS || activityId in GATHER_TASKS) {
+    throw new Error(`${definition.name} 为工单岗位,须经 work_task 接单`);
   }
   const character = sim.character(characterId);
   ensureAlive(character);

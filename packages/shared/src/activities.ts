@@ -21,6 +21,10 @@ export const ACTIVITY_IDS = [
   'clean',
   'repair',
   'rescue',
+  'gather_berry',
+  'scavenge',
+  'craft_berry_pie',
+  'craft_repair_kit',
 ] as const;
 
 export type ActivityId = (typeof ACTIVITY_IDS)[number];
@@ -155,6 +159,24 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     durationMinutes: 30,
     effects: { energy: -0.15, happiness: -0.05, coins: 0 },
     category: 'medical',
+  },
+  // 采集两岗(M-G.6,design/09 §2/numerical §5.4):无场所锚点,经 work_task
+  // 接单寻路至资源节点;无工资以物代薪(产出入背包),直发 start_activity 拒绝
+  {
+    id: 'gather_berry',
+    name: '采集浆果',
+    placeIds: [],
+    durationMinutes: 20,
+    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    category: 'gather',
+  },
+  {
+    id: 'scavenge',
+    name: '拾荒',
+    placeIds: [],
+    durationMinutes: 15,
+    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    category: 'gather',
   },
 ];
 

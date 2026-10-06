@@ -1,5 +1,6 @@
 import type { WorldEvent } from './events.js';
 import type { MaintenanceSpot } from './maintenance.js';
+import type { ResourceNode } from './production.js';
 import type { SocialRelationView, TraitVector } from './social.js';
 
 /**
@@ -80,6 +81,8 @@ export interface WorldSnapshotMessage {
   socials: SocialRelationView[];
   /** 世界维护点全量(M-G.5 损耗系统):web diff 渲染 */
   maintenance: MaintenanceSpot[];
+  /** 资源节点全量(M-G.6 生产系统):charges=null 无限/0 枯竭,web diff 渲染 */
+  resources: ResourceNode[];
 }
 
 /** world.event 消息封装:事件本体即 shared WorldEvent */

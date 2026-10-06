@@ -20,6 +20,8 @@ export const FURNITURE_KINDS = [
   'tv',
   'wardrobe',
   'bench',
+  'stove',
+  'workbench',
 ] as const;
 
 export type FurnitureKind = (typeof FURNITURE_KINDS)[number];
@@ -49,6 +51,8 @@ export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
   tv: '电视',
   wardrobe: '衣柜',
   bench: '长椅',
+  stove: '灶台',
+  workbench: '木工台',
 };
 
 /**
