@@ -200,8 +200,12 @@ export function useGoAndDo(
   useEffect(() => {
     if (pending === null || character === null || snapshot === null || map === null) return;
     if (character.activity !== null) {
-      pendingArrivalRef.current = false;
-      setPending(null);
+      // pending 目标活动已开始即完成接续;其余活动(如睡觉尚未被 move_to 打断)保留
+      // pending——server 处理 move_to 会打断旧活动,提前清空会导致到达后无人接续
+      if (character.activity.activityId === pending.id) {
+        pendingArrivalRef.current = false;
+        setPending(null);
+      }
       return;
     }
     if (character.pathRemaining > 0) {
