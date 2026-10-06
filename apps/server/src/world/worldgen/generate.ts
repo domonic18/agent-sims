@@ -17,6 +17,7 @@ import {
   FLOOR_TILE_POOL,
   GROWTH_QUOTA,
   PLACE_BLUEPRINTS,
+  SURVIVAL_QUOTA,
   WALL_TILE_POOL,
   type FurnitureSlot,
   type PlaceKind,
@@ -73,9 +74,6 @@ export function generateTownMap(input: WorldgenInput): WorldgenResult {
         checks: { connectivity: true, anchorsComplete: true, fallback: true },
       },
     };
-  }
-  if (input.gameType === 'survival') {
-    // 占位:生存规则随 M-S 落地,当前按 growth 生成(design/06 §4)
   }
   // 偶发布局可能围死使用格:确定性整图重试(attempt 入种子派生,保持纯函数);
   // 连续失败才兜底回内置固定地图(世界可用性优先)
@@ -137,7 +135,9 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   for (const path of paths) reserve(path);
   const counters = new Map<PlaceKind, number>();
   let pond: BlockedRect | null = null;
-  for (const quota of GROWTH_QUOTA) {
+  // survival 模式换末日配额(场所末日化重配),growth 保持原配额
+  const QUOTA = input.gameType === 'survival' ? SURVIVAL_QUOTA : GROWTH_QUOTA;
+  for (const quota of QUOTA) {
     const count = densityIndex === 0 ? quota.count[0] : rng.int(quota.count[0], quota.count[1]);
     const zone = zones[quota.zone];
     for (let n = 0; n < count; n += 1) {

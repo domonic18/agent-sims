@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   DEFAULT_WORLD_RULES,
+  GAME_TYPES,
   GENDERS,
   TRAIT_KEYS,
   WORLD_CHARACTER_LIMITS,
@@ -55,7 +56,7 @@ const worldgenSchema = z.object({
     .string()
     .regex(/^[0-9]{1,10}$/, '种子须为 1~10 位数字(同数字复现同图)')
     .optional(),
-  gameType: z.literal('growth'),
+  gameType: z.enum(GAME_TYPES),
   params: z.object({
     size: z.enum(WORLDGEN_SIZES),
     density: z.enum(WORLDGEN_DENSITIES),

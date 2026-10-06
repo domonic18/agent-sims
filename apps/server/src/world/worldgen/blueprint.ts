@@ -34,7 +34,10 @@ export type PlaceKind =
   /** 户外开放场所:主题道具池布置 */
   | 'plaza'
   | 'beach'
-  | 'camping';
+  | 'camping'
+  /** 末日生存(survival 模式):僵尸出没墓地/废墟区(区域标记,僵尸实体随 M-S) */
+  | 'graveyard'
+  | 'ruins';
 
 export type Zone = 'nw' | 'ne' | 'sw' | 'se';
 
@@ -279,6 +282,38 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'camping-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'camping', maxTiles: 1 }, chance: 0.4 },
     ],
   },
+  graveyard: {
+    name: '僵尸墓地',
+    size: [[12, 9], [14, 10]],
+    requiredAnchors: [],
+    open: true,
+    furniture: [
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 1 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.9 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.8 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.7 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.6 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.5 },
+      { kind: 'grave-prop', w: 2, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 2 }, chance: 0.7 },
+      { kind: 'grave-prop', w: 2, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 2 }, chance: 0.5 },
+      { kind: 'grave-prop', w: 2, h: 2, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 4 }, chance: 0.6 },
+    ],
+  },
+  ruins: {
+    name: '废墟',
+    size: [[12, 9], [14, 10]],
+    requiredAnchors: [],
+    open: true,
+    furniture: [
+      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.9 },
+      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.7 },
+      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.5 },
+      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.8 },
+      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.6 },
+      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.4 },
+      { kind: 'ruin-prop', w: 2, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 4 }, chance: 0.7 },
+    ],
+  },
 };
 
 /** growth 配额:各分区场所清单(数量区间由密度参数在生成器内定;
@@ -304,6 +339,34 @@ export const GROWTH_QUOTA: ReadonlyArray<{
   { kind: 'beach', zone: 'se', count: [0, 1], essential: false },
   { kind: 'plaza', zone: 'se', count: [0, 1], essential: false },
   { kind: 'camping', zone: 'sw', count: [0, 1], essential: false },
+];
+
+/**
+ * 末日生存模式配额(survival gameType):场所末日化重配——
+ * 公寓减量/幸存者营地必出/僵尸墓地+废墟必出(区域标记,僵尸实体随 M-S)/
+ * 医疗与补给点保留,其余生活设施按空间可选。
+ */
+export const SURVIVAL_QUOTA: ReadonlyArray<{
+  kind: PlaceKind;
+  zone: Zone;
+  count: [number, number];
+  essential: boolean;
+}> = [
+  { kind: 'home', zone: 'sw', count: [2, 3], essential: true },
+  { kind: 'camping', zone: 'sw', count: [1, 1], essential: true },
+  { kind: 'graveyard', zone: 'nw', count: [1, 2], essential: true },
+  { kind: 'ruins', zone: 'ne', count: [1, 2], essential: true },
+  { kind: 'clinic', zone: 'ne', count: [1, 1], essential: true },
+  { kind: 'shop', zone: 'ne', count: [1, 1], essential: true },
+  { kind: 'restaurant', zone: 'ne', count: [0, 1], essential: false },
+  { kind: 'park', zone: 'se', count: [0, 1], essential: false },
+  { kind: 'library', zone: 'nw', count: [0, 1], essential: false },
+  { kind: 'office', zone: 'nw', count: [0, 1], essential: false },
+  { kind: 'school', zone: 'nw', count: [0, 1], essential: false },
+  { kind: 'hotel', zone: 'nw', count: [0, 1], essential: false },
+  { kind: 'cafe', zone: 'ne', count: [0, 1], essential: false },
+  { kind: 'beach', zone: 'se', count: [0, 1], essential: false },
+  { kind: 'plaza', zone: 'se', count: [0, 1], essential: false },
 ];
 
 /** 内景地板/墙体 tile 池(与素材库 tile slug 对应) */
