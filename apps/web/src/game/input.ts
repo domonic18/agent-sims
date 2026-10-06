@@ -43,7 +43,9 @@ export function handleMapClick(
       world.y >= view.node.y - 28 &&
       world.y <= view.node.y + 8;
     if (hit) {
-      useWorldStore.getState().selectCharacter(id);
+      const store = useWorldStore.getState();
+      store.selectCharacter(id);
+      store.setCameraMode('follow'); // 概览/自由态点角色=选中即回跟随
       return;
     }
   }

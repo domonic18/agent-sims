@@ -9,8 +9,8 @@ import type {
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 
-/** 相机模式(UI-1): follow=2x 跟随选中角色,overview=缩到最小看全图 */
-export type CameraMode = 'follow' | 'overview';
+/** 相机模式(UI-1): follow=跟随选中角色,overview=缩到最小看全图,free=拖拽平移+滚轮缩放不跟随 */
+export type CameraMode = 'follow' | 'overview' | 'free';
 
 /** 带递增序号的事件条目:消费者按 seq 增量拉取,同 tick 多事件不丢 */
 export interface SequencedEvent {

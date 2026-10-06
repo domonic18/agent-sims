@@ -21,6 +21,8 @@ import { showSpeechBubble } from './speech';
 const ZOOM_DEFAULT = 2;
 const ZOOM_MIN = 1;
 const ZOOM_MAX = 4;
+/** 按压位移超过该像素数即判定为拖拽平移(自由视角),否则 pointerup 按点击处理 */
+const DRAG_THRESHOLD_PX = 6;
 
 /**
  * 世界渲染场景编排:地形/内景/灯光/喷泉/角色视图各模块装配
@@ -52,6 +54,10 @@ export class WorldScene extends Phaser.Scene {
   private _interactive = true;
   /** 已消费的事件序号(事件队列增量拉取,同 tick 多事件不丢) */
   private _lastEventSeq = 0;
+  /** 拖拽平移起点(自由视角),null=未按住 */
+  private _dragStart: { px: number; py: number; scrollX: number; scrollY: number } | null = null;
+  /** 本次按压是否已构成拖拽(超阈值):是则 pointerup 不再下发地图点击 */
+  private _dragMoved = false;
 
   constructor() {
     super('world');
@@ -119,9 +125,39 @@ export class WorldScene extends Phaser.Scene {
     cam.setBounds(0, 0, map.width * TILE, map.height * TILE);
     cam.setZoom(ZOOM_DEFAULT);
     this._interactive = this.registry.get('interactive') !== false;
-    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) =>
-      handleMapClick(this, pointer, this._views, this._interactive, map),
-    );
+    // 点击 vs 拖拽:UI-1 三态相机。按住位移超阈值=拖拽平移(自动进自由视角),
+    // 否则 pointerup 按地图点击处理(点击延后到抬起,避免拖拽误发移动/选中)
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this._dragStart = { px: pointer.x, py: pointer.y, scrollX: cam.scrollX, scrollY: cam.scrollY };
+      this._dragMoved = false;
+    });
+    this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+      const start = this._dragStart;
+      if (start === null) return;
+      if (
+        !this._dragMoved &&
+        Math.hypot(pointer.x - start.px, pointer.y - start.py) < DRAG_THRESHOLD_PX
+      ) {
+        return;
+      }
+      this._dragMoved = true;
+      const store = useWorldStore.getState();
+      if (store.cameraMode !== 'free') {
+        store.setCameraMode('free');
+        cam.removeBounds(); // 跟随态边界还在,先解除再平移(概览态已解除)
+      }
+      cam.setScroll(
+        start.scrollX - (pointer.x - start.px) / cam.zoom,
+        start.scrollY - (pointer.y - start.py) / cam.zoom,
+      );
+      this._clampFreeScroll();
+    });
+    this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      const start = this._dragStart;
+      this._dragStart = null;
+      if (start === null || this._dragMoved) return;
+      handleMapClick(this, pointer, this._views, this._interactive, map);
+    });
     if (this._interactive) {
       this._keyboard = new KeyboardController(this, map);
     }
@@ -133,24 +169,28 @@ export class WorldScene extends Phaser.Scene {
         _dx: number,
         dy: number,
       ) => {
-        const anchor = cam.getWorldPoint(pointer.x, pointer.y);
         const factor = dy > 0 ? 0.85 : 1.18;
         const minZoom = this._minZoom();
         const store = useWorldStore.getState();
-        if (store.cameraMode === 'overview' && dy < 0) {
-          // 概览态滚轮放大 = 一键回到跟随(由 _updateCamera 跳到默认倍率)
-          store.setCameraMode('follow');
-          return;
-        }
-        cam.setZoom(Phaser.Math.Clamp(cam.zoom * factor, minZoom, ZOOM_MAX));
-        if (cam.zoom <= minZoom + 0.001) {
+        const nextZoom = Phaser.Math.Clamp(cam.zoom * factor, minZoom, ZOOM_MAX);
+        if (nextZoom <= minZoom + 0.001) {
           cam.removeBounds(); // 同 overview:解除边界负 scroll 才能真居中
           cam.centerOn((map.width * TILE) / 2, (map.height * TILE) / 2);
           if (store.cameraMode !== 'overview') store.setCameraMode('overview');
-        } else {
-          // 保持指针下的世界坐标不动(围绕指针缩放)
-          cam.setScroll(anchor.x - pointer.x / cam.zoom, anchor.y - pointer.y / cam.zoom);
+          return;
         }
+        if (store.cameraMode === 'follow') {
+          cam.setZoom(nextZoom); // 跟随中滚轮=调倍率,不打断跟随
+          return;
+        }
+        // 概览/自由态滚轮=围绕指针缩放(自由视角);概览放大即进入自由态细看
+        if (store.cameraMode !== 'free') store.setCameraMode('free');
+        const anchor = cam.getWorldPoint(pointer.x, pointer.y);
+        cam.removeBounds();
+        cam.setZoom(nextZoom);
+        // 保持指针下的世界坐标不动(围绕指针缩放)
+        cam.setScroll(anchor.x - pointer.x / nextZoom, anchor.y - pointer.y / nextZoom);
+        this._clampFreeScroll();
       },
     );
     // /lab 调试钩子: Playwright 走查直接读改相机(定位截图/输入诊断)
@@ -205,7 +245,7 @@ export class WorldScene extends Phaser.Scene {
     }
   }
 
-  /** 相机模式驱动(UI-1): follow=跟随选中角色(切换瞬间跳回默认倍率),overview=缩到下限看全图 */
+  /** 相机模式驱动(UI-1): follow=跟随选中角色(切换瞬间跳回默认倍率),overview=缩到下限看全图,free=拖拽/滚轮全手动 */
   private _updateCamera(selectedId: string | null, cameraMode: CameraMode): void {
     if (this._map === null) return;
     const cam = this.cameras.main;
@@ -217,6 +257,14 @@ export class WorldScene extends Phaser.Scene {
       cam.setZoom(minZoom);
       cam.centerOn((this._map.width * TILE) / 2, (this._map.height * TILE) / 2);
       this._appliedMode = 'overview';
+      this._followId = null;
+      return;
+    }
+    if (cameraMode === 'free') {
+      // 自由视角:缩放/平移全由指针事件控制,这里只停跟随与解除边界,不动 zoom/scroll
+      cam.removeBounds();
+      cam.stopFollow();
+      this._appliedMode = 'free';
       this._followId = null;
       return;
     }
@@ -236,6 +284,20 @@ export class WorldScene extends Phaser.Scene {
       cam.startFollow(view.node, true, 0.15, 0.15);
       this._followId = selectedId;
     }
+  }
+
+  /** 自由视角软钳制:视口小于地图时钳在图内,大于地图时允许负 scroll 让地图居中 */
+  private _clampFreeScroll(): void {
+    if (this._map === null) return;
+    const cam = this.cameras.main;
+    const clampAxis = (mapPx: number, viewPx: number, scroll: number): number => {
+      const over = mapPx - viewPx;
+      return over >= 0 ? Phaser.Math.Clamp(scroll, 0, over) : over / 2;
+    };
+    cam.setScroll(
+      clampAxis(this._map.width * TILE, cam.width / cam.zoom, cam.scrollX),
+      clampAxis(this._map.height * TILE, cam.height / cam.zoom, cam.scrollY),
+    );
   }
 
   /** 缩放下限: 视口恰好容下全图(小窗时允许 <1x,保证 overview 始终能看到完整地图) */
