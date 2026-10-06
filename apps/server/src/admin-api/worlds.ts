@@ -271,6 +271,8 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       gameType: parsed.data.gameType,
       params: parsed.data.params,
       manifestVersion: readManifestVersion(),
+      // 与创建路径同参:themePick 槽位影响 rng 消耗流,缺池会致同种子预览/成图分叉
+      assetsByKind: loadAssetsByKind(),
     });
     const samples = generateSpawnSpots(result.map, 3).map((spot) => [spot.x, spot.y] as const);
     return await reply.send({
