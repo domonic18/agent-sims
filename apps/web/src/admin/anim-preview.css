@@ -1,0 +1,60 @@
+/* 动画演示器(admin 动画调试页): 帧条带 steps() 横移即逐帧播放,帧带为静态逐帧缩略 */
+
+@keyframes anim-preview-slide {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.anim-preview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.anim-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+}
+
+.anim-cell-label {
+  font-size: 12px;
+  color: #57606a;
+  font-family: monospace;
+}
+
+.anim-cell-label b {
+  color: #1f2328;
+}
+
+.anim-preview-ribbon {
+  display: flex;
+  gap: 4px;
+}
+
+.anim-preview-ribbon figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.anim-preview-ribbon figcaption {
+  font-size: 10px;
+  color: #8b949e;
+  font-family: monospace;
+}
+
+.anim-preview-viewport {
+  overflow: hidden;
+  border: 1px dashed #d0d7de;
+}

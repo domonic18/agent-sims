@@ -18,6 +18,7 @@ import {
   FileTextOutlined,
   GlobalOutlined,
   PictureOutlined,
+  PlayCircleOutlined,
   LogoutOutlined,
   RobotOutlined,
   SettingOutlined,
@@ -32,6 +33,7 @@ import { TokenUsagePanel } from './TokenUsagePanel';
 import { AssetsPanel } from './AssetsPanel';
 import { LogsPanel } from './LogsPanel';
 import { WorldPanel } from './WorldPanel';
+import { AnimPreviewPanel } from './AnimPreviewPanel';
 import { SettingsPanel } from './SettingsPanel';
 
 function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
@@ -83,7 +85,7 @@ function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   );
 }
 
-type AdminTab = 'world' | 'models' | 'usage' | 'assets' | 'logs' | 'settings';
+type AdminTab = 'world' | 'models' | 'usage' | 'assets' | 'anim' | 'logs' | 'settings';
 
 const NAV_ITEMS: MenuProps['items'] = [
   {
@@ -94,6 +96,7 @@ const NAV_ITEMS: MenuProps['items'] = [
       { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
+      { key: 'anim', icon: <PlayCircleOutlined />, label: '动画演示器' },
       { key: 'logs', icon: <FileTextOutlined />, label: '运行日志' },
     ],
   },
@@ -203,6 +206,8 @@ function AdminShell() {
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           {tab === 'world' ? (
             <WorldPanel />
+          ) : tab === 'anim' ? (
+            <AnimPreviewPanel />
           ) : tab === 'usage' ? (
             <TokenUsagePanel />
           ) : tab === 'assets' ? (
