@@ -126,6 +126,15 @@ describe('全量素材驱动的场所扩展(重规划)', () => {
     'theme/beach@1': ['beach-shell-a', 'beach-bucket-a'],
     'theme/beach@4': ['beach-towel-a', 'beach-castle-a'],
     'theme/camping@1': ['camping-lantern-a', 'camping-backpack-a'],
+    ...Object.fromEntries(
+      ['kitchen', 'grocery-store', 'clothing-store', 'japanese-interiors', 'museum'].map((t) => [
+        `theme/${t}@2`,
+        [`${t}-tall-a`, `${t}-tall-b`],
+      ]),
+    ),
+    ...Object.fromEntries(
+      ['kitchen', 'grocery-store', 'museum'].map((t) => [`theme/${t}@1`, [`${t}-small-a`]]),
+    ),
   };
 
   const results = Array.from({ length: 50 }, (_, i) =>
@@ -187,6 +196,31 @@ describe('全量素材驱动的场所扩展(重规划)', () => {
         }
       }
     }
+  });
+
+  it('室内主题角挂点: 六类场所 themePick 槽位仅出本主题道具(50 种子并集非空)', () => {
+    // 场所 kind → 挂点主题道具前缀(plant 等 kind 池槽位不受约束;shop 双主题)
+    const hookTheme: Record<string, string[]> = {
+      restaurant: ['kitchen'],
+      cafe: ['kitchen'],
+      shop: ['grocery-store', 'clothing-store'],
+      library: ['museum'],
+      school: ['museum'],
+      hotel: ['japanese-interiors'],
+    };
+    const seenPlaces = new Set<string>();
+    for (const result of results) {
+      for (const place of result.map.places) {
+        const themes = hookTheme[place.id.split('-')[0]!];
+        if (themes === undefined) continue;
+        for (const f of place.furniture ?? []) {
+          if (!f.kind.endsWith('-prop')) continue;
+          expect(themes.some((t) => (f.sprite ?? '').includes(t))).toBe(true);
+          seenPlaces.add(place.id.split('-')[0]!);
+        }
+      }
+    }
+    expect(seenPlaces.size).toBeGreaterThanOrEqual(4);
   });
 
   it('themePick 池空的装饰槽不发出家具(kind 无同名纹理,必渲染缺素材)', () => {

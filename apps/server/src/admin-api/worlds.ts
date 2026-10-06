@@ -107,7 +107,7 @@ function toView(row: typeof worlds.$inferSelect): WorldView {
 /**
  * 发布产物 manifest → worldgen 素材池(素材库随机选材):
  * - {domain}/{kind}:域分键家具池(室内家具与户外道具互不混)
- * - theme/{slug}@{maxTiles}:主题道具池(户外开放场所装饰,按占地上限预过滤)
+ * - theme/{slug}@{maxTiles}:主题道具池(户外开放场所与室内主题角装饰,按占地上限预过滤)
  */
 function loadAssetsByKind(): Record<string, string[]> | undefined {
   try {
@@ -127,7 +127,7 @@ function loadAssetsByKind(): Record<string, string[]> | undefined {
     for (const asset of raw.assets ?? []) {
       (pool[`${asset.domain}/${asset.categorySlug}`] ??= []).push(asset.slug);
       if (
-        asset.domain === 'outdoor' &&
+        (asset.domain === 'outdoor' || asset.domain === 'indoor') &&
         asset.themeSlug !== undefined &&
         !asset.slug.includes('modular') &&
         !asset.slug.includes('-line-')

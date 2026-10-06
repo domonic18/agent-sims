@@ -51,7 +51,7 @@ export interface FurnitureSlot {
   /** 素材池域(缺省 indoor;户外道具池传 outdoor) */
   domain?: 'indoor' | 'outdoor';
   /**
-   * 主题道具池(户外开放场所装饰):从该主题 active 素材按占地上限随机;
+   * 主题道具池(户外开放场所与室内主题角装饰):从该主题 active 素材按占地上限随机;
    * 声明后 kind 仅作标签,素材从 theme/{slug}@{maxTiles} 池挑选
    */
   themePick?: { theme: string; maxTiles?: number };
@@ -93,6 +93,7 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'desk', w: 2, h: 1, anchor: 'center', activityId: 'study' },
       { kind: 'desk', w: 2, h: 1, anchor: 'center', activityId: 'librarian' },
       { kind: 'sofa', w: 2, h: 1, anchor: 'south', activityId: 'rest' },
+      { kind: 'museum-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'museum', maxTiles: 2 }, chance: 0.5 },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.6 },
     ],
   },
@@ -119,6 +120,9 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'fridge', w: 1, h: 1, anchor: 'north', chance: 1 },
       { kind: 'shelf', w: 1, h: 3, anchor: 'west', chance: 1 },
       { kind: 'shelf', w: 1, h: 3, anchor: 'east', chance: 1 },
+      { kind: 'grocery-prop', w: 1, h: 1, anchor: 'west', themePick: { theme: 'grocery-store', maxTiles: 2 }, chance: 0.8 },
+      { kind: 'grocery-prop', w: 1, h: 1, anchor: 'east', themePick: { theme: 'grocery-store', maxTiles: 1 }, chance: 0.6 },
+      { kind: 'clothing-prop', w: 1, h: 1, anchor: 'east', themePick: { theme: 'clothing-store', maxTiles: 2 }, chance: 0.6 },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.5 },
     ],
   },
@@ -131,6 +135,8 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'tv', w: 2, h: 1, anchor: 'east', chance: 1 },
       { kind: 'table', w: 2, h: 1, anchor: 'center', activityId: 'meal' },
       { kind: 'table', w: 2, h: 1, anchor: 'center', activityId: 'meal' },
+      { kind: 'kitchen-prop', w: 1, h: 1, anchor: 'west', themePick: { theme: 'kitchen', maxTiles: 2 }, chance: 0.8 },
+      { kind: 'kitchen-prop', w: 1, h: 1, anchor: 'west', themePick: { theme: 'kitchen', maxTiles: 1 }, chance: 0.6 },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.5 },
     ],
   },
@@ -168,6 +174,7 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'table', w: 2, h: 1, anchor: 'center', activityId: 'meal' },
       { kind: 'sofa', w: 2, h: 1, anchor: 'south', activityId: 'rest', chance: 0.8 },
       { kind: 'tv', w: 2, h: 1, anchor: 'east', chance: 0.7 },
+      { kind: 'kitchen-prop', w: 1, h: 1, anchor: 'west', themePick: { theme: 'kitchen', maxTiles: 2 }, chance: 0.6 },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.6 },
     ],
   },
@@ -183,6 +190,7 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'bookshelf', w: 3, h: 1, anchor: 'north', chance: 0.7 },
       { kind: 'bookshelf', w: 2, h: 1, anchor: 'east', chance: 0.9 },
       { kind: 'counter', w: 2, h: 1, anchor: 'west', chance: 0.6 },
+      { kind: 'museum-prop', w: 1, h: 1, anchor: 'east', themePick: { theme: 'museum', maxTiles: 2 }, chance: 0.5 },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.6 },
     ],
   },
@@ -198,6 +206,7 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'counter', w: 2, h: 1, anchor: 'west', chance: 0.8 },
       { kind: 'sofa', w: 2, h: 1, anchor: 'south', activityId: 'rest', chance: 0.8 },
       { kind: 'table', w: 2, h: 1, anchor: 'center', chance: 0.7 },
+      { kind: 'japanese-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'japanese-interiors', maxTiles: 2 }, chance: 0.6 },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.7 },
     ],
   },
