@@ -54,7 +54,7 @@ describe('buildImportPlan 首批清单', () => {
     expect(bed.gridW).toBe(2);
     expect(bed.gridH).toBe(3);
     const char = plan.find((i) => i.slug === 'char-green')!;
-    expect(char.anim?.groups).toEqual({ walk: 0, idle: 4, lie: 8 });
+    expect(char.anim?.groups).toEqual({ walk: 0, idle: 4, lie: 8, sit: 12 });
     expect(char.anchor).toBe('char-082');
   });
 

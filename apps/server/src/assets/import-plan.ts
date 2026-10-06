@@ -70,7 +70,7 @@ const CHARACTERS: ReadonlyArray<readonly [string, string]> = [
   ['white', '居民·白衣'],
   ['blue', '居民·蓝衣'],
   // LimeZu Legacy 命名角色(源:Modern Interiors 完整包 Single_Characters_Legacy/32x32,
-  // 经 scripts/extract-legacy-characters.py 裁切重排为 288×384 契约表)
+  // 经 scripts/assets/crop_characters.py 裁切重排为 288×512 契约表,含 sit 组)
   ['adam', '居民·亚当'],
   ['alex', '居民·亚历克斯'],
   ['amelia', '居民·艾米莉亚'],
@@ -91,14 +91,14 @@ const CHARACTERS: ReadonlyArray<readonly [string, string]> = [
   ['witch', '女巫'],
   ['zombie', '僵尸'],
 ];
-/** 角色表帧契约(与 apps/web/src/game/assets.ts CHARACTER 一致,M-L.3 对接后单源化) */
+/** 角色表帧契约(与 apps/web/src/game/assets.ts CHARACTER 一致,M-L.3 对接后单源化;M-G.3 增 sit 组) */
 const CHARACTER_ANIM: AssetAnimConfig = {
   frameWidth: 32,
   frameHeight: 32,
   columns: 9,
-  groups: { walk: 0, idle: 4, lie: 8 },
-  framesPerGroup: { walk: 6, idle: 2, lie: 2 },
-  fps: { walk: 8, idle: 3, lie: 2 },
+  groups: { walk: 0, idle: 4, lie: 8, sit: 12 },
+  framesPerGroup: { walk: 6, idle: 2, lie: 2, sit: 2 },
+  fps: { walk: 8, idle: 3, lie: 2, sit: 2 },
 };
 /** 已确认 Singles 变体(design/05 风险节:首批控制校验成本,只导确认件) */
 const SINGLE_VARIANTS: ReadonlyArray<readonly [string, string, string]> = [
