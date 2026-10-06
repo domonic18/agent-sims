@@ -17,6 +17,7 @@ export * from './shop.js';
 export * from './social.js';
 export * from './sync.js';
 export * from './sys-config.js';
+export * from './work-tasks.js';
 export * from './world.js';
 export * from './world-admin.js';
 export * from './world-presets.js';

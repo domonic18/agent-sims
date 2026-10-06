@@ -7,6 +7,8 @@ import {
   MAINTENANCE_TASKS,
   REVIVE_WINDOW_MINUTES,
   SOCIAL_PRESENCE_DISTANCE,
+  WORK_TARGETS,
+  countWorkTargets,
   findActivityAnchorAt,
   getActivityDefinition,
   placeIdMatches,
@@ -276,20 +278,8 @@ export function ActivitySection({
       defs: ACTIVITY_DEFINITIONS.filter((def) => def.category === id),
     }))
     .filter((group) => group.defs.length > 0);
-  /** 同岗目标计数(工单行标签):clean/repair 查 maintenance,gather 查资源节点,rescue 查窗口内幽灵 */
-  const workTargetCount = (task: WorkTaskId): number => {
-    if (task === 'rescue') {
-      return snapshot.characters.filter((c) => !c.alive && c.diedAtGameMinutes !== null).length;
-    }
-    if (task === 'gather_berry') {
-      return snapshot.resources.filter((n) => n.kind === 'berry_bush' && (n.charges ?? 0) > 0).length;
-    }
-    if (task === 'scavenge') {
-      return snapshot.resources.filter((n) => n.kind === 'junk_pile').length;
-    }
-    const kind = task === 'clean' ? 'litter' : 'fence_damage';
-    return snapshot.maintenance.filter((spot) => spot.kind === kind).length;
-  };
+  /** 同岗目标计数(工单行标签;TD-1 shared 注册表同源) */
+  const workTargetCount = (task: WorkTaskId): number => countWorkTargets(task, snapshot);
   // 工单五岗(M-G.5 维护 + M-G.6 采集):目标在快照上(非地图锚点),接单自带寻路,行内带连续作业开关
   const renderWorkRow = (def: ActivityDefinition, locked: boolean) => {
     const task = def.id as WorkTaskId;
@@ -299,12 +289,7 @@ export function ActivitySection({
       ? GATHER_TASKS[task].durationMinutes
       : MAINTENANCE_TASKS[task].durationMinutes;
     const reward = gather ? '以物代薪' : `+${MAINTENANCE_TASKS[task].pay}币/单`;
-    const label =
-      task === 'gather_berry' ? `浆果丛 ${count} 处`
-      : task === 'scavenge' ? `拾荒堆 ${count} 处`
-      : task === 'clean' ? `杂物 ${count} 处`
-      : task === 'repair' ? `破损 ${count} 处`
-      : `待救 ${count} 人`;
+    const label = `${WORK_TARGETS[task].noun} ${count} ${WORK_TARGETS[task].measure}`;
     return (
       <li key={def.id} id={`activity-row-${def.id}`}>
         <span>

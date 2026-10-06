@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   findActivityAnchorAt,
   getActivityDefinition,
+  nearestWorkTarget,
   placeIdMatches,
   type ActivityDefinition,
   type CraftRecipeId,
@@ -16,42 +17,6 @@ import { useWorldStore } from '../../store/worldStore';
 import { activityAnchors, findPlaceAt, findPlaceByRef, type CharacterView } from './place';
 
 export type RunIntent = (intent: Intent) => Promise<void>;
-
-/**
- * 最近同岗工单目标(M-G.5/M-G.6):clean→杂物点/repair→围栏破损/救治→窗口内幽灵/
- * 采集→资源节点(浆果丛只挑有存量,枯竭格不可接),按曼哈顿距离取最近;
- * 无候选返回 null(自动接单与按钮置灰共用)。
- */
-export function nearestWorkTarget(
-  task: WorkTaskId,
-  character: { x: number; y: number },
-  snapshot: WorldSnapshotMessage,
-): { targetId: string; distance: number } | null {
-  const candidates =
-    task === 'rescue'
-      ? snapshot.characters
-          .filter((c) => !c.alive && c.diedAtGameMinutes !== null)
-          .map((c) => ({ targetId: c.id, x: c.x, y: c.y }))
-      : task === 'gather_berry' || task === 'scavenge'
-        ? snapshot.resources
-            .filter(
-              (node) =>
-                node.kind === (task === 'gather_berry' ? 'berry_bush' : 'junk_pile') &&
-                (task === 'scavenge' || (node.charges ?? 0) > 0),
-            )
-            .map((node) => ({ targetId: node.id, x: node.x, y: node.y }))
-      : snapshot.maintenance
-          .filter((spot) => spot.kind === (task === 'clean' ? 'litter' : 'fence_damage'))
-          .map((spot) => ({ targetId: spot.id, x: spot.x, y: spot.y }));
-  let best: { targetId: string; distance: number } | null = null;
-  for (const candidate of candidates) {
-    const distance = Math.abs(candidate.x - character.x) + Math.abs(candidate.y - character.y);
-    if (best === null || distance < best.distance) {
-      best = { targetId: candidate.targetId, distance };
-    }
-  }
-  return best;
-}
 
 export interface GoAndDoPending {
   /** go-and-do 待办: 到达目标后自动接续(activity=开始活动 / buy=店内购入 / craft=到站制作) */

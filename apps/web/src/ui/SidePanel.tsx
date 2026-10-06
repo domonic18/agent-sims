@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { LOW_ENERGY_THRESHOLD, type WorkTaskId } from '@sims/shared';
+import { LOW_ENERGY_THRESHOLD, nearestWorkTarget, type WorkTaskId } from '@sims/shared';
 import { sendIntent } from '../net/socket';
 import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
@@ -17,7 +17,7 @@ import {
   ShopSection,
 } from './side-panel/shop';
 import { findPlaceAt } from './side-panel/place';
-import { nearestWorkTarget, useGoAndDo } from './side-panel/useGoAndDo';
+import { useGoAndDo } from './side-panel/useGoAndDo';
 import './side-panel.css';
 
 /** 面板分页: 行动(前往/活动/社交) · 物品(商店/背包/冰箱) · 资产(住房) */

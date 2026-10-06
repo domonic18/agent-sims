@@ -6,6 +6,7 @@ import {
   PROPERTY_DEFINITIONS,
   RECIPES,
   SHOP_ITEMS,
+  resourceNodeLabel,
   type CraftRecipeId,
   type Intent,
   type WorldSnapshotMessage,
@@ -308,7 +309,8 @@ function WorkTaskForm({
         ))}
         {nodes.map((node) => (
           <option key={node.id} value={node.id}>
-            {node.id}({node.kind === 'berry_bush' ? `浆果丛·存量${node.charges ?? 0}` : '拾荒堆'})
+            {node.id}({resourceNodeLabel(node.kind)}
+            {node.charges !== null ? `·存量${node.charges}` : ''})
           </option>
         ))}
         {ghosts.map((c) => (
