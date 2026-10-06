@@ -5,8 +5,10 @@ import { updateWorldSettings } from '../net/worldApi';
 import { useWorldStore } from '../store/worldStore';
 import { WorldCanvas } from '../game/WorldCanvas';
 import { WorldSettingsModal } from './WorldSettingsModal';
+import { Toasts } from './Toasts';
 import { CharacterHud } from './hud/CharacterHud';
 import { ActionBar } from './hud/ActionBar';
+import { LogDrawer } from './hud/LogDrawer';
 import { useGoAndDo } from './side-panel/useGoAndDo';
 import './game-page.css';
 import './world-settings.css';
@@ -151,6 +153,7 @@ export default function GamePage() {
 
       <div className="hud-topright">
         <span className={`hud-net ${status}`} title={STATUS_LABEL[status] ?? status} />
+        <LogDrawer />
         <button
           type="button"
           className="px-btn big"
@@ -172,6 +175,8 @@ export default function GamePage() {
       />
 
       {settingsOpen && <WorldSettingsModal onClose={() => void closeSettings()} />}
+
+      <Toasts />
     </main>
   );
 }

@@ -18,7 +18,7 @@ export interface SequencedEvent {
   event: WorldEvent;
 }
 
-const EVENT_QUEUE_MAX = 64;
+const EVENT_QUEUE_MAX = 128;
 
 /**
  * 世界状态仓:同步层(net/socket)写入,React HUD 与 Phaser 场景读取。
