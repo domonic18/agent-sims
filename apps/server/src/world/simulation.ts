@@ -4,6 +4,7 @@ import type {
   CharacterAutoRevivedEvent,
   CharacterDiedEvent,
   CharacterRevivedEvent,
+  CraftCompletedEvent,
   GatherTaskId,
   MaintenanceSpot,
   ResourceNode,
@@ -25,6 +26,7 @@ import {
   GATHER_TASKS,
   MAINTENANCE_TASKS,
   PROPERTY_IDS,
+  RECIPES,
   REVIVE_WINDOW_MINUTES,
   TOWN_MAP,
   getActivityDefinition,
@@ -45,6 +47,7 @@ import {
   type WorldCharacter,
 } from './character.js';
 import { EventBus } from './event-bus.js';
+import { requestCraft } from './craft.js';
 import { buyProperty, rentProperty } from './housing.js';
 import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
 import { stepMaintenance, type RandomFn } from './maintenance.js';
@@ -222,6 +225,11 @@ export class Simulation {
     return requestWorkTask(this, characterId, targetId);
   }
 
+  /** 配方制作(M-G.6):验料扣料并开始站点作业,完成产出/中断退料由结算分流 */
+  requestCraft(characterId: string, recipeId: string): WorldCharacter {
+    return requestCraft(this, characterId, recipeId);
+  }
+
   /** 重新规划到目标的路径(意图指令层校验后调用);移动打断进行中活动 */
   requestMoveTo(characterId: string, x: number, y: number): WorldCharacter {
     const character = this.character(characterId);
@@ -361,6 +369,9 @@ export class Simulation {
               if (result === 'completed' && definition.id === 'study') {
                 character.knowledge += 1;
               }
+              if (result === 'completed') {
+                this._completeCraft(character);
+              }
               finishActivity(
                 this,
                 character,
@@ -413,6 +424,26 @@ export class Simulation {
     if (task === 'rescue') {
       reviveCharacter(this, this.characters.get(targetId)!, 'rescue'); // 免扣复活
     } else {
+      if (task === 'repair') {
+        // 修补钉闭环(M-G.6):完成时刻再验(作业期间存入冰箱等转移→无薪中断)
+        const kit = character.backpack.repair_kit ?? 0;
+        if (kit < 1) {
+          const event: WorkTaskCancelledEvent = {
+            type: 'work_task.cancelled',
+            characterId: character.id,
+            targetId,
+            tick: this.tick,
+          };
+          this.events.emit(event);
+          finishActivity(this, character, 'interrupted');
+          return;
+        }
+        if (kit > 1) {
+          character.backpack.repair_kit = kit - 1;
+        } else {
+          delete character.backpack.repair_kit;
+        }
+      }
       this.maintenanceSpots.delete(targetId);
     }
     const pay = MAINTENANCE_TASKS[task].pay;
@@ -427,6 +458,24 @@ export class Simulation {
     };
     this.events.emit(event);
     finishActivity(this, character, 'completed');
+  }
+
+  /** 配方完成(M-G.6):产出入包+craft.completed;中断退料在 finishActivity 分流 */
+  private _completeCraft(character: WorldCharacter): void {
+    const recipeId = character.activity?.craftRecipeId;
+    if (recipeId === undefined) {
+      return;
+    }
+    for (const output of RECIPES[recipeId].outputs) {
+      character.backpack[output.itemId] = (character.backpack[output.itemId] ?? 0) + output.count;
+    }
+    const event: CraftCompletedEvent = {
+      type: 'craft.completed',
+      characterId: character.id,
+      recipeId,
+      tick: this.tick,
+    };
+    this.events.emit(event);
   }
 
   /** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭记次日重生 */

@@ -66,3 +66,47 @@ export const GATHER_TASKS: Record<GatherTaskId, GatherTaskDef> = {
 
 /** 浆果丛存量(design/09 §2):采 3 次枯竭,次日 00:00 回满;拾荒堆 charges=null 无限 */
 export const BUSH_MAX_CHARGES = 3;
+
+/**
+ * 配方制作(design/09 §3):key=制作活动 id,站点锚点家具(stove/workbench)
+ * 绑定同名活动;开始验料扣料,中断退料,完成产出入包(产出体积恒<输入)。
+ * 制作类别门槛随活动定义(craft_berry_pie→gather 3 班,craft_repair_kit→build 6 班)。
+ */
+export type CraftRecipeId = 'craft_berry_pie' | 'craft_repair_kit';
+
+export const CRAFT_RECIPE_IDS = ['craft_berry_pie', 'craft_repair_kit'] as const;
+
+export interface RecipeIO {
+  itemId: string;
+  count: number;
+}
+
+export interface RecipeDef {
+  id: CraftRecipeId;
+  name: string;
+  /** 站点家具 kind(活动锚点所在) */
+  stationKind: 'stove' | 'workbench';
+  inputs: RecipeIO[];
+  outputs: RecipeIO[];
+}
+
+export const RECIPES: Record<CraftRecipeId, RecipeDef> = {
+  craft_berry_pie: {
+    id: 'craft_berry_pie',
+    name: '浆果派',
+    stationKind: 'stove',
+    inputs: [{ itemId: 'berry', count: 3 }],
+    outputs: [{ itemId: 'berry_pie', count: 1 }],
+  },
+  craft_repair_kit: {
+    id: 'craft_repair_kit',
+    name: '修补钉',
+    stationKind: 'workbench',
+    inputs: [{ itemId: 'scrap', count: 2 }],
+    outputs: [{ itemId: 'repair_kit', count: 1 }],
+  },
+};
+
+export function getRecipe(id: string): RecipeDef | null {
+  return (RECIPES as Record<string, RecipeDef>)[id] ?? null;
+}

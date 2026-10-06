@@ -58,10 +58,11 @@ describe('work_task 维护工单(M-G.5)', () => {
     expect(mow.activity).toBeNull();
   });
 
-  it('修理单门槛与结算: 知识 6 班修围栏 30 分 +36 币', () => {
+  it('修理单门槛与结算: 知识 6 班持钉修围栏 30 分 +36 币扣钉 1(M-G.6)', () => {
     const { sim } = simWithFixtures();
     sim.maintenanceSpots.set('fence:4:26', { id: 'fence:4:26', kind: 'fence_damage', x: 4, y: 26, variant: 0 });
     sim.character('mow').knowledge = 6;
+    sim.character('mow').backpack = { repair_kit: 1 };
     const character = sim.requestWorkTask('mow', 'fence:4:26');
     expect(character.activity?.activityId).toBe('repair');
     expect(character.path.length).toBeGreaterThan(0); // 围栏格阻塞,站四邻
@@ -69,6 +70,7 @@ describe('work_task 维护工单(M-G.5)', () => {
     const mow = sim.character('mow');
     expect(sim.maintenanceSpots.has('fence:4:26')).toBe(false);
     expect(mow.coins).toBe(36);
+    expect(mow.backpack.repair_kit).toBeUndefined(); // 消耗品扣钉(M-G.6)
   });
 
   it('作业中 move_to 打断: 无薪,spot 保留,活动结束', () => {

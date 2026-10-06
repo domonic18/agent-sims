@@ -54,6 +54,10 @@ export function requestWorkTask(
       `${character.name} 知识不足: ${JOB_CATEGORIES[taskCategory(task)].label}类岗位需学习 ${required} 班(当前 ${character.knowledge})`,
     );
   }
+  // 修补钉闭环(M-G.6):修理岗消耗品,接单须持钉(无则提示去木工台制作)
+  if (task === 'repair' && (character.backpack.repair_kit ?? 0) < 1) {
+    throw new Error(`${character.name} 没有修补钉,先去木工台用废料制作再来修`);
+  }
   if (isGatherTask(task)) {
     ensureBackpackRoomForYields(character, task);
   }

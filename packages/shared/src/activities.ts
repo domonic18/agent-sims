@@ -178,6 +178,24 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     effects: { energy: -0.15, happiness: -0.05, coins: 0 },
     category: 'gather',
   },
+  // 制作两配方(M-G.6,design/09 §3/numerical §5.4):站点锚点活动(灶台/木工台),
+  // 须经 craft 意图开始(验料扣料,中断退料,完成产出入包),直发 start_activity 拒绝
+  {
+    id: 'craft_berry_pie',
+    name: '制作浆果派',
+    placeIds: ['restaurant'],
+    durationMinutes: 25,
+    effects: { energy: -0.1, happiness: 0.05, coins: 0 },
+    category: 'gather',
+  },
+  {
+    id: 'craft_repair_kit',
+    name: '制作修补钉',
+    placeIds: ['office'],
+    durationMinutes: 15,
+    effects: { energy: -0.1, happiness: 0.05, coins: 0 },
+    category: 'build',
+  },
 ];
 
 export function getActivityDefinition(id: string): ActivityDefinition | null {

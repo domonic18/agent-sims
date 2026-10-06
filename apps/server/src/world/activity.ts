@@ -9,7 +9,9 @@ import {
   GATHER_TASKS,
   JOB_CATEGORIES,
   MAINTENANCE_TASKS,
+  RECIPES,
   furnitureLabel,
+  getRecipe,
   REST_RATES_BY_KIND,
   getActivityDefinition,
 } from '@sims/shared';
@@ -25,7 +27,8 @@ import type { Simulation } from './simulation.js';
 
 export type SettleResult = 'continue' | 'completed' | 'insufficient_coins';
 
-/** 结束活动并发离散事件(reason: completed/stopped/interrupted/died) */
+/** 结束活动并发离散事件(reason: completed/stopped/interrupted/died);
+ * 配方制作非完成离场一律退回输入材料(M-G.6 中断退料) */
 export function finishActivity(
   sim: Simulation,
   character: WorldCharacter,
@@ -34,15 +37,21 @@ export function finishActivity(
   if (character.activity === null) {
     return;
   }
+  const activity = character.activity;
+  character.activity = null;
+  if (activity.craftRecipeId !== undefined && reason !== 'completed') {
+    for (const input of RECIPES[activity.craftRecipeId].inputs) {
+      character.backpack[input.itemId] = (character.backpack[input.itemId] ?? 0) + input.count;
+    }
+  }
   const event: ActivityFinishedEvent = {
     type: 'activity.finished',
     characterId: character.id,
-    activityId: character.activity.activityId,
+    activityId: activity.activityId,
     tick: sim.tick,
-    elapsedMinutes: character.activity.elapsed,
+    elapsedMinutes: activity.elapsed,
     reason,
   };
-  character.activity = null;
   sim.events.emit(event);
 }
 
@@ -51,11 +60,13 @@ export function finishActivity(
  * M3.6e 内景化,如书桌/床/跑步机);无锚点活动(散步)沿用场所范围判定。
  * 已有进行中活动则拒绝(先显式 stop 或移动打断)。
  * M3.6f 体力区段: 体力≤阈值仅允许基础活动;rest 使用住宅床铺须本人租约有效(公园长椅放行)。
+ * 配方制作(M-G.6):直发 start_activity 拒绝,须经 craft 意图(opts.recipeId 匹配)。
  */
 export function startActivity(
   sim: Simulation,
   characterId: string,
   activityId: string,
+  opts?: { recipeId?: string },
 ): WorldCharacter {
   const definition = getActivityDefinition(activityId);
   if (definition === null) {
@@ -64,6 +75,10 @@ export function startActivity(
   // 维护三岗(M-G.5)与采集两岗(M-G.6)无场所锚点,必须经 work_task 接单(寻路+按单结算)
   if (activityId in MAINTENANCE_TASKS || activityId in GATHER_TASKS) {
     throw new Error(`${definition.name} 为工单岗位,须经 work_task 接单`);
+  }
+  const recipe = getRecipe(activityId);
+  if (recipe !== null && opts?.recipeId !== recipe.id) {
+    throw new Error(`${definition.name} 为配方制作,须经 craft 意图(验料扣料)开始`);
   }
   const character = sim.character(characterId);
   ensureAlive(character);
@@ -109,7 +124,13 @@ export function startActivity(
   ) {
     throw new Error(`${definition.name} 须在场所 ${definition.placeIds.join('、')} 入口或范围内`);
   }
-  character.activity = { activityId, elapsed: 0, anchorKind, targetId: null };
+  character.activity = {
+    activityId,
+    elapsed: 0,
+    anchorKind,
+    targetId: null,
+    ...(recipe !== null ? { craftRecipeId: recipe.id } : {}),
+  };
   const event: ActivityStartedEvent = {
     type: 'activity.started',
     characterId: character.id,

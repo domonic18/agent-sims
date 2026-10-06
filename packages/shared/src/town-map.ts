@@ -239,6 +239,7 @@ export const TOWN_MAP: TileMapDefinition = {
         { kind: 'workstation', x: 48, y: 5, w: 2, h: 1, activityId: 'work', use: { x: 48, y: 6 } },
         { kind: 'workstation', x: 51, y: 5, w: 2, h: 1, activityId: 'work', use: { x: 51, y: 6 } },
         { kind: 'table', x: 47, y: 8, w: 3, h: 1 },
+        { kind: 'workbench', x: 51, y: 8, w: 2, h: 1, activityId: 'craft_repair_kit', use: { x: 51, y: 7 }, sprite: 'garden-vase-tools-bench-horizontal-3457' },
         { kind: 'counter', x: 45, y: 10, w: 2, h: 1 },
         { kind: 'fridge', x: 48, y: 10, w: 1, h: 1 },
         { kind: 'plant', x: 52, y: 10, w: 1, h: 1 },
@@ -273,6 +274,7 @@ export const TOWN_MAP: TileMapDefinition = {
       furniture: [
         { kind: 'counter', x: 31, y: 27, w: 2, h: 1, activityId: 'waiter', use: { x: 31, y: 28 } },
         { kind: 'tv', x: 35, y: 27, w: 2, h: 1 },
+        { kind: 'stove', x: 37, y: 28, w: 1, h: 2, activityId: 'craft_berry_pie', use: { x: 36, y: 28 }, sprite: 'kitchen-148' },
         { kind: 'table', x: 32, y: 30, w: 2, h: 1, activityId: 'meal', use: { x: 32, y: 31 } },
         { kind: 'table', x: 35, y: 30, w: 2, h: 1, activityId: 'meal', use: { x: 36, y: 31 } },
         { kind: 'plant', x: 37, y: 32, w: 1, h: 1 },

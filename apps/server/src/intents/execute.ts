@@ -2,6 +2,7 @@ import {
   getActivityDefinition,
   getItem,
   getPropertyDefinition,
+  getRecipe,
   intentSchema,
   type Intent,
 } from '@sims/shared';
@@ -101,6 +102,11 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
     case 'work_task': {
       const character = sim.requestWorkTask(intent.characterId, intent.targetId);
       return { ok: true, message: `${character.name} 接下工单 ${intent.targetId},前往作业` };
+    }
+    case 'craft': {
+      const character = sim.requestCraft(intent.characterId, intent.recipeId);
+      const name = getRecipe(intent.recipeId)?.name ?? intent.recipeId;
+      return { ok: true, message: `${character.name} 开始制作「${name}」,材料已从背包扣除` };
     }
   }
 }

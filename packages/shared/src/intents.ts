@@ -104,6 +104,15 @@ export const workTaskIntentSchema = z.object({
 
 export type WorkTaskIntent = z.infer<typeof workTaskIntentSchema>;
 
+/** 配方制作(M-G.6):recipeId=配方/制作活动 id(浆果派@灶台,修补钉@木工台) */
+export const craftIntentSchema = z.object({
+  type: z.literal('craft'),
+  characterId: z.string().min(1),
+  recipeId: z.string().min(1),
+});
+
+export type CraftIntent = z.infer<typeof craftIntentSchema>;
+
 export const intentSchema = z.discriminatedUnion('type', [
   moveToIntentSchema,
   stopMoveIntentSchema,
@@ -117,6 +126,7 @@ export const intentSchema = z.discriminatedUnion('type', [
   buyPropertyIntentSchema,
   chatIntentSchema,
   workTaskIntentSchema,
+  craftIntentSchema,
 ]);
 
 export type Intent = z.infer<typeof intentSchema>;

@@ -188,6 +188,16 @@ export const workTaskCompletedEventSchema = z.object({
 
 export type WorkTaskCompletedEvent = z.infer<typeof workTaskCompletedEventSchema>;
 
+/** 配方完成(M-G.6):产出入包(产出物查 RECIPES[recipeId].outputs) */
+export const craftCompletedEventSchema = z.object({
+  type: z.literal('craft.completed'),
+  characterId: z.string().min(1),
+  recipeId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type CraftCompletedEvent = z.infer<typeof craftCompletedEventSchema>;
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -205,6 +215,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   workTaskAcceptedEventSchema,
   workTaskCancelledEventSchema,
   workTaskCompletedEventSchema,
+  craftCompletedEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;
