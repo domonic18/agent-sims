@@ -1,8 +1,8 @@
 /**
- * /api/world/settings 常开控制通道(游戏内设置菜单):暂停/倍率/世界参数/世界规则
- * 的生产可用读写口(不同于 /debug 仅 development 注册)。
+ * /api/world 常开控制通道(游戏内设置菜单):暂停/倍率/世界参数/世界规则
+ * 的生产可用读写口(不同于 /debug 仅 development 注册),及历史事件查询。
  */
-import type { WorldSettingsView } from '@sims/shared';
+import type { WorldEventsHistoryResponse, WorldSettingsView } from '@sims/shared';
 
 export interface WorldSettingsUpdate {
   paused?: boolean;
@@ -32,3 +32,16 @@ export const getWorldSettings = (): Promise<WorldSettingsView> =>
 
 export const updateWorldSettings = (update: WorldSettingsUpdate): Promise<WorldSettingsView> =>
   request('/api/world/settings', 'POST', update);
+
+export const getWorldEvents = async (query: { limit?: number; characterId?: string; type?: string } = {}): Promise<WorldEventsHistoryResponse> => {
+  const params = new URLSearchParams();
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  if (query.characterId !== undefined) params.set('characterId', query.characterId);
+  if (query.type !== undefined) params.set('type', query.type);
+  const qs = params.toString();
+  const response = await fetch(`/api/world/events${qs !== '' ? `?${qs}` : ''}`);
+  if (!response.ok) {
+    throw new Error(`/api/world/events 失败(${response.status})`);
+  }
+  return (await response.json()) as WorldEventsHistoryResponse;
+};

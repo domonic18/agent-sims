@@ -231,3 +231,15 @@ export const worldEventSchema = z.discriminatedUnion('type', [
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;
+
+/** 历史事件条目(C4 日志抽屉回填):落库行+按 tick 换算的游戏时刻(1 tick=1 游戏分钟) */
+export interface WorldEventHistoryEntry {
+  id: number;
+  event: WorldEvent;
+  day: number;
+  time: string;
+}
+
+export interface WorldEventsHistoryResponse {
+  entries: WorldEventHistoryEntry[];
+}

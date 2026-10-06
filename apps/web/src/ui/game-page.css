@@ -420,6 +420,15 @@
   color: var(--px-bad);
 }
 
+.log-history-sep {
+  margin: 4px 0 2px;
+  padding: 2px 0;
+  text-align: center;
+  color: var(--px-dim);
+  font-size: 10px;
+  border-bottom: 2px dashed var(--px-slate);
+}
+
 .log-empty {
   margin: 0;
   padding: 12px 0;

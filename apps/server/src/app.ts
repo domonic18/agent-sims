@@ -4,6 +4,7 @@ import { registerAdminApi } from './admin-api/index.js';
 import { env } from './config/env.js';
 import { createDb } from './db/client.js';
 import { registerDebugRoutes } from './api/debug.js';
+import { registerWorldEventRoutes } from './api/world-events.js';
 import { registerWorldSettingsRoutes } from './api/world-settings.js';
 import { ClientRegistry } from './socket/clients.js';
 import { attachSocketGateway } from './socket/gateway.js';
@@ -49,6 +50,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   attachWorldEventLog(handle, app.simulation.events);
   attachWorldParamPersist(handle, app.simulation.events);
   registerAdminApi(app, handle);
+  registerWorldEventRoutes(app, handle);
   registerWorldSettingsRoutes(app, app.simulation);
   if (env.NODE_ENV === 'development') {
     registerDebugRoutes(app, app.simulation, app.clients);
