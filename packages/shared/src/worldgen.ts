@@ -9,8 +9,8 @@ export const GAME_TYPES = ['growth', 'survival'] as const;
 export type GameType = (typeof GAME_TYPES)[number];
 
 export const GAME_TYPE_LABELS: Record<GameType, string> = {
-  growth: '成长型',
-  survival: '生存型(敬请期待)',
+  growth: '成长小镇',
+  survival: '末日生存',
 };
 
 export const WORLDGEN_SIZES = ['small', 'medium', 'large'] as const;

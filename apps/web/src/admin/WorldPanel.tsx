@@ -28,6 +28,8 @@ import {
 import { DeleteOutlined, PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import {
   DEFAULT_WORLD_RULES,
+  GAME_TYPES,
+  GAME_TYPE_LABELS,
   GENDERS,
   GENDER_LABELS,
   SYS_CONFIG_FIELDS,
@@ -37,6 +39,7 @@ import {
   WORLD_TIME_SCALES,
   pickRandomName,
   type Gender,
+  type GameType,
   type WorldCharacterConfig,
   type WorldRules,
   type WorldPreviewResponse,
@@ -52,6 +55,7 @@ interface CharacterRow {
 
 interface WorldFormValues {
   mode?: 'builtin' | 'random';
+  gameType?: GameType;
   seed?: string;
   params?: { size: 'small' | 'medium' | 'large'; density: 'sparse' | 'normal' | 'dense' };
   name: string;
@@ -234,7 +238,7 @@ export function WorldPanel() {
       mode === 'random'
         ? {
             ...(form.getFieldValue('seed') ? { seed: String(form.getFieldValue('seed')) } : {}),
-            gameType: 'growth' as const,
+            gameType: (form.getFieldValue('gameType') ?? 'growth') as GameType,
             params: form.getFieldValue('params') as { size: 'small' | 'medium' | 'large'; density: 'sparse' | 'normal' | 'dense' },
           }
         : undefined;
@@ -362,6 +366,7 @@ export function WorldPanel() {
           initialValues={{
             name: '小镇生活',
             mode: 'builtin',
+            gameType: 'growth',
             params: { size: 'small', density: 'normal' },
             characters: [{ name: '', gender: 'unspecified' }],
             rules: { ...DEFAULT_WORLD_RULES },
@@ -414,9 +419,15 @@ export function WorldPanel() {
                           ]}
                         />
                       </Form.Item>
-                      <p style={{ margin: '0 0 8px', fontSize: 12, color: '#8c8c8c' }}>
-                        生存模式(敬请期待)——玩法随 M-S 里程碑开放,当前开放成长型。
-                      </p>
+                      <Form.Item
+                        name="gameType"
+                        label="世界模式"
+                        extra="末日生存:墓地废墟破败区域+资源采集加密;成长小镇:经典布局。玩法机制一致,僵尸实体随后续里程碑开放。"
+                      >
+                        <Radio.Group
+                          options={GAME_TYPES.map((value) => ({ value, label: GAME_TYPE_LABELS[value] }))}
+                        />
+                      </Form.Item>
                     </>
                   ) : (
                     <p style={{ margin: '0 0 8px', fontSize: 12, color: '#8c8c8c' }}>
@@ -621,7 +632,7 @@ export function WorldPanel() {
                         const seedValue = form.getFieldValue('seed');
                         void previewWorld({
                           ...(seedValue ? { seed: String(seedValue) } : {}),
-                          gameType: 'growth',
+                          gameType: (getFieldValue('gameType') ?? 'growth') as GameType,
                           params: getFieldValue('params'),
                         })
                           .then((result) => {

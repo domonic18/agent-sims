@@ -14,6 +14,7 @@ import {
   type AdminLoginResponse,
   type AuditLogEntriesResponse,
   type CreateWorldRequest,
+  type GameType,
   type ModelConfigInvokeResult,
   type ModelConfigTestResult,
   type ModelConfigUpdate,
@@ -168,7 +169,7 @@ export async function createWorld(payload: CreateWorldRequest): Promise<WorldVie
 
 export interface WorldPreviewRequest {
   seed?: string;
-  gameType: 'growth';
+  gameType: GameType;
   params: { size: 'small' | 'medium' | 'large'; density: 'sparse' | 'normal' | 'dense' };
 }
 

@@ -50,6 +50,8 @@ const OPEN_FLOOR_OF: Record<string, string> = {
   plaza: TILE_SLUG.plaza,
   beach: TILE_SLUG.path,
   camping: TILE_SLUG.parkGrass,
+  graveyard: TILE_SLUG.path,
+  ruins: TILE_SLUG.plaza,
 };
 
 export const inRect = (
