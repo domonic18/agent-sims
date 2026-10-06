@@ -1,5 +1,6 @@
 import {
   furnitureLabel,
+  furnitureServesActivity,
   placeIdMatches,
   type PlaceDefinition,
   type TileMapDefinition,
@@ -40,19 +41,20 @@ export function findPlaceByRef(
   return map.places.find((p) => placeIdMatches(placeId, p.id)) ?? null;
 }
 
-/** 活动锚点使用格全集(M3.6e 内景): 与服务端 TileMap.activityAnchors 同源(按传入地图查) */
+/** 活动锚点使用格全集(M3.6e 内景): 与服务端 TileMap.activityAnchors 同源
+ * (furnitureServesActivity 谓词,sleep 复用绑 rest 的床;按传入地图查) */
 export function activityAnchors(map: TileMapDefinition, activityId: string): ActivityAnchor[] {
   const anchors: ActivityAnchor[] = [];
   for (const place of map.places) {
     for (const furniture of place.furniture ?? []) {
-      if (furniture.activityId === activityId && furniture.use !== undefined) {
-        anchors.push({
-          x: furniture.use.x,
-          y: furniture.use.y,
-          placeId: place.id,
-          label: furnitureLabel(furniture.kind),
-        });
-      }
+      if (furniture.activityId === undefined || furniture.use === undefined) continue;
+      if (!furnitureServesActivity(furniture.activityId, furniture.kind, activityId)) continue;
+      anchors.push({
+        x: furniture.use.x,
+        y: furniture.use.y,
+        placeId: place.id,
+        label: furnitureLabel(furniture.kind),
+      });
     }
   }
   return anchors;
