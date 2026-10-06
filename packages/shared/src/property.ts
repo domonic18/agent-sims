@@ -25,3 +25,19 @@ export const PROPERTY_DEFINITIONS: readonly PropertyDefinition[] = [
 export function getPropertyDefinition(id: string): PropertyDefinition | null {
   return PROPERTY_DEFINITIONS.find((property) => property.id === id) ?? null;
 }
+
+/** 住宿状态双端形态(sync.ts 角色快照 housing 同构): 谓词入参取结构子集即可 */
+export interface HousingState {
+  propertyId: string;
+  ownership: 'rent' | 'owned';
+  /** 租约付到的游戏日(含);自有忽略此字段 */
+  paidThroughDay: number;
+}
+
+/** 租约有效性(TD-1 自 server housing.ts/web homeAccess 双份上提): 自有放行;租赁须付到日 ≥ 今日 */
+export function isLeaseValid(
+  housing: Pick<HousingState, 'ownership' | 'paidThroughDay'> | null,
+  day: number,
+): boolean {
+  return housing === null || housing.ownership === 'owned' || housing.paidThroughDay >= day;
+}

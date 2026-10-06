@@ -4,7 +4,10 @@ import {
   FURNITURE_KINDS,
   REST_ANCHOR_KINDS,
   TOWN_MAP,
+  activityAnchors,
   findActivityAnchorAt,
+  findPlaceAt,
+  findPlaceByRef,
   furnitureRectsOf,
   getActivityDefinition,
   isBesideFootprint,
@@ -175,5 +178,29 @@ describe('PlaceDefinition 类型样例', () => {
     const park: PlaceDefinition = TOWN_MAP.places.find((p) => p.id === 'park')!;
     expect(park.door).toBeUndefined();
     expect(park.furniture?.length).toBeGreaterThan(0);
+  });
+});
+
+describe('在位判定与锚点收集(TD-1 谓词上提)', () => {
+  it('findPlaceAt: 矩形内与入口格均在位,野外 null(双端同源在位规则)', () => {
+    const park = TOWN_MAP.places.find((p) => p.id === 'park')!;
+    expect(findPlaceAt(TOWN_MAP, park.x, park.y)?.id).toBe('park'); // 矩形内
+    expect(findPlaceAt(TOWN_MAP, park.entrance.x, park.entrance.y)?.id).toBe('park'); // 入口格
+    expect(findPlaceAt(TOWN_MAP, 1, 1)).toBeNull(); // 边角障碍带,无场所
+  });
+
+  it('findPlaceByRef: 精确 id 与 kind 前缀均可查,未知引用 null', () => {
+    expect(findPlaceByRef(TOWN_MAP, 'shop')?.id).toBe('shop');
+    expect(findPlaceByRef(TOWN_MAP, 'home-a')?.id).toBe('home-a');
+    expect(findPlaceByRef(TOWN_MAP, 'no-such')).toBeNull();
+  });
+
+  it('activityAnchors: sleep 只收床(rest 档位谓词),label 用家具标签,rest 收床/沙发/长椅', () => {
+    const sleep = activityAnchors(TOWN_MAP, 'sleep');
+    expect(sleep.length).toBeGreaterThan(0);
+    expect(sleep.every((a) => a.kind === 'bed')).toBe(true);
+    expect(sleep.every((a) => a.label === '床')).toBe(true);
+    const rest = activityAnchors(TOWN_MAP, 'rest');
+    expect(new Set(rest.map((a) => a.kind))).toEqual(new Set(['bed', 'sofa', 'bench']));
   });
 });

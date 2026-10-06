@@ -1,8 +1,9 @@
 import {
+  activityAnchors,
+  findActivityAnchorAt,
+  findPlaceByRef,
   furnitureRectsOf,
-  furnitureServesActivity,
-  isBesideFootprint,
-  placeIdMatches,
+  isInPlace,
   wallRectsOf,
   type BlockedRect,
   type AnyFurnitureKind,
@@ -88,51 +89,27 @@ export class TileMap {
     return tiles;
   }
 
-  /** 位置判定: 位于场所矩形内(内景建筑含室内)或其入口格;placeId 按 id/kind 前缀匹配(生成地图 kind-N 命名) */
+  /** 位置判定(TD-1 谓词上提 shared,本方法仅薄委托): 位于场所矩形内或其入口格;placeId 按 id/kind 前缀匹配 */
   contains(placeId: string, x: number, y: number): boolean {
-    const place = this.places.find((p) => placeIdMatches(placeId, p.id)) ?? null;
-    if (place === null) {
-      return false;
-    }
-    if (inRect(x, y, place)) {
-      return true;
-    }
-    return x === place.entrance.x && y === place.entrance.y;
+    const place = findPlaceByRef(this.definition, placeId);
+    return place !== null && isInPlace(place, x, y);
   }
 
-  /** 活动锚点使用格全集:各场所锚点家具的 use 格(无锚点活动返回空) */
-  activityAnchors(activityId: string): Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind }> {
-    const anchors: Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind }> = [];
-    for (const place of this.places) {
-      for (const f of place.furniture ?? []) {
-        if (f.activityId === undefined || f.use === undefined) continue;
-        if (!furnitureServesActivity(f.activityId, f.kind, activityId)) continue;
-        anchors.push({ x: f.use.x, y: f.use.y, placeId: place.id, kind: f.kind });
-      }
-    }
-    return anchors;
+  /** 活动锚点使用格全集(shared 同源;无锚点活动返回空) */
+  activityAnchors(activityId: string): Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind; label: string }> {
+    return activityAnchors(this.definition, activityId);
   }
 
   /**
-   * 锚点命中判定(M3.6i 放宽): 站在声明使用格,或紧邻锚点家具占地(四邻)均算——
-   * 家具占地本身不可行走,"站在跑步机旁"即应可开始,不再要求精确踩中声明格。
-   * 返回命中锚点(使用格坐标+场所+家具 kind,rest 权属/档位结算用),未命中 null。
+   * 锚点命中判定(M3.6i 放宽,shared findActivityAnchorAt 同源薄委托):
+   * 声明使用格或紧邻家具占地均算;返回命中锚点(rest 权属/档位结算用),未命中 null。
    */
   anchorAt(
     activityId: string,
     x: number,
     y: number,
-  ): { x: number; y: number; placeId: string; kind: AnyFurnitureKind } | null {
-    for (const place of this.places) {
-      for (const f of place.furniture ?? []) {
-        if (f.activityId === undefined || f.use === undefined) continue;
-        if (!furnitureServesActivity(f.activityId, f.kind, activityId)) continue;
-        if ((x === f.use.x && y === f.use.y) || isBesideFootprint(f, x, y)) {
-          return { x: f.use.x, y: f.use.y, placeId: place.id, kind: f.kind };
-        }
-      }
-    }
-    return null;
+  ): { placeId: string; kind: AnyFurnitureKind } | null {
+    return findActivityAnchorAt(this.definition, activityId, x, y);
   }
 
   /** ASCII 渲染(debug 端点/脚本对照):#=障碍 .=地面 E=入口 D=门洞 */

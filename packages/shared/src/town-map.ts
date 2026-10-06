@@ -2,7 +2,12 @@
  * 城镇地图定义与布局。协议面一部分——服务端模拟与客户端渲染共用同一份
  * 定义,避免双端漂移。家具/休息档位见 furniture.ts。
  */
-import { furnitureServesActivity, type AnyFurnitureKind, type FurnitureDefinition } from './furniture.js';
+import {
+  furnitureLabel,
+  furnitureServesActivity,
+  type AnyFurnitureKind,
+  type FurnitureDefinition,
+} from './furniture.js';
 import type { DecorDefinition } from './worldgen.js';
 import type { ResourceNodeSeed } from './production.js';
 
@@ -120,6 +125,45 @@ export function findActivityAnchorAt(
  */
 export function placeIdMatches(placeId: string, id: string): boolean {
   return id === placeId || id.startsWith(`${placeId}-`);
+}
+
+/** 在位原子谓词(TD-1 双端同源): 位于场所矩形内,或其入口格 */
+export function isInPlace(place: PlaceDefinition, x: number, y: number): boolean {
+  return (
+    (x >= place.x && x < place.x + place.w && y >= place.y && y < place.y + place.h) ||
+    (x === place.entrance.x && y === place.entrance.y)
+  );
+}
+
+/**
+ * 点位在位场所(按给定地图直查,内置/生成图通用;TD-1 自 web place.ts 上提):
+ * 「角色此刻在哪」的在位判定——冰箱存取/店内购/无锚点活动到场均以本谓词为准。
+ */
+export function findPlaceAt(map: TileMapDefinition, x: number, y: number): PlaceDefinition | null {
+  return map.places.find((place) => isInPlace(place, x, y)) ?? null;
+}
+
+/** 按 placeId 或 kind 前缀查场所(生成地图 kind-N 命名;店内购/无锚点活动目标定位用) */
+export function findPlaceByRef(map: TileMapDefinition, placeId: string): PlaceDefinition | null {
+  return map.places.find((p) => placeIdMatches(placeId, p.id)) ?? null;
+}
+
+/** 活动锚点使用格全集(TD-1 自 server map.ts/web place.ts 双份上提):
+ * 各场所锚点家具的 use 格,经 furnitureServesActivity 谓词过滤;
+ * kind 供 rest 档位/权属结算,label 供面板目标文案。 */
+export function activityAnchors(
+  map: TileMapDefinition,
+  activityId: string,
+): Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind; label: string }> {
+  const anchors: Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind; label: string }> = [];
+  for (const place of map.places) {
+    for (const f of place.furniture ?? []) {
+      if (f.activityId === undefined || f.use === undefined) continue;
+      if (!furnitureServesActivity(f.activityId, f.kind, activityId)) continue;
+      anchors.push({ x: f.use.x, y: f.use.y, placeId: place.id, kind: f.kind, label: furnitureLabel(f.kind) });
+    }
+  }
+  return anchors;
 }
 
 /**

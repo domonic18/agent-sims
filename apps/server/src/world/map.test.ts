@@ -188,23 +188,23 @@ describe('TileMap 内景层(M3.6e)', () => {
     expect(rows[43]?.charAt(36)).toBe('D'); // 公寓 D 门洞
   });
 
-  it('activityAnchors: 汇总各场所锚点使用格,无锚点活动返回空', () => {
+  it('activityAnchors: 汇总各场所锚点使用格,无锚点活动返回空(TD-1 shared 同源,含 label)', () => {
     const map = TileMap.fromDefinition(TOWN_MAP);
     expect(map.activityAnchors('study')).toEqual(
       expect.arrayContaining([
-        { x: 33, y: 9, placeId: 'library', kind: 'desk' },
-        { x: 11, y: 6, placeId: 'home-a', kind: 'desk' },
+        { x: 33, y: 9, placeId: 'library', kind: 'desk', label: '书桌' },
+        { x: 11, y: 6, placeId: 'home-a', kind: 'desk', label: '书桌' },
       ]),
     );
     expect(map.activityAnchors('rest')).toEqual(
       expect.arrayContaining([
-        { x: 9, y: 31, placeId: 'park', kind: 'bench' },
-        { x: 17, y: 8, placeId: 'home-b', kind: 'bed' },
-        { x: 37, y: 40, placeId: 'home-d', kind: 'bed' },
+        { x: 9, y: 31, placeId: 'park', kind: 'bench', label: '长椅' },
+        { x: 17, y: 8, placeId: 'home-b', kind: 'bed', label: '床' },
+        { x: 37, y: 40, placeId: 'home-d', kind: 'bed', label: '床' },
         // M3.6g 沙发升 rest 锚点(三档: 床>沙发>长椅)
-        { x: 5, y: 10, placeId: 'home-a', kind: 'sofa' },
-        { x: 32, y: 8, placeId: 'library', kind: 'sofa' },
-        { x: 50, y: 30, placeId: 'gym', kind: 'sofa' },
+        { x: 5, y: 10, placeId: 'home-a', kind: 'sofa', label: '沙发' },
+        { x: 32, y: 8, placeId: 'library', kind: 'sofa', label: '沙发' },
+        { x: 50, y: 30, placeId: 'gym', kind: 'sofa', label: '沙发' },
       ]),
     );
     expect(map.activityAnchors('stroll')).toEqual([]);

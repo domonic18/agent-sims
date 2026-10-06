@@ -1,4 +1,4 @@
-import { getPropertyDefinition, PROPERTY_IDS } from '@sims/shared';
+import { getPropertyDefinition, isLeaseValid, PROPERTY_IDS } from '@sims/shared';
 import { ensureAlive, type WorldCharacter } from './character.js';
 import type { Simulation } from './simulation.js';
 
@@ -19,17 +19,15 @@ export function ensureRestAccess(
   ensureHousingLease(sim, character, '使用床铺');
 }
 
-/** 租约有效性:自有产权放行;租赁须 paidThroughDay ≥ 今日 */
+/** 租约有效性裁决(谓词 shared isLeaseValid 同源;此处仅负责报错文案) */
 export function ensureHousingLease(sim: Simulation, character: WorldCharacter, action: string): void {
   const housing = character.housing;
-  if (housing === null || housing.ownership === 'owned') {
+  if (isLeaseValid(housing, sim.clock.day)) {
     return;
   }
-  if (housing.paidThroughDay < sim.clock.day) {
-    throw new Error(
-      `${character.name} 租约已过期(付至第 ${housing.paidThroughDay} 日,今日第 ${sim.clock.day} 日),无法${action}(先续租或买断)`,
-    );
-  }
+  throw new Error(
+    `${character.name} 租约已过期(付至第 ${housing!.paidThroughDay} 日,今日第 ${sim.clock.day} 日),无法${action}(先续租或买断)`,
+  );
 }
 
 /** 存取冰箱位置校验:须位于本人住房场所内且租约有效 */
