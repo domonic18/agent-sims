@@ -419,3 +419,98 @@ describe('池驱动户外装饰引擎(五 pass)', () => {
     expect(total('dense')).toBeGreaterThan(total('sparse'));
   });
 });
+
+describe('末日生存模式(survival gameType)', () => {
+  const results = Array.from({ length: 50 }, (_, i) =>
+    generateTownMap(input(`surv-${i}`, { gameType: 'survival' })),
+  );
+
+  it('全部通过校验(零兜底回退,复用世界层 TileMap 校验)', () => {
+    for (const result of results) {
+      expect(result.report.checks.fallback).toBe(false);
+      expect(result.report.checks.connectivity).toBe(true);
+      expect(result.report.checks.anchorsComplete).toBe(true);
+      expect(() => TileMap.fromDefinition(result.map)).not.toThrow();
+    }
+  });
+
+  it('场所末日化重配: 营地/墓地/废墟/诊所/商店俱全,公寓 2~3', () => {
+    for (const result of results) {
+      const kinds = new Set(result.map.places.map((p) => p.id.split('-')[0]));
+      for (const kind of ['camping', 'graveyard', 'ruins', 'clinic', 'shop']) {
+        expect(kinds.has(kind)).toBe(true);
+      }
+      const homes = result.map.places.filter((p) => p.id.startsWith('home')).length;
+      expect(homes).toBeGreaterThanOrEqual(2);
+      expect(homes).toBeLessThanOrEqual(3);
+    }
+  });
+
+  it('墓地四边围栏: 每边恰 3 格豁口且豁口格可行走,入口格可达', () => {
+    for (const result of results) {
+      const tileMap = TileMap.fromDefinition(result.map);
+      for (const grave of result.map.places.filter((p) => p.id.startsWith('graveyard'))) {
+        const fences = (result.map.fences ?? []).filter(
+          (f) => f.x >= grave.x && f.x < grave.x + grave.w && f.y >= grave.y && f.y < grave.y + grave.h,
+        );
+        expect(fences.length).toBeGreaterThanOrEqual(4);
+        const fenced = (x: number, y: number): boolean =>
+          fences.some((f) => x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h);
+        // 边格互斥归属:横边含角格,竖边让出两角(与 graveyardFences 布局一致)
+        const sides: Array<Array<[number, number]>> = [
+          Array.from({ length: grave.w }, (_, i) => [grave.x + i, grave.y] as [number, number]),
+          Array.from({ length: grave.w }, (_, i) => [grave.x + i, grave.y + grave.h - 1] as [number, number]),
+          Array.from({ length: grave.h - 2 }, (_, i) => [grave.x, grave.y + 1 + i] as [number, number]),
+          Array.from({ length: grave.h - 2 }, (_, i) => [grave.x + grave.w - 1, grave.y + 1 + i] as [number, number]),
+        ];
+        for (const side of sides) {
+          const gaps = side.filter(([x, y]) => !fenced(x, y));
+          expect(gaps.length).toBe(3);
+          for (const [x, y] of gaps) expect(tileMap.isWalkable(x, y)).toBe(true);
+        }
+        expect(tileMap.isWalkable(grave.entrance.x, grave.entrance.y)).toBe(true);
+      }
+    }
+  });
+
+  it('资源加密: 浆果 4~8 落公园/营地内部,拾荒堆 5~9 全落场所外', () => {
+    for (const result of results) {
+      const resources = result.map.resources ?? [];
+      const berries = resources.filter((r) => r.kind === 'berry_bush');
+      const junk = resources.filter((r) => r.kind === 'junk_pile');
+      expect(berries.length).toBeGreaterThanOrEqual(4);
+      expect(berries.length).toBeLessThanOrEqual(8);
+      expect(junk.length).toBeGreaterThanOrEqual(5);
+      expect(junk.length).toBeLessThanOrEqual(9);
+      const sites = result.map.places.filter(
+        (p) => p.id.startsWith('park') || p.id.startsWith('camping'),
+      );
+      expect(sites.length).toBeGreaterThanOrEqual(1);
+      for (const berry of berries) {
+        expect(
+          sites.some(
+            (p) => berry.x > p.x && berry.x < p.x + p.w - 1 && berry.y > p.y && berry.y < p.y + p.h - 1,
+          ),
+        ).toBe(true);
+      }
+      for (const node of junk) {
+        expect(
+          result.map.places.some(
+            (p) => node.x >= p.x && node.x < p.x + p.w && node.y >= p.y && node.y < p.y + p.h,
+          ),
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('growth/survival 隔离: growth 并集无墓地废墟,同 seed 两模式地图不同', () => {
+    for (let i = 0; i < 20; i += 1) {
+      const growth = generateTownMap(input(`iso-${i}`));
+      const kinds = new Set(growth.map.places.map((p) => p.id.split('-')[0]));
+      expect(kinds.has('graveyard')).toBe(false);
+      expect(kinds.has('ruins')).toBe(false);
+      const survival = generateTownMap(input(`iso-${i}`, { gameType: 'survival' }));
+      expect(survival.map).not.toEqual(growth.map);
+    }
+  });
+});

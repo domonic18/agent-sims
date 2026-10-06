@@ -315,7 +315,7 @@ function parkFences(place: PlaceDefinition): BlockedRect[] {
 }
 
 /** 墓地四边围栏(survival):每边中央 3 格豁口,北缝盖住入口列(entrance 天然连通);
- * 四向开口+确定性豁口免围死,connectivity 校验兜底 */
+ * 竖向围栏让出四角(角格归横向边),四向开口+确定性豁口免围死,connectivity 校验兜底 */
 function graveyardFences(place: PlaceDefinition): BlockedRect[] {
   const rects: BlockedRect[] = [];
   const pushH = (y: number, x0: number, x1: number): void => {
@@ -331,10 +331,10 @@ function graveyardFences(place: PlaceDefinition): BlockedRect[] {
   pushH(place.y + place.h - 1, place.x, midX - 1);
   pushH(place.y + place.h - 1, midX + 3, place.x + place.w - 1);
   const midY = place.y + Math.floor(place.h / 2) - 1;
-  pushV(place.x, place.y, midY - 1);
-  pushV(place.x, midY + 3, place.y + place.h - 1);
-  pushV(place.x + place.w - 1, place.y, midY - 1);
-  pushV(place.x + place.w - 1, midY + 3, place.y + place.h - 1);
+  pushV(place.x, place.y + 1, midY - 1);
+  pushV(place.x, midY + 3, place.y + place.h - 2);
+  pushV(place.x + place.w - 1, place.y + 1, midY - 1);
+  pushV(place.x + place.w - 1, midY + 3, place.y + place.h - 2);
   return rects;
 }
 
