@@ -25,6 +25,11 @@ import { Rng } from './prng.js';
 /** 内置固定地图种子(design/06:固定地图=生成器特例,兼容已有存档) */
 export const BUILTIN_SEED = '__builtin__';
 
+/** 资源节点撒点数量档(TD-1 自 scatterResources 字面量具名,design/09 §2):
+ * 浆果丛易枯竭(重生次日)、拾荒堆无限,数量太少则以物代薪无目标可接 */
+const BERRY_BUSH_COUNT: readonly [number, number] = [3, 6];
+const JUNK_PILE_COUNT: readonly [number, number] = [2, 4];
+
 export interface WorldgenInput {
   seed: string;
   gameType: GameType;
@@ -562,7 +567,8 @@ function scatterResources(
   }
   const taken = new Set<string>();
   const seeds: ResourceNodeSeed[] = [];
-  const berryCount = rng.int(3, 6);
+  const berryCount = rng.int(...BERRY_BUSH_COUNT);
+  const junkCount = rng.int(...JUNK_PILE_COUNT);
   for (let n = 0; n < berryCount && parks.length > 0; n += 1) {
     const park = rng.pick(parks);
     for (let tries = 0; tries < 20; tries += 1) {
@@ -575,7 +581,6 @@ function scatterResources(
       break;
     }
   }
-  const junkCount = rng.int(2, 4);
   for (let n = 0; n < junkCount; n += 1) {
     for (let tries = 0; tries < 30; tries += 1) {
       const x = rng.int(2, width - 3);

@@ -5,7 +5,6 @@ import type {
   CraftCompletedEvent,
   MaintenanceSpot,
   ResourceNode,
-  SleepDebtAppliedEvent,
   TraitVector,
   WorkTaskCancelledEvent,
   WorkTaskCompletedEvent,
@@ -53,6 +52,7 @@ import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
 import { stepMaintenance, type RandomFn } from './maintenance.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
+import { debtFactor, inSleepWindow, settleSleep } from './settlement.js';
 import { completeWorkTask, requestWorkTask } from './work-task.js';
 import { worldSnapshot } from './snapshot.js';
 import {
@@ -345,7 +345,7 @@ export class Simulation {
     // 睡眠结算(M-G.2):夜窗口(22:00~06:00)结束于 06:00——窗口跨 00:00,
     // 结算挂 NIGHT_END 而非日翻转;缺觉挂惩罚,账本无论是否缺觉均清零
     if (this.clock.minuteOfDay === BALANCE.NIGHT_END_MINUTE) {
-      this._settleSleep();
+      settleSleep(this);
     }
     for (const character of this.characters.values()) {
       // 净速率模型(M3.6g):活动数值已含代谢,仅待机走基础代谢衰减
@@ -374,10 +374,10 @@ export class Simulation {
               character.activity,
               character,
               definition,
-              this._debtFactor(character),
+              debtFactor(character, this.clock.gameMinutes),
             );
             // 睡眠账本(M-G.2):仅窗口内的入睡分钟累计;06:00 后续睡不进新账本
-            if (character.activity.activityId === 'sleep' && this._inSleepWindow()) {
+            if (character.activity.activityId === 'sleep' && inSleepWindow(this.clock)) {
               character.sleepWindowMinutes += 1;
             }
             if (result !== 'continue') {
@@ -442,13 +442,14 @@ export class Simulation {
       character,
       task,
       targetId,
-      debtFactor: this._debtFactor(character),
+      debtFactor: debtFactor(character, this.clock.gameMinutes),
     });
     if (outcome === 'cancelled') {
       cancel();
       return;
     }
-    const pay = (isGatherTask(task) ? 0 : MAINTENANCE_TASKS[task].pay) * this._debtFactor(character);
+    const pay =
+      (isGatherTask(task) ? 0 : MAINTENANCE_TASKS[task].pay) * debtFactor(character, this.clock.gameMinutes);
     character.coins += pay;
     const event: WorkTaskCompletedEvent = {
       type: 'work_task.completed',
@@ -469,7 +470,7 @@ export class Simulation {
     if (recipeId === undefined) {
       return;
     }
-    const factor = this._debtFactor(character);
+    const factor = debtFactor(character, this.clock.gameMinutes);
     for (const output of RECIPES[recipeId].outputs) {
       character.backpack[output.itemId] =
         (character.backpack[output.itemId] ?? 0) + Math.floor(output.count * factor);
@@ -526,44 +527,6 @@ export class Simulation {
         node.charges = BUSH_MAX_CHARGES;
         node.respawnAtDay = null;
       }
-    }
-  }
-
-  /** 睡眠窗口判定(M-G.2):22:00~次日 06:00(与 clock.isNight 同窗口,读可热调参数) */
-  private _inSleepWindow(): boolean {
-    const m = this.clock.minuteOfDay;
-    return m >= BALANCE.NIGHT_START_MINUTE || m < BALANCE.NIGHT_END_MINUTE;
-  }
-
-  /** 缺觉系数(M-G.2):惩罚生效中(未到 sleepDebtEndGameMinutes)返回 SLEEP_DEBT_MULTIPLIER,否则 1 */
-  private _debtFactor(character: WorldCharacter): number {
-    return character.sleepDebtEndGameMinutes !== null &&
-      this.clock.gameMinutes < character.sleepDebtEndGameMinutes
-      ? BALANCE.SLEEP_DEBT_MULTIPLIER
-      : 1;
-  }
-
-  /**
-   * 睡眠结算(M-G.2,数值文档 §2.7):每日 06:00——昨夜窗口累计 < SLEEP_MIN_MINUTES
-   * 且存活者挂缺觉惩罚 24 游戏时并发 sleep.debt_applied;账本无条件清零
-   * (含幽灵——死亡期间漏结算,复活后从零起算)。
-   */
-  private _settleSleep(): void {
-    for (const character of this.characters.values()) {
-      if (
-        character.alive &&
-        character.sleepWindowMinutes < BALANCE.SLEEP_MIN_MINUTES
-      ) {
-        character.sleepDebtEndGameMinutes = this.clock.gameMinutes + BALANCE.DAY_MINUTES;
-        const event: SleepDebtAppliedEvent = {
-          type: 'sleep.debt_applied',
-          characterId: character.id,
-          sleptMinutes: character.sleepWindowMinutes,
-          tick: this.tick,
-        };
-        this.events.emit(event);
-      }
-      character.sleepWindowMinutes = 0;
     }
   }
 
