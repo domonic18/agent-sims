@@ -65,6 +65,10 @@ export interface WorldSnapshotMessage {
     lifeScore: number;
     /** 知识(M-G.4): 完成一次完整学习(study 60 分)+1,不衰减;岗位类别门槛(numerical §5.1) */
     knowledge: number;
+    /** 本夜睡眠窗口(22:00~06:00)累计入睡分钟(M-G.2);06:00 结算缺觉后清零 */
+    sleepWindowMinutes: number;
+    /** 缺觉惩罚生效中(M-G.2): 昨夜睡不足,当日正收益 ×SLEEP_DEBT_MULTIPLIER;到期自动解除 */
+    sleepDebt: boolean;
     /** 特质向量 v0(social-design §4): 0~1 五维,相性计算输入;M3.6k 配置可覆盖 */
     traits: TraitVector;
     /** 进行中活动(null=空闲);前端活动面板与气泡消费;anchorKind=rest 档位(床/沙发/长椅) */

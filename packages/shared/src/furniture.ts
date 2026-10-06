@@ -93,3 +93,27 @@ export const REST_RATES_BY_KIND: Record<RestAnchorKind, { energy: number; happin
   sofa: { energy: 0.22, happiness: 0.07 },
   bench: { energy: 0.12, happiness: 0.05 },
 };
+
+/** 可作 sleep 锚点的家具档位(M-G.2 睡眠):仅床;新增档位(如帐篷)须同步扩 REST_RATES_BY_KIND */
+export const SLEEP_ANCHOR_KINDS = ['bed'] as const satisfies readonly FurnitureKind[];
+
+export type SleepAnchorKind = (typeof SLEEP_ANCHOR_KINDS)[number];
+
+/**
+ * 锚点家具是否服务某活动(M-G.2 锚点绑定泛化):声明绑定直接命中;
+ * sleep 额外复用绑 rest 且档位 ∈ SLEEP_ANCHOR_KINDS 的家具——床双服务
+ * rest/sleep,地图数据保持单一绑定 activityId:'rest' 不变。
+ * 双端同源(server TileMap / web place.ts / findActivityAnchorAt 共用)。
+ */
+export function furnitureServesActivity(
+  boundActivityId: ActivityId,
+  kind: AnyFurnitureKind,
+  activityId: string,
+): boolean {
+  if (boundActivityId === activityId) return true;
+  return (
+    activityId === 'sleep' &&
+    boundActivityId === 'rest' &&
+    (SLEEP_ANCHOR_KINDS as readonly string[]).includes(kind)
+  );
+}

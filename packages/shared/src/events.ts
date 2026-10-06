@@ -198,6 +198,17 @@ export const craftCompletedEventSchema = z.object({
 
 export type CraftCompletedEvent = z.infer<typeof craftCompletedEventSchema>;
 
+/** 缺觉惩罚结算(M-G.2,数值文档 §2.7):昨夜睡眠窗口累计 < SLEEP_MIN_MINUTES,
+ * 当日正收益(金币/产出/正幸福增益)×SLEEP_DEBT_MULTIPLIER;sleptMinutes 为窗口实际入睡分钟 */
+export const sleepDebtAppliedEventSchema = z.object({
+  type: z.literal('sleep.debt_applied'),
+  characterId: z.string().min(1),
+  sleptMinutes: z.number().int(),
+  tick: z.number().int(),
+});
+
+export type SleepDebtAppliedEvent = z.infer<typeof sleepDebtAppliedEventSchema>;
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -216,6 +227,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   workTaskCancelledEventSchema,
   workTaskCompletedEventSchema,
   craftCompletedEventSchema,
+  sleepDebtAppliedEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;

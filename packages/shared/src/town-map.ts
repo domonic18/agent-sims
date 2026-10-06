@@ -2,7 +2,7 @@
  * 城镇地图定义与布局。协议面一部分——服务端模拟与客户端渲染共用同一份
  * 定义,避免双端漂移。家具/休息档位见 furniture.ts。
  */
-import type { AnyFurnitureKind, FurnitureDefinition } from './furniture.js';
+import { furnitureServesActivity, type AnyFurnitureKind, type FurnitureDefinition } from './furniture.js';
 import type { DecorDefinition } from './worldgen.js';
 import type { ResourceNodeSeed } from './production.js';
 
@@ -103,7 +103,8 @@ export function findActivityAnchorAt(
 ): { placeId: string; kind: AnyFurnitureKind } | null {
   for (const place of map.places) {
     for (const f of place.furniture ?? []) {
-      if (f.activityId !== activityId || f.use === undefined) continue;
+      if (f.activityId === undefined || f.use === undefined) continue;
+      if (!furnitureServesActivity(f.activityId, f.kind, activityId)) continue;
       if ((x === f.use.x && y === f.use.y) || isBesideFootprint(f, x, y)) {
         return { placeId: place.id, kind: f.kind };
       }

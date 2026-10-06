@@ -48,6 +48,10 @@ export interface WorldCharacter {
   lifeScore: number;
   /** 知识(M-G.4,goal-design §4.2):完成一次完整学习 +1,不衰减;岗位类别门槛(numerical §5.1) */
   knowledge: number;
+  /** 本夜睡眠窗口(22:00~06:00)累计入睡分钟(M-G.2);06:00 结算后无条件清零 */
+  sleepWindowMinutes: number;
+  /** 缺觉惩罚到期时刻(纪元起游戏分钟,null=无);当日正收益按 SLEEP_DEBT_MULTIPLIER 结算 */
+  sleepDebtEndGameMinutes: number | null;
   /** 特质向量 v0(social-design §4):出生随机生成,世界配置可覆盖部分维度;仅用于相性 */
   traits: TraitVector;
 }

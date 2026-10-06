@@ -12,6 +12,7 @@ export const ACTIVITY_IDS = [
   'study',
   'work',
   'rest',
+  'sleep',
   'workout',
   'stroll',
   'meal',
@@ -33,7 +34,7 @@ export type ActivityId = (typeof ACTIVITY_IDS)[number];
  * 基础活动集合(M3.6f 体力区段):低体力(≤阈值)时仅可执行,
  * 高强度活动(学习/打工/健身)被拒绝。
  */
-export const BASIC_ACTIVITY_IDS = ['rest', 'stroll', 'meal'] as const;
+export const BASIC_ACTIVITY_IDS = ['rest', 'sleep', 'stroll', 'meal'] as const;
 
 export interface ActivityEffects {
   energy: number;
@@ -87,6 +88,16 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '休息',
     placeIds: ['home-a', 'home-b', 'home-c', 'home-d', 'park'],
     durationMinutes: 60,
+    effects: { energy: 0, happiness: 0, coins: 0 },
+  },
+  // 睡觉(M-G.2,数值文档 §2.7):夜间睡眠活动,自家床锚点(经服务端租约校验,
+  // 公园长椅非 sleep 档位不可睡)。体力/幸福实际按床档速率(REST_RATES_BY_KIND.bed)
+  // 结算,此处 effects 置 0 占位;睡眠分钟计入昨夜窗口账本,缺觉惩罚见 simulation 结算。
+  {
+    id: 'sleep',
+    name: '睡觉',
+    placeIds: ['home-a', 'home-b', 'home-c', 'home-d'],
+    durationMinutes: 480,
     effects: { energy: 0, happiness: 0, coins: 0 },
   },
   {

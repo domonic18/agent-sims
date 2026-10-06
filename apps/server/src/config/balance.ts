@@ -61,6 +61,10 @@ export interface BalanceConfig {
   /** Lab 复活(debug 通道)恢复的满状态数值 */
   REVIVE_ENERGY: number;
   REVIVE_HAPPINESS: number;
+  /** 睡眠(M-G.2,数值文档 §2.7): 缺觉阈值(昨夜窗口累计分钟,低于即于 06:00 结算惩罚)
+   * 与缺觉日正收益系数(金币/产出/正幸福增益乘该值) */
+  SLEEP_MIN_MINUTES: number;
+  SLEEP_DEBT_MULTIPLIER: number;
   /** 繁荣分死亡扣减(M3.6j,goal-design §7 方案B): 死亡时 lifeScore ×= (1 - 该值) */
   LIFE_SCORE_DEATH_DEDUCTION: number;
   /** 世界创建批量出生点(M3.6k):公寓门前广场开阔带,按序轮询;不可行走时跳过 */
@@ -105,6 +109,8 @@ export const BALANCE: BalanceConfig = {
   LOW_ENERGY_THRESHOLD,
   REVIVE_ENERGY: 100,
   REVIVE_HAPPINESS: 80,
+  SLEEP_MIN_MINUTES: 240,
+  SLEEP_DEBT_MULTIPLIER: 0.7,
   LIFE_SCORE_DEATH_DEDUCTION: 0.2,
   SPAWN_SPOTS: [
     { x: 8, y: 12 },

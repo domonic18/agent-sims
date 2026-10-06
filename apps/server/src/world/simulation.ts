@@ -169,6 +169,8 @@ export class Simulation {
       fridge: {},
       lifeScore: 0,
       knowledge: 0,
+      sleepWindowMinutes: 0,
+      sleepDebtEndGameMinutes: null,
       traits: { ...randomTraits(), ...traits },
     };
     this.characters.set(id, character);

@@ -33,6 +33,10 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
       fridge: { ...character.fridge },
       lifeScore: round(character.lifeScore),
       knowledge: character.knowledge,
+      sleepWindowMinutes: character.sleepWindowMinutes,
+      sleepDebt:
+        character.sleepDebtEndGameMinutes !== null &&
+        sim.clock.gameMinutes < character.sleepDebtEndGameMinutes,
       traits: { ...character.traits },
       activity: character.activity
         ? {

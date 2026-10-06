@@ -81,6 +81,14 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
     key: 'REVIVE_HAPPINESS', label: '复活心情', group: 'vitals', type: 'int', min: 0, max: 200,
     effect: 'spawn', desc: 'Lab 复活后恢复的心情值',
   },
+  {
+    key: 'SLEEP_MIN_MINUTES', label: '缺觉阈值', group: 'vitals', type: 'int', min: 0, max: 480,
+    effect: 'live', desc: '昨夜睡眠窗口(22:00~06:00)累计低于该分钟数,于下一 06:00 结算缺觉惩罚;0=永不缺觉',
+  },
+  {
+    key: 'SLEEP_DEBT_MULTIPLIER', label: '缺觉收益系数', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.05,
+    effect: 'live', desc: '缺觉日正收益(金币/产出/正幸福增益)乘该值;体力与负项不动,于下一 06:00 结算生效',
+  },
   // —— 经济 ——
   {
     key: 'START_COINS', label: '出生金币', group: 'economy', type: 'int', min: 0, max: 1000,
