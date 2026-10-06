@@ -633,12 +633,12 @@ function buildDecor(
     x >= 1 && y >= 1 && x <= width - 2 && y <= height - 2 &&
     !taken.has(cellKey(x, y)) && !noGo.has(cellKey(x, y)) && !inAnyPlace(x, y);
 
-  // pass1 街道:沿路段 6~10 格间隔一侧落路灯(30% 换街具),广场四角灯
+  // pass1 街道:沿路段 12~18 格间隔一侧落路灯(30% 换街具),广场四角灯
   for (const road of paths) {
     if (road === plaza) continue;
     const horizontal = road.h <= road.w;
     const span = horizontal ? road.w : road.h;
-    for (let s = 2; s < span - 1; s += rng.int(6, 10)) {
+    for (let s = 2; s < span - 1; s += rng.int(12, 18)) {
       const side = rng.chance(0.5) ? -2 : 3;
       const x = horizontal ? road.x + s : road.x + side;
       const y = horizontal ? road.y + side : road.y + s;
