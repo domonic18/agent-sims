@@ -31,12 +31,24 @@ export const WorldgenParamsSchema = z.object({
 });
 export type WorldgenParams = z.infer<typeof WorldgenParamsSchema>;
 
-/** 户外装饰坐标(生成地图数据化;内置地图缺省由渲染层静态坐标兜底) */
+/** 装饰条目:素材库 slug + 格坐标(立式=propSprite,贴地=overlay) */
+export interface DecorEntry {
+  slug: string;
+  x: number;
+  y: number;
+}
+
+/** 户外装饰坐标(生成地图数据化;内置地图缺省由渲染层静态坐标兜底)。
+ * props/flats 为池驱动通用条目(素材库随机选材);旧四数组为固定纹理回退路径 */
 export interface DecorDefinition {
   trees: ReadonlyArray<readonly [number, number]>;
   lamps: ReadonlyArray<readonly [number, number]>;
   flowers: ReadonlyArray<readonly [number, number]>;
   bushes: ReadonlyArray<readonly [number, number]>;
+  /** 池驱动立式装饰(树/街具/长椅等):slug 即纹理,渲染 propSprite */
+  props?: ReadonlyArray<DecorEntry>;
+  /** 池驱动贴地装饰(花丛等):渲染 overlay */
+  flats?: ReadonlyArray<DecorEntry>;
   /** 公园水系(渲染 8 向水岸;blockedRects 需含同矩形) */
   pond?: { x: number; y: number; w: number; h: number };
 }

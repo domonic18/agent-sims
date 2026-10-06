@@ -36,6 +36,16 @@ export interface BlockedRect {
   h: number;
 }
 
+/** 铺装矩形:可指定铺装 tile slug(缺省砂路);仅视觉不阻塞 */
+export interface PathRect extends BlockedRect {
+  tile?: string;
+}
+
+/** 地表覆块(人行道/草地纹理变化/广场):grass 之上 paths 之下,纯视觉可行走 */
+export interface PatchRect extends BlockedRect {
+  tile: string;
+}
+
 /** 围栏段(M-G.5):整段一条矩形(横栏 h=1/竖栏 w=1),阻塞;修理工破损目标注册表 */
 export type FenceRect = BlockedRect;
 
@@ -44,9 +54,11 @@ export interface TileMapDefinition {
   width: number;
   height: number;
   blockedRects: BlockedRect[];
-  /** 铺装矩形(主街/广场/门前小路):仅视觉,可行走,客户端渲染用 */
-  paths: BlockedRect[];
+  /** 铺装矩形(主街/广场/门前小路):仅视觉,可行走,客户端渲染用;tile 缺省砂路 */
+  paths: PathRect[];
   places: PlaceDefinition[];
+  /** 地表覆块(人行道/草地纹理变化):缺省=无 */
+  patches?: PatchRect[];
   /** 围栏段清单(M-G.5 数据化):公园北缘等;缺省=无围栏 */
   fences?: FenceRect[];
   /** 资源节点种子(M-G.6 生产系统):浆果丛/拾荒堆,占格不可行走;缺省=无节点 */
