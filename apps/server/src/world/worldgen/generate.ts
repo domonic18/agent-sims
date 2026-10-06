@@ -103,40 +103,16 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
     `${input.seed}|${input.gameType}|${input.params.size}|${input.params.density}|${input.manifestVersion}#${attempt}`,
   );
   const densityIndex = WORLDGEN_DENSITIES.indexOf(input.params.density);
-  const paths: BlockedRect[] = [];
   const blockedRects: BlockedRect[] = [];
   const places: PlaceDefinition[] = [];
   const fences: BlockedRect[] = [];
 
-  // ① 骨架:十字主街(宽 2,居中) + 密度短枝路(自主干道边垂直引出,长 5~10,
-  // 不再通贯全图——通贯支路会把分区切碎成窄条,撒放空间碎片化)
-  const midX = Math.floor(width / 2);
-  const midY = Math.floor(height / 2);
-  paths.push({ x: 2, y: midY, w: width - 4, h: 2 });
-  paths.push({ x: midX, y: 2, w: 2, h: height - 4 });
-  const branchCount = densityIndex; // sparse=0 / normal=2 / dense=4
-  for (let i = 0; i < branchCount; i += 1) {
-    const base = paths[i % 2]!; // 交替自横/纵主干道引出
-    const horizontalBase = base.h <= base.w;
-    const len = rng.int(5, 10);
-    if (horizontalBase) {
-      const bx = rng.int(base.x + 4, base.x + base.w - 6);
-      if (bx + 2 >= midX - 2 && bx <= midX + 2) continue; // 不压路口
-      const up = rng.chance(0.5);
-      const y = up ? Math.max(2, base.y - len) : base.y + base.h;
-      const h = up ? base.y - y : Math.min(len, height - 2 - y);
-      if (h < 3) continue;
-      paths.push({ x: bx, y, w: 2, h });
-    } else {
-      const by = rng.int(base.y + 4, base.y + base.h - 6);
-      if (by + 2 >= midY - 2 && by <= midY + 2) continue;
-      const left = rng.chance(0.5);
-      const x = left ? Math.max(2, base.x - len) : base.x + base.w;
-      const w = left ? base.x - x : Math.min(len, width - 2 - x);
-      if (w < 3) continue;
-      paths.push({ x, y: by, w, h: 2 });
-    }
-  }
+  // ① 骨架:蜿蜒路网——中心广场随机偏移,四方向随机游走延伸(段长 3~6,30% 折弯),
+  // 密度短枝路自已铺路段引出;只进 paths(纯视觉+撒放预留),不阻塞通行
+  const { rects: paths, plaza } = buildRoadNetwork(rng, width, height, densityIndex);
+  const patches: NonNullable<TileMapDefinition['patches']> = [{ ...plaza, tile: PLAZA_TILE }];
+  const midX = plaza.x + Math.floor(plaza.w / 2);
+  const midY = plaza.y + Math.floor(plaza.h / 2);
 
   // ② 场所随机撒放:四象限为偏好区(主街分割),核心场所必得、可选场所放不下即裁;
   // 占用网格含 ±1 缓冲(场所间不贴脸、不压路、不越界),撒放顺序即配额顺序
@@ -188,23 +164,39 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
     }
   }
 
-  // ③ 门前小路:entrance 竖向连到最近道路 y
-  const roadRows = paths.filter((p) => p.h <= 2).map((p) => p.y);
+  // ③ 门前小路:入口至最近道路格 L 形连接(两段 1 宽矩形,只进 paths;先横先竖随机)
   for (const place of places) {
     if (place.door === undefined) continue;
-    const roadY = nearestRoadRow(roadRows, place.entrance.y);
-    const from = Math.min(roadY, place.entrance.y);
-    const to = Math.max(roadY, place.entrance.y);
-    if (to > from) paths.push({ x: place.entrance.x, y: from, w: 1, h: to - from + 1 });
+    const target = nearestRoadCell(paths, place.entrance);
+    if (target === null) continue;
+    const dy = Math.abs(target.y - place.entrance.y);
+    const dx = Math.abs(target.x - place.entrance.x);
+    const verticalLeg = { x: place.entrance.x, y: Math.min(place.entrance.y, target.y), w: 1, h: dy + 1 };
+    const horizontalLeg = { x: Math.min(place.entrance.x, target.x), y: target.y, w: dx + 1, h: 1 };
+    const verticalFirst = rng.chance(0.5);
+    const legs = verticalFirst ? [verticalLeg, horizontalLeg] : [horizontalLeg, verticalLeg];
+    for (const leg of legs) {
+      if (Math.max(leg.w, leg.h) > 1) paths.push(leg); // 同行/同列的零长腿跳过
+    }
   }
 
   // ④ 户外装饰
-  const decor = buildDecor(rng, width, height, places, paths, pond);
+  const decor = buildDecor(rng, width, height, places, paths, plaza, pond);
 
   // ④.5 资源节点撒点(M-G.6):公园浆果丛/街道拾荒堆,占格不可行走站四邻作业
   const resources = scatterResources(rng, width, height, places, paths, fences, pond);
 
-  const map: TileMapDefinition = { width, height, blockedRects, paths, places, decor, fences, resources };
+  const map: TileMapDefinition = {
+    width,
+    height,
+    blockedRects,
+    paths,
+    places,
+    decor,
+    fences,
+    resources,
+    patches,
+  };
   // ⑤ 校验:TileMap 构造即校验(入口/门洞/家具/室内连通);再验锚点与全局连通
   const tileMap = TileMap.fromDefinition(map);
   const anchorsComplete = checkAnchors(places);
@@ -567,13 +559,14 @@ function deriveUse(
   return null;
 }
 
-/** 户外装饰:树沿主街/支路,灯在门前路口,公园花木+池塘 */
+/** 户外装饰:树沿路两侧(蜿蜒路网双向适配),灯在门前,公园花木+池塘 */
 function buildDecor(
   rng: Rng,
   width: number,
   height: number,
   places: PlaceDefinition[],
   paths: BlockedRect[],
+  plaza: BlockedRect,
   pond: BlockedRect | null,
 ): TileMapDefinition['decor'] {
   const trees: Array<[number, number]> = [];
@@ -583,23 +576,34 @@ function buildDecor(
   const placeRects = places.map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h }));
   const inAnyPlace = (x: number, y: number): boolean =>
     placeRects.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+  const roadCells = new Set<string>();
+  for (const r of paths) mark0(roadCells, r);
 
-  // 树:道路两侧稀疏撒点
+  // 树:路段两侧稀疏撒点(横竖路都植;广场与门前沿路格不植,防树压路面)
   for (const road of paths) {
-    if (road.w > road.h) continue; // 竖向路才植树
-    for (let y = 4; y < height - 3; y += rng.int(5, 8)) {
-      for (const side of [road.x - 2, road.x + road.w + 1]) {
-        if (side > 1 && side < width - 2 && !inAnyPlace(side, y) && rng.chance(0.5)) {
-          trees.push([side, y]);
+    if (road === plaza) continue;
+    const horizontal = road.h <= road.w;
+    const span = horizontal ? road.w : road.h;
+    for (let s = 4; s < span - 2; s += rng.int(5, 8)) {
+      for (const side of [-2, 3]) {
+        const tx = horizontal ? road.x + s : road.x + side;
+        const ty = horizontal ? road.y + side : road.y + s;
+        if (
+          tx > 1 && tx < width - 2 && ty > 1 && ty < height - 2 &&
+          !inAnyPlace(tx, ty) && !roadCells.has(cellKey(tx, ty)) && rng.chance(0.5)
+        ) {
+          trees.push([tx, ty]);
         }
       }
     }
   }
-  // 灯:每个有门场所门前
+  // 灯:每个有门场所门前(门前小路格让位)
   for (const place of places) {
     if (place.door === undefined) continue;
     const lx = place.entrance.x + 1;
-    if (!inAnyPlace(lx, place.entrance.y)) lamps.push([lx, place.entrance.y]);
+    if (!inAnyPlace(lx, place.entrance.y) && !roadCells.has(cellKey(lx, place.entrance.y))) {
+      lamps.push([lx, place.entrance.y]);
+    }
   }
   // 公园花木撒点(避开池塘)
   for (const place of places) {
@@ -614,8 +618,124 @@ function buildDecor(
   return { trees, lamps, flowers, bushes, ...(pond !== null ? { pond } : {}) };
 }
 
-function nearestRoadRow(roadRows: number[], y: number): number {
-  return roadRows.reduce((best, row) => (Math.abs(row - y) < Math.abs(best - y) ? row : best), roadRows[0] ?? 0);
+/** 广场地表覆块 tile(与渲染层 TILE_SLUG.plaza 同名素材) */
+const PLAZA_TILE = 'tile-plaza';
+
+/**
+ * 蜿蜒路网:中心广场(边长 4~6,随机偏移 ±2)+ 四方向随机游走延伸——段宽 2/段长 3~6,
+ * 30% 折弯垂直偏移 2~4(连接段锚定刚铺段前端 2 格,路网必连通),距边 4~6 停;
+ * 短枝路 sparse 1/normal 2/dense 4 自随机已铺段垂直引出(长 5~10)。
+ */
+function buildRoadNetwork(
+  rng: Rng,
+  width: number,
+  height: number,
+  densityIndex: number,
+): { rects: BlockedRect[]; plaza: BlockedRect } {
+  const rects: BlockedRect[] = [];
+  const plazaSize = rng.int(4, 6);
+  const plaza: BlockedRect = {
+    x: Math.floor(width / 2) + rng.int(-2, 2) - Math.floor(plazaSize / 2),
+    y: Math.floor(height / 2) + rng.int(-2, 2) - Math.floor(plazaSize / 2),
+    w: plazaSize,
+    h: plazaSize,
+  };
+  rects.push(plaza);
+  for (const arm of [{ dx: 1, dy: 0 }, { dx: -1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: -1 }] as const) {
+    const horizontal = arm.dx !== 0;
+    const s = horizontal ? arm.dx : arm.dy;
+    const margin = rng.int(4, 6);
+    const limit = (horizontal ? width : height) - margin;
+    let x = horizontal
+      ? s > 0 ? plaza.x + plaza.w : plaza.x - 1
+      : plaza.x + rng.int(0, plaza.w - 2);
+    let y = horizontal
+      ? plaza.y + rng.int(0, plaza.h - 2)
+      : s > 0 ? plaza.y + plaza.h : plaza.y - 1;
+    const front = (): number => (horizontal ? x : y);
+    const room = (): number => (s > 0 ? limit - front() : front() - margin);
+    while (room() >= 3) {
+      const len = Math.min(rng.int(3, 6), room());
+      if (horizontal) {
+        rects.push({ x: s > 0 ? x : x - len + 1, y, w: len, h: 2 });
+        x += s * len;
+      } else {
+        rects.push({ x, y: s > 0 ? y : y - len + 1, w: 2, h: len });
+        y += s * len;
+      }
+      // 折弯:垂直偏移 2~4,连接段跨新旧行带并锚定刚铺段前端
+      if (!rng.chance(0.3)) continue;
+      const k = rng.int(2, 4);
+      if (horizontal) {
+        const opts: number[] = [];
+        if (y + 1 + k <= height - 2) opts.push(1);
+        if (y - k >= 2) opts.push(-1);
+        if (opts.length === 0) continue;
+        const j = rng.pick(opts);
+        const ny = y + j * k;
+        rects.push({ x: s > 0 ? x - 2 : x, y: Math.min(y, ny), w: 2, h: k + 2 });
+        y = ny;
+      } else {
+        const opts: number[] = [];
+        if (x + 1 + k <= width - 2) opts.push(1);
+        if (x - k >= 2) opts.push(-1);
+        if (opts.length === 0) continue;
+        const j = rng.pick(opts);
+        const nx = x + j * k;
+        rects.push({ x: Math.min(x, nx), y: s > 0 ? y - 2 : y, w: k + 2, h: 2 });
+        x = nx;
+      }
+    }
+  }
+  // 短枝路:自随机已铺段(含广场)垂直引出,长 5~10,越界侧自动改向
+  const branchCount = [1, 2, 4][densityIndex] ?? 2;
+  for (let i = 0; i < branchCount; i += 1) {
+    const base = rng.pick(rects);
+    const len = rng.int(5, 10);
+    if (base.h <= base.w) {
+      const canUp = base.y - len >= 2;
+      const canDown = base.y + base.h + len <= height - 2;
+      if (!canUp && !canDown) continue;
+      const up = canUp && (!canDown || rng.chance(0.5));
+      rects.push({
+        x: rng.int(base.x, base.x + base.w - 2),
+        y: up ? base.y - len : base.y + base.h,
+        w: 2,
+        h: len,
+      });
+    } else {
+      const canLeft = base.x - len >= 2;
+      const canRight = base.x + base.w + len <= width - 2;
+      if (!canLeft && !canRight) continue;
+      const left = canLeft && (!canRight || rng.chance(0.5));
+      rects.push({
+        x: left ? base.x - len : base.x + base.w,
+        y: rng.int(base.y, base.y + base.h - 2),
+        w: len,
+        h: 2,
+      });
+    }
+  }
+  return { rects, plaza };
+}
+
+/** 最近道路格:入口到任一路段矩形内格的最小曼哈顿距离点(路段间经锚定彼此连通) */
+function nearestRoadCell(
+  rects: readonly BlockedRect[],
+  p: { x: number; y: number },
+): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  let bestD = Number.POSITIVE_INFINITY;
+  for (const r of rects) {
+    const cx = Math.min(Math.max(p.x, r.x), r.x + r.w - 1);
+    const cy = Math.min(Math.max(p.y, r.y), r.y + r.h - 1);
+    const d = Math.abs(cx - p.x) + Math.abs(cy - p.y);
+    if (d < bestD) {
+      bestD = d;
+      best = { x: cx, y: cy };
+    }
+  }
+  return best;
 }
 
 /**

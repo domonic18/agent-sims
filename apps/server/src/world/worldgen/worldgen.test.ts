@@ -98,6 +98,19 @@ describe('generateTownMap 生成质量(50 种子批量)', () => {
     }
   });
 
+  it('蜿蜒路网:广场 patch 存在且近中心,横向路段跨多行带(折弯防回归直十字)', () => {
+    for (const result of results) {
+      const plazaPatch = (result.map.patches ?? []).find((pt) => pt.tile === 'tile-plaza');
+      expect(plazaPatch).toBeDefined();
+      const cx = plazaPatch!.x + plazaPatch!.w / 2;
+      const cy = plazaPatch!.y + plazaPatch!.h / 2;
+      expect(Math.abs(cx - result.map.width / 2)).toBeLessThanOrEqual(3);
+      expect(Math.abs(cy - result.map.height / 2)).toBeLessThanOrEqual(3);
+      const rows = new Set(result.map.paths.filter((p) => p.h === 2 && p.w >= 3).map((p) => p.y));
+      expect(rows.size).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it('有门场所携带地板/墙 tile(渲染直配)', () => {
     for (const result of results) {
       for (const place of result.map.places) {
