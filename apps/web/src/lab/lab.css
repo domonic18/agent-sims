@@ -159,12 +159,14 @@
   font-weight: bold;
 }
 
-/* SidePanel 自带悬浮定位,在操作列内转为普通块随列滚动 */
+/* SidePanel 自带悬浮定位,在操作列内转为普通块随列滚动;
+   flex:none 防止被同列 lab-panel 挤压(overflow:auto 令 min-height 归零会缩成一条) */
 .lab-side .side-panel {
   position: static;
   width: auto;
   max-height: none;
   margin: 0;
+  flex: none;
 }
 
 .lab-panel {
