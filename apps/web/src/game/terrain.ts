@@ -68,6 +68,9 @@ export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
   const pondRect = decor?.pond ?? POND_RECT;
   const border = (x: number, y: number): boolean =>
     x === 0 || y === 0 || x === map.width - 1 || y === map.height - 1;
+  // 池驱动生成图(decor.props 存在)与内置图区分:内置图专属的广场铺装/边界柏树墙
+  // 不再强加给生成图(生成图广场由 patches 出、边界树带由 decorateBorder 出)
+  const builtinStatic = decor?.props === undefined;
 
   for (let y = 0; y < map.height; y += 1) {
     for (let x = 0; x < map.width; x += 1) {
@@ -78,16 +81,14 @@ export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
         continue;
       }
       ground(scene, x, y, TILE_SLUG.grass);
-      if (inRect(x, y, PLAZA_RECT)) {
-        ground(scene, x, y, TILE_SLUG.plaza);
-        continue;
-      }
-      if (map.paths.some((r) => inRect(x, y, r))) {
-        ground(scene, x, y, TILE_SLUG.path);
-        continue;
-      }
-      // 边界柏树墙:隔格交错,树冠相连又不糊死
-      if (border(x, y) && (x + y) % 2 === 0) propSprite(scene, x, y, 'cypress');
+      const path = map.paths.find((r) => inRect(x, y, r));
+      if (path !== undefined) ground(scene, x, y, path.tile ?? TILE_SLUG.path);
+      if (builtinStatic && inRect(x, y, PLAZA_RECT)) ground(scene, x, y, TILE_SLUG.plaza);
+      // 地表覆块(patches,如中心广场)盖过路砖:广场是成片铺装,路面汇入即止
+      const patch = map.patches?.find((r) => inRect(x, y, r));
+      if (patch !== undefined) ground(scene, x, y, patch.tile);
+      // 边界柏树墙(仅内置图):隔格交错,树冠相连又不糊死
+      if (builtinStatic && border(x, y) && (x + y) % 2 === 0) propSprite(scene, x, y, 'cypress');
     }
   }
 
@@ -117,6 +118,11 @@ export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
       }
     }
   }
+
+  // 池驱动装饰条目(C3 数据化):slug 即纹理,立式 propSprite/贴地 overlay;
+  // 下方旧固定纹理字段仅在内置图/无素材池回退路径有值(池模式全走数据条目)
+  for (const entry of decor?.props ?? []) propSprite(scene, entry.x, entry.y, entry.slug);
+  for (const entry of decor?.flats ?? []) overlay(scene, entry.x, entry.y, entry.slug);
 
   const lamps = decor?.lamps ?? [...STREET_LAMPS, ...PLAZA_LAMPS, ...PARK_LAMPS, ...FENCE_LAMPS];
   for (const [lx, ly] of lamps) {

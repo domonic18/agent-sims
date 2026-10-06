@@ -71,6 +71,13 @@ export class WorldScene extends Phaser.Scene {
         usedSlugs.add(furniture.sprite ?? furniture.kind);
       }
     }
+    // 池驱动装饰/铺装(C3/C2b 数据条目):slug 即纹理,同地图引用同加载
+    for (const entry of map?.decor?.props ?? []) usedSlugs.add(entry.slug);
+    for (const entry of map?.decor?.flats ?? []) usedSlugs.add(entry.slug);
+    for (const path of map?.paths ?? []) {
+      if (path.tile) usedSlugs.add(path.tile);
+    }
+    for (const patch of map?.patches ?? []) usedSlugs.add(patch.tile);
     for (const asset of registry.manifest.assets) {
       const needed =
         asset.anim !== null ||
