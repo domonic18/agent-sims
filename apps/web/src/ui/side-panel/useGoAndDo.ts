@@ -75,6 +75,7 @@ export function useGoAndDo(
   buyItem: (itemId: string) => Promise<void>;
   startWorkTask: (task: WorkTaskId) => Promise<void>;
   startCraft: (recipeId: CraftRecipeId) => Promise<void>;
+  startSleep: () => Promise<void>;
   pending: GoAndDoPending | null;
 } {
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
@@ -193,6 +194,37 @@ export function useGoAndDo(
     setPending(ack.ok ? { kind: 'craft', id: recipeId } : null);
   };
 
+  /** 睡觉(M-G.2,纯玩家手动): 系统一律不代劳,只此入口。
+   * 不复用 startActivity——它选最近锚点,可能是邻居家床(服务端必拒);
+   * 此处锚点过滤 placeId===housing.propertyId 只认自家床,无租房静默(按钮置灰由调用方判定) */
+  const startSleep = async (): Promise<void> => {
+    if (character === null || snapshot === null || map === null) return;
+    const housing = character.housing;
+    if (findActivityAnchorAt(map, 'sleep', character.x, character.y) !== null) {
+      await run({ type: 'start_activity', characterId: character.id, activityId: 'sleep' });
+      return;
+    }
+    if (housing === null) return;
+    const ownBeds = activityAnchors(map, 'sleep').filter((a) => a.placeId === housing.propertyId);
+    if (ownBeds.length === 0) return;
+    const nearest = ownBeds.reduce((best, a) =>
+      Math.abs(a.x - character.x) + Math.abs(a.y - character.y) <
+      Math.abs(best.x - character.x) + Math.abs(best.y - character.y)
+        ? a
+        : best,
+    );
+    const ack = await sendIntent({
+      type: 'move_to',
+      characterId: character.id,
+      x: nearest.x,
+      y: nearest.y,
+    });
+    setFeedback(ack);
+    pushToast(ack.ok, ack.ok ? '回家上床,到达后自动入睡' : ack.message);
+    pendingArrivalRef.current = false;
+    setPending(ack.ok ? { kind: 'activity', id: 'sleep' } : null);
+  };
+
   useEffect(() => {
     setPending(null);
   }, [selectedId]);
@@ -255,5 +287,5 @@ export function useGoAndDo(
     }
   }, [pending, character, snapshot, map]);
 
-  return { feedback, run, startActivity, buyItem, startWorkTask, startCraft, pending };
+  return { feedback, run, startActivity, buyItem, startWorkTask, startCraft, startSleep, pending };
 }

@@ -91,6 +91,14 @@ export function CharactersSection({
           <div className="coins" title="完成一次完整学习 +1;解锁岗位类别(M-G.4)">
             知识 {character.knowledge} 班
           </div>
+          {character.sleepDebt && (
+            <div
+              className="coins"
+              title="缺觉: 昨夜睡眠不足,今日正收益(金币/产出/幸福增益)打折,睡满一夜后于 06:00 解除"
+            >
+              😪 缺觉中
+            </div>
+          )}
           {!character.alive && (
             <div className="death-banner">
               ☠️ 已死亡(幽灵态)
@@ -235,6 +243,7 @@ export function ActivitySection({
   run,
   startActivity,
   startWorkTask,
+  startSleep,
   continuousTask,
   toggleContinuous,
 }: {
@@ -246,6 +255,7 @@ export function ActivitySection({
   run: RunIntent;
   startActivity: (def: ActivityDefinition) => Promise<void>;
   startWorkTask: (task: WorkTaskId) => Promise<void>;
+  startSleep: () => Promise<void>;
   continuousTask: WorkTaskId | null;
   toggleContinuous: (task: WorkTaskId | null) => void;
 }) {
@@ -330,7 +340,35 @@ export function ActivitySection({
       </li>
     );
   };
+  /** 睡觉行(M-G.2): 经 startSleep 只认自家床;无租房置灰(纯玩家手动,系统不代劳) */
+  const renderSleepRow = (def: ActivityDefinition) => {
+    const homeless = character.housing === null;
+    const enRoute = pending?.kind === 'activity' && pending.id === 'sleep';
+    return (
+      <li key={def.id} id={`activity-row-${def.id}`} className={enRoute ? 'focused' : ''}>
+        <span>
+          {def.name}
+          <small>自家床 {def.durationMinutes}分</small>
+        </span>
+        <button
+          type="button"
+          disabled={moving || dead || homeless}
+          title={
+            homeless
+              ? '无住房,先在资产页租住公寓才能睡觉'
+              : '回家上床睡 8 小时;昨夜 22:00~06:00 累计睡 ≥4 小时免缺觉惩罚(须自家床)'
+          }
+          onClick={() => void startSleep()}
+        >
+          {enRoute ? '途中…' : '睡觉'}
+        </button>
+      </li>
+    );
+  };
   const renderRow = (def: ActivityDefinition, locked: boolean) => {
+    if (def.id === 'sleep') {
+      return renderSleepRow(def);
+    }
     if (def.id in MAINTENANCE_TASKS || def.id === 'gather_berry' || def.id === 'scavenge') {
       return renderWorkRow(def, locked);
     }
@@ -384,8 +422,17 @@ export function ActivitySection({
       {activity !== null && activityDef !== null ? (
         <div className="activity-running">
           <div>
-            进行中:{activityDef.name}({activity.elapsedMinutes}/
-            {activityDef.durationMinutes} 分)
+            {activity.activityId === 'sleep' ? (
+              <>
+                😴 睡眠({activity.elapsedMinutes}/{activityDef.durationMinutes} 分)· 本夜{' '}
+                {character.sleepWindowMinutes} 分
+              </>
+            ) : (
+              <>
+                进行中:{activityDef.name}({activity.elapsedMinutes}/
+                {activityDef.durationMinutes} 分)
+              </>
+            )}
           </div>
           <div className="progress-track">
             <div className="progress-fill" style={{ width: `${progress}%` }} />

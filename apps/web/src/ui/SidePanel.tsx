@@ -47,11 +47,8 @@ export function SidePanel() {
   const [tab, setTab] = useState<PanelTab>('actions');
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
-  const { feedback, run, startActivity, buyItem, startWorkTask, startCraft, pending } = useGoAndDo(
-    character,
-    snapshot,
-    selectedId,
-  );
+  const { feedback, run, startActivity, buyItem, startWorkTask, startCraft, startSleep, pending } =
+    useGoAndDo(character, snapshot, selectedId);
 
   // 连续作业自动接单(M-G.5):开关角色空闲(无活动/不在途/存活/体力高于阈值)即
   // 自动接最近同岗单;被服务端拒绝的目标记入黑名单防逐 tick 重试,重开开关清空。
@@ -140,6 +137,7 @@ export function SidePanel() {
             run={run}
             startActivity={startActivity}
             startWorkTask={startWorkTask}
+            startSleep={startSleep}
             continuousTask={continuousWork[character.id] ?? null}
             toggleContinuous={toggleContinuous}
           />
