@@ -9,6 +9,7 @@ import {
   type WorkTaskId,
   type WorldSnapshotMessage,
 } from '@sims/shared';
+import { SidePanel } from '../SidePanel';
 import { findPlaceByRef, type CharacterView } from '../side-panel/place';
 import type { GoAndDoPending, RunIntent } from '../side-panel/useGoAndDo';
 import { useWorldStore } from '../../store/worldStore';
@@ -79,7 +80,34 @@ function Menu({ label, title, disabled, items }: {
   );
 }
 
-/** 底部快捷动作条(UI-1): 高频 go-and-do 一键直达;连续作业等全量操作在 📦 物品面板(C5 接入) */
+/** 物品弹层(UI-1 C5): 内嵌全量 SidePanel(行动/物品/资产三页),点击外部关闭 */
+function InventoryPopover({ onClose }: { onClose: () => void }): JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onDown = (event: MouseEvent): void => {
+      if (ref.current !== null && !ref.current.contains(event.target as Node)) onClose();
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [onClose]);
+
+  return (
+    <div className="px-box inv-popover" ref={ref}>
+      <div className="px-inner inv-popover-inner">
+        <div className="inv-head">
+          <b>物品 · 行动面板</b>
+          <button type="button" className="px-btn sq" title="关闭" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <SidePanel />
+      </div>
+    </div>
+  );
+}
+
+/** 底部快捷动作条(UI-1): 高频 go-and-do 一键直达;全量操作(社交/商店/制作/背包/资产)收进 📦 弹层 */
 export function ActionBar({
   character,
   snapshot,
@@ -90,6 +118,7 @@ export function ActionBar({
   startWorkTask,
 }: ActionBarProps): JSX.Element | null {
   const map = useWorldStore((state) => state.map);
+  const [invOpen, setInvOpen] = useState(false);
 
   if (character === null || snapshot === null) return null;
   const dead = !character.alive;
@@ -187,8 +216,17 @@ export function ActionBar({
           disabled={dead}
           items={[taskItem('clean'), taskItem('repair'), taskItem('rescue')]}
         />
+        <button
+          type="button"
+          className={`px-btn${invOpen ? ' on' : ''}`}
+          title="物品·行动面板(社交/商店/制作/背包/资产)"
+          onClick={() => setInvOpen((value) => !value)}
+        >
+          📦 物品
+        </button>
         {pending !== null && <span className="hud-tag route">…途中自动接续</span>}
       </div>
+      {invOpen && <InventoryPopover onClose={() => setInvOpen(false)} />}
     </div>
   );
 }

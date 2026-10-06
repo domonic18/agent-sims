@@ -1,4 +1,4 @@
-/* /lab 调试台全屏布局(M3.6d): 画布铺满视口,状态栏/倍率控制/操作列/日志悬浮其上 */
+/* /lab 世界实验室(UI-1 C5 三栏游戏化,无画布): 顶栏+左控制/中意图/右事件,全像素风 */
 .lab-page {
   font-family: var(--px-font-ui);
   position: fixed;
@@ -6,204 +6,137 @@
   overflow: hidden;
   background: var(--px-ink);
   color: var(--px-text);
-}
-
-.lab-page .status-bar {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  right: 12px;
-  z-index: 10;
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 6px 12px;
-  background: rgba(15, 18, 26, 0.78);
-  border-radius: 8px;
-}
-
-.lab-page .status-bar .title {
-  font-weight: bold;
-}
-
-.lab-page .status-bar .title a {
-  font-size: 12px;
-  font-weight: normal;
-  margin-left: 8px;
-  color: #8ecbff;
-}
-
-.lab-page .status-bar .connected {
-  color: #7fd98a;
-}
-
-.lab-page .status-bar .disconnected {
-  color: #ff8a80;
-}
-
-.lab-page .controls {
-  position: absolute;
-  top: 46px;
-  left: 12px;
-  z-index: 10;
-  display: flex;
+  flex-direction: column;
+  padding: 12px;
   gap: 10px;
-  align-items: center;
-  padding: 6px 10px;
-  background: rgba(15, 18, 26, 0.78);
-  border-radius: 8px;
 }
 
-.lab-page .controls button {
-  font-family: inherit;
-  padding: 4px 12px;
-  cursor: pointer;
-  border: 1px solid #888;
-  border-radius: 6px;
-  background: #fff;
+/* ---- 顶栏 ---- */
+.lab-top {
+  flex: none;
 }
 
-.lab-page .controls button.active {
-  background: #2e7d32;
-  color: #fff;
-  border-color: #2e7d32;
-}
-
-.lab-page .controls button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.speed-group {
+.lab-top-inner {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
 }
 
-.paused-badge {
-  color: #ff8a80;
-  font-weight: bold;
+.lab-title {
+  font-size: 14px;
+  color: var(--px-gold);
 }
 
-.control-error {
-  color: #ff8a80;
+.lab-clock {
+  flex: 1;
   font-size: 12px;
-  max-width: 420px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--px-dim);
+  font-family: var(--px-font-pixel);
+  letter-spacing: 1px;
 }
 
-/* 画布铺满视口,Phaser Scale.RESIZE 随窗口自适应(UI-1),相机跟随角色 */
-.canvas-wrap {
-  position: absolute;
-  inset: 0;
+.lab-back {
+  width: auto;
+  padding: 4px 10px;
+  font-size: 12px;
+  text-decoration: none;
+  color: var(--px-text);
 }
 
-.canvas-host {
-  position: relative;
-  width: 100%;
-  height: 100%;
+/* ---- 三栏 grid ---- */
+.lab-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 300px minmax(380px, 1fr) 340px;
+  gap: 10px;
 }
 
-/* 右侧操作列: 快捷操作 SidePanel + 协议表单 + 世界状态,整列限高滚动;
-   可整体收起(M3.6f): translateX 滑出屏幕,右侧把手按钮展开/收起 */
-.lab-side {
-  position: absolute;
-  top: 46px;
-  right: 12px;
-  bottom: 8px;
-  z-index: 10;
-  width: 300px;
+.lab-col {
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  font-size: 12px;
-  transition: transform 0.25s ease;
 }
 
-.lab-side.collapsed {
-  transform: translateX(calc(100% + 16px));
+.lab-col-mid {
+  overflow-y: visible;
 }
 
-/* 操作列右缘把手: 展开时贴列左缘,收起后贴屏幕右缘 */
-.lab-side-toggle {
-  position: absolute;
-  top: 50%;
-  z-index: 11;
-  width: 26px;
-  height: 52px;
-  transform: translateY(-50%);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px 0 0 8px;
-  background: rgba(15, 18, 26, 0.85);
-  color: #fff;
-  font-size: 13px;
-  cursor: pointer;
-  transition: right 0.25s ease;
+.lab-grow {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.revive-btn {
-  border-color: #2e7d32 !important;
-  background: #2e7d32 !important;
-  color: #fff !important;
-  font-weight: bold;
+.lab-grow .lab-panel-inner {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
-.world-table td.low-energy {
-  color: #ef6c00;
-  font-weight: bold;
-}
-
-.world-table td.dead {
-  color: #c62828;
-  font-weight: bold;
-}
-
-/* SidePanel 自带悬浮定位,在操作列内转为普通块随列滚动;
-   flex:none 防止被同列 lab-panel 挤压(overflow:auto 令 min-height 归零会缩成一条) */
-.lab-side .side-panel {
-  position: static;
-  width: auto;
-  max-height: none;
-  margin: 0;
+/* ---- 像素面板 ---- */
+.lab-panel-px {
   flex: none;
 }
 
-.lab-panel {
-  border: 1px solid #999;
-  border-radius: 8px;
+.lab-panel-inner {
   padding: 10px 12px;
-  background: rgba(250, 250, 250, 0.94);
-  color: #222;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.lab-panel h3 {
-  margin: 0 0 6px;
-  font-size: 13px;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 2px;
+.lab-panel-inner h3 {
+  margin: 0;
+  font-size: 12px;
+  color: var(--px-gold);
+  border-bottom: 2px solid var(--px-slate);
+  padding-bottom: 4px;
 }
 
-.lab-panel select {
-  width: 100%;
-  font-family: inherit;
-  margin-bottom: 6px;
+.lab-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 
-.hint {
-  color: #666;
-  margin: 4px 0 0;
+.lab-err {
+  margin: 0;
+  font-size: 12px;
+  color: var(--px-bad);
 }
 
+.lab-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--px-font-ui);
+  font-size: 12px;
+  padding: 4px 6px;
+  background: var(--px-ink);
+  color: var(--px-text);
+  border: none;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+}
+
+.lab-input::placeholder {
+  color: var(--px-dim);
+}
+
+/* ---- 参数热调 ---- */
 .param-group {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .param-group-title {
   font-size: 11px;
   font-weight: bold;
-  color: #607d8b;
+  color: var(--px-dim);
   margin-bottom: 3px;
 }
 
@@ -226,13 +159,16 @@
 
 .param-row input {
   width: 72px;
-  font-family: inherit;
+  font-family: var(--px-font-ui);
   font-size: 12px;
-  padding: 1px 4px;
-  border: 1px solid #bbb;
-  border-radius: 4px;
+  padding: 2px 4px;
+  background: var(--px-ink);
+  color: var(--px-text);
+  border: none;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
 }
 
+/* ---- 意图表单(13 意图全量) ---- */
 .intent-groups {
   display: flex;
   flex-direction: column;
@@ -242,16 +178,18 @@
 .intent-group {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 6px 8px;
-  border: 1px solid #e0e0e0;
-  border-radius: 6px;
-  background: #fff;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
 }
 
 .intent-name {
   font-weight: bold;
-  color: #455a64;
+  color: var(--px-cyan);
+  font-family: var(--px-font-pixel);
+  font-size: 10px;
+  letter-spacing: 1px;
 }
 
 .intent-controls {
@@ -263,112 +201,147 @@
 
 .intent-controls input {
   width: 56px;
-  font-family: inherit;
+  font-family: var(--px-font-ui);
+  background: var(--px-panel);
+  color: var(--px-text);
+  border: none;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+  padding: 2px 4px;
 }
 
 .intent-controls select {
   flex: 1;
   min-width: 0;
   margin-bottom: 0;
-}
-
-.lab-panel button {
-  font-family: inherit;
-  font-size: 12px;
-  padding: 2px 8px;
-  cursor: pointer;
-  border: 1px solid #888;
-  border-radius: 5px;
-  background: #fff;
-  white-space: nowrap;
-}
-
-.lab-panel button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.world-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 11px;
-}
-
-.world-table th,
-.world-table td {
-  border: 1px solid #e0e0e0;
+  font-family: var(--px-font-ui);
+  background: var(--px-panel);
+  color: var(--px-text);
+  border: none;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
   padding: 2px 4px;
-  text-align: left;
 }
 
-.world-table th {
-  background: #f0f0f0;
-  font-weight: normal;
-  color: #555;
-}
-
-.world-table tr.selected td {
-  background: #e8f5e9;
-}
-
-/* 回执日志: 左下悬浮面板,不遮右侧操作列 */
+/* ---- 回执终端(px-box 壳) ---- */
 .lab-log {
-  position: absolute;
-  left: 12px;
-  bottom: 8px;
-  z-index: 10;
-  width: min(56vw, 760px);
-  max-height: 30vh;
-  overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 12px;
-  background: rgba(15, 18, 26, 0.85);
+  flex: none;
+}
+
+.lab-log-inner {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .lab-log h3 {
-  margin: 0 0 6px;
-  font-size: 13px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  padding-bottom: 2px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--px-gold);
+  border-bottom: 2px solid var(--px-slate);
+  padding-bottom: 4px;
 }
 
 .lab-log ul {
   list-style: none;
   margin: 0;
-  padding: 0;
-  max-height: 180px;
+  padding: 6px;
+  max-height: 26vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
 }
 
 .lab-log li {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  padding: 1px 4px;
-  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
 }
 
 .lab-log li .meta {
-  color: #9aa3b2;
+  color: var(--px-dim);
   flex-shrink: 0;
+  font-family: var(--px-font-pixel);
+  font-size: 9px;
 }
 
 .lab-log li code {
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(41, 54, 111, 0.6);
   padding: 0 4px;
-  border-radius: 3px;
+  color: var(--px-cyan);
 }
 
 .lab-log li.ok .message {
-  color: #7fd98a;
+  color: var(--px-ok);
 }
 
 .lab-log li.err .message {
-  color: #ff8a80;
+  color: var(--px-bad);
+}
+
+/* ---- 世界事件列表(EventList) ---- */
+.event-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+}
+
+.event-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.event-time {
+  flex: none;
+  color: var(--px-dim);
+  font-size: 10px;
+  font-family: var(--px-font-pixel);
+}
+
+.event-icon {
+  flex: none;
+}
+
+.event-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.event-list li.tone-good .event-text {
+  color: var(--px-ok);
+}
+
+.event-list li.tone-bad .event-text {
+  color: var(--px-bad);
+}
+
+/* ---- 轻提示与杂项 ---- */
+.lab-page .toasts {
+  bottom: auto;
+  top: 64px;
+}
+
+.lab-page .toast {
+  border-radius: 0;
+  font-family: var(--px-font-ui);
+}
+
+.hint {
+  color: var(--px-dim);
+  margin: 4px 0 0;
+  font-size: 12px;
 }

@@ -31,6 +31,24 @@ export const setTimeScale = (scale: number): Promise<void> =>
 export const reviveCharacter = (characterId: string): Promise<void> =>
   request('/debug/revive', 'POST', { characterId }).then(() => undefined);
 
+/** 手动快进 n tick(1 tick=1 游戏分钟,仅 dev;n 走 query) */
+export const debugTick = (n: number): Promise<void> =>
+  request(`/debug/tick?n=${n}`, 'POST').then(() => undefined);
+
+/** 生成居民(仅 dev):坐标须为可站立格 */
+export const debugSpawn = (body: { id: string; name?: string; x: number; y: number }): Promise<void> =>
+  request('/debug/spawn', 'POST', body).then(() => undefined);
+
+/** 探测 /debug 通道是否可用(生产未注册 → 404),控制 Lab dev 区块显隐 */
+export const probeDebugAvailable = async (): Promise<boolean> => {
+  try {
+    const response = await fetch('/debug/state');
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
 /** 世界参数生效值全集(目录键→数值) */
 export const fetchDebugParams = (): Promise<Record<string, number>> =>
   request<{ params: Record<string, number> }>('/api/world/settings', 'GET').then((r) => r.params);

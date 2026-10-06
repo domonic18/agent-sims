@@ -1,27 +1,18 @@
+/* 玩家面板(UI-1 C5 像素化,可嵌入宿主容器):本体为普通块,定位/尺寸由宿主决定 */
 .side-panel {
-  position: absolute;
-  top: 46px;
-  right: 12px;
-  z-index: 10;
-  width: 280px;
-  max-height: calc(100% - 60px);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border: 1px solid #999;
-  border-radius: 8px;
-  padding: 10px 12px;
   font-size: 12px;
-  background: rgba(250, 250, 250, 0.94);
-  color: #222;
+  color: var(--px-text);
 }
 
 .panel-section h3 {
   margin: 0 0 6px;
-  font-size: 13px;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 2px;
+  font-size: 12px;
+  border-bottom: 2px solid var(--px-slate);
+  padding-bottom: 3px;
+  color: var(--px-gold);
 }
 
 /* 分页标签(M3.6i): 行动/物品/资产 三页收纳,免长滚动 */
@@ -33,24 +24,31 @@
 .panel-tabs button {
   flex: 1;
   padding: 4px 0;
-  background: #eceff1;
+  background: var(--px-ink);
+  color: var(--px-dim);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
 }
 
 .panel-tabs button.active {
-  background: #37474f;
-  border-color: #37474f;
-  color: #fff;
+  background: var(--px-navy);
+  color: var(--px-gold);
+  box-shadow: inset 0 0 0 2px var(--px-blue);
   font-weight: bold;
 }
 
 .panel-section select {
   width: 100%;
-  font-family: inherit;
+  font-family: var(--px-font-ui);
   margin-bottom: 6px;
+  padding: 3px 4px;
+  background: var(--px-ink);
+  color: var(--px-text);
+  border: none;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
 }
 
 .hint {
-  color: #666;
+  color: var(--px-dim);
   margin: 4px 0 0;
 }
 
@@ -91,7 +89,7 @@
 
 .activity-list small,
 .shop-list small {
-  color: #666;
+  color: var(--px-dim);
   margin-left: 4px;
 }
 
@@ -105,9 +103,8 @@
 .activity-list li.focused {
   margin: -2px -6px;
   padding: 2px 6px;
-  border-radius: 6px;
-  background: #fff8e1;
-  outline: 1px solid #f0c040;
+  background: rgba(255, 205, 117, 0.14);
+  box-shadow: inset 0 0 0 2px var(--px-gold);
 }
 
 .activity-running {
@@ -118,14 +115,14 @@
 
 .progress-track {
   height: 8px;
-  background: #e0e0e0;
-  border-radius: 4px;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
-  background: #1565c0;
+  background: var(--px-blue);
   transition: width 0.3s;
 }
 
@@ -143,58 +140,62 @@
 }
 
 .side-panel button {
-  font-family: inherit;
+  font-family: var(--px-font-ui);
   font-size: 12px;
-  padding: 2px 8px;
+  padding: 3px 8px;
   cursor: pointer;
-  border: 1px solid #888;
-  border-radius: 5px;
-  background: #fff;
+  border: none;
+  background: var(--px-panel);
+  color: var(--px-text);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
   white-space: nowrap;
 }
 
+.side-panel button:hover:not(:disabled) {
+  background: var(--px-navy);
+  color: var(--px-gold);
+}
+
 .side-panel button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: default;
 }
 
 .feedback {
   margin: 0;
   padding: 4px 6px;
-  border-radius: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .feedback.ok {
-  color: #2e7d32;
-  background: #e8f5e9;
+  color: var(--px-ok);
+  background: rgba(56, 118, 29, 0.35);
 }
 
 .feedback.err {
-  color: #c62828;
-  background: #ffebee;
+  color: var(--px-bad);
+  background: rgba(149, 16, 30, 0.35);
 }
 
 /* 体力区段配色(M3.6f): >20 绿 / ≤20 橙 / ≤5 红 */
 .vital-fill.ok {
-  background: #2e7d32;
+  background: var(--px-green);
 }
 
 .vital-fill.warn {
-  background: #ef6c00;
+  background: var(--px-orange);
 }
 
 .vital-fill.critical {
-  background: #c62828;
+  background: var(--px-red);
 }
 
 /* 死亡(幽灵态)横幅 */
 .death-banner {
   padding: 4px 6px;
-  border-radius: 5px;
-  background: #263238;
-  color: #ff8a80;
+  background: var(--px-navy);
+  color: var(--px-bad);
   font-weight: bold;
   text-align: center;
 }
@@ -210,28 +211,27 @@
 
 /* 资产列表: 租约过期红警 / 自有徽标 */
 .activity-list li.expired span {
-  color: #c62828;
+  color: var(--px-bad);
 }
 
 .owned-tag {
   font-style: normal;
   flex-shrink: 0;
   padding: 1px 6px;
-  border-radius: 4px;
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: rgba(56, 118, 29, 0.45);
+  color: var(--px-ok);
   font-size: 11px;
 }
 
 .hint.err {
-  color: #c62828;
+  color: var(--px-bad);
 }
 
 /* 职业类别分组(M-G.4): 岗位按类别成组,知识不足整组置灰显门槛 */
 .job-group h4 {
   margin: 8px 0 4px;
   font-size: 12px;
-  color: #444;
+  color: var(--px-text);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -239,9 +239,8 @@
 
 .job-lock-hint {
   font-weight: normal;
-  color: #b26a00;
-  background: #fff3e0;
-  border-radius: 8px;
+  color: var(--px-gold);
+  background: rgba(239, 125, 87, 0.25);
   padding: 0 6px;
 }
 
@@ -256,7 +255,7 @@
   gap: 3px;
   flex-shrink: 0;
   font-size: 11px;
-  color: #555;
+  color: var(--px-dim);
   cursor: pointer;
   user-select: none;
 }

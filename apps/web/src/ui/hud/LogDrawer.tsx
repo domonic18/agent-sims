@@ -7,6 +7,7 @@ import {
   eventLogCategory,
   eventLogLabel,
 } from './eventLog';
+import { useEventClock } from './useEventClock';
 
 const FILTERS = ['all', 'work', 'social', 'life', 'world'] as const;
 type Filter = (typeof FILTERS)[number];
@@ -37,12 +38,13 @@ export function LogDrawer(): JSX.Element {
   const seenSeqRef = useRef(0);
   const [unread, setUnread] = useState(0);
 
+  // 条目到达时的游戏时间(同 tick 内多条共用同一时刻)
+  const timeOf = useEventClock(events, snapshot?.clock, eventSeq);
+
   // 历史段(C4): 首次打开时拉服务端最近事件回填,与实时段按 type+tick+characterId 去重
   const [history, setHistory] = useState<WorldEventHistoryEntry[] | null>(null);
   const historyTriedRef = useRef(false);
 
-  // 条目到达时的游戏时间(同 tick 内多条共用同一时刻,环形足够)
-  const clockBySeqRef = useRef(new Map<number, string>());
   const listRef = useRef<HTMLDivElement>(null);
 
   if (open && seenSeqRef.current !== eventSeq) {
@@ -52,24 +54,6 @@ export function LogDrawer(): JSX.Element {
   if (!open && pendingUnread !== unread) {
     setUnread(pendingUnread);
   }
-
-  // 事件到达即打时间标(无论抽屉开关),关闭期间到达的条目也保留到达时刻
-  useEffect(() => {
-    const clock = snapshot?.clock;
-    const label = clock !== undefined ? `第${clock.day}天 ${clock.time}` : '';
-    for (const item of events) {
-      if (!clockBySeqRef.current.has(item.seq)) {
-        clockBySeqRef.current.set(item.seq, label);
-      }
-    }
-    // 环形队列丢掉的条目顺带清理,防 map 无界增长
-    if (clockBySeqRef.current.size > 256) {
-      const minAlive = events[0]?.seq ?? eventSeq;
-      for (const seq of clockBySeqRef.current.keys()) {
-        if (seq < minAlive) clockBySeqRef.current.delete(seq);
-      }
-    }
-  }, [events, snapshot, eventSeq]);
 
   // 开抽屉/新条目时滚到最新
   useEffect(() => {
@@ -167,7 +151,7 @@ export function LogDrawer(): JSX.Element {
                 <p className="log-empty">暂无日志</p>
               )}
               {visible.map((item) =>
-                renderRow(item.seq, item.event, clockBySeqRef.current.get(item.seq) ?? ''),
+                renderRow(item.seq, item.event, timeOf(item.seq)),
               )}
             </div>
           </div>

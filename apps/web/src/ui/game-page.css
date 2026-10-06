@@ -266,10 +266,12 @@
   gap: 8px;
 }
 
-/* 下拉列表溢出面板顶部,px-box/px-inner 的 clip-path 会把它连同命中区一起裁掉;
-   菜单打开期间解除两层裁剪(角上八边形暂变直角,视觉差异仅在角落) */
+/* 下拉列表/物品弹层溢出面板顶部,px-box/px-inner 的 clip-path 会把它连同命中区一起裁掉;
+   打开期间解除两层裁剪(角上八边形暂变直角,视觉差异仅在角落) */
 .hud-actions:has(.hud-menu-list),
-.hud-actions:has(.hud-menu-list) .px-inner {
+.hud-actions:has(.hud-menu-list) .px-inner,
+.hud-actions:has(.inv-popover),
+.hud-actions:has(.inv-popover) .px-inner {
   clip-path: none;
 }
 
@@ -303,6 +305,40 @@
 .hud-menu-item {
   justify-content: flex-start;
   font-size: 12px;
+}
+
+/* ---- 📦 物品弹层(C5): 内嵌全量 SidePanel,悬于动作条上方 ---- */
+.inv-popover {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  z-index: 30;
+}
+
+.inv-popover-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.inv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inv-head b {
+  font-size: 13px;
+}
+
+.inv-popover .side-panel {
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 /* ---- 轻提示: 主界面底部被动作条占用,挂顶中时钟下方;像素直角 ---- */

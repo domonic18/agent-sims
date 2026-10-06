@@ -5,10 +5,11 @@ import {
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
 } from '@sims/shared';
-import { formatCoins } from '../format';
-import { WorldCanvas } from '../game/WorldCanvas';
 import {
+  debugSpawn,
+  debugTick,
   fetchDebugParams,
+  probeDebugAvailable,
   reviveCharacter,
   setDebugParams,
   setPaused,
@@ -16,8 +17,8 @@ import {
 } from '../net/debugApi';
 import { connectWorld, sendIntent } from '../net/socket';
 import { useWorldStore } from '../store/worldStore';
-import { SidePanel } from '../ui/SidePanel';
 import { Toasts } from '../ui/Toasts';
+import { EventList } from '../ui/hud/EventList';
 import { IntentForms, type RunFn } from './IntentForms';
 import { LogPanel, type LogEntry } from './LogPanel';
 import './lab.css';
@@ -26,26 +27,24 @@ const LOG_MAX = 100;
 const TIME_SCALES = [1, 4, 16] as const;
 
 /**
- * /lab 独立调试台(M3.6b;M3.6d 全屏化+操作收口;M3.6e 六意图;M3.6h 拆分
- * IntentForms/LogPanel;社交 v1 增闲聊,M-G.6 增 craft 至 13 意图):全屏画布+悬浮 HUD,
- * 右列=快捷操作面板(前往/活动/社交/资产/商店)+13 意图协议表单+世界状态只读表,
- * 左下=回执与社交事件日志。
- * 暂停/倍率经 /debug 联调通道(M4 换正式指令)。
- * 地图全量操控(点击移动/方向键步进)仅此页开启,主页面纯观看。
+ * /lab 世界实验室(UI-1 C5 三栏游戏化,无画布): 左·世界控制(时钟/参数热调/dev 居民管理),
+ * 中·意图调试(13 意图全量表单+回执终端),右·世界事件实时流(复用日志中文格式化)。
+ * 地图操控与面板操作回到主界面;本页专注观测与调试。dev 区块探测 /debug 404 自动隐藏。
  */
 export default function LabPage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedId = useWorldStore((state) => state.selectedCharacterId);
-  const events = useWorldStore((state) => state.events);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [controlError, setControlError] = useState<string | null>(null);
-  const [sideCollapsed, setSideCollapsed] = useState(false);
   // 世界参数控制面板:original=最近一次已知生效值,draft=表单草稿,dirty 决定保存可用
   const [paramsOriginal, setParamsOriginal] = useState<Record<string, number> | null>(null);
   const [paramsDraft, setParamsDraft] = useState<Record<string, number> | null>(null);
+  // dev 通道可用性(生产 /debug 未注册 → 404 → 整块隐藏)
+  const [devAvailable, setDevAvailable] = useState(false);
+  const [spawnName, setSpawnName] = useState('');
   const nextLogIdRef = useRef(1);
-  const lastEventSeqRef = useRef(0);
+  const spawnCountRef = useRef(0);
 
   useEffect(() => {
     const socket = connectWorld();
@@ -68,46 +67,13 @@ export default function LabPage() {
           setControlError(error instanceof Error ? error.message : '世界参数加载失败');
         }
       });
+    void probeDebugAvailable().then((ok) => {
+      if (!cancelled) setDevAvailable(ok);
+    });
     return () => {
       cancelled = true;
     };
   }, []);
-
-  // 社交事件流(social v1): 闲聊对话与结成友谊进左下角日志,与意图回执同流展示
-  useEffect(() => {
-    const fresh = events.filter((entry) => entry.seq > lastEventSeqRef.current);
-    if (fresh.length === 0) return;
-    lastEventSeqRef.current = fresh[fresh.length - 1]!.seq;
-    const names = useWorldStore.getState().snapshot?.characters ?? [];
-    const nameOf = (id: string): string => names.find((c) => c.id === id)?.name ?? id;
-    const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-    const entries: LogEntry[] = [];
-    for (const { event } of fresh) {
-      if (event.type === 'social.chat') {
-        const sign = event.affinityDelta >= 0 ? '+' : '';
-        entries.push({
-          id: nextLogIdRef.current++,
-          time: now,
-          tick: event.tick,
-          summary: 'chat',
-          ok: true,
-          message: `💬 ${nameOf(event.fromId)} → ${nameOf(event.toId)}:「${event.content}」(好感 ${sign}${event.affinityDelta})`,
-        });
-      } else if (event.type === 'friendship.formed') {
-        entries.push({
-          id: nextLogIdRef.current++,
-          time: now,
-          tick: event.tick,
-          summary: 'friendship',
-          ok: true,
-          message: `🎉 ${nameOf(event.aId)} 和 ${nameOf(event.bId)} 成了「${event.title}」`,
-        });
-      }
-    }
-    if (entries.length > 0) {
-      setLog((prev) => [...entries.reverse(), ...prev].slice(0, LOG_MAX));
-    }
-  }, [events]);
 
   const character = snapshot?.characters.find((c) => c.id === selectedId) ?? null;
 
@@ -149,10 +115,35 @@ export default function LabPage() {
     }
   };
 
+  const advance = async (n: number): Promise<void> => {
+    try {
+      await debugTick(n);
+      setControlError(null);
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const revive = async (): Promise<void> => {
     if (character === null) return;
     try {
       await reviveCharacter(character.id);
+      setControlError(null);
+    } catch (error) {
+      setControlError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const spawn = async (): Promise<void> => {
+    spawnCountRef.current += 1;
+    try {
+      await debugSpawn({
+        id: `guest-${Date.now() % 100000}`,
+        name: spawnName.trim() !== '' ? spawnName.trim() : `访客${spawnCountRef.current}`,
+        x: 30,
+        y: 22,
+      });
+      setSpawnName('');
       setControlError(null);
     } catch (error) {
       setControlError(error instanceof Error ? error.message : String(error));
@@ -184,156 +175,155 @@ export default function LabPage() {
 
   return (
     <main className="lab-page">
-      <div className="status-bar">
-        <span className="title">
-          agent-sims · lab 调试台 <Link to="/">← 返回主页面</Link>
-        </span>
-        {snapshot !== null ? (
-          <span>
-            第 {snapshot.clock.day} 天 {snapshot.clock.time} {snapshot.clock.isNight ? '🌙' : '☀️'} ·
-            tick {snapshot.tick} · {snapshot.paused ? '已暂停' : `${snapshot.timeScale}x`}
-          </span>
-        ) : (
-          <span>等待世界快照…</span>
-        )}
-        <span className={status}>
-          {status === 'connected' ? '' : status === 'connecting' ? '连接中…' : '已断开,自动重连中'}
-        </span>
-      </div>
-
-      <div className="controls">
-        <button type="button" onClick={() => void togglePause()} disabled={snapshot === null}>
-          {snapshot?.paused ? '▶ 继续' : '⏸ 暂停'}
-        </button>
-        <span className="speed-group">
-          {TIME_SCALES.map((scale) => (
-            <button
-              key={scale}
-              type="button"
-              className={snapshot?.timeScale === scale ? 'active' : ''}
-              onClick={() => void changeScale(scale)}
-              disabled={snapshot === null}
-            >
-              {scale}x
-            </button>
-          ))}
-        </span>
-        {snapshot?.paused === true && <span className="paused-badge">已暂停</span>}
-        {character !== null && !character.alive && (
-          <button type="button" className="revive-btn" onClick={() => void revive()}>
-            ✚ 复活 {character.name}
-          </button>
-        )}
-        {controlError !== null && <span className="control-error">{controlError}</span>}
-      </div>
-
-      <div className="canvas-wrap">
-        <WorldCanvas />
-        <Toasts />
-      </div>
-
-      <aside className={sideCollapsed ? 'lab-side collapsed' : 'lab-side'}>
-        <SidePanel />
-        {character !== null && (
-          <section className="lab-panel">
-            <h3>意图操作台(13 意图全量)</h3>
-            <IntentForms
-              key={character.id}
-              character={character}
-              snapshot={snapshot}
-              onRun={run}
-            />
-          </section>
-        )}
-        <section className="lab-panel">
-          <h3>世界参数</h3>
-          {paramsDraft === null ? (
-            <p className="hint">参数加载中…</p>
+      <header className="px-box lab-top">
+        <div className="px-inner lab-top-inner">
+          <b className="lab-title">⚙ 世界实验室</b>
+          {snapshot !== null ? (
+            <span className="lab-clock">
+              第 {snapshot.clock.day} 天 {snapshot.clock.time} · tick {snapshot.tick} ·{' '}
+              {snapshot.paused ? '已暂停' : `${snapshot.timeScale}x`}
+            </span>
           ) : (
-            <>
-              {SYS_CONFIG_GROUPS.map((group) => (
-                <div key={group} className="param-group">
-                  <div className="param-group-title">{SYS_CONFIG_GROUP_LABELS[group]}</div>
-                  {SYS_CONFIG_FIELDS.filter((field) => field.group === group).map((field) => (
-                    <label key={field.key} className="param-row" title={field.desc}>
-                      <span>{field.label}</span>
-                      <input
-                        type="number"
-                        value={paramsDraft[field.key] ?? ''}
-                        min={field.min}
-                        max={field.max}
-                        step={field.step}
-                        onChange={(e) =>
-                          setParamsDraft((prev) =>
-                            prev === null ? prev : { ...prev, [field.key]: Number(e.target.value) },
-                          )
-                        }
-                      />
-                    </label>
-                  ))}
-                </div>
-              ))}
-              <button
-                type="button"
-                disabled={!paramsDirty}
-                onClick={() => void saveParams()}
-              >
-                保存参数
-              </button>
-            </>
+            <span className="lab-clock">等待世界快照…</span>
           )}
-        </section>
+          <span className={`hud-net ${status}`} title={status} />
+          <Link to="/" className="px-btn lab-back">
+            ← 返回游戏
+          </Link>
+        </div>
+      </header>
 
-        <section className="lab-panel">
-          <h3>世界状态(只读)</h3>
-          {snapshot === null ? (
-            <p className="hint">等待快照…</p>
-          ) : (
-            <table className="world-table">
-              <thead>
-                <tr>
-                  <th>角色</th>
-                  <th>坐标</th>
-                  <th>体力</th>
-                  <th>幸福</th>
-                  <th>金币</th>
-                  <th>繁荣分</th>
-                  <th>存活</th>
-                  <th>活动</th>
-                </tr>
-              </thead>
-              <tbody>
-                {snapshot.characters.map((c) => (
-                  <tr key={c.id} className={c.id === selectedId ? 'selected' : ''}>
-                    <td>{c.name}</td>
-                    <td>
-                      {c.x},{c.y}
-                    </td>
-                    <td className={c.energy <= 20 ? 'low-energy' : ''}>{Math.round(c.energy)}</td>
-                    <td>{Math.round(c.happiness)}</td>
-                    <td>{formatCoins(c.coins)}</td>
-                    <td>{formatCoins(c.lifeScore)}</td>
-                    <td className={c.alive ? '' : 'dead'}>{c.alive ? '✓' : '☠'}</td>
-                    <td>{c.activity?.activityId ?? '—'}</td>
-                  </tr>
+      <div className="lab-grid">
+        {/* 左栏 · 世界控制 */}
+        <section className="lab-col">
+          <div className="px-box lab-panel-px">
+            <div className="px-inner lab-panel-inner">
+              <h3>时钟控制</h3>
+              <div className="lab-btn-row">
+                <button
+                  type="button"
+                  className="px-btn"
+                  disabled={snapshot === null}
+                  onClick={() => void togglePause()}
+                >
+                  {snapshot?.paused ? '▶ 继续' : '⏸ 暂停'}
+                </button>
+                {TIME_SCALES.map((scale) => (
+                  <button
+                    key={scale}
+                    type="button"
+                    className={`px-btn${snapshot?.timeScale === scale ? ' on' : ''}`}
+                    disabled={snapshot === null}
+                    onClick={() => void changeScale(scale)}
+                  >
+                    {scale}x
+                  </button>
                 ))}
-              </tbody>
-            </table>
+                <button type="button" className="px-btn" onClick={() => void advance(60)}>
+                  +60分
+                </button>
+                <button type="button" className="px-btn" onClick={() => void advance(1440)}>
+                  +1天
+                </button>
+              </div>
+              {controlError !== null && <p className="lab-err">{controlError}</p>}
+            </div>
+          </div>
+
+          <div className="px-box lab-panel-px">
+            <div className="px-inner lab-panel-inner">
+              <h3>世界参数热调</h3>
+              {paramsDraft === null ? (
+                <p className="hint">参数加载中…</p>
+              ) : (
+                <>
+                  {SYS_CONFIG_GROUPS.map((group) => (
+                    <div key={group} className="param-group">
+                      <div className="param-group-title">{SYS_CONFIG_GROUP_LABELS[group]}</div>
+                      {SYS_CONFIG_FIELDS.filter((field) => field.group === group).map((field) => (
+                        <label key={field.key} className="param-row" title={field.desc}>
+                          <span>{field.label}</span>
+                          <input
+                            type="number"
+                            value={paramsDraft[field.key] ?? ''}
+                            min={field.min}
+                            max={field.max}
+                            step={field.step}
+                            onChange={(e) =>
+                              setParamsDraft((prev) =>
+                                prev === null ? prev : { ...prev, [field.key]: Number(e.target.value) },
+                              )
+                            }
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="px-btn"
+                    disabled={!paramsDirty}
+                    onClick={() => void saveParams()}
+                  >
+                    保存参数
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {devAvailable && (
+            <div className="px-box lab-panel-px">
+              <div className="px-inner lab-panel-inner">
+                <h3>居民管理(dev)</h3>
+                <div className="lab-btn-row">
+                  <input
+                    className="lab-input"
+                    placeholder="新居民名字"
+                    value={spawnName}
+                    onChange={(e) => setSpawnName(e.target.value)}
+                  />
+                  <button type="button" className="px-btn" onClick={() => void spawn()}>
+                    ➕ 生成
+                  </button>
+                </div>
+                {character !== null && !character.alive && (
+                  <button type="button" className="px-btn" onClick={() => void revive()}>
+                    ✚ 复活 {character.name}
+                  </button>
+                )}
+              </div>
+            </div>
           )}
         </section>
-      </aside>
 
-      <button
-        type="button"
-        className="lab-side-toggle"
-        style={{ right: sideCollapsed ? 12 : 318 }}
-        title={sideCollapsed ? '展开操作列' : '收起操作列'}
-        onClick={() => setSideCollapsed((value) => !value)}
-      >
-        {sideCollapsed ? '◀' : '▶'}
-      </button>
+        {/* 中栏 · 意图调试 */}
+        <section className="lab-col lab-col-mid">
+          <div className="px-box lab-panel-px">
+            <div className="px-inner lab-panel-inner">
+              <h3>意图操作台{character !== null ? ` · ${character.name}` : ''}</h3>
+              {character !== null ? (
+                <IntentForms key={character.id} character={character} snapshot={snapshot} onRun={run} />
+              ) : (
+                <p className="hint">等待快照…</p>
+              )}
+            </div>
+          </div>
+          <LogPanel log={log} />
+        </section>
 
-      <LogPanel log={log} />
+        {/* 右栏 · 世界事件 */}
+        <section className="lab-col">
+          <div className="px-box lab-panel-px lab-grow">
+            <div className="px-inner lab-panel-inner">
+              <h3>世界事件</h3>
+              <EventList />
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <Toasts />
     </main>
   );
 }
