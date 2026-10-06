@@ -10,6 +10,7 @@ import { Toasts } from './Toasts';
 import { LoginModal } from './LoginModal';
 import { CharacterHud } from './hud/CharacterHud';
 import { ActionBar } from './hud/ActionBar';
+import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
 import { useGoAndDo } from './side-panel/useGoAndDo';
 import './game-page.css';
@@ -217,6 +218,23 @@ export default function GamePage() {
 
       {isAdmin && settingsOpen && <WorldSettingsModal onClose={() => void closeSettings()} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
+
+      <InspectCard
+        isAdmin={isAdmin}
+        character={character}
+        onActivity={(def) => void startActivity(def)}
+        onSleep={() => void startSleep()}
+        onWorkTask={(targetId) => {
+          if (character !== null) {
+            void run({ type: 'work_task', characterId: character.id, targetId });
+          }
+        }}
+        onMove={(x, y) => {
+          if (character !== null) {
+            void run({ type: 'move_to', characterId: character.id, x, y });
+          }
+        }}
+      />
 
       <Toasts />
     </main>

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { TileMapDefinition } from '@sims/shared';
 import { sendIntent } from '../net/socket';
+import { useInspectStore } from '../store/inspectStore';
 import { pushToast } from '../store/toastStore';
 import { useWorldStore } from '../store/worldStore';
 import { TILE } from './assets';
@@ -20,8 +21,9 @@ const KEY_STEP_MIN_INTERVAL_MS = 100;
 const KEY_BLOCKED_TOAST_INTERVAL_MS = 1200;
 
 /**
- * 地图点击三分支(M3.6a): 点角色=选中;点建筑=侧栏定位联动;
- * 其余空地=下发 move_to 由服务端裁决(不可行走/不可达拒绝信息经 toast 展示)。
+ * 地图点击分层(UI-1 游览体验): 点角色=选中(游客与管理员一致,选中即镜头跟随);
+ * 而后维护点/资源点/家具/有墙建筑逐层拾取弹信息卡(接单/前往收敛到卡内按钮);
+ * 空白地关闭卡片——游客到此为止,管理员继续下发 move_to 由服务端裁决。
  */
 export function handleMapClick(
   scene: Phaser.Scene,
@@ -46,52 +48,41 @@ export function handleMapClick(
     }
   }
 
-  // 纯观看页(主页面): 点选角色跟随即可,不下发移动/定位
+  // 点选信息卡(游客与管理员共用):维护点/资源点/家具/有墙建筑逐层拾取,
+  // 命中即弹「这是什么、能干什么」;开放场所(公园等)不弹卡保留移动语义
+  const state = useWorldStore.getState();
+  const inspect = useInspectStore.getState();
+  const spot = state.snapshot?.maintenance.find((item) => item.x === tx && item.y === ty);
+  if (spot !== undefined) {
+    inspect.open({ kind: 'maintenance', spot });
+    return;
+  }
+  const resource = state.snapshot?.resources.find((item) => item.x === tx && item.y === ty);
+  if (resource !== undefined) {
+    inspect.open({ kind: 'resource', resource });
+    return;
+  }
+  for (const place of map.places) {
+    const furniture = place.furniture?.find((f) => inRect(tx, ty, f));
+    if (furniture !== undefined) {
+      inspect.open({ kind: 'furniture', furniture, placeName: place.name });
+      return;
+    }
+  }
+  const building = map.places.find((p) => p.door !== undefined && inRect(tx, ty, p));
+  if (building !== undefined) {
+    state.focusPlace(building.id);
+    inspect.open({ kind: 'place', place: building });
+    return;
+  }
+  state.focusPlace(null);
+  inspect.close();
+
+  // 游客(纯浏览):点空白地仅关闭信息卡,不下发移动/定位
   if (!interactive) return;
 
-  // 点维护点(M-G.5): 命中损耗点即让选中角色接对应工单(杂物→清洁/破损→修理)
-  const spot = useWorldStore.getState().snapshot?.maintenance.find(
-    (item) => item.x === tx && item.y === ty,
-  );
-  if (spot !== undefined) {
-    const { selectedCharacterId } = useWorldStore.getState();
-    if (selectedCharacterId === null) {
-      pushToast(false, '先点击角色选中,再接维护工单');
-      return;
-    }
-    void sendIntent({ type: 'work_task', characterId: selectedCharacterId, targetId: spot.id }).then(
-      (ack) => pushToast(ack.ok, ack.message),
-    );
-    return;
-  }
-
-  // 点资源节点(M-G.6): 浆果丛/拾荒堆命中即让选中角色接采集单(枯竭格服务端拒绝)
-  const resource = useWorldStore.getState().snapshot?.resources.find(
-    (item) => item.x === tx && item.y === ty,
-  );
-  if (resource !== undefined) {
-    const { selectedCharacterId } = useWorldStore.getState();
-    if (selectedCharacterId === null) {
-      pushToast(false, '先点击角色选中,再采集资源');
-      return;
-    }
-    void sendIntent({
-      type: 'work_task',
-      characterId: selectedCharacterId,
-      targetId: resource.id,
-    }).then((ack) => pushToast(ack.ok, ack.message));
-    return;
-  }
-
-  const place = map.places.find((p) => p.door !== undefined && inRect(tx, ty, p));
-  if (place !== undefined) {
-    useWorldStore.getState().focusPlace(place.id);
-    pushToast(true, `已定位「${place.name}」`);
-    return;
-  }
-
-  useWorldStore.getState().focusPlace(null);
-  const { selectedCharacterId } = useWorldStore.getState();
+  // 管理员:空地下发 move_to(不可行走/不可达拒绝信息经 toast 展示)
+  const { selectedCharacterId } = state;
   if (selectedCharacterId === null) {
     pushToast(false, '先点击角色选中,再下达移动指令');
     return;

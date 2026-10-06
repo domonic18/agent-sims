@@ -523,11 +523,6 @@
   width: 42px;
 }
 
-.login-row .lab-input {
-  flex: 1;
-  min-width: 0;
-}
-
 .login-actions {
   display: flex;
   gap: 8px;
@@ -546,4 +541,128 @@
   color: var(--px-text);
   border: none;
   box-shadow: inset 0 0 0 2px var(--px-slate);
+}
+
+/* ---- 点选物件信息卡(游览体验,游客与管理员共用) ---- */
+.inspect-card {
+  position: absolute;
+  left: 50%;
+  bottom: 78px;
+  transform: translateX(-50%);
+  z-index: 20;
+  width: min(380px, calc(100vw - 32px));
+  animation: inspect-pop 140ms steps(3) both;
+}
+
+@keyframes inspect-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.inspect-card-inner {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.inspect-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspect-icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+  font-size: 18px;
+}
+
+.inspect-icon img {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+}
+
+.inspect-title {
+  font-size: 13px;
+  color: var(--px-text);
+}
+
+.inspect-tag {
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--px-ink);
+  background: var(--px-gray);
+}
+
+.inspect-tag.furniture {
+  background: var(--px-blue);
+}
+
+.inspect-tag.resource {
+  background: var(--px-lime);
+}
+
+.inspect-tag.maint {
+  background: var(--px-orange);
+}
+
+.inspect-tag.place {
+  background: var(--px-gold);
+}
+
+.inspect-close {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--px-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.inspect-close:hover {
+  color: var(--px-text);
+}
+
+.inspect-rows {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--px-dim);
+}
+
+.inspect-rows b {
+  color: var(--px-gold);
+  font-weight: 600;
+}
+
+.inspect-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--px-text);
+}
+
+.inspect-admin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 2px dashed var(--px-slate);
+  font-size: 11px;
+  color: var(--px-dim);
 }
