@@ -64,3 +64,32 @@ export const assets = pgTable(
     index('assets_checksum_idx').on(table.checksum),
   ],
 );
+
+/**
+ * 素材问题单(UI-2 报错闭环):游戏内信息卡/动画演示器上报,后台审查页流转。
+ * dedupe_key = scope:refSlug[:context.key],open 态部分唯一索引使重复上报幂等收敛为同一单。
+ */
+export const assetIssues = pgTable(
+  'asset_issues',
+  {
+    id: serial('id').primaryKey(),
+    scope: text('scope').$type<'asset' | 'anim'>().notNull(),
+    /** asset=素材 slug;anim=角色表 slug */
+    refSlug: text('ref_slug').notNull(),
+    /** 幂等键 scope:refSlug[:context.key],open 态内唯一 */
+    dedupeKey: text('dedupe_key').notNull(),
+    /** scope=asset 且能对上行时回填 assets.id */
+    refId: integer('ref_id'),
+    context: jsonb('context').$type<Record<string, unknown> | null>(),
+    note: text('note'),
+    status: text('status').$type<'open' | 'resolved'>().notNull().default('open'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('asset_issues_status_idx').on(table.status),
+    uniqueIndex('asset_issues_open_dedupe_uq')
+      .on(table.dedupeKey)
+      .where(sql`status = 'open'`),
+  ],
+);
