@@ -339,3 +339,83 @@ describe('全量素材驱动的场所扩展(重规划)', () => {
     }
   });
 });
+
+describe('池驱动户外装饰引擎(五 pass)', () => {
+  const DECOR_STUB: Record<string, string[]> = {
+    'decor/tree': ['tree-a', 'tree-b', 'tree-c'],
+    'decor/bush': ['bush-a', 'bush-b'],
+    'decor/bench': ['bench-a', 'bench-b'],
+    'decor/street': ['hydrant-a', 'sign-a', 'mailbox-a'],
+    'decor/lamp': ['lamp-a', 'lamp-b'],
+    'decor/flat': ['flower-a', 'grass-a'],
+  };
+  const results = Array.from({ length: 20 }, (_, i) =>
+    generateTownMap(input(`decor-${i}`, { assetsByKind: DECOR_STUB })),
+  );
+
+  it('带池时 props/flats 非空,slug 全部来自对应池,边界树带存在', () => {
+    for (const result of results) {
+      const decor = result.map.decor;
+      expect(decor).toBeDefined();
+      expect(decor!.props?.length ?? 0).toBeGreaterThan(0);
+      expect(decor!.flats?.length ?? 0).toBeGreaterThan(0);
+      const valid = new Set(Object.values(DECOR_STUB).flat());
+      const map = result.map;
+      for (const entry of decor!.props ?? []) {
+        expect(valid.has(entry.slug)).toBe(true);
+      }
+      for (const entry of decor!.flats ?? []) {
+        expect(DECOR_STUB['decor/flat']!.includes(entry.slug)).toBe(true);
+      }
+      const onBorder = (e: { x: number; y: number }): boolean =>
+        e.x === 1 || e.y === 1 || e.x === map.width - 2 || e.y === map.height - 2;
+      expect((decor!.props ?? []).some(onBorder)).toBe(true);
+    }
+  });
+
+  it('全池覆盖时旧固定纹理字段清空(不与池驱动条目双份渲染)', () => {
+    for (const result of results) {
+      const decor = result.map.decor!;
+      expect(decor.trees).toHaveLength(0);
+      expect(decor.lamps).toHaveLength(0);
+      expect(decor.flowers).toHaveLength(0);
+      expect(decor.bushes).toHaveLength(0);
+    }
+  });
+
+  it('装饰条目避让场所占地/道路/资源格', () => {
+    for (const result of results) {
+      const map = result.map;
+      const roadCells = new Set<string>();
+      for (const r of map.paths) {
+        for (let y = r.y; y < r.y + r.h; y += 1) {
+          for (let x = r.x; x < r.x + r.w; x += 1) roadCells.add(`${x},${y}`);
+        }
+      }
+      // 公园内部装饰为设计内(树簇/花丛/长椅落在公园矩形内),其余场所占地禁入
+      const inPlace = (x: number, y: number): boolean =>
+        map.places.some(
+          (p) => !p.id.startsWith('park') && x >= p.x && x < p.x + p.w && y >= p.y && y < p.y + p.h,
+        );
+      const entries = [...(map.decor!.props ?? []), ...(map.decor!.flats ?? [])];
+      expect(entries.length).toBeGreaterThan(0);
+      for (const entry of entries) {
+        expect(inPlace(entry.x, entry.y)).toBe(false);
+        expect(roadCells.has(`${entry.x},${entry.y}`)).toBe(false);
+        for (const res of map.resources ?? []) {
+          expect(entry.x === res.x && entry.y === res.y).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('密度档缩放撒点量(dense 装饰总量 > sparse)', () => {
+    const total = (density: 'sparse' | 'dense'): number =>
+      Array.from({ length: 20 }, (_, i) =>
+        generateTownMap(
+          input(`scale-${i}`, { params: { size: 'small', density }, assetsByKind: DECOR_STUB }),
+        ),
+      ).reduce((sum, r) => sum + (r.map.decor?.props?.length ?? 0) + (r.map.decor?.flats?.length ?? 0), 0);
+    expect(total('dense')).toBeGreaterThan(total('sparse'));
+  });
+});

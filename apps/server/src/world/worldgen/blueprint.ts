@@ -311,3 +311,20 @@ export const WALL_TILE_POOL = [
   'tile-wallPurple',
   'tile-wallBlue',
 ] as const;
+
+/** 户外装饰素材池键(worlds.ts loadAssetsByKind 产出同名池,成员限宽保证底边锚定观感;
+ * 池空回退 decor 旧固定纹理字段 trees/lamps/flowers/bushes) */
+export const DECOR_POOLS = {
+  /** 立式乔木/枯木(庭院/间隙/边界/公园树簇) */
+  tree: 'decor/tree',
+  /** 立式灌木(庭院/间隙) */
+  bush: 'decor/bush',
+  /** 公园长椅(环池塘缘) */
+  bench: 'decor/bench',
+  /** 街具(消火栓/告示牌/邮箱/垃圾桶/木桶) */
+  street: 'decor/street',
+  /** 路灯(沿路间隔/广场四角) */
+  lamp: 'decor/lamp',
+  /** 贴地花丛草石(庭院/公园/间隙 overlay) */
+  flat: 'decor/flat',
+} as const;

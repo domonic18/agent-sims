@@ -22,6 +22,7 @@ import {
 import { publishTarget, readManifestVersion } from '../assets/paths.js';
 import { TileMap } from '../world/map.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
+import { DECOR_POOLS } from '../world/worldgen/blueprint.js';
 import { z } from 'zod';
 import { applyWorldParams, BALANCE, validateBalanceOverrides } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
@@ -108,6 +109,7 @@ function toView(row: typeof worlds.$inferSelect): WorldView {
  * 发布产物 manifest → worldgen 素材池(素材库随机选材):
  * - {domain}/{kind}:域分键家具池(室内家具与户外道具互不混)
  * - theme/{slug}@{maxTiles}:主题道具池(户外开放场所与室内主题角装饰,按占地上限预过滤)
+ * - decor/{slot}:户外装饰池(DECOR_POOLS 同名;立式限宽 ≤2 格,贴地限 1×1)
  */
 function loadAssetsByKind(): Record<string, string[]> | undefined {
   try {
@@ -122,21 +124,40 @@ function loadAssetsByKind(): Record<string, string[]> | undefined {
       }>;
     };
     const THEME_TILE_CAPS = [1, 2, 4] as const;
-    // 拼接件(modular/场地线 line)是地形拼图,单独摆放观感差,不入主题道具池
+    // 拼接件(modular/场地线 line)是地形拼图,单独摆放观感差,不入主题/装饰池
+    const DECOR_KINDS: Record<string, readonly string[]> = {
+      [DECOR_POOLS.tree]: ['tree'],
+      [DECOR_POOLS.bush]: ['bush', 'flower-bush', 'bush-potted'],
+      [DECOR_POOLS.bench]: ['bench'],
+      [DECOR_POOLS.street]: ['hydrant', 'sign', 'mailbox', 'trashbin', 'barrel'],
+      [DECOR_POOLS.lamp]: ['street-lamp'],
+      [DECOR_POOLS.flat]: ['flowers', 'grass-tufts', 'stone'],
+    };
+    const decorMembers: Record<string, Array<{ slug: string; gridW: number; gridH: number }>> = {};
     const pool: Record<string, string[]> = {};
     for (const asset of raw.assets ?? []) {
       (pool[`${asset.domain}/${asset.categorySlug}`] ??= []).push(asset.slug);
+      const modular = asset.slug.includes('modular') || asset.slug.includes('-line-');
       if (
         (asset.domain === 'outdoor' || asset.domain === 'indoor') &&
         asset.themeSlug !== undefined &&
-        !asset.slug.includes('modular') &&
-        !asset.slug.includes('-line-')
+        !modular
       ) {
         const tiles = asset.gridW * asset.gridH;
         for (const cap of THEME_TILE_CAPS) {
           if (tiles <= cap) (pool[`theme/${asset.themeSlug}@${cap}`] ??= []).push(asset.slug);
         }
       }
+      if (asset.domain === 'outdoor' && !modular) {
+        for (const [poolKey, kinds] of Object.entries(DECOR_KINDS)) {
+          if (kinds.includes(asset.categorySlug)) (decorMembers[poolKey] ??= []).push(asset);
+        }
+      }
+    }
+    for (const [poolKey, members] of Object.entries(decorMembers)) {
+      const flat = poolKey === DECOR_POOLS.flat;
+      const ok = members.filter((a) => (flat ? a.gridW === 1 && a.gridH === 1 : a.gridW <= 2));
+      if (ok.length > 0) (pool[poolKey] ??= []).push(...ok.map((a) => a.slug));
     }
     return pool;
   } catch {
