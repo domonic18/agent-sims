@@ -41,12 +41,12 @@ export type PlaceKind =
 
 export type Zone = 'nw' | 'ne' | 'sw' | 'se';
 
-/** 家具摆放指令:锚定语义由布局器解释(贴北墙/贴西墙/居中/占空位) */
+/** 家具摆放指令:锚定语义由布局器解释(贴北墙/贴西墙/居中/占空位/全场散撒) */
 export interface FurnitureSlot {
   kind: AnyFurnitureKind;
   w: number;
   h: number;
-  anchor: 'north' | 'west' | 'east' | 'center' | 'south';
+  anchor: 'north' | 'west' | 'east' | 'center' | 'south' | 'scatter';
   /** 活动锚点;装饰类省略 */
   activityId?: ActivityId;
   /** 装饰类摆放概率(0=必选) */
@@ -288,15 +288,15 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
     requiredAnchors: [],
     open: true,
     furniture: [
-      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 1 },
-      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.9 },
-      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.8 },
-      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.7 },
-      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.6 },
-      { kind: 'grave-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.5 },
-      { kind: 'grave-prop', w: 2, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 2 }, chance: 0.7 },
-      { kind: 'grave-prop', w: 2, h: 1, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 2 }, chance: 0.5 },
-      { kind: 'grave-prop', w: 2, h: 2, anchor: 'center', themePick: { theme: 'graveyard', maxTiles: 4 }, chance: 0.6 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 1 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.9 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.8 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.7 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.6 },
+      { kind: 'grave-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 1 }, chance: 0.5 },
+      { kind: 'grave-prop', w: 2, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 2 }, chance: 0.7 },
+      { kind: 'grave-prop', w: 2, h: 1, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 2 }, chance: 0.5 },
+      { kind: 'grave-prop', w: 2, h: 2, anchor: 'scatter', themePick: { theme: 'graveyard', maxTiles: 4 }, chance: 0.6 },
     ],
   },
   ruins: {
@@ -305,13 +305,15 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
     requiredAnchors: [],
     open: true,
     furniture: [
-      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.9 },
-      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.7 },
-      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.5 },
-      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.8 },
-      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.6 },
-      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.4 },
-      { kind: 'ruin-prop', w: 2, h: 2, anchor: 'center', themePick: { theme: 'military-base', maxTiles: 4 }, chance: 0.7 },
+      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 1 },
+      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.9 },
+      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.7 },
+      { kind: 'ruin-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'garage-sales', maxTiles: 1 }, chance: 0.5 },
+      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'scatter', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.8 },
+      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'scatter', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.6 },
+      { kind: 'ruin-prop', w: 1, h: 2, anchor: 'scatter', themePick: { theme: 'military-base', maxTiles: 2 }, chance: 0.4 },
+      { kind: 'ruin-prop', w: 2, h: 2, anchor: 'scatter', themePick: { theme: 'military-base', maxTiles: 4 }, chance: 0.7 },
+      { kind: 'ruin-prop', w: 2, h: 2, anchor: 'scatter', themePick: { theme: 'military-base', maxTiles: 4 }, chance: 0.5 },
     ],
   },
 };

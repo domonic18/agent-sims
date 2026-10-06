@@ -525,6 +525,15 @@ function layoutFurniture(
       for (let yy = minY; yy + slot.h <= maxY + 1 && placed === null; yy += 1) {
         if (tryPlace(ex, yy, slot.w, slot.h)) placed = { x: ex, y: yy };
       }
+    } else if (slot.anchor === 'scatter') {
+      // 全场散撒(开放装饰场所):从全部可放位 rng 随机取一,道具自然分布不成排
+      const candidates: Array<{ x: number; y: number }> = [];
+      for (let yy = minY; yy + slot.h <= maxY + 1; yy += 1) {
+        for (let xx = minX; xx + slot.w <= maxX + 1; xx += 1) {
+          if (tryPlace(xx, yy, slot.w, slot.h)) candidates.push({ x: xx, y: yy });
+        }
+      }
+      if (candidates.length > 0) placed = rng.pick(candidates);
     } else {
       for (let yy = minY; yy + slot.h <= maxY + 1 && placed === null; yy += 1) {
         for (let xx = minX; xx + slot.w <= maxX + 1 && placed === null; xx += 1) {
