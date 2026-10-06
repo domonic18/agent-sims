@@ -115,8 +115,9 @@ export function startActivity(
       );
     }
     anchorKind = anchor.kind;
-    // 床位归属仅约束 rest(睡眠);书桌/跑步机等非住宅锚点与他人同住场所放行
-    if (activityId === 'rest') {
+    // 床位归属约束 rest/sleep(住宅床须本人租约);书桌/跑步机等非住宅锚点与他人同住场所放行。
+    // sleep 经谓词只命中床(SLEEP_ANCHOR_KINDS),公园长椅天然不在锚点集
+    if (activityId === 'rest' || activityId === 'sleep') {
       ensureRestAccess(sim, character, anchor.placeId);
     }
   } else if (
@@ -155,15 +156,17 @@ export function stopActivity(sim: Simulation, characterId: string): WorldCharact
  * 结算活动的一游戏分钟:效果为每分钟净速率(M3.6g,已含活动期间代谢,
  * 调用方待机才走基础代谢衰减),达到 durationMinutes 返回 completed;
  * 净负金币且余额不足返回 insufficient_coins(结算前判定,金币不透支)。
- * rest 按锚点家具档位(REST_RATES_BY_KIND: 床/沙发/长椅)取速率。
+ * rest/sleep 按锚点家具档位(REST_RATES_BY_KIND: 床/沙发/长椅)取速率。
+ * debtFactor(M-G.2 缺觉): 仅乘正金币与正幸福增益,体力与负项不动。
  */
 export function settleActivityMinute(
   activity: CharacterActivity,
   character: WorldCharacter,
   definition: ActivityDefinition,
+  debtFactor = 1,
 ): SettleResult {
   const rates =
-    definition.id === 'rest' && activity.anchorKind !== null
+    (definition.id === 'rest' || definition.id === 'sleep') && activity.anchorKind !== null
       ? (REST_RATES_BY_KIND[activity.anchorKind as keyof typeof REST_RATES_BY_KIND] ?? null)
       : null;
   const effects =
@@ -174,8 +177,13 @@ export function settleActivityMinute(
     return 'insufficient_coins';
   }
   character.energy = clampVital(character.energy + effects.energy);
-  character.happiness = clampVital(character.happiness + effects.happiness);
-  character.coins = Math.max(0, character.coins + effects.coins);
+  character.happiness = clampVital(
+    character.happiness + (effects.happiness > 0 ? effects.happiness * debtFactor : effects.happiness),
+  );
+  character.coins = Math.max(
+    0,
+    character.coins + (effects.coins > 0 ? effects.coins * debtFactor : effects.coins),
+  );
   activity.elapsed += 1;
   return activity.elapsed >= definition.durationMinutes ? 'completed' : 'continue';
 }

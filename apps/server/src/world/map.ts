@@ -1,5 +1,6 @@
 import {
   furnitureRectsOf,
+  furnitureServesActivity,
   isBesideFootprint,
   placeIdMatches,
   wallRectsOf,
@@ -104,9 +105,9 @@ export class TileMap {
     const anchors: Array<{ x: number; y: number; placeId: string; kind: AnyFurnitureKind }> = [];
     for (const place of this.places) {
       for (const f of place.furniture ?? []) {
-        if (f.activityId === activityId && f.use !== undefined) {
-          anchors.push({ x: f.use.x, y: f.use.y, placeId: place.id, kind: f.kind });
-        }
+        if (f.activityId === undefined || f.use === undefined) continue;
+        if (!furnitureServesActivity(f.activityId, f.kind, activityId)) continue;
+        anchors.push({ x: f.use.x, y: f.use.y, placeId: place.id, kind: f.kind });
       }
     }
     return anchors;
@@ -124,7 +125,8 @@ export class TileMap {
   ): { x: number; y: number; placeId: string; kind: AnyFurnitureKind } | null {
     for (const place of this.places) {
       for (const f of place.furniture ?? []) {
-        if (f.activityId !== activityId || f.use === undefined) continue;
+        if (f.activityId === undefined || f.use === undefined) continue;
+        if (!furnitureServesActivity(f.activityId, f.kind, activityId)) continue;
         if ((x === f.use.x && y === f.use.y) || isBesideFootprint(f, x, y)) {
           return { x: f.use.x, y: f.use.y, placeId: place.id, kind: f.kind };
         }

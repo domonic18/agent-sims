@@ -8,6 +8,7 @@ import type {
   GatherTaskId,
   MaintenanceSpot,
   ResourceNode,
+  SleepDebtAppliedEvent,
   TraitVector,
   WorkTaskCancelledEvent,
   WorkTaskCompletedEvent,
@@ -342,6 +343,11 @@ export class Simulation {
       applySocialDailyRollover(this);
       this._respawnResourceNodes();
     }
+    // 睡眠结算(M-G.2):夜窗口(22:00~06:00)结束于 06:00——窗口跨 00:00,
+    // 结算挂 NIGHT_END 而非日翻转;缺觉挂惩罚,账本无论是否缺觉均清零
+    if (this.clock.minuteOfDay === BALANCE.NIGHT_END_MINUTE) {
+      this._settleSleep();
+    }
     for (const character of this.characters.values()) {
       // 净速率模型(M3.6g):活动数值已含代谢,仅待机走基础代谢衰减
       if (character.activity === null) {
@@ -365,7 +371,16 @@ export class Simulation {
             // 维护工单(M-G.5):在途不结算;到位每分钟先验目标有效再计时
             this._stepWorkTask(character, definition);
           } else {
-            const result = settleActivityMinute(character.activity, character, definition);
+            const result = settleActivityMinute(
+              character.activity,
+              character,
+              definition,
+              this._debtFactor(character),
+            );
+            // 睡眠账本(M-G.2):仅窗口内的入睡分钟累计;06:00 后续睡不进新账本
+            if (character.activity.activityId === 'sleep' && this._inSleepWindow()) {
+              character.sleepWindowMinutes += 1;
+            }
             if (result !== 'continue') {
               // 知识(M-G.4): 完成一次完整学习 +1,中断不计(goal-design §4.2)
               if (result === 'completed' && definition.id === 'study') {
@@ -448,7 +463,7 @@ export class Simulation {
       }
       this.maintenanceSpots.delete(targetId);
     }
-    const pay = MAINTENANCE_TASKS[task].pay;
+    const pay = MAINTENANCE_TASKS[task].pay * this._debtFactor(character);
     character.coins += pay;
     const event: WorkTaskCompletedEvent = {
       type: 'work_task.completed',
@@ -462,14 +477,17 @@ export class Simulation {
     finishActivity(this, character, 'completed');
   }
 
-  /** 配方完成(M-G.6):产出入包+craft.completed;中断退料在 finishActivity 分流 */
+  /** 配方完成(M-G.6):产出入包+craft.completed;中断退料在 finishActivity 分流。
+   * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(材料已扣不退,有意) */
   private _completeCraft(character: WorldCharacter): void {
     const recipeId = character.activity?.craftRecipeId;
     if (recipeId === undefined) {
       return;
     }
+    const factor = this._debtFactor(character);
     for (const output of RECIPES[recipeId].outputs) {
-      character.backpack[output.itemId] = (character.backpack[output.itemId] ?? 0) + output.count;
+      character.backpack[output.itemId] =
+        (character.backpack[output.itemId] ?? 0) + Math.floor(output.count * factor);
     }
     const event: CraftCompletedEvent = {
       type: 'craft.completed',
@@ -480,18 +498,21 @@ export class Simulation {
     this.events.emit(event);
   }
 
-  /** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭记次日重生 */
+  /** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭记次日重生。
+   * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(有意) */
   private _completeGather(
     character: WorldCharacter,
     task: GatherTaskId,
     targetId: string,
   ): void {
     const node = this.resourceNodes.get(targetId)!;
+    const factor = this._debtFactor(character);
     for (const yieldDef of GATHER_TASKS[task].yields) {
       if (yieldDef.chance !== undefined && this.rng() >= yieldDef.chance) {
         continue;
       }
-      character.backpack[yieldDef.itemId] = (character.backpack[yieldDef.itemId] ?? 0) + yieldDef.count;
+      character.backpack[yieldDef.itemId] =
+        (character.backpack[yieldDef.itemId] ?? 0) + Math.floor(yieldDef.count * factor);
     }
     if (node.charges !== null) {
       node.charges -= 1;
@@ -552,6 +573,44 @@ export class Simulation {
         node.charges = BUSH_MAX_CHARGES;
         node.respawnAtDay = null;
       }
+    }
+  }
+
+  /** 睡眠窗口判定(M-G.2):22:00~次日 06:00(与 clock.isNight 同窗口,读可热调参数) */
+  private _inSleepWindow(): boolean {
+    const m = this.clock.minuteOfDay;
+    return m >= BALANCE.NIGHT_START_MINUTE || m < BALANCE.NIGHT_END_MINUTE;
+  }
+
+  /** 缺觉系数(M-G.2):惩罚生效中(未到 sleepDebtEndGameMinutes)返回 SLEEP_DEBT_MULTIPLIER,否则 1 */
+  private _debtFactor(character: WorldCharacter): number {
+    return character.sleepDebtEndGameMinutes !== null &&
+      this.clock.gameMinutes < character.sleepDebtEndGameMinutes
+      ? BALANCE.SLEEP_DEBT_MULTIPLIER
+      : 1;
+  }
+
+  /**
+   * 睡眠结算(M-G.2,数值文档 §2.7):每日 06:00——昨夜窗口累计 < SLEEP_MIN_MINUTES
+   * 且存活者挂缺觉惩罚 24 游戏时并发 sleep.debt_applied;账本无条件清零
+   * (含幽灵——死亡期间漏结算,复活后从零起算)。
+   */
+  private _settleSleep(): void {
+    for (const character of this.characters.values()) {
+      if (
+        character.alive &&
+        character.sleepWindowMinutes < BALANCE.SLEEP_MIN_MINUTES
+      ) {
+        character.sleepDebtEndGameMinutes = this.clock.gameMinutes + BALANCE.DAY_MINUTES;
+        const event: SleepDebtAppliedEvent = {
+          type: 'sleep.debt_applied',
+          characterId: character.id,
+          sleptMinutes: character.sleepWindowMinutes,
+          tick: this.tick,
+        };
+        this.events.emit(event);
+      }
+      character.sleepWindowMinutes = 0;
     }
   }
 
