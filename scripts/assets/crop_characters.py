@@ -11,13 +11,16 @@
   与 Spritesheet_animations_GUIDE.png 的标注行号存在偏移,以本脚本实证坐标为准):
     RP1  walk 四向×6: R c0-5 / up c6-11 / L c12-17 / D c18-23
     RP3  lie c0-1: 正面躺 16x14, 无方向性
-    RP7  sit 正面(down)×6: c0-5(c6-11 为持物进食循环,未用)
-    RP9  sit 侧/背×6: L c0-5 / R c6-11 / up c12-17(c12-23 均背面,取前 6)
+    RP8  sit 四向×6: R c0-5 / up c6-11 / L c12-17 / D c18-23(与 RP1 同序;10x 目检实证)
     RP13 idle 四向: R c0-5 / up c6-9 / L c10-17 / D c18-23(呼吸站立, 取 c0,c2)
-legacy 32x32 表(帧 32x64,2x 大图): 行对 y0=静态 idle 4f [L,up,R,D]; y64=walk 24f(4组×6f,
-  组序 L/up/R/D); 独立 sit 文件 24f(组序 R c0-5 / L c6-11 / up c12-17 / D c18-23,
-  与 premade 的 L/R 顺序相反)。witch/zombie 简化族无 sit 源——用 idle-down 帧填充
-  (视觉为站立呼吸,聊胜于无,走查时注意)。
+legacy 表(1536x512,帧 32x64 即 64px 高大图,组序与 premade 一致为 R/up/L/D;
+  2026-10 帧目检+游戏内症状实证,旧注释的 L/up/R/D 为误读):
+    y0    静态 idle 4f: R c0 / up c1 / L c2 / D c3
+    y64   walk 四向×6: R c0-5 / up c6-11 / L c12-17 / D c18-23
+    sit 独立文件 768x64 = 12 帧 64x64(帧格 64 宽,非 32!): 左坐 f0-5 / 右坐 f6-11,
+      无 up/down 坐姿源——up 复用左坐、down 复用右坐
+  legacy 帧 64px 高降为 27px(与 premade 艺术区同高),统一贴 (x8, y5):
+    脚底与 premade 对齐、头像切窗(+16,+13) 全族兼容、且不再溢出污染下一行。
 
 游戏契约(apps/server/src/assets/import-plan.ts CHARACTER_ANIM):
   288×512 = 9列×16行; 行0-3 walk[up,left,down,right]×6f; 行4-7 idle×2f;
@@ -53,16 +56,16 @@ CELL = 32          # 输出帧格
 FRAME_H = 27       # premade 源帧高
 SHEET_COLS = 9
 SHEET_ROWS = 16    # walk4 + idle4 + lie4 + sit4
-# 游戏行序 [up,left,down,right] → 源起始列
-#   premade: walk RP1 与 idle RP13 组序 R/up/L/D; sit 侧背 RP9 组序 L/R/up、正面 RP7
+# 游戏行序 [up,left,down,right] → 源起始列(LimeZu 组序恒为 R/up/L/D)
+#   premade: walk RP1 / sit RP8 / idle RP13(up c6-9、L c10-17 组内边界不对称)
 WALK_SRC = {"up": 6, "left": 12, "down": 18, "right": 0}    # RP1
 IDLE_SRC = {"up": 6, "left": 10, "down": 18, "right": 0}    # RP13(取 c0,c2)
-SIT_SIDE_SRC = {"up": 12, "left": 0, "right": 6}            # RP9
-SIT_FRONT_COL = 0                                            # RP7(down)
-# legacy: 全集表 walk 组序 L/up/R/D;独立 sit 文件组序 R/L/up/D
-LEG_WALK_SRC = {"up": 6, "left": 0, "down": 18, "right": 12}      # y64 行对
-LEG_SIT_SRC = {"up": 12, "left": 6, "down": 18, "right": 0}       # sit 文件
-LEG_STATIC_IDLE_ORDER = {"down": 0, "up": 1, "left": 2, "right": 3}  # y0 静态 idle 帧序
+SIT_SRC = {"up": 6, "left": 12, "down": 18, "right": 0}     # RP8(四向同带,取 c0,c1)
+# legacy: 与 premade 同序;sit 文件 64x64 帧 12f = 左坐 f0-5 / 右坐 f6-11(无 up/down)
+LEG_WALK_SRC = {"up": 6, "left": 12, "down": 18, "right": 0}        # y64 行对
+LEG_SIT_FRAME = {"up": 0, "left": 0, "down": 6, "right": 6}         # sit 文件(左0/右6)
+LEG_STATIC_IDLE_ORDER = {"up": 1, "left": 2, "down": 3, "right": 0}  # std y0 静态 idle 帧序
+LEG_SIMPLE_IDLE_ORDER = {"down": 0, "up": 1, "left": 2, "right": 3}  # simple 族(witch/zombie)y0 序不同,实证 [D,up,L,R]
 
 
 def frame16(src: Image.Image, col: int, rp: int) -> Image.Image:
@@ -74,22 +77,25 @@ def paste32(sheet: Image.Image, frame: Image.Image, col: int, row: int, y_off: i
 
 
 def to_cell(frame32x64: Image.Image) -> Image.Image:
-    """legacy 32×64(2x)→ 16×32 最近邻降采样,水平居中贴入 32×32 格。"""
-    small = frame32x64.resize((CELL // 2, CELL), Image.NEAREST)
-    cell = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
-    cell.paste(small, (CELL // 4, 0))
-    return cell
+    """legacy 32×64(2x)→ 16×27 最近邻降采样(高与 premade 艺术区一致),paste32 统一贴 (x8,y5)。"""
+    return frame32x64.resize((CELL // 2, 27), Image.NEAREST)
+
+
+def sit_cell64(frame64x64: Image.Image) -> Image.Image:
+    """legacy sit 源帧 64×64 → 32×32 均匀降采样,裁去底部 2 空行后 y+2 贴满格(脚底齐格底)。"""
+    small = frame64x64.resize((CELL, CELL), Image.NEAREST)
+    return small.crop((0, 0, CELL, CELL - 2))
 
 
 def synthesize_lie(idle_down_cell: Image.Image) -> Image.Image:
-    """legacy 无仰卧帧——由朝下 idle 格内容纵向压扁 50% 合成 lie。"""
+    """legacy 无仰卧帧——由朝下 idle 帧内容纵向压扁 50% 合成 lie(直接返回窄图,贴齐格底)。"""
     bbox = idle_down_cell.getbbox()
     content = idle_down_cell.crop(bbox)
     w, h = content.size
-    squashed = content.resize((w, max(6, h // 2)), Image.NEAREST)
-    cell = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
-    cell.paste(squashed, ((CELL - squashed.width) // 2, CELL - 6 - squashed.height), squashed)
-    return cell
+    return content.resize((w, max(6, h // 2)), Image.NEAREST)
+
+
+LIE_H = 13  # 压扁后高度(27//2),paste32 y_off = CELL - LIE_H 贴齐格底不溢出
 
 
 def build_premade(src_path: Path) -> Image.Image:
@@ -105,17 +111,10 @@ def build_premade(src_path: Path) -> Image.Image:
         for f in range(2):
             lie = frame16(src, f, 3).crop((0, 0, 16, 14))
             sheet.paste(lie, (f * CELL + 8, (8 + i) * CELL + 12), lie)
-    sit_cols: dict[str, tuple[int, int]] = {                # 行 12-15 sit×2
-        "up": (SIT_SIDE_SRC["up"], SIT_SIDE_SRC["up"] + 1),
-        "left": (SIT_SIDE_SRC["left"], SIT_SIDE_SRC["left"] + 1),
-        "down": (SIT_FRONT_COL, SIT_FRONT_COL + 1),
-        "right": (SIT_SIDE_SRC["right"], SIT_SIDE_SRC["right"] + 1),
-    }
-    for row, dir_name in enumerate(("up", "left", "down", "right")):
-        c0, c1 = sit_cols[dir_name]
-        rp = 9 if dir_name != "down" else 7
-        paste32(sheet, frame16(src, c0, rp), 0, 12 + row)
-        paste32(sheet, frame16(src, c1, rp), 1, 12 + row)
+    for row, dir_name in enumerate(("up", "left", "down", "right")):  # 行 12-15 sit×2(RP8)
+        c0 = SIT_SRC[dir_name]
+        paste32(sheet, frame16(src, c0, 8), 0, 12 + row)
+        paste32(sheet, frame16(src, c0 + 1, 8), 1, 12 + row)
     return sheet
 
 
@@ -129,8 +128,9 @@ def build_legacy(src_dir: Path, name: str, family: str) -> tuple[Image.Image, st
     sheet = Image.new("RGBA", (SHEET_COLS * CELL, SHEET_ROWS * CELL), (0, 0, 0, 0))
 
     def static_idle(dir_name: str) -> Image.Image:
-        return to_cell(full.crop((LEG_STATIC_IDLE_ORDER[dir_name] * CELL, 0,
-                                  LEG_STATIC_IDLE_ORDER[dir_name] * CELL + CELL, CELL * 2)))
+        order = (LEG_STATIC_IDLE_ORDER if family == "std" else LEG_SIMPLE_IDLE_ORDER)[dir_name]
+        return to_cell(full.crop((order * CELL, 0,
+                                  order * CELL + CELL, CELL * 2)))
 
     if family == "std":
         for row, (dir_name, c0) in enumerate(LEG_WALK_SRC.items()):   # 行 0-3 walk
@@ -143,14 +143,15 @@ def build_legacy(src_dir: Path, name: str, family: str) -> tuple[Image.Image, st
             paste32(sheet, cell, 1, 4 + i)
         lie = synthesize_lie(static_idle("down"))                      # 行 8-11 lie
         for i in range(4):
-            paste32(sheet, lie, 0, 8 + i, y_off=12)
-            paste32(sheet, lie, 1, 8 + i, y_off=12)
-        if sit_path is not None:                                       # 行 12-15 sit
+            paste32(sheet, lie, 0, 8 + i, y_off=CELL - LIE_H)
+            paste32(sheet, lie, 1, 8 + i, y_off=CELL - LIE_H)
+        if sit_path is not None:                                       # 行 12-15 sit(64x64 帧)
             sit = Image.open(sit_path).convert("RGBA")
-            for row, (dir_name, c0) in enumerate(LEG_SIT_SRC.items()):
+            for row, dir_name in enumerate(("up", "left", "down", "right")):
                 for f in range(2):
-                    paste32(sheet, to_cell(sit.crop(((c0 + f) * CELL, 0,
-                                                     (c0 + f) * CELL + CELL, CELL * 2))), f, 12 + row)
+                    col = LEG_SIT_FRAME[dir_name] + f
+                    sheet.paste(sit_cell64(sit.crop((col * 64, 0, col * 64 + 64, 64))),
+                                (f * CELL, 12 * CELL + row * CELL + 2))
         else:
             for row, dir_name in enumerate(("up", "left", "down", "right")):
                 cell = static_idle(dir_name)
@@ -165,8 +166,8 @@ def build_legacy(src_dir: Path, name: str, family: str) -> tuple[Image.Image, st
             paste32(sheet, cell, 1, 4 + row)
         lie = synthesize_lie(static_idle("down"))
         for i in range(4):
-            paste32(sheet, lie, 0, 8 + i, y_off=12)
-            paste32(sheet, lie, 1, 8 + i, y_off=12)
+            paste32(sheet, lie, 0, 8 + i, y_off=CELL - LIE_H)
+            paste32(sheet, lie, 1, 8 + i, y_off=CELL - LIE_H)
         for row, dir_name in enumerate(("up", "left", "down", "right")):
             cell = static_idle(dir_name)
             paste32(sheet, cell, 0, 12 + row)
