@@ -58,17 +58,17 @@ export const ACTIVITY_EMOJI: Record<ActivityId, string> = {
   librarian: '📚',
 };
 
-/** 活动 → 静止姿态:躺(lie,rest 横卧床/长椅)/原地跑(run,workout)/站立(idle) */
-export const ACTIVITY_POSES: Record<ActivityId, 'idle' | 'run' | 'lie'> = {
-  study: 'idle',
-  work: 'idle',
+/** 活动 → 静止姿态:躺(lie,rest 横卧床/长椅)/原地跑(run,workout)/坐(sit,桌台/柜台类)/站立(idle) */
+export const ACTIVITY_POSES: Record<ActivityId, 'idle' | 'run' | 'lie' | 'sit'> = {
+  study: 'sit',
+  work: 'sit',
   rest: 'lie',
   workout: 'run',
   stroll: 'idle',
-  meal: 'idle',
-  waiter: 'idle',
-  vendor: 'idle',
-  librarian: 'idle',
+  meal: 'sit',
+  waiter: 'sit',
+  vendor: 'sit',
+  librarian: 'sit',
 };
 
 /** 角色 id → 配色变体 slug(稳定哈希,同一角色始终同一套衣服;变体列表来自 manifest) */

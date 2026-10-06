@@ -174,10 +174,17 @@ export function updateCharacterView(
   if (distance <= step || distance > SNAP_DISTANCE_TILES) {
     view.x = view.targetX;
     view.y = view.targetY;
-    // 活动姿态映射:健身=原地跑(walk 动画不位移),rest=躺卧帧,其余=站立待机
+    // 活动姿态映射:健身=原地跑(walk 动画不位移),rest=躺卧帧,桌台/柜台类=坐姿,其余=站立待机
     if (view.inActivity && view.activityId !== null) {
       const pose = ACTIVITY_POSES[view.activityId as ActivityId] ?? 'idle';
-      playAnim(scene, view, pose === 'run' ? 'walk' : pose);
+      if (pose === 'sit') {
+        // 坐姿面向锚点家具,位置留在使用格(区别于 rest/workout 的占地中心吸附)
+        const dir = facingAnchorDir(view.activityId, view.x, view.y, view.anchorKind, map);
+        if (dir !== null) view.dir = dir;
+        playAnim(scene, view, 'sit');
+      } else {
+        playAnim(scene, view, pose === 'run' ? 'walk' : pose);
+      }
     } else {
       playAnim(scene, view, 'idle');
     }
@@ -190,12 +197,12 @@ export function updateCharacterView(
         : null;
     const anchor =
       snapActivity !== null
-        ? nearestAnchorCenter(snapActivity, view.x, view.y, view.anchorKind, map)
+        ? nearestAnchorFurniture(snapActivity, view.x, view.y, view.anchorKind, map)
         : null;
     view.resting = snapActivity === 'rest' && anchor !== null;
     if (anchor !== null) {
-      drawX = anchor.cx;
-      drawY = anchor.cy;
+      drawX = anchor.x + anchor.w / 2;
+      drawY = anchor.y + anchor.h / 2;
     }
   } else {
     view.resting = false;
@@ -210,15 +217,15 @@ export function updateCharacterView(
   updateBadges(scene, view, now);
 }
 
-/** 锚点家具占地中心全集(rest=床/沙发/长椅,workout=跑步机),按档位 kind 过滤后取最近 */
-function nearestAnchorCenter(
+/** 最近锚点家具占地(rest=床/沙发/长椅,workout=跑步机,坐姿=桌台/柜台),按档位 kind 过滤 */
+function nearestAnchorFurniture(
   activityId: string,
   x: number,
   y: number,
   kind: string | null,
   map: TileMapDefinition,
-): { cx: number; cy: number } | null {
-  let best: { cx: number; cy: number } | null = null;
+): { x: number; y: number; w: number; h: number } | null {
+  let best: { x: number; y: number; w: number; h: number } | null = null;
   let bestDist = Number.POSITIVE_INFINITY;
   for (const place of map.places) {
     for (const f of place.furniture ?? []) {
@@ -229,11 +236,28 @@ function nearestAnchorCenter(
       const dist = Math.abs(cx - x) + Math.abs(cy - y);
       if (dist < bestDist) {
         bestDist = dist;
-        best = { cx, cy };
+        best = { x: f.x, y: f.y, w: f.w, h: f.h };
       }
     }
   }
   return best;
+}
+
+/** 坐姿朝向: 锚点家具相对使用格的方位(站家具下侧→面向上),无锚点或重叠则保持原向 */
+function facingAnchorDir(
+  activityId: string,
+  x: number,
+  y: number,
+  kind: string | null,
+  map: TileMapDefinition,
+): Direction | null {
+  const f = nearestAnchorFurniture(activityId, x, y, kind, map);
+  if (f === null) return null;
+  if (y >= f.y + f.h) return 'up';
+  if (y + 1 <= f.y) return 'down';
+  if (f.x + f.w <= x) return 'left';
+  if (f.x >= x + 1) return 'right';
+  return null;
 }
 
 /** 幽灵 👻 与低体力 ⚡ 徽标(懒创建,闪烁驱动) */
