@@ -472,3 +472,78 @@
   color: var(--px-dim);
   font-size: 12px;
 }
+
+/* 已登录管理员徽标(右上) */
+.hud-user {
+  padding: 4px 8px;
+  background: var(--px-navy);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+  color: var(--px-gold);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* 管理员登录弹窗(游戏端零依赖,像素风) */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(26, 28, 44, 0.72);
+}
+
+.login-modal {
+  width: min(340px, 90vw);
+}
+
+.login-modal-inner {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login-modal-inner h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--px-gold);
+}
+
+.login-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--px-dim);
+}
+
+.login-row span {
+  flex-shrink: 0;
+  width: 42px;
+}
+
+.login-row .lab-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.login-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+/* 登录输入框(game-page 不加载 lab.css,自包含) */
+.login-row input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--px-font-ui);
+  font-size: 12px;
+  padding: 4px 6px;
+  background: var(--px-ink);
+  color: var(--px-text);
+  border: none;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+}

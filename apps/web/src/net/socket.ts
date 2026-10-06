@@ -8,6 +8,7 @@ import {
   type WorldEventMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
+import { useAuthStore } from '../store/authStore';
 import { useWorldStore } from '../store/worldStore';
 
 const { setStatus, applySnapshot, applyEvent, applyControl, applyParams, applyRules } =
@@ -18,11 +19,15 @@ let worldSocket: Socket | null = null;
 /**
  * 连接世界同步通道(arch §7):连接即收全量快照,此后每 tick 快照覆盖,
  * 离散事件走 world.event;player 角色可经意图通道下发指令(M3.4)。
+ * 角色由登录态派生(游客=spectator 只读,管理员=player 操控),token 随
+ * 握手上行供服务端校验(生产环境 player 必须持有效 admin 凭证)。
  * 注意:监听必须先于连接建立注册——快照帧与 connect 同轮同步到达,
  * connect 回调返回后才挂监听会错过首帧。
  */
-export function connectWorld(role: SocketRole = 'player'): Socket {
-  const socket = io('/', { auth: { role } });
+export function connectWorld(): Socket {
+  const auth = useAuthStore.getState();
+  const role: SocketRole = auth.token !== null ? 'player' : 'spectator';
+  const socket = io('/', { auth: { role, token: auth.token } });
   worldSocket = socket;
   socket.on('connect', () => setStatus('connected'));
   socket.on('disconnect', () => setStatus('disconnected'));
