@@ -45,6 +45,7 @@ describe('Simulation 模拟核心', () => {
       clock: { gameMinutes: 540, day: 1, time: '09:00', isNight: false },
       characters: [],
       socials: [],
+      maintenance: expect.any(Array), // 60 tick 恰逢杂物周期界,内容随默认 rng 不定
     });
   });
 });

@@ -1,4 +1,5 @@
 import type { WorldEvent } from './events.js';
+import type { MaintenanceSpot } from './maintenance.js';
 import type { SocialRelationView, TraitVector } from './social.js';
 
 /**
@@ -77,6 +78,8 @@ export interface WorldSnapshotMessage {
   }>;
   /** 有向关系全量(社交 v1: A→B 与 B→A 独立两条;称号前端派生 relationTitle) */
   socials: SocialRelationView[];
+  /** 世界维护点全量(M-G.5 损耗系统):web diff 渲染 */
+  maintenance: MaintenanceSpot[];
 }
 
 /** world.event 消息封装:事件本体即 shared WorldEvent */

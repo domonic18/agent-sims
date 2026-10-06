@@ -9,6 +9,7 @@ export * from './activities.js';
 export * from './balances.js';
 export * from './events.js';
 export * from './intents.js';
+export * from './maintenance.js';
 export * from './property.js';
 export * from './shop.js';
 export * from './social.js';

@@ -3,6 +3,7 @@ import type {
   CharacterAutoRevivedEvent,
   CharacterDiedEvent,
   CharacterRevivedEvent,
+  MaintenanceSpot,
   TraitVector,
   WorldControlEvent,
   WorldEvent,
@@ -32,6 +33,7 @@ import { applyLifeScoreTick, applyVitalDecay, stepMovement, type WorldCharacter 
 import { EventBus } from './event-bus.js';
 import { buyProperty, rentProperty } from './housing.js';
 import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
+import { stepMaintenance, type RandomFn } from './maintenance.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
 import { worldSnapshot } from './snapshot.js';
@@ -56,6 +58,8 @@ export class Simulation {
   readonly characters = new Map<string, WorldCharacter>();
   /** 有向关系表(社交 v1):key = `fromId|toId`,A→B 与 B→A 各一条 */
   readonly socials = new Map<string, SocialRelation>();
+  /** 世界维护点(M-G.5 损耗系统):key = `kind:x:y`,reset 清空 */
+  readonly maintenanceSpots = new Map<string, MaintenanceSpot>();
   /** 世界事件总线:离散事件与控制变更即时分发,感知/同步层订阅 */
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
@@ -63,6 +67,12 @@ export class Simulation {
   timeScale: number = BALANCE.DEFAULT_TIME_SCALE;
   /** 世界规则(M5):默认全开;后台创建世界时随配置覆写,reset 回默认 */
   rules: WorldRules = { ...DEFAULT_WORLD_RULES };
+  /** 随机源(损耗生成器 roll;默认 Math.random,测试注入确定性实现) */
+  private readonly rng: RandomFn;
+
+  constructor(rng: RandomFn = Math.random) {
+    this.rng = rng;
+  }
 
   /** 世界地图(M-L.5:创建世界时注入生成地图;缺省内置固定地图) */
   get map(): TileMap {
@@ -78,6 +88,7 @@ export class Simulation {
       this.tick += 1;
       this.clock.advance(1);
       this._stepCharacters();
+      stepMaintenance(this, this.rng);
     }
   }
 
@@ -89,6 +100,7 @@ export class Simulation {
   reset(): void {
     this.characters.clear();
     this.socials.clear();
+    this.maintenanceSpots.clear();
     this.tick = 0;
     this.clock.reset();
     this.paused = false;

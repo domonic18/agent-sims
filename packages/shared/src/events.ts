@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { maintenanceSpotSchema, type MaintenanceSpot } from './maintenance.js';
 
 /**
  * 世界事件(离散事件即时触发,不占 tick):事件总线承载并供感知层消费。
@@ -139,6 +140,16 @@ export const friendshipFormedEventSchema = z.object({
 
 export type FriendshipFormedEvent = z.infer<typeof friendshipFormedEventSchema>;
 
+/** 维护点生成(M-G.5 损耗系统):litter/fence_damage 新增,web diff 渲染 */
+export const maintenanceSpawnedEventSchema = z.object({
+  type: z.literal('maintenance.spawned'),
+  spot: maintenanceSpotSchema,
+  tick: z.number().int(),
+});
+
+export type MaintenanceSpawnedEvent = z.infer<typeof maintenanceSpawnedEventSchema>;
+export type { MaintenanceSpot };
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -152,6 +163,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   worldResetEventSchema,
   socialChatEventSchema,
   friendshipFormedEventSchema,
+  maintenanceSpawnedEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;

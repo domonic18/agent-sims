@@ -11,6 +11,7 @@ import {
 } from './character-view';
 import { buildLightLayer, drawSelectionRing, FOUNTAIN_RECT, FountainFx } from './effects';
 import { handleMapClick, KeyboardController } from './input';
+import { MAINTENANCE_SPRITES, syncMaintenanceViews } from './maintenance-view';
 import { drawTownMap } from './terrain';
 import { showSpeechBubble } from './speech';
 
@@ -26,6 +27,8 @@ const ZOOM_MAX = 4;
  */
 export class WorldScene extends Phaser.Scene {
   private readonly _views = new Map<string, CharacterRender>();
+  /** 维护点贴图节点(M-G.5):key = spot id */
+  private readonly _maintenanceViews = new Map<string, Phaser.GameObjects.Container>();
   /** 当前世界地图(创建时从 registry 取,相机/灯光/点击统一以此为源) */
   private _map: TileMapDefinition | null = null;
   private _nightOverlay: Phaser.GameObjects.Rectangle | null = null;
@@ -68,6 +71,7 @@ export class WorldScene extends Phaser.Scene {
         asset.slug.startsWith('tile-') ||
         asset.categorySlug === 'props' ||
         asset.slug === 'plant' || // 家具缺素材的兜底纹理(见 furniture-art),恒加载
+        MAINTENANCE_SPRITES.has(asset.slug) || // 维护点贴图(M-G.5)
         usedSlugs.has(asset.slug);
       if (!needed) continue;
       const url = `/assets/${asset.url}`;
@@ -133,6 +137,7 @@ export class WorldScene extends Phaser.Scene {
   override update(time: number, delta: number): void {
     const { snapshot, selectedCharacterId, events } = useWorldStore.getState();
     syncCharacterViews(this, this._views, snapshot?.characters ?? [], snapshot?.clock.gameMinutes ?? 0);
+    syncMaintenanceViews(this, this._maintenanceViews, snapshot?.maintenance ?? []);
     this._drainSocialEvents(events);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;
     this._updateCamera(selectedCharacterId);
