@@ -1,7 +1,9 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { WorldSettingsView } from '@sims/shared';
 import { currentWorldParams, TIME_SCALES, validateBalanceOverrides } from '../config/balance.js';
+import { env } from '../config/env.js';
+import { verifyAdminToken } from '../utils/token.js';
 import type { Simulation } from '../world/simulation.js';
 
 const updateBodySchema = z.object({
@@ -40,14 +42,28 @@ function settingsView(sim: Simulation): WorldSettingsView {
 }
 
 /**
+ * 写操作准入(游览/操控分层):生产环境须 admin Bearer token(与后台登录同一
+ * 凭证),防止公布页面后游客直调接口暂停世界;开发/测试环境豁免(本地走查与
+ * 集成测试不便造 token)。读操作公开(游客 HUD/浏览需要)。
+ */
+export function canControlWorld(request: FastifyRequest): boolean {
+  if (env.NODE_ENV !== 'production') return true;
+  const header = request.headers.authorization;
+  const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7) : '';
+  return verifyAdminToken(token, env.MASTER_KEY).valid;
+}
+
+/**
  * /api/world/settings 常开控制通道(游戏内设置菜单,与 Lab 共用):
  * 暂停/倍率/世界参数/世界规则的生产可用读写口(不同于 /debug 仅 development 注册)。
- * 无鉴权与 socket intent 通道暴露面一致(单用户沙盒);多用户化时在此加 token 收口。
  */
 export function registerWorldSettingsRoutes(app: FastifyInstance, sim: Simulation): void {
   app.get('/api/world/settings', async () => settingsView(sim));
 
   app.post('/api/world/settings', async (request, reply) => {
+    if (!canControlWorld(request)) {
+      return await reply.code(401).send({ error: '浏览模式只读,登录管理员后可操作' });
+    }
     const parsed = updateBodySchema.safeParse(request.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
