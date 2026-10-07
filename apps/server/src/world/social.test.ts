@@ -111,6 +111,17 @@ describe('chat 闲聊全链', () => {
     expect(forward.familiarity).toBeCloseTo(6 * 2.6 - 1 + 6, 5);
   });
 
+  it('负相性不扣分(04 §2.5 单调性): 好感照降,双方得分分文不动', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('n', 8, 12, '负', flat(0));
+    sim.spawnCharacter('p', 9, 12, '正', flat(1)); // 完全相反 → 相性 -0.4
+    chat(sim, 'n', 'p');
+    const forward = sim.socials.get(relationKey('n', 'p'))!;
+    expect(forward.affinity).toBeCloseTo(4 * -0.4, 5); // 好感真实下降
+    expect(sim.character('n').score).toBe(0); // max(0, 2×1×(-0.4)) 不扣
+    expect(sim.character('p').score).toBe(0);
+  });
+
   it('距离太远拒绝(曼哈顿 > SOCIAL_CHAT_DISTANCE),不产生关系变化', () => {
     const sim = socialSim();
     sim.spawnCharacter('c', 13, 15, '丙', flat(0.5)); // 距甲 8 格

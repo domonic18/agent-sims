@@ -105,6 +105,7 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     const erin = sim.character('erin');
     expect(erin.activity).toBeNull();
     expect(erin.path.length).toBeGreaterThan(0); // 路径已重新规划
+    expect(erin.score).toBeCloseTo(5 * 0.15, 5); // 已结算分钟得分保留,中断不回滚(04 §2.5)
     const finished = events.at(-1);
     expect(finished).toMatchObject({
       type: 'activity.finished',
