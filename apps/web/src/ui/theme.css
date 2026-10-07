@@ -190,3 +190,68 @@
   padding: 4px 10px;
   cursor: pointer;
 }
+
+/* ---- 加载屏(L1 BootScreen):静态版孪生在 index.html,改样式两处同步 ---- */
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: var(--px-ink);
+}
+
+.boot-box {
+  width: 340px;
+}
+
+.boot-inner {
+  padding: 20px 18px;
+  text-align: center;
+}
+
+.boot-title {
+  font-family: var(--px-font-pixel);
+  font-size: 17px;
+  color: var(--px-gold);
+  text-shadow: 2px 2px 0 var(--px-ink);
+  letter-spacing: 1px;
+  margin-bottom: 16px;
+}
+
+.boot-bar {
+  height: 14px;
+  background: var(--px-ink);
+  border: 2px solid var(--px-slate);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.boot-bar-fill {
+  height: 100%;
+  background: var(--px-green);
+  transition: width 0.15s steps(10);
+}
+
+.boot-bar-fill.indeterminate {
+  width: 36%;
+  animation: boot-slide 1.1s steps(12) infinite;
+}
+
+@keyframes boot-slide {
+  from { margin-left: -36%; }
+  to { margin-left: 100%; }
+}
+
+.boot-text {
+  font-family: var(--px-font-ui);
+  font-size: 13px;
+  color: var(--px-text);
+  margin-bottom: 6px;
+}
+
+.boot-tip {
+  font-family: var(--px-font-ui);
+  font-size: 11px;
+  color: var(--px-dim);
+}

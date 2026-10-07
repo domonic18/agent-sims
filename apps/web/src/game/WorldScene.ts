@@ -72,6 +72,10 @@ export class WorldScene extends Phaser.Scene {
     // 素材库 manifest 驱动加载(M-L.3):纹理 key=slug,anim 素灵表按帧尺寸切分。
     // 全量导入后 active 达万级,按需加载——角色表/tile/固定装饰全量,
     // 家具(室内+户外道具)只加载当前地图引用的 slug(sprite 或 kind 兜底)
+    // 加载进度上报(L1):GamePage 加载罩显像素素材百分比
+    this.load.on('progress', (value: number) => {
+      useWorldStore.getState().setTextureProgress(value);
+    });
     const registry = registryOf(this);
     const map = this.registry.get('map') as TileMapDefinition | null;
     const usedSlugs = new Set<string>();
@@ -112,6 +116,8 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
+    // 场景已渲染(L1):加载罩进入「进入小镇」态(快照到位后由 GamePage 摘罩)
+    useWorldStore.getState().setBootPhase('scene-ready');
     this.cameras.main.setBackgroundColor('#8fc978');
     const map = (this._map = this.registry.get('map') as TileMapDefinition);
     drawTownMap(this, map);

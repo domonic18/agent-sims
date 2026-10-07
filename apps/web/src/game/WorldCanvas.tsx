@@ -24,9 +24,14 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
     if (!host) return;
     let cancelled = false;
     let game: Phaser.Game | null = null;
+    // 加载屏阶段上报(L1):清单/地图拉取 → Phaser 纹理灌入 → 场景 ready(WorldScene 写)
+    const boot = useWorldStore.getState();
+    boot.setBootPhase('world-data');
+    boot.setTextureProgress(0);
     void Promise.all([fetchGameAssetRegistry(), fetchMapDefinition(), getWorldRecipes().catch(() => null)])
       .then(([registry, map, recipes]) => {
         if (cancelled) return;
+        useWorldStore.getState().setBootPhase('textures');
         game = new Phaser.Game({
           type: Phaser.AUTO,
           parent: host,
@@ -48,7 +53,11 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
         if (recipes !== null) useWorldStore.getState().applyRecipes(recipes.recipes);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setAssetError(err instanceof Error ? err.message : '素材清单加载失败');
+        if (!cancelled) {
+          // error 阶段让 GamePage 摘除加载罩,露出下方错误文案
+          useWorldStore.getState().setBootPhase('error');
+          setAssetError(err instanceof Error ? err.message : '素材清单加载失败');
+        }
       });
     return () => {
       cancelled = true;

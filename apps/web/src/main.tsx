@@ -2,6 +2,7 @@ import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
+import { BootScreen } from './ui/BootScreen';
 import './ui/theme.css';
 
 void useAuthStore.getState().restore();
@@ -22,7 +23,7 @@ createRoot(rootElement).render(
         <Route
           path="/"
           element={
-            <Suspense fallback={<div style={{ padding: 24 }}>加载中…</div>}>
+            <Suspense fallback={<BootScreen text="正在加载游戏引擎…" />}>
               <GamePage />
             </Suspense>
           }
@@ -30,7 +31,7 @@ createRoot(rootElement).render(
         <Route
           path="/lab"
           element={
-            <Suspense fallback={<div style={{ padding: 24 }}>加载中…</div>}>
+            <Suspense fallback={<BootScreen text="正在加载调试台…" />}>
               <LabPage />
             </Suspense>
           }
@@ -38,7 +39,7 @@ createRoot(rootElement).render(
         <Route
           path="/admin"
           element={
-            <Suspense fallback={<div style={{ padding: 24 }}>加载中…</div>}>
+            <Suspense fallback={<BootScreen text="正在加载后台…" />}>
               <AdminPage />
             </Suspense>
           }
@@ -47,3 +48,6 @@ createRoot(rootElement).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+// React 已接管(路由级 BootScreen 与 index.html 静态版同款无缝衔接),摘除首字节加载屏
+document.getElementById('boot-screen')?.remove();

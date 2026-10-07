@@ -15,6 +15,12 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
 /** 相机模式(UI-1): follow=跟随选中角色,overview=缩到最小看全图,free=拖拽平移+滚轮缩放不跟随 */
 export type CameraMode = 'follow' | 'overview' | 'free';
 
+/**
+ * 启动阶段(加载屏 L1): world-data=拉素材清单/地图,textures=Phaser 灌像素纹理,
+ * scene-ready=场景已渲染(叠加快照是否到位判断摘罩),error=素材加载失败(露出错误文案)
+ */
+export type BootPhase = 'world-data' | 'textures' | 'scene-ready' | 'error';
+
 /** 带递增序号的事件条目:消费者按 seq 增量拉取,同 tick 多事件不丢 */
 export interface SequencedEvent {
   seq: number;
@@ -56,6 +62,11 @@ export interface WorldStore {
   /** 在线查看人数(presence 事件驱动:页面打开的连接数,直播场景即访客数) */
   viewers: number;
   setViewers: (viewers: number) => void;
+  /** 启动阶段与纹理加载进度(0~1;WorldCanvas/WorldScene 写,GamePage 加载屏读) */
+  bootPhase: BootPhase;
+  textureProgress: number;
+  setBootPhase: (phase: BootPhase) => void;
+  setTextureProgress: (progress: number) => void;
   /** 连续作业开关(M-G.5/M-G.6):key=characterId,开启后该角色空闲即自动接最近同岗单(含采集岗) */
   continuousWork: Record<string, WorkTaskId>;
   toggleContinuousWork: (characterId: string, task: WorkTaskId | null) => void;
@@ -117,6 +128,10 @@ export const useWorldStore = create<WorldStore>((set) => ({
   applyRecipes: (recipes) => set({ recipes }),
   viewers: 0,
   setViewers: (viewers) => set({ viewers }),
+  bootPhase: 'world-data',
+  textureProgress: 0,
+  setBootPhase: (phase) => set({ bootPhase: phase }),
+  setTextureProgress: (progress) => set({ textureProgress: progress }),
   toggleContinuousWork: (characterId, task) =>
     set((state) => {
       const continuousWork = { ...state.continuousWork };

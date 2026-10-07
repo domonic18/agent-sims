@@ -12,6 +12,7 @@ import { CharacterHud } from './hud/CharacterHud';
 import { ActionBar } from './hud/ActionBar';
 import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
+import { BootScreen } from './BootScreen';
 import { useGoAndDo } from './side-panel/useGoAndDo';
 import './game-page.css';
 import './world-settings.css';
@@ -33,6 +34,8 @@ export default function GamePage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
   const viewers = useWorldStore((state) => state.viewers);
+  const bootPhase = useWorldStore((state) => state.bootPhase);
+  const textureProgress = useWorldStore((state) => state.textureProgress);
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
   const token = useAuthStore((state) => state.token);
   const username = useAuthStore((state) => state.username);
@@ -120,9 +123,25 @@ export default function GamePage() {
     }
   };
 
+  // 加载罩(L1):素材/纹理阶段或场景已就绪但首帧快照未到时全屏覆盖;素材错误露出错误文案
+  const showBoot = bootPhase !== 'error' && (bootPhase !== 'scene-ready' || snapshot === null);
+  const bootText =
+    bootPhase === 'world-data'
+      ? '正在加载世界数据…'
+      : bootPhase === 'textures'
+        ? '正在绘制像素素材 '
+        : '正在进入小镇…';
+
   return (
     <main className="game-page">
       <WorldCanvas interactive={isAdmin} />
+
+      {showBoot && (
+        <BootScreen
+          text={bootText}
+          {...(bootPhase === 'textures' ? { progress: textureProgress } : {})}
+        />
+      )}
 
       <CharacterHud />
 
