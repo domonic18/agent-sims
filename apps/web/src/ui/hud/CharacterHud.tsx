@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatCoins } from '../../format';
 import { useWorldStore } from '../../store/worldStore';
 import type { CharacterView } from '../side-panel/place';
@@ -28,11 +29,12 @@ function VitalBar({
   );
 }
 
-/** 左上角色面板(UI-1): ‹›切换角色,选中谁显示谁;体力/健康/得分/徽标/行动/住房 */
+/** 左上角色面板(UI-1): ‹›切换角色,选中谁显示谁;体力/健康/得分/徽标/行动/住房;可收起为头行免遮挡 */
 export function CharacterHud() {
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
+  const [collapsed, setCollapsed] = useState(false);
 
   const characters = snapshot?.characters ?? [];
   const character: CharacterView | null =
@@ -67,8 +69,18 @@ export function CharacterHud() {
           <button type="button" className="px-btn sq" title="下一位居民" onClick={() => cycle(1)}>
             ›
           </button>
+          <button
+            type="button"
+            className="px-btn sq hud-char-collapse"
+            title={collapsed ? '展开面板' : '收起面板(不遮挡画面)'}
+            onClick={() => setCollapsed((value) => !value)}
+          >
+            {collapsed ? '▾' : '▴'}
+          </button>
         </div>
 
+        {collapsed ? null : (
+          <>
         <div className="hud-char-bars">
           <VitalBar label="体力" value={character.energy} tone="green" />
           {snapshot.gameType === 'survival' && (
@@ -124,6 +136,8 @@ export function CharacterHud() {
             ? `🏠 ${housing.propertyId} · ${housing.ownership === 'rent' ? '租住' : '自有'}`
             : '🚫 无住房(资产页可租房)'}
         </div>
+          </>
+        )}
       </div>
     </aside>
   );
