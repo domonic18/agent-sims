@@ -15,11 +15,13 @@ export const BACKPACK_VOLUME_LIMIT = 8;
 export const FRIDGE_VOLUME_LIMIT = 30;
 /** 低体力阈值:≤该值仅允许基础活动(rest/stroll/meal),UI 同步亮警示 */
 export const LOW_ENERGY_THRESHOLD = 20;
-/** 社交同场距离(曼哈顿):chat 与同场增益的"同处一地"判定,UI 聊天按钮同源禁用 */
-export const SOCIAL_PRESENCE_DISTANCE = 2;
+/** 闲聊同处一地距离(曼哈顿,§6.2):chat 判定,UI 聊天按钮同源禁用;
+ * 原名 SOCIAL_PRESENCE_DISTANCE(2026-10-07 同场增益删除后更名) */
+export const SOCIAL_CHAT_DISTANCE = 2;
 /** 同对角色每日「有收益」闲聊次数(数值文档 §6.2);超出可继续聊但收益为 0,UI 提示同源 */
 export const CHAT_DAILY_GAINED = 6;
-/** 死亡救治窗口(goal-design §7,M-G.5):24 游戏小时——窗口内救治免扣繁荣分,超时自动复活并按现值扣减 */
+/** 救治窗口(goal-design §7,M-G.5):24 游戏小时——growth 累倒送医/survival 重伤休整共用;
+ * 窗口内救治免扣,超时自动苏醒(growth 扣得分 ×0.8) */
 export const REVIVE_WINDOW_MINUTES = 1440;
 
 /** 库存体积求和(Σ份数×单件体积);未知物品按 0 计(调用方保证 id 合法) */

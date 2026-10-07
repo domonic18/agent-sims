@@ -41,7 +41,6 @@ import {
 import { GameClock } from './clock.js';
 import {
   applyHealthTick,
-  applyLifeScoreTick,
   applyVitalDecay,
   reviveCharacter,
   stepMovement,
@@ -59,7 +58,6 @@ import { completeWorkTask, requestWorkTask } from './work-task.js';
 import { worldSnapshot } from './snapshot.js';
 import {
   applySocialDailyRollover,
-  applySocialPresenceBonus,
   chat,
   randomTraits,
   type SocialRelation,
@@ -159,7 +157,6 @@ export class Simulation {
       y,
       path: [],
       energy: BALANCE.START_ENERGY,
-      happiness: BALANCE.START_HAPPINESS,
       health: BALANCE.VITAL_MAX,
       coins: BALANCE.START_COINS,
       activity: null,
@@ -173,7 +170,7 @@ export class Simulation {
       diedAtGameMinutes: null,
       backpack: {},
       fridge: {},
-      lifeScore: 0,
+      score: 0,
       knowledge: 0,
       sleepWindowMinutes: 0,
       sleepDebtEndGameMinutes: null,
@@ -403,10 +400,6 @@ export class Simulation {
           }
         }
       }
-      // 繁荣分质量流(M3.6j): 本分钟数值结算完毕后按当前幸福累计,死亡当分钟也计入
-      applyLifeScoreTick(character);
-      // 同场增益(社交 v1): 活动角色按附近活动人数得幸福修正
-      applySocialPresenceBonus(this, character);
       // 生存健康(M-S/S1):仅 survival 有压力源;置于死亡判定前,健康归零当分钟入重伤
       if (this.gameType === 'survival') {
         applyHealthTick(character);
@@ -574,7 +567,7 @@ export class Simulation {
   }
 
   /** 救治窗口超时结算(M-G.5):挂起扣减按超时时刻现值 ×(1-比例) 生效,自动复活;
-   * survival 重伤休整(M-S/S1)软惩罚原则——超时苏醒不扣繁荣分,数值回恢复线 */
+   * survival 重伤休整(M-S/S1)软惩罚原则——超时苏醒不扣得分,数值回恢复线 */
   private _checkReviveWindow(character: WorldCharacter): void {
     if (character.alive || character.diedAtGameMinutes === null) {
       return;
@@ -582,9 +575,9 @@ export class Simulation {
     if (this.clock.gameMinutes - character.diedAtGameMinutes < REVIVE_WINDOW_MINUTES) {
       return;
     }
-    // 繁荣分死亡扣减(M3.6j 方案B): 比例扣无套利——活得越厚实,死亡的绝对损失越大
+    // 累倒苏醒扣分(numerical §2.3/§2.5): 比例扣,仅 growth 送医窗口;survival 不扣
     if (this.gameType !== 'survival') {
-      character.lifeScore *= 1 - BALANCE.LIFE_SCORE_DEATH_DEDUCTION;
+      character.score *= 1 - BALANCE.SCORE_WAKE_DEDUCTION;
     }
     reviveCharacter(this, character, 'timeout');
   }

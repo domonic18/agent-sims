@@ -110,15 +110,15 @@ describe('work_task 维护工单(M-G.5)', () => {
     sim.character('mort').energy = 0.1;
     sim.advanceTicks(6); // mort 死亡挂起
     expect(sim.character('mort').alive).toBe(false);
-    const diedLifeScore = sim.character('mort').lifeScore;
+    const diedScore = sim.character('mort').score;
     const doctor = sim.requestWorkTask('doc', 'mort');
     expect(doctor.activity).toMatchObject({ activityId: 'rescue', targetId: 'mort' });
     sim.advanceTicks(90);
     const mort = sim.character('mort');
     expect(mort.alive).toBe(true);
     expect(mort.energy).toBeGreaterThan(95); // 复活满状态,复活后待机代谢缓慢回落
-    // 免扣:扣分生效会 ×0.8 (< diedLifeScore);实际不低于死亡时值(复活后质量流继续)
-    expect(mort.lifeScore).toBeGreaterThan(diedLifeScore);
+    // 免扣:窗口内救治回满不触发扣分,得分单调(复活事件本身不加分,恰不变)
+    expect(mort.score).toBe(diedScore);
     expect(sim.character('doc').coins).toBe(45);
     expect(events.some((e) => e.type === 'character.revived')).toBe(true);
     expect(events.some((e) => e.type === 'work_task.completed')).toBe(true);

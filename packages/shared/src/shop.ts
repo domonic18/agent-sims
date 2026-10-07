@@ -3,7 +3,7 @@
  * 货架=ITEMS 中带定价的 food 子集(同一对象引用,保证 getShopItem(item.id)===item)。
  * food 须在商店内购买,买入入随身背包(受体积上限约束),任意地点经 eat_item 进食结算 effects;
  * 回家可经 store_item 存入冰箱 / take_item 取出到背包(均受容积约束)。
- * 品类拉开价格/体积/体力/幸福梯度(蛋糕大体积高幸福,咖啡小体积高体力)。
+ * 品类拉开价格/体积/体力/得分梯度(蛋糕大体积高得分,咖啡小体积高体力)。
  * 数值出处: docs/design/04-numerical-design.md §3;物品全集见 items.ts。
  */
 import { ITEMS } from './items.js';
@@ -33,7 +33,7 @@ export interface FoodShopItem {
   /** 占用背包/冰箱容积(M3.6g 体积制,数值文档 §3.1) */
   volume: number;
   /** 进食(eat_item)时结算的一次性数值变化 */
-  effects: { energy: number; happiness: number };
+  effects: { energy: number; score: number };
 }
 
 export type ShopItemDefinition = FoodShopItem;

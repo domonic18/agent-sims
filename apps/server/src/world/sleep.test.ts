@@ -67,17 +67,16 @@ describe('sleep 入睡校验(M-G.2)', () => {
 });
 
 describe('sleep 速率与自然醒', () => {
-  it('床档速率 +0.35 体力/+0.05 幸福每分,不叠待机衰减', () => {
+  it('床档速率 +0.35 体力每分,不叠待机衰减;睡眠零得分(04 §2.5)', () => {
     const bed = anchorUseKind('home-a', 'bed');
     const { sim } = simWith('mow', bed.x, bed.y);
     sim.advanceTicks(TO_2200_D1);
     sim.character('mow').energy = 50;
-    sim.character('mow').happiness = 50;
     sim.requestStartActivity('mow', 'sleep');
     sim.advanceTicks(10);
     const mow = sim.character('mow');
     expect(mow.energy).toBeCloseTo(50 + 10 * 0.35, 5);
-    expect(mow.happiness).toBeCloseTo(50 + 10 * 0.05, 5);
+    expect(mow.score).toBe(0);
   });
 
   it('480 分自然醒 completed(白天睡同样完成,但不进窗口账本)', () => {
@@ -133,15 +132,14 @@ describe('睡眠账本与缺觉结算(M-G.2,数值文档 §2.7)', () => {
     expect(sim.character('mow').coins).toBeCloseTo(96 * 0.7, 5);
   });
 
-  it('缺觉只罚正收益: workout 幸福 ×0.7,体力原速不折', () => {
+  it('缺觉只罚正收益: workout 得分 ×0.7,体力原速不折', () => {
     const treadmill = anchorUse('gym', 'workout');
     const { sim } = simWith('kate', treadmill.x, treadmill.y);
     sim.character('kate').sleepDebtEndGameMinutes = sim.clock.gameMinutes + 10_000; // 注入缺觉
-    sim.character('kate').happiness = 50;
     sim.requestStartActivity('kate', 'workout');
     sim.advanceTicks(40);
     const kate = sim.character('kate');
-    expect(kate.happiness).toBeCloseTo(50 + 40 * 0.35 * 0.7, 5); // +0.35 → ×0.7
+    expect(kate.score).toBeCloseTo(40 * 0.35 * 0.7, 5); // +0.35/分 → ×0.7
     expect(kate.energy).toBeCloseTo(100 - 40 * 0.4, 5); // -0.4 不动
   });
 

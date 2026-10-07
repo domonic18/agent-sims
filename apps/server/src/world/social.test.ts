@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   compatibility,
   relationTitle,
@@ -7,7 +7,6 @@ import {
 } from '@sims/shared';
 import {
   applySocialDailyRollover,
-  applySocialPresenceBonus,
   chat,
   ensureRelations,
   relationKey,
@@ -63,10 +62,8 @@ describe('relationTitle 称号派生(阈值:嫌弃/陌生/点头/挚友)', () =>
 });
 
 describe('chat 闲聊全链', () => {
-  it('有向关系:主动方 +6 熟悉,双向 +相性×4 好感,双方 +2 幸福,发 social.chat 事件', () => {
+  it('有向关系:主动方 +6 熟悉,双向 +相性×4 好感,双方 +2×相性 得分,发 social.chat 事件', () => {
     const sim = socialSim();
-    sim.character('a').happiness = 50;
-    sim.character('b').happiness = 50;
     const events: WorldEvent[] = [];
     sim.events.subscribe((event) => events.push(event));
 
@@ -79,8 +76,8 @@ describe('chat 闲聊全链', () => {
     expect(backward.familiarity).toBe(0);
     expect(forward.affinity).toBeCloseTo(5.6, 5); // 4 × 1.4 × 1
     expect(backward.affinity).toBeCloseTo(5.6, 5);
-    expect(sim.character('a').happiness).toBeCloseTo(52, 5);
-    expect(sim.character('b').happiness).toBeCloseTo(52, 5);
+    expect(sim.character('a').score).toBeCloseTo(2 * 1.4, 5); // 事件直加(04 §2.5)
+    expect(sim.character('b').score).toBeCloseTo(2 * 1.4, 5);
 
     const emitted = events.find((event) => event.type === 'social.chat');
     expect(emitted).toMatchObject({
@@ -98,16 +95,15 @@ describe('chat 闲聊全链', () => {
 
   it('收益封顶六档(Σ2.6),第 7 次起不拒绝但增益为 0,跨日重置', () => {
     const sim = socialSim();
-    sim.character('a').happiness = 50;
     for (let i = 0; i < 6; i += 1) chat(sim, 'a', 'b');
     const forward = sim.socials.get(relationKey('a', 'b'))!;
     expect(forward.familiarity).toBeCloseTo(6 * 2.6, 5); // 递减 1/0.6/0.4/0.3/0.2/0.1
-    expect(sim.character('a').happiness).toBeCloseTo(50 + 2 * 2.6, 5); // 幸福同样乘递减
+    expect(sim.character('a').score).toBeCloseTo(2 * 1.4 * 2.6, 5); // 得分同乘递减与相性
     chat(sim, 'a', 'b'); // 第 7 次:对话照常,增益全 0
     expect(forward.familiarity).toBeCloseTo(6 * 2.6, 5);
     expect(forward.affinity).toBeCloseTo(4 * 1.4 * 2.6, 5);
     expect(forward.chatCount).toBe(7);
-    expect(sim.character('a').happiness).toBeCloseTo(50 + 2 * 2.6, 5);
+    expect(sim.character('a').score).toBeCloseTo(2 * 1.4 * 2.6, 5);
 
     sim.advanceTicks(960); // 08:00 → 次日 00:00(日翻转含熟悉度衰减 -1)
     expect(forward.familiarity).toBeCloseTo(6 * 2.6 - 1, 5);
@@ -115,7 +111,7 @@ describe('chat 闲聊全链', () => {
     expect(forward.familiarity).toBeCloseTo(6 * 2.6 - 1 + 6, 5);
   });
 
-  it('距离太远拒绝(曼哈顿 > SOCIAL_PRESENCE_DISTANCE),不产生关系变化', () => {
+  it('距离太远拒绝(曼哈顿 > SOCIAL_CHAT_DISTANCE),不产生关系变化', () => {
     const sim = socialSim();
     sim.spawnCharacter('c', 13, 15, '丙', flat(0.5)); // 距甲 8 格
     expect(() => chat(sim, 'a', 'c')).toThrow(/距离太远/);
@@ -148,34 +144,18 @@ describe('首次结成朋友/挚友发一次性事件', () => {
   });
 });
 
-describe('同场增益(social-design §3.2)', () => {
-  let sim: Simulation;
-  beforeEach(() => {
-    sim = socialSim();
-  });
-  const busy = (characterId: string): void => {
-    const character = sim.character(characterId);
-    character.activity = { activityId: 'stroll', elapsed: 0, anchorKind: null, targetId: null };
-    character.happiness = 50;
-  };
-
-  it('附近活动人数给幸福修正,空闲角色不计', () => {
-    busy('a');
-    expect(sim.character('a').happiness).toBe(50); // 乙空闲不计
-    busy('b');
-    applySocialPresenceBonus(sim, sim.character('a'));
-    expect(sim.character('a').happiness).toBeCloseTo(50.05, 5);
-  });
-
-  it('人数封顶 3,距离外不计', () => {
-    busy('a');
-    sim.spawnCharacter('c', 10, 12, '丙', flat(0.5)); // 距甲 2
-    sim.spawnCharacter('d', 8, 13, '丁', flat(0.5)); // 距甲 1
-    sim.spawnCharacter('e', 13, 15, '戊', flat(0.5)); // 距甲 8
-    for (const id of ['b', 'c', 'd', 'e']) busy(id);
-    sim.character('a').happiness = 50;
-    applySocialPresenceBonus(sim, sim.character('a'));
-    expect(sim.character('a').happiness).toBeCloseTo(50.15, 5); // b/c/d 三人封顶,e 距离外
+describe('同场增益已随得分体系移除(04 §6.3)', () => {
+  it('闲聊是唯一社交得分事件,同处一地不再产生被动增益', () => {
+    const sim = socialSim();
+    sim.character('a').activity = {
+      activityId: 'stroll',
+      elapsed: 0,
+      anchorKind: null,
+      targetId: null,
+    };
+    sim.advanceTicks(10);
+    // 散步 0.15/分 ×10,无同场加成(旧 +0.05/人已删,04 §6.3)
+    expect(sim.character('a').score).toBeCloseTo(1.5, 5);
   });
 });
 

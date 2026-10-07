@@ -6,7 +6,7 @@ import {
   LOW_ENERGY_THRESHOLD,
   MAINTENANCE_TASKS,
   REVIVE_WINDOW_MINUTES,
-  SOCIAL_PRESENCE_DISTANCE,
+  SOCIAL_CHAT_DISTANCE,
   WORK_TARGETS,
   isGatherTask,
   countWorkTargets,
@@ -94,7 +94,6 @@ export function CharactersSection({
       {character !== null && (
         <div className="vitals">
           <VitalBar label="体力" value={character.energy} />
-          <VitalBar label="幸福" value={character.happiness} />
           {snapshot.gameType === 'survival' && (
             <VitalBar
               label="健康"
@@ -107,11 +106,11 @@ export function CharactersSection({
             className="coins"
             title={
               snapshot.gameType === 'survival'
-                ? '生涯质量账本 ≈ 累计等效幸福天;重伤休整是软惩罚,苏醒不扣分(07-survival §4)'
-                : '生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7)'
+                ? '成就得分:事件直加单调递增(正向活动/美食/聊天);重伤苏醒不扣分(04 §2.5)'
+                : '成就得分:事件直加单调递增;累倒送医超时苏醒扣 20%(04 §2.5)'
             }
           >
-            繁荣分 {formatCoins(character.lifeScore)}
+            得分 {formatCoins(character.score)}
           </div>
           <div className="coins" title="完成一次完整学习 +1;解锁岗位类别(M-G.4)">
             知识 {character.knowledge} 班
@@ -119,7 +118,7 @@ export function CharactersSection({
           {character.sleepDebt && (
             <div
               className="coins"
-              title="缺觉: 昨夜睡眠不足,今日正收益(金币/产出/幸福增益)打折,睡满一夜后于 06:00 解除"
+              title="缺觉: 昨夜睡眠不足,今日正收益(金币/得分/产出)打折,睡满一夜后于 06:00 解除"
             >
               😪 缺觉中
             </div>
@@ -220,7 +219,7 @@ export function SocialSection({
         <ul className="activity-list">
           {others.map((other) => {
             const distance = Math.abs(other.x - character.x) + Math.abs(other.y - character.y);
-            const near = distance <= SOCIAL_PRESENCE_DISTANCE;
+            const near = distance <= SOCIAL_CHAT_DISTANCE;
             const relation = snapshot.socials.find(
               (s) => s.fromId === character.id && s.toId === other.id,
             );
@@ -240,7 +239,7 @@ export function SocialSection({
                   title={
                     near
                       ? `与 ${other.name} 闲聊(每日前 ${CHAT_DAILY_GAINED} 次有收益,之后无增益)`
-                      : `距离太远,走近点再聊(曼哈顿 ≤ ${SOCIAL_PRESENCE_DISTANCE})`
+                      : `距离太远,走近点再聊(曼哈顿 ≤ ${SOCIAL_CHAT_DISTANCE})`
                   }
                   onClick={() =>
                     void run({

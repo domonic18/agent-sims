@@ -10,7 +10,7 @@ export const characters = pgTable('characters', {
   gender: text('gender').notNull().default('unspecified'), // male | female | unspecified
   persona: jsonb('persona').notNull().default({}), // 人设卡(traits/persona/modelSlot 预留)
   position: jsonb('position'), // { x, y } 当前世界坐标
-  stats: jsonb('stats'), // { energy, happiness, coins }
+  stats: jsonb('stats'), // { energy, score, coins }
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

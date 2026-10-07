@@ -88,10 +88,10 @@ export type RestAnchorKind = (typeof REST_ANCHOR_KINDS)[number];
  * 决定恢复速率——床(睡眠)最快、沙发(小憩)次之、长椅(打盹)最慢。
  * key 从 REST_ANCHOR_KINDS 派生:新增档位漏配速率即编译错误。
  */
-export const REST_RATES_BY_KIND: Record<RestAnchorKind, { energy: number; happiness: number }> = {
-  bed: { energy: 0.35, happiness: 0.05 },
-  sofa: { energy: 0.22, happiness: 0.07 },
-  bench: { energy: 0.12, happiness: 0.05 },
+export const REST_RATES_BY_KIND: Record<RestAnchorKind, { energy: number }> = {
+  bed: { energy: 0.35 },
+  sofa: { energy: 0.22 },
+  bench: { energy: 0.12 },
 };
 
 /** 可作 sleep 锚点的家具档位(M-G.2 睡眠):仅床;新增档位(如帐篷)须同步扩 REST_RATES_BY_KIND */

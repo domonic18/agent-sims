@@ -57,7 +57,7 @@ export function eatItem(sim: Simulation, characterId: string, itemId: string): W
     delete character.backpack[itemId];
   }
   character.energy = clampVital(character.energy + effects.energy);
-  character.happiness = clampVital(character.happiness + effects.happiness);
+  character.score += effects.score;
   return character;
 }
 

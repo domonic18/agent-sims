@@ -20,13 +20,12 @@ describe('商店背包制(M3.2 店内购买;M3.6g 背包/冰箱两级库存+体�
   it('店内购买入背包: 扣币不结算数值,可叠加份数', () => {
     const { sim, id } = simWith('alice', 20);
     sim.character(id).energy = 97;
-    sim.character(id).happiness = 60;
     sim.requestBuyItem(id, 'bread');
     sim.requestBuyItem(id, 'bread');
     const alice = sim.character(id);
     expect(alice.coins).toBe(12); // 20 - 4*2
     expect(alice.energy).toBe(97); // 买入不入腹
-    expect(alice.happiness).toBe(60);
+    expect(alice.score).toBe(0); // 买入非事件,得分不动(04 §2.5)
     expect(alice.backpack).toEqual({ bread: 2 });
     expect(alice.fridge).toEqual({});
   });
@@ -56,13 +55,12 @@ describe('商店背包制(M3.2 店内购买;M3.6g 背包/冰箱两级库存+体�
 
   it('eat_item 任意地点: 店内买完原地即吃,结算效果并扣背包', () => {
     const { sim, id } = simWith('dave', 50);
-    sim.requestBuyItem(id, 'sushi'); // 寿司 +12 体力 +5 幸福
+    sim.requestBuyItem(id, 'sushi'); // 寿司 +12 体力 +5 得分
     sim.character(id).energy = 80;
-    sim.character(id).happiness = 60; // 留出增益空间(上限 100 夹取)
     sim.requestEatItem(id, 'sushi');
     const dave = sim.character(id);
     expect(dave.energy).toBeCloseTo(80 + 12, 5);
-    expect(dave.happiness).toBeCloseTo(60 + 5, 5);
+    expect(dave.score).toBeCloseTo(5, 5); // 进食事件直加(04 §2.5)
     expect(dave.coins).toBe(38); // 进食不另扣费
     expect(dave.backpack).toEqual({});
   });
@@ -161,14 +159,13 @@ describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () =
     }
   });
 
-  it('浆果派(制作食物): 任意地点可食 +8 体力/+4 幸福', () => {
+  it('浆果派(制作食物): 任意地点可食 +8 体力/+4 得分', () => {
     const { sim, id } = simWith('liam', 50);
     sim.character(id).backpack = { berry_pie: 1 };
     sim.character(id).energy = 50;
-    sim.character(id).happiness = 50;
     sim.requestEatItem(id, 'berry_pie');
     expect(sim.character(id).energy).toBe(58);
-    expect(sim.character(id).happiness).toBe(54);
+    expect(sim.character(id).score).toBe(4);
   });
 
   it('非货架物品不可购买;material 不可食用', () => {

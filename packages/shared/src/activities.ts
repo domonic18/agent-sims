@@ -2,9 +2,10 @@
  * 活动目录(游戏内容,双端共用): 活动数值公式在此定稿
  * (关闭 requirement §10-5;M3.6g 净速率模型重定稿,数值文档 §2.1)。
  * 效果为"每游戏分钟"**净速率**(已含活动期间代谢,活动中不再叠加自然衰减;
- * 仅待机走基础代谢衰减)。rest 的体力/幸福实际按锚点家具档位
- * (world.ts REST_RATES_BY_KIND: 床/沙发/长椅)结算,此处 effects 置 0 占位。
+ * 仅待机走基础代谢衰减)。rest 的体力实际按锚点家具档位
+ * (furniture.ts REST_RATES_BY_KIND: 床/沙发/长椅)结算,此处 effects 置 0 占位。
  * 金币可为负(就餐花销),下限夹 0,余额不足时活动中断(insufficient_coins)。
+ * score 为每分钟得分速率(数值文档 §2.5 事件直加),仅正向活动>0,负值一律归 0。
  * 岗位活动(带 category)受知识门槛约束(M-G.4 职业类别模型,数值文档 §5.1)。
  */
 
@@ -41,7 +42,8 @@ export const BASIC_ACTIVITY_IDS = ['rest', 'sleep', 'stroll', 'meal'] as const;
 
 export interface ActivityEffects {
   energy: number;
-  happiness: number;
+  /** 每分钟得分速率(事件直加,§2.5);仅正向活动>0 */
+  score: number;
   coins: number;
 }
 
@@ -76,14 +78,14 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '学习',
     placeIds: ['library', 'home-a'],
     durationMinutes: 60,
-    effects: { energy: -0.12, happiness: -0.02, coins: 0 },
+    effects: { energy: -0.12, score: 0, coins: 0 },
   },
   {
     id: 'work',
     name: '杂工',
     placeIds: ['office'],
     durationMinutes: 120,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0.8 },
+    effects: { energy: -0.15, score: 0, coins: 0.8 },
     category: 'fallback',
   },
   {
@@ -91,45 +93,45 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '休息',
     placeIds: ['home-a', 'home-b', 'home-c', 'home-d', 'park'],
     durationMinutes: 60,
-    effects: { energy: 0, happiness: 0, coins: 0 },
+    effects: { energy: 0, score: 0, coins: 0 },
   },
   // 睡觉(M-G.2,数值文档 §2.7):夜间睡眠活动,自家床锚点(经服务端租约校验,
-  // 公园长椅非 sleep 档位不可睡)。体力/幸福实际按床档速率(REST_RATES_BY_KIND.bed)
+  // 公园长椅非 sleep 档位不可睡)。体力实际按床档速率(REST_RATES_BY_KIND.bed)
   // 结算,此处 effects 置 0 占位;睡眠分钟计入昨夜窗口账本,缺觉惩罚见 simulation 结算。
   {
     id: 'sleep',
     name: '睡觉',
     placeIds: ['home-a', 'home-b', 'home-c', 'home-d'],
     durationMinutes: 480,
-    effects: { energy: 0, happiness: 0, coins: 0 },
+    effects: { energy: 0, score: 0, coins: 0 },
   },
   {
     id: 'workout',
     name: '健身',
     placeIds: ['gym'],
     durationMinutes: 40,
-    effects: { energy: -0.4, happiness: 0.35, coins: 0 },
+    effects: { energy: -0.4, score: 0.35, coins: 0 },
   },
   {
     id: 'stroll',
     name: '散步',
     placeIds: ['park'],
     durationMinutes: 20,
-    effects: { energy: -0.04, happiness: 0.15, coins: 0 },
+    effects: { energy: -0.04, score: 0.15, coins: 0 },
   },
   {
     id: 'meal',
     name: '就餐',
     placeIds: ['restaurant'],
     durationMinutes: 30,
-    effects: { energy: 0.05, happiness: 0.2, coins: -0.4 },
+    effects: { energy: 0.05, score: 0.2, coins: -0.4 },
   },
   {
     id: 'waiter',
     name: '服务员',
     placeIds: ['restaurant'],
     durationMinutes: 120,
-    effects: { energy: -0.15, happiness: -0.05, coins: 1.0 },
+    effects: { energy: -0.15, score: 0, coins: 1.0 },
     category: 'service',
   },
   {
@@ -137,7 +139,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '售货员',
     placeIds: ['shop'],
     durationMinutes: 120,
-    effects: { energy: -0.15, happiness: -0.05, coins: 1.0 },
+    effects: { energy: -0.15, score: 0, coins: 1.0 },
     category: 'service',
   },
   {
@@ -145,7 +147,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '馆员',
     placeIds: ['library'],
     durationMinutes: 120,
-    effects: { energy: -0.15, happiness: -0.05, coins: 1.0 },
+    effects: { energy: -0.15, score: 0, coins: 1.0 },
     category: 'service',
   },
   // 维护工单三岗(M-G.5,design/08 §4/numerical §5.1):无场所锚点,经 work_task
@@ -155,7 +157,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '清洁',
     placeIds: [],
     durationMinutes: 15,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'fallback',
   },
   {
@@ -163,7 +165,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '修理',
     placeIds: [],
     durationMinutes: 30,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'build',
   },
   {
@@ -171,7 +173,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '救治',
     placeIds: [],
     durationMinutes: 30,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'medical',
   },
   // 采集两岗(M-G.6,design/09 §2/numerical §5.4):无场所锚点,经 work_task
@@ -181,7 +183,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '采集浆果',
     placeIds: [],
     durationMinutes: 20,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'gather',
   },
   {
@@ -189,7 +191,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '拾荒',
     placeIds: [],
     durationMinutes: 15,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'gather',
   },
   // 生存采集三岗(M-S/S1,07-survival §2):同采集类门槛,产出入包为 S2 建造备料
@@ -198,7 +200,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '伐木',
     placeIds: [],
     durationMinutes: 25,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'gather',
   },
   {
@@ -206,7 +208,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '采石',
     placeIds: [],
     durationMinutes: 30,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'gather',
   },
   {
@@ -214,7 +216,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '搜刮金属',
     placeIds: [],
     durationMinutes: 25,
-    effects: { energy: -0.15, happiness: -0.05, coins: 0 },
+    effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'gather',
   },
   // 制作两配方(M-G.6,design/09 §3/numerical §5.4):站点锚点活动(灶台/木工台),
@@ -224,7 +226,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '制作浆果派',
     placeIds: ['restaurant'],
     durationMinutes: 25,
-    effects: { energy: -0.1, happiness: 0.05, coins: 0 },
+    effects: { energy: -0.1, score: 0.05, coins: 0 },
     category: 'gather',
   },
   {
@@ -232,7 +234,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '制作修补钉',
     placeIds: ['office'],
     durationMinutes: 15,
-    effects: { energy: -0.1, happiness: 0.05, coins: 0 },
+    effects: { energy: -0.1, score: 0.05, coins: 0 },
     category: 'build',
   },
 ];

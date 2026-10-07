@@ -174,7 +174,7 @@ export function ShopSection({
                 {item.name}
                 <small>
                   {item.price}币 体积{item.volume} 体力+{item.effects.energy}
-                  {item.effects.happiness > 0 ? ` 幸福+${item.effects.happiness}` : ''}
+                  {item.effects.score > 0 ? ` 得分+${item.effects.score}` : ''}
                 </small>
               </span>
               <button

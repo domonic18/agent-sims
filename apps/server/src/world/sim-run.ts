@@ -30,7 +30,7 @@ for (let i = 0; i < ticks; i += 1) {
     const c = sim.character('demo');
     console.log(
       `[vitals] tick=${sim.tick} ${sim.clock.formatTime()} ` +
-        `体力=${c.energy.toFixed(1)} 幸福=${c.happiness.toFixed(1)} 金币=${c.coins}`,
+        `体力=${c.energy.toFixed(1)} 金币=${c.coins} 得分=${c.score.toFixed(1)}`,
     );
   }
   if (sim.clock.day !== lastDay) {
@@ -46,6 +46,6 @@ console.log(
 );
 if (demo) {
   console.log(
-    `[final] ${demo.name} @(${demo.x},${demo.y}) 体力=${demo.energy} 幸福=${demo.happiness} 金币=${demo.coins}`,
+    `[final] ${demo.name} @(${demo.x},${demo.y}) 体力=${demo.energy} 金币=${demo.coins} 得分=${demo.score}`,
   );
 }

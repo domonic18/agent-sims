@@ -38,7 +38,7 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     const alice = sim.character('alice');
     expect(alice.activity).toBeNull();
     expect(alice.energy).toBeCloseTo(100 - 60 * 0.12, 5); // 仅活动净速率,无叠加待机衰减
-    expect(alice.happiness).toBeCloseTo(100 - 60 * 0.02, 5);
+    expect(alice.score).toBe(0); // 学习零分(负幸福归 0,04 §2.5)
     const finished = events.find((e) => e.type === 'activity.finished');
     expect(finished).toMatchObject({
       type: 'activity.finished',
@@ -74,7 +74,7 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     const carl = sim.character('carl');
     expect(carl.coins).toBeCloseTo(96, 5); // 0.8 币/分 × 120(04-numerical §5.1);逐分累加有二进制浮点误差
     expect(carl.energy).toBeCloseTo(100 - 120 * 0.15, 5);
-    expect(carl.happiness).toBeCloseTo(100 - 120 * 0.05, 5);
+    expect(carl.score).toBe(0); // 打工零分(04 §2.5)
   });
 
   it('就餐余额不足(餐厅餐桌): 结算前判定,不透支,提前中断', () => {

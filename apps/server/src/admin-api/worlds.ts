@@ -409,7 +409,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
           position: { x: created.x, y: created.y },
           stats: {
             energy: created.energy,
-            happiness: created.happiness,
+            score: created.score,
             coins: created.coins,
           },
         });

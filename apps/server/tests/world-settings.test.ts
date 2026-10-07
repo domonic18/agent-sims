@@ -133,17 +133,17 @@ describe.skipIf(!dbUp)('/api/world/settings 设置通道', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/world/settings',
-      payload: { params: { CHAT_HAPPINESS: 7, START_COINS: 300 } },
+      payload: { params: { CHAT_SCORE: 7, START_COINS: 300 } },
     });
     expect(res.statusCode).toBe(200);
-    expect(BALANCE.CHAT_HAPPINESS).toBe(7);
+    expect(BALANCE.CHAT_SCORE).toBe(7);
     expect(BALANCE.START_COINS).toBe(300);
     expect(seen).toContain('world.params');
     const body = res.json<WorldSettingsView>();
-    expect(body.params.CHAT_HAPPINESS).toBe(7);
+    expect(body.params.CHAT_SCORE).toBe(7);
     await whenParamPersistIdle();
     const config = await activeRulesConfig();
-    expect(config.params).toMatchObject({ CHAT_HAPPINESS: 7, START_COINS: 300 });
+    expect(config.params).toMatchObject({ CHAT_SCORE: 7, START_COINS: 300 });
     await app.close();
   });
 
@@ -167,7 +167,7 @@ describe.skipIf(!dbUp)('/api/world/settings 设置通道', () => {
   it('POST 非法输入 400:越界参数/非法倍率/坏类型,且不落值', async () => {
     const app = buildApp();
     const cases: Array<Record<string, unknown>> = [
-      { params: { CHAT_HAPPINESS: 999 } },
+      { params: { CHAT_SCORE: 999 } },
       { timeScale: 3 },
       { paused: 'yes' },
       { rules: { allowDeath: 1 } },
@@ -176,7 +176,7 @@ describe.skipIf(!dbUp)('/api/world/settings 设置通道', () => {
       const res = await app.inject({ method: 'POST', url: '/api/world/settings', payload });
       expect(res.statusCode, JSON.stringify(payload)).toBe(400);
     }
-    expect(BALANCE.CHAT_HAPPINESS).toBe(BALANCE_DEFAULTS.CHAT_HAPPINESS); // 校验拒绝不落值(此前已被 resetParams 复位)
+    expect(BALANCE.CHAT_SCORE).toBe(BALANCE_DEFAULTS.CHAT_SCORE); // 校验拒绝不落值(此前已被 resetParams 复位)
     expect(BALANCE.VITAL_MAX).toBe(120);
     await app.close();
   });

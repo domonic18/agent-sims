@@ -157,7 +157,7 @@ export function stopActivity(sim: Simulation, characterId: string): WorldCharact
  * 调用方待机才走基础代谢衰减),达到 durationMinutes 返回 completed;
  * 净负金币且余额不足返回 insufficient_coins(结算前判定,金币不透支)。
  * rest/sleep 按锚点家具档位(REST_RATES_BY_KIND: 床/沙发/长椅)取速率。
- * debtFactor(M-G.2 缺觉): 仅乘正金币与正幸福增益,体力与负项不动。
+ * debtFactor(M-G.2 缺觉): 仅乘正金币与正得分,体力与负项不动。
  */
 export function settleActivityMinute(
   activity: CharacterActivity,
@@ -171,15 +171,15 @@ export function settleActivityMinute(
       : null;
   const effects =
     rates !== null
-      ? { energy: rates.energy, happiness: rates.happiness, coins: 0 }
+      ? { energy: rates.energy, score: 0, coins: 0 }
       : definition.effects;
   if (effects.coins < 0 && character.coins + effects.coins < 0) {
     return 'insufficient_coins';
   }
   character.energy = clampVital(character.energy + effects.energy);
-  character.happiness = clampVital(
-    character.happiness + (effects.happiness > 0 ? effects.happiness * debtFactor : effects.happiness),
-  );
+  if (effects.score > 0) {
+    character.score += effects.score * debtFactor;
+  }
   character.coins = Math.max(
     0,
     character.coins + (effects.coins > 0 ? effects.coins * debtFactor : effects.coins),

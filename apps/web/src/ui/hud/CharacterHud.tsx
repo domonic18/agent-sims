@@ -28,7 +28,7 @@ function VitalBar({
   );
 }
 
-/** 左上角色面板(UI-1): ‹›切换角色,选中谁显示谁;体力/幸福/资源/徽标/行动/住房 */
+/** 左上角色面板(UI-1): ‹›切换角色,选中谁显示谁;体力/健康/得分/徽标/行动/住房 */
 export function CharacterHud() {
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
@@ -71,7 +71,6 @@ export function CharacterHud() {
 
         <div className="hud-char-bars">
           <VitalBar label="体力" value={character.energy} tone="green" />
-          <VitalBar label="幸福" value={character.happiness} tone="gold" />
           {snapshot.gameType === 'survival' && (
             <VitalBar
               label="健康"
@@ -88,8 +87,8 @@ export function CharacterHud() {
             <b className="px-num gold">{formatCoins(character.coins)}</b>
           </div>
           <div className="hud-stat">
-            <span>繁荣</span>
-            <b className="px-num cyan">{character.lifeScore}</b>
+            <span>得分</span>
+            <b className="px-num cyan">{character.score}</b>
           </div>
           <div className="hud-stat">
             <span>知识</span>

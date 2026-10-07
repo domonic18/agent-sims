@@ -15,7 +15,7 @@ import {
   CHAT_DAILY_GAINED,
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
-  SOCIAL_PRESENCE_DISTANCE,
+  SOCIAL_CHAT_DISTANCE,
   SYS_CONFIG_FIELDS,
   WALK_SPEED_TILES_PER_TICK,
 } from '@sims/shared';
@@ -44,10 +44,8 @@ export interface BalanceConfig {
   /** 数值系统:角色初始满值与各数值上限;M3.6g 净速率模型——仅待机走基础代谢衰减,
    * 活动期间走活动净速率(shared activities.ts / REST_RATES_BY_KIND),两者不叠加 */
   START_ENERGY: number;
-  START_HAPPINESS: number;
   VITAL_MAX: number;
   IDLE_ENERGY_DECAY: number;
-  IDLE_HAPPINESS_DECAY: number;
   /** 出生初始金币与预付租金天数(M3.6f 出生即租住公寓) */
   START_COINS: number;
   SPAWN_PREPAID_DAYS: number;
@@ -56,17 +54,16 @@ export interface BalanceConfig {
   /** 携带/囤粮体积上限(M3.6g,数值文档 §3.2):背包随身,冰箱家中存取 */
   BACKPACK_VOLUME_LIMIT: number;
   FRIDGE_VOLUME_LIMIT: number;
-  /** 体力区段(M3.6f):≤阈值只允许基础活动(rest/stroll/meal),≤0 死亡转幽灵态 */
+  /** 体力区段(M3.6f):≤阈值只允许基础活动(rest/stroll/meal) */
   LOW_ENERGY_THRESHOLD: number;
   /** Lab 复活(debug 通道)恢复的满状态数值 */
   REVIVE_ENERGY: number;
-  REVIVE_HAPPINESS: number;
   /** 睡眠(M-G.2,数值文档 §2.7): 缺觉阈值(昨夜窗口累计分钟,低于即于 06:00 结算惩罚)
-   * 与缺觉日正收益系数(金币/产出/正幸福增益乘该值) */
+   * 与缺觉日正收益系数(金币/得分/产出乘该值) */
   SLEEP_MIN_MINUTES: number;
   SLEEP_DEBT_MULTIPLIER: number;
-  /** 繁荣分死亡扣减(M3.6j,goal-design §7 方案B): 死亡时 lifeScore ×= (1 - 该值) */
-  LIFE_SCORE_DEATH_DEDUCTION: number;
+  /** 累倒苏醒扣分(numerical §2.3/§2.5): growth 送医窗口超时苏醒 score ×= (1 - 该值);救治免扣 */
+  SCORE_WAKE_DEDUCTION: number;
   /** 生存健康(M-S/S1,仅 survival 模式生效): 体力低于饥饿线持续损耗健康,
    * 高于康复线自然恢复;健康归零触发重伤休整(复用幽灵态窗口),超时苏醒回恢复线 */
   SURVIVAL_HUNGER_ENERGY_LINE: number;
@@ -79,14 +76,12 @@ export interface BalanceConfig {
   /** 社交 v1(social-design/numerical-design §社交): chat 收益=基础值×递减×相性 */
   CHAT_FAMILIARITY_GAIN: number;
   CHAT_AFFINITY_BASE: number;
-  CHAT_HAPPINESS: number;
+  CHAT_SCORE: number;
   /** 每游戏日「有收益」次数(超出不拒绝,收益 ×0);第 n 次收益 ×STEPS[n-1](六档 Σ2.6,数值文档 §6.2) */
   CHAT_DAILY_GAINED: number;
   CHAT_DECAY_STEPS: readonly number[];
-  /** 同场增益: 曼哈顿 ≤ 距离且双方都在活动,按人数给幸福/分(封顶计人数;距离常量双端同源) */
-  SOCIAL_PRESENCE_DISTANCE: number;
-  SOCIAL_PRESENCE_CAP: number;
-  SOCIAL_PRESENCE_BONUS: number;
+  /** 闲聊同处一地距离(曼哈顿;双端同源常量,原 PRESENCE 更名) */
+  SOCIAL_CHAT_DISTANCE: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
   FAMILIARITY_DECAY_PER_DAY: number;
 }
@@ -104,10 +99,8 @@ export const BALANCE: BalanceConfig = {
   NIGHT_END_MINUTE: 6 * 60,
   WALK_SPEED_TILES_PER_MINUTE: WALK_SPEED_TILES_PER_TICK,
   START_ENERGY: 100,
-  START_HAPPINESS: 100,
   VITAL_MAX: 100,
   IDLE_ENERGY_DECAY: 0.02,
-  IDLE_HAPPINESS_DECAY: 0.015,
   START_COINS: 0,
   SPAWN_PREPAID_DAYS: 1,
   SNAPSHOT_DECIMALS: 1,
@@ -115,10 +108,9 @@ export const BALANCE: BalanceConfig = {
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
   REVIVE_ENERGY: 100,
-  REVIVE_HAPPINESS: 80,
   SLEEP_MIN_MINUTES: 240,
   SLEEP_DEBT_MULTIPLIER: 0.7,
-  LIFE_SCORE_DEATH_DEDUCTION: 0.2,
+  SCORE_WAKE_DEDUCTION: 0.2,
   SURVIVAL_HUNGER_ENERGY_LINE: 20,
   SURVIVAL_HEALTH_DECAY_PER_MIN: 0.03,
   SURVIVAL_HEALTH_RECOVER_LINE: 60,
@@ -140,12 +132,10 @@ export const BALANCE: BalanceConfig = {
   ],
   CHAT_FAMILIARITY_GAIN: 6,
   CHAT_AFFINITY_BASE: 4,
-  CHAT_HAPPINESS: 2,
+  CHAT_SCORE: 2,
   CHAT_DAILY_GAINED,
   CHAT_DECAY_STEPS: [1, 0.6, 0.4, 0.3, 0.2, 0.1],
-  SOCIAL_PRESENCE_DISTANCE,
-  SOCIAL_PRESENCE_CAP: 3,
-  SOCIAL_PRESENCE_BONUS: 0.05,
+  SOCIAL_CHAT_DISTANCE,
   FAMILIARITY_DECAY_PER_DAY: 1,
 };
 

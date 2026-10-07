@@ -54,7 +54,6 @@ export interface WorldSnapshotMessage {
     y: number;
     pathRemaining: number;
     energy: number;
-    happiness: number;
     /** 健康(M-S/S1):0~100,仅 survival 模式有压力源(饥饿损耗/吃饱恢复),growth 恒满 */
     health: number;
     coins: number;
@@ -66,8 +65,8 @@ export interface WorldSnapshotMessage {
     backpack: Record<string, number>;
     /** 家中冰箱库存(itemId→数量,仅 >0 项);须在家经 store_item/take_item 存取 */
     fridge: Record<string, number>;
-    /** 繁荣分(M3.6j): 生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7) */
-    lifeScore: number;
+    /** 得分(numerical §2.5,2026-10-07 替代幸福/繁荣分): 事件直加单调递增,唯一扣分=累倒送医超时 */
+    score: number;
     /** 知识(M-G.4): 完成一次完整学习(study 60 分)+1,不衰减;岗位类别门槛(numerical §5.1) */
     knowledge: number;
     /** 本夜睡眠窗口(22:00~06:00)累计入睡分钟(M-G.2);06:00 结算缺觉后清零 */

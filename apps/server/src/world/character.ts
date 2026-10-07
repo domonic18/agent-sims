@@ -31,7 +31,6 @@ export interface WorldCharacter {
   path: Point[];
   /** 数值系统 0~100;金币经活动增减(M3.1) */
   energy: number;
-  happiness: number;
   /** 健康(M-S/S1):0~100,survival 模式饥饿损耗/吃饱恢复,growth 恒满无压力源 */
   health: number;
   coins: number;
@@ -47,8 +46,8 @@ export interface WorldCharacter {
   backpack: Record<string, number>;
   /** 家中冰箱库存(itemId→数量):store_item/take_item 在家存取;体积受 FRIDGE_VOLUME_LIMIT */
   fridge: Record<string, number>;
-  /** 繁荣分(M3.6j,goal-design §5):生涯质量账本,只增不减(死亡扣减除外) */
-  lifeScore: number;
+  /** 得分(numerical §2.5):事件直加单调递增的活动/饮食/社交成就记录,唯一扣分=累倒送医超时 */
+  score: number;
   /** 知识(M-G.4,goal-design §4.2):完成一次完整学习 +1,不衰减;岗位类别门槛(numerical §5.1) */
   knowledge: number;
   /** 本夜睡眠窗口(22:00~06:00)累计入睡分钟(M-G.2);06:00 结算后无条件清零 */
@@ -89,16 +88,6 @@ export function stepMovement(character: WorldCharacter, tiles: number): boolean 
 /** 待机基础代谢衰减(M3.6g 净速率模型:仅无活动时调用;上限 100 供活动增益夹取) */
 export function applyVitalDecay(character: WorldCharacter, gameMinutes: number): void {
   character.energy = clampVital(character.energy - BALANCE.IDLE_ENERGY_DECAY * gameMinutes);
-  character.happiness = clampVital(
-    character.happiness - BALANCE.IDLE_HAPPINESS_DECAY * gameMinutes,
-  );
-}
-
-/** 繁荣分质量流(M3.6j):每游戏分钟按当前幸福累计,≈等效幸福天(幸福 80 活一天 ≈ +80 分);
- * 幽灵态停计(M-G.5)——死亡已挂起扣分,窗口期间再赚分会削弱死亡惩罚 */
-export function applyLifeScoreTick(character: WorldCharacter): void {
-  if (!character.alive) return;
-  character.lifeScore += character.happiness / BALANCE.DAY_MINUTES;
 }
 
 /** 生存健康 tick(M-S/S1,survival 模式每游戏分钟):体力低于饥饿线持续损耗健康
@@ -113,7 +102,7 @@ export function applyHealthTick(character: WorldCharacter): void {
 }
 
 /** 复活公共路径(M-G.5):满状态回归+清死亡时刻;救治/debug 免扣,timeout 已在调用方扣减。
- * survival(M-S/S1)超时苏醒=重伤休整结束:健康/体力回恢复线(非满状态),心情不动;
+ * survival(M-S/S1)超时苏醒=重伤休整结束:健康/体力回恢复线(非满状态);
  * 救治复活仍满状态(医生在生存模式的价值) */
 export function reviveCharacter(
   sim: Simulation,
@@ -123,7 +112,6 @@ export function reviveCharacter(
   const injuryWake = sim.gameType === 'survival' && source === 'timeout';
   character.alive = true;
   character.energy = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.REVIVE_ENERGY;
-  character.happiness = injuryWake ? character.happiness : BALANCE.REVIVE_HAPPINESS;
   character.health = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.VITAL_MAX;
   character.diedAtGameMinutes = null;
   if (source === 'timeout') {

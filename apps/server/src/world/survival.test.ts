@@ -62,24 +62,22 @@ describe('生存健康数值(M-S/S1)', () => {
     expect(sim.character('sca').alive).toBe(false);
   });
 
-  it('超时苏醒: 健康/体力回恢复线 30,幸福保留不重置,繁荣分不扣(growth ×0.8)', () => {
+  it('超时苏醒: 健康/体力回恢复线 30,得分保留不扣(growth 才 ×0.8,04 §2.5)', () => {
     const { sim, events } = survivalSim();
     sim.spawnCharacter('mow', 8, 12, '小满');
-    sim.character('mow').happiness = 20;
-    sim.character('mow').lifeScore = 500;
+    sim.character('mow').score = 500;
     sim.character('mow').health = 0.05;
     sim.character('mow').energy = 10;
     sim.advanceTicks(3);
     expect(sim.character('mow').alive).toBe(false);
-    const scoreAtDeath = sim.character('mow').lifeScore;
+    const scoreAtDeath = sim.character('mow').score;
     sim.character('mow').diedAtGameMinutes = sim.clock.gameMinutes - REVIVE_WINDOW_MINUTES;
     sim.advanceTicks(2);
     const mow = sim.character('mow');
     expect(mow.alive).toBe(true);
     expect(mow.health).toBe(30);
     expect(mow.energy).toBeCloseTo(30, 1); // 复苏后下一分钟待机衰减 0.02
-    expect(mow.happiness).toBeLessThan(40); // 保留原值,未重置为复活幸福
-    expect(mow.lifeScore).toBeGreaterThan(scoreAtDeath * 0.9); // 不扣(growth 会 ×0.8)
+    expect(mow.score).toBe(scoreAtDeath); // survival 超时苏醒不扣,得分单调
     expect(events.some((e) => e.type === 'character.auto_revived')).toBe(true);
   });
 

@@ -72,21 +72,21 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
       payload: {
         ...CREATE_BODY,
         rules: { allowDeath: true, allowChat: true, initialTimeScale: 1,
-          params: { NIGHT_START_MINUTE: 1200, CHAT_HAPPINESS: 9 } },
+          params: { NIGHT_START_MINUTE: 1200, CHAT_SCORE: 9 } },
       },
     });
     expect(created.statusCode).toBe(201);
     const world = created.json() as WorldView;
     // BALANCE 应用覆盖,未提及参数保持默认
     expect(BALANCE.NIGHT_START_MINUTE).toBe(1200);
-    expect(BALANCE.CHAT_HAPPINESS).toBe(9);
+    expect(BALANCE.CHAT_SCORE).toBe(9);
     expect(BALANCE.IDLE_ENERGY_DECAY).toBe(BALANCE_DEFAULTS.IDLE_ENERGY_DECAY);
     // 出生数值读 START_* 参数(默认值语境)
     expect(app.simulation.characters.size).toBe(1);
     // 世界记录 config.rules.params 落档
     const [row] = await handle.db.select().from(worlds).where(eq(worlds.id, world.id));
     expect((row?.config as { rules: { params?: Record<string, number> } }).rules.params)
-      .toMatchObject({ NIGHT_START_MINUTE: 1200, CHAT_HAPPINESS: 9 });
+      .toMatchObject({ NIGHT_START_MINUTE: 1200, CHAT_SCORE: 9 });
     await app.close();
   });
 
@@ -96,10 +96,10 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
     const bad = await app.inject({
       method: 'POST',
       url: '/api/world/settings',
-      payload: { params: { CHAT_HAPPINESS: 999 } },
+      payload: { params: { CHAT_SCORE: 999 } },
     });
     expect(bad.statusCode).toBe(400);
-    expect(BALANCE.CHAT_HAPPINESS).toBe(9); // 校验拒绝不落值
+    expect(BALANCE.CHAT_SCORE).toBe(9); // 校验拒绝不落值
 
     const seen: string[] = [];
     app.simulation.events.subscribe((event) => seen.push(event.type));
@@ -107,13 +107,13 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/world/settings',
-      payload: { params: { CHAT_HAPPINESS: 5 } },
+      payload: { params: { CHAT_SCORE: 5 } },
     });
     expect(res.statusCode).toBe(200);
-    expect(BALANCE.CHAT_HAPPINESS).toBe(5);
+    expect(BALANCE.CHAT_SCORE).toBe(5);
     expect(seen).toContain('world.params');
     const body = res.json<{ params: Record<string, number> }>();
-    expect(body.params.CHAT_HAPPINESS).toBe(5);
+    expect(body.params.CHAT_SCORE).toBe(5);
 
     await whenParamPersistIdle();
     const [row] = await handle.db
@@ -121,7 +121,7 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
       .from(worlds)
       .where(eq(worlds.status, 'active'));
     expect((row?.config as { rules: { params?: Record<string, number> } }).rules.params)
-      .toMatchObject({ NIGHT_START_MINUTE: 1200, CHAT_HAPPINESS: 5 }); // 全集合并而非覆盖
+      .toMatchObject({ NIGHT_START_MINUTE: 1200, CHAT_SCORE: 5 }); // 全集合并而非覆盖
     await app.close();
   });
 
@@ -136,7 +136,7 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
     });
     expect(created.statusCode).toBe(201);
     expect(BALANCE.NIGHT_START_MINUTE).toBe(BALANCE_DEFAULTS.NIGHT_START_MINUTE);
-    expect(BALANCE.CHAT_HAPPINESS).toBe(BALANCE_DEFAULTS.CHAT_HAPPINESS);
+    expect(BALANCE.CHAT_SCORE).toBe(BALANCE_DEFAULTS.CHAT_SCORE);
     await app.close();
   });
 
@@ -151,7 +151,7 @@ describe.skipIf(!dbUp)('系统参数世界化', () => {
         ...CREATE_BODY,
         name: `${WORLD_NAME_PREFIX}越界镇`,
         rules: { allowDeath: true, allowChat: true, initialTimeScale: 1,
-          params: { CHAT_HAPPINESS: 999 } },
+          params: { CHAT_SCORE: 999 } },
       },
     });
     expect(res.statusCode).toBe(400);

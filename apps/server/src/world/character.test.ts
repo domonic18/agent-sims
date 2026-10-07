@@ -12,7 +12,6 @@ function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
     y: 0,
     path,
     energy: 100,
-    happiness: 100,
     health: 100,
     coins: 0,
     activity: null,
@@ -21,7 +20,7 @@ function walker(path: Array<{ x: number; y: number }>): WorldCharacter {
     diedAtGameMinutes: null,
     backpack: {},
     fridge: {},
-    lifeScore: 0,
+    score: 0,
     knowledge: 0,
     sleepWindowMinutes: 0,
     sleepDebtEndGameMinutes: null,
@@ -66,26 +65,22 @@ describe('stepMovement 逐 tick 移动', () => {
 });
 
 describe('applyVitalDecay 待机基础代谢衰减(M3.6g 净速率模型)', () => {
-  it('按游戏分钟衰减体力与幸福(仅待机时由 _stepCharacters 调用)', () => {
+  it('按游戏分钟衰减体力(仅待机时由 _stepCharacters 调用,幸福已随得分体系移除)', () => {
     const character = walker([]);
     applyVitalDecay(character, 60); // 1 游戏小时
     expect(character.energy).toBeCloseTo(98.8, 5); // 100 - 0.02*60
-    expect(character.happiness).toBeCloseTo(99.1, 5); // 100 - 0.015*60
   });
 
   it('下界夹取 0,不出现负数', () => {
     const character = walker([]);
     character.energy = 0.01;
-    character.happiness = 0.01;
     applyVitalDecay(character, 10);
     expect(character.energy).toBe(0);
-    expect(character.happiness).toBe(0);
   });
 
   it('上限夹取 100(活动增益场景)', () => {
     const character = walker([]);
     character.energy = 99.99;
-    character.happiness = 50;
     applyVitalDecay(character, -1); // 负衰减=增益,夹上界
     expect(character.energy).toBe(100);
   });

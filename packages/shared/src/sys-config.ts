@@ -50,36 +50,24 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
   },
   // —— 体力与生存 ——
   {
-    key: 'VITAL_MAX', label: '体力/心情上限', group: 'vitals', type: 'int', min: 50, max: 200,
-    effect: 'live', desc: '两项数值的公共上限',
+    key: 'VITAL_MAX', label: '体力上限', group: 'vitals', type: 'int', min: 50, max: 200,
+    effect: 'live', desc: '体力数值的公共上限(救治/苏醒恢复基准)',
   },
   {
     key: 'START_ENERGY', label: '出生体力', group: 'vitals', type: 'int', min: 0, max: 200,
     effect: 'spawn', desc: '新角色出生时的初始体力',
   },
   {
-    key: 'START_HAPPINESS', label: '出生心情', group: 'vitals', type: 'int', min: 0, max: 200,
-    effect: 'spawn', desc: '新角色出生时的初始心情',
-  },
-  {
     key: 'IDLE_ENERGY_DECAY', label: '待机体力衰减', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.005,
     effect: 'live', desc: '每游戏分钟衰减量(无活动时的基础代谢)',
   },
   {
-    key: 'IDLE_HAPPINESS_DECAY', label: '待机心情衰减', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.005,
-    effect: 'live', desc: '每游戏分钟衰减量(无活动时的基础代谢)',
-  },
-  {
-    key: 'LIFE_SCORE_DEATH_DEDUCTION', label: '死亡繁荣分扣减', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.05,
-    effect: 'live', desc: '死亡时繁荣分按比例扣减(0.2=扣 20%)',
+    key: 'SCORE_WAKE_DEDUCTION', label: '累倒苏醒扣分', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.05,
+    effect: 'live', desc: 'growth 累倒送医超时苏醒时得分按比例扣减(0.2=扣 20%);救治免扣',
   },
   {
     key: 'REVIVE_ENERGY', label: '复活体力', group: 'vitals', type: 'int', min: 0, max: 200,
     effect: 'spawn', desc: 'Lab 复活后恢复的体力值',
-  },
-  {
-    key: 'REVIVE_HAPPINESS', label: '复活心情', group: 'vitals', type: 'int', min: 0, max: 200,
-    effect: 'spawn', desc: 'Lab 复活后恢复的心情值',
   },
   {
     key: 'SLEEP_MIN_MINUTES', label: '缺觉阈值', group: 'vitals', type: 'int', min: 0, max: 480,
@@ -87,7 +75,7 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
   },
   {
     key: 'SLEEP_DEBT_MULTIPLIER', label: '缺觉收益系数', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.05,
-    effect: 'live', desc: '缺觉日正收益(金币/产出/正幸福增益)乘该值;体力与负项不动,于下一 06:00 结算生效',
+    effect: 'live', desc: '缺觉日正收益(金币/得分/产出)乘该值;体力与负项不动,于下一 06:00 结算生效',
   },
   // —— 生存健康(仅 survival 模式生效,growth 不衰减) ——
   {
@@ -129,16 +117,8 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
     effect: 'live', desc: '单次聊天的基础相性增益',
   },
   {
-    key: 'CHAT_HAPPINESS', label: '聊天心情收益', group: 'social', type: 'int', min: 0, max: 100,
-    effect: 'live', desc: '单次聊天的心情增益',
-  },
-  {
-    key: 'SOCIAL_PRESENCE_CAP', label: '同场增益人数上限', group: 'social', type: 'int', min: 0, max: 10,
-    effect: 'live', desc: '同场增益计费的最大在场人数',
-  },
-  {
-    key: 'SOCIAL_PRESENCE_BONUS', label: '同场增益系数', group: 'social', type: 'float', min: 0, max: 1, step: 0.01,
-    effect: 'live', desc: '每名同场活动角色的心情加成系数',
+    key: 'CHAT_SCORE', label: '聊天得分收益', group: 'social', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: '单次聊天的基础得分增益(×递减档×相性,负相性不扣分)',
   },
   {
     key: 'FAMILIARITY_DECAY_PER_DAY', label: '熟悉度每日衰减', group: 'social', type: 'int', min: 0, max: 100,

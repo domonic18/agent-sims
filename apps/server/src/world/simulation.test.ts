@@ -108,7 +108,6 @@ describe('生死机制(M3.6f 体力区段)', () => {
     const revived = sim.debugRevive('mort');
     expect(revived.alive).toBe(true);
     expect(revived.energy).toBe(100);
-    expect(revived.happiness).toBe(80);
     expect(events.some((e) => e.type === 'character.revived')).toBe(true);
     expect(() => sim.debugRevive('mort')).toThrow(/尚存活/);
     // 复活后可正常行动
@@ -129,70 +128,62 @@ describe('生死机制(M3.6f 体力区段)', () => {
     expect(sim.character('ivy').energy).toBeCloseTo(idleEnergy - 5 * 0.02, 5); // 待机基础代谢
   });
 
-  it('繁荣分(M3.6j): 逐分钟按当分钟幸福累计 ≈ 等效幸福天', () => {
+  it('待机代谢不产生得分(得分仅事件直加,04 §2.5)', () => {
     const sim = new Simulation();
     sim.spawnCharacter('mort', 8, 12, '莫特');
-    // 先衰减再累计: 第 k 分钟幸福 = 100 - 0.015k(k=1..10),Σ/1440
-    const expected =
-      Array.from({ length: 10 }, (_, i) => 100 - 0.015 * (i + 1)).reduce((a, b) => a + b, 0) / 1440;
     sim.advanceTicks(10);
-    expect(sim.character('mort').lifeScore).toBeCloseTo(expected, 6);
-    // 快照透传(保留 1 位小数)
-    expect(sim.snapshot().characters[0]!.lifeScore).toBeCloseTo(expected, 1);
+    expect(sim.character('mort').score).toBe(0);
+    // 快照透传(取整)
+    expect(sim.snapshot().characters[0]!.score).toBe(0);
   });
 
-  it('死亡扣减挂起(M-G.5): 死亡不即扣,幽灵停计,救治免扣满状态回归', () => {
+  it('死亡不即扣得分(M-G.5): 幽灵停计,救治免扣', () => {
     const sim = new Simulation();
     sim.spawnCharacter('mort', 8, 12, '莫特');
-    sim.character('mort').lifeScore = 100;
-    sim.character('mort').happiness = 0; // 质量流归零,隔离扣减验证
+    sim.character('mort').score = 100;
     sim.character('mort').energy = 0.1;
     sim.advanceTicks(6); // 途中死亡
     const mort = sim.character('mort');
     expect(mort.alive).toBe(false);
     expect(mort.diedAtGameMinutes).not.toBeNull();
-    expect(mort.lifeScore).toBeCloseTo(100, 5); // 挂起未扣
-    sim.character('mort').happiness = 50;
-    sim.advanceTicks(10); // 幽灵期间质量流停计(不停计会 +50*10/1440)
-    expect(sim.character('mort').lifeScore).toBeCloseTo(100, 5);
+    expect(mort.score).toBeCloseTo(100, 5); // 挂起未扣
+    sim.advanceTicks(10); // 幽灵期间无事件,得分单调不动
+    expect(sim.character('mort').score).toBeCloseTo(100, 5);
     sim.debugRevive('mort'); // 救治视同免扣
-    expect(sim.character('mort').lifeScore).toBeCloseTo(100, 5);
+    expect(sim.character('mort').score).toBeCloseTo(100, 5);
     expect(sim.character('mort').diedAtGameMinutes).toBeNull();
   });
 
-  it('救治窗口超时: 挂起扣减按现值 ×0.8 生效,自动复活发 auto_revived', () => {
+  it('救治窗口超时: 得分 ×0.8 生效,自动复活发 auto_revived', () => {
     const { sim, events } = simWithMort();
-    sim.character('mort').lifeScore = 100;
-    sim.character('mort').happiness = 0;
+    sim.character('mort').score = 100;
     sim.character('mort').energy = 0.1;
     sim.advanceTicks(6); // 死亡(扣减挂起)
-    expect(sim.character('mort').lifeScore).toBeCloseTo(100, 5);
+    expect(sim.character('mort').score).toBeCloseTo(100, 5);
     // 锚定实际死亡时刻推到届满前 1 分钟,隔离复活后剩余 tick 的待机代谢
     const elapsed = sim.clock.gameMinutes - sim.character('mort').diedAtGameMinutes!;
     sim.advanceTicks(REVIVE_WINDOW_MINUTES - elapsed - 1);
     expect(sim.character('mort').alive).toBe(false); // 窗口内仍挂起
-    sim.advanceTicks(1); // 届满:自动复活+扣减生效
+    sim.advanceTicks(1); // 届满:自动复活+扣分生效
     const mort = sim.character('mort');
     expect(mort.alive).toBe(true);
     expect(mort.energy).toBe(100);
-    expect(mort.happiness).toBe(80);
-    expect(mort.lifeScore).toBeCloseTo(80, 5); // 现值 ×0.8 生效
+    expect(mort.score).toBeCloseTo(80, 5); // ×(1-0.2) 生效
     expect(mort.diedAtGameMinutes).toBeNull();
     expect(events.some((e) => e.type === 'character.auto_revived')).toBe(true);
     expect(() => sim.debugRevive('mort')).toThrow(/尚存活/);
   });
 
-  it('世界规则关闭死亡(M5): 体力归 0 躺平,不转幽灵不扣繁荣分', () => {
+  it('世界规则关闭死亡(M5): 体力归 0 躺平,不转幽灵不扣得分', () => {
     const { sim, events } = simWithMort();
     sim.rules.allowDeath = false;
-    sim.character('mort').lifeScore = 100;
-    sim.character('mort').happiness = 0; // 隔离质量流,聚焦扣减
+    sim.character('mort').score = 100;
     sim.character('mort').energy = 0.1;
     sim.advanceTicks(6); // 0.1 - 6*0.02 < 0,若未关规则此刻已死亡
     const mort = sim.character('mort');
     expect(mort.alive).toBe(true); // 躺平但存活
     expect(mort.energy).toBeLessThanOrEqual(0); // 衰减夹取在 0
-    expect(mort.lifeScore).toBeCloseTo(100, 5); // 未扣减
+    expect(mort.score).toBeCloseTo(100, 5); // 未扣减
     expect(events.some((e) => e.type === 'character.died')).toBe(false);
   });
 });
