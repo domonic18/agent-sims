@@ -50,6 +50,33 @@ services:
       retries: 6
       start_period: 30s # 首启含 migrate+seed
 
+  db-backup:
+    # 每日全库备份 sidecar(与 postgres 同镜像复用 pg_dump):启动即备一份,之后每 24h 一轮,
+    # 落 workspace/backups/agent_sims-*.sql.gz 保留 14 天。防数据卷被清后素材/世界丢失;
+    # 恢复姿势见 docker/restore-db.sh(单事务灌回,dump 自含 setval 序列位)
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-sims}
+    volumes:
+      - ../workspace/backups:/backups
+    command:
+      - sh
+      - -c
+      - |
+        while :; do
+          ts=$$(date +%Y%m%d-%H%M%S)
+          pg_dump -h postgres -U sims -d agent_sims --data-only | gzip > /backups/agent_sims-$$ts.sql.gz.tmp \
+            && mv /backups/agent_sims-$$ts.sql.gz.tmp /backups/agent_sims-$$ts.sql.gz \
+            || echo "[db-backup] 备份失败: agent_sims-$$ts(下轮重试)"
+          rm -f /backups/agent_sims-$$ts.sql.gz.tmp
+          find /backups -name 'agent_sims-*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
+
   web:
     build:
       context: ..
