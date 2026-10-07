@@ -15,6 +15,7 @@ import {
 } from 'antd';
 import {
   BarChartOutlined,
+  ControlOutlined,
   FileTextOutlined,
   GlobalOutlined,
   PictureOutlined,
@@ -33,6 +34,7 @@ import { TokenUsagePanel } from './TokenUsagePanel';
 import { AssetsPanel } from './AssetsPanel';
 import { LogsPanel } from './LogsPanel';
 import { WorldPanel } from './WorldPanel';
+import { SysConfigPanel } from './SysConfigPanel';
 import { AnimPreviewPanel } from './AnimPreviewPanel';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -85,7 +87,7 @@ function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   );
 }
 
-type AdminTab = 'world' | 'models' | 'usage' | 'assets' | 'anim' | 'logs' | 'settings';
+type AdminTab = 'world' | 'params' | 'models' | 'usage' | 'assets' | 'anim' | 'logs' | 'settings';
 
 const NAV_ITEMS: MenuProps['items'] = [
   {
@@ -93,6 +95,7 @@ const NAV_ITEMS: MenuProps['items'] = [
     label: '运营',
     children: [
       { key: 'world', icon: <GlobalOutlined />, label: '世界管理' },
+      { key: 'params', icon: <ControlOutlined />, label: '世界参数' },
       { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
@@ -206,6 +209,8 @@ function AdminShell() {
         <div style={{ maxWidth: 1080, margin: '0 auto' }}>
           {tab === 'world' ? (
             <WorldPanel />
+          ) : tab === 'params' ? (
+            <SysConfigPanel />
           ) : tab === 'anim' ? (
             <AnimPreviewPanel />
           ) : tab === 'usage' ? (

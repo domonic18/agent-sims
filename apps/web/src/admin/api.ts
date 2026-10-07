@@ -105,6 +105,20 @@ export async function fetchSysConfig(): Promise<SysConfigView> {
   return await adminFetch<SysConfigView>(ADMIN_API.sysConfig);
 }
 
+export async function updateSysConfig(
+  params: Record<string, number>,
+  reset = false,
+): Promise<SysConfigView> {
+  return await adminFetch<SysConfigView>(ADMIN_API.sysConfig, {
+    method: 'PUT',
+    body: JSON.stringify(reset ? { params, reset: true } : { params }),
+  });
+}
+
+export async function resetSysConfig(): Promise<SysConfigView> {
+  return await adminFetch<SysConfigView>(ADMIN_API.sysConfigReset, { method: 'POST' });
+}
+
 export async function updateModelConfig(
   slot: ModelSlot,
   data: ModelConfigUpdate,
