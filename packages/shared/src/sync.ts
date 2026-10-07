@@ -16,9 +16,16 @@ export const SOCKET_EVENTS = {
   tick: 'world.tick',
   /** server→client 离散事件(character.arrived/world.control 等) */
   event: 'world.event',
+  /** server→client 连接数变化时:当前在线查看人数(全部 socket 连接都计入) */
+  presence: 'world.presence',
 } as const;
 
 export type SocketEventName = (typeof SOCKET_EVENTS)[keyof typeof SOCKET_EVENTS];
+
+/** 在线人数消息(presence):页面打开的连接数,直播场景即访客数 */
+export interface WorldPresenceMessage {
+  viewers: number;
+}
 
 /** client→server 意图通道(M3.4):player 可发,spectator 服务端丢弃 */
 export const CLIENT_EVENTS = {

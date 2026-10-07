@@ -32,6 +32,7 @@ const STATUS_LABEL: Record<string, string> = {
 export default function GamePage() {
   const status = useWorldStore((state) => state.status);
   const snapshot = useWorldStore((state) => state.snapshot);
+  const viewers = useWorldStore((state) => state.viewers);
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
   const token = useAuthStore((state) => state.token);
   const username = useAuthStore((state) => state.username);
@@ -166,6 +167,9 @@ export default function GamePage() {
 
       <div className="hud-topright">
         <span className={`hud-net ${status}`} title={STATUS_LABEL[status] ?? status} />
+        <span className="hud-viewers" title="当前在线查看人数(含本页)">
+          👁 {viewers}
+        </span>
         <LogDrawer />
         {isAdmin ? (
           <>

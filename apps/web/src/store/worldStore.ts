@@ -53,6 +53,9 @@ export interface WorldStore {
   /** 每世界配方全集(页面装载 GET 回填,此后 world.recipes 事件保鲜;null=未拉到,消费端出厂兜底) */
   recipes: Record<CraftRecipeId, RecipeDef> | null;
   applyRecipes: (recipes: Record<CraftRecipeId, RecipeDef>) => void;
+  /** 在线查看人数(presence 事件驱动:页面打开的连接数,直播场景即访客数) */
+  viewers: number;
+  setViewers: (viewers: number) => void;
   /** 连续作业开关(M-G.5/M-G.6):key=characterId,开启后该角色空闲即自动接最近同岗单(含采集岗) */
   continuousWork: Record<string, WorkTaskId>;
   toggleContinuousWork: (characterId: string, task: WorkTaskId | null) => void;
@@ -112,6 +115,8 @@ export const useWorldStore = create<WorldStore>((set) => ({
   applyParams: (params) => set({ params }),
   applyRules: (rules) => set({ rules }),
   applyRecipes: (recipes) => set({ recipes }),
+  viewers: 0,
+  setViewers: (viewers) => set({ viewers }),
   toggleContinuousWork: (characterId, task) =>
     set((state) => {
       const continuousWork = { ...state.continuousWork };

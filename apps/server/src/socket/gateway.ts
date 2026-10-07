@@ -6,6 +6,7 @@ import {
   type IntentAck,
   type SocketRole,
   type WorldEventMessage,
+  type WorldPresenceMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { env } from '../config/env.js';
@@ -44,10 +45,16 @@ export function attachSocketGateway(
     cors: { origin: true }, // 单机自部署,放开跨域(本地 Vite 5173 / frpc 同源)
   });
 
+  // 在线人数(直播访客数):全部 socket 连接都计入;变化时全端广播,新连者单发当前值
+  const broadcastPresence = (): void => {
+    io.emit(SOCKET_EVENTS.presence, { viewers: clients.list().length } satisfies WorldPresenceMessage);
+  };
+
   io.on('connection', (socket: Socket) => {
     const role = resolveSocketRole(socket.handshake.auth);
     clients.add({ socketId: socket.id, role, connectedAt: new Date().toISOString() });
     socket.emit(SOCKET_EVENTS.snapshot, sim.snapshot() satisfies WorldSnapshotMessage);
+    broadcastPresence();
     socket.on(CLIENT_EVENTS.intent, (payload: unknown, ack?: (response: IntentAck) => void) => {
       const reply = (response: IntentAck): boolean => (ack ? (ack(response), true) : false);
       if (role !== 'player') {
@@ -57,6 +64,7 @@ export function attachSocketGateway(
     });
     socket.on('disconnect', () => {
       clients.remove(socket.id);
+      broadcastPresence();
     });
   });
 

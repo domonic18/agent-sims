@@ -6,13 +6,22 @@ import {
   type IntentAck,
   type SocketRole,
   type WorldEventMessage,
+  type WorldPresenceMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { useAuthStore } from '../store/authStore';
 import { useWorldStore } from '../store/worldStore';
 
-const { setStatus, applySnapshot, applyEvent, applyControl, applyParams, applyRules, applyRecipes } =
-  useWorldStore.getState();
+const {
+  setStatus,
+  applySnapshot,
+  applyEvent,
+  applyControl,
+  applyParams,
+  applyRules,
+  applyRecipes,
+  setViewers,
+} = useWorldStore.getState();
 
 let worldSocket: Socket | null = null;
 
@@ -34,6 +43,7 @@ export function connectWorld(): Socket {
   socket.on('connect_error', () => setStatus('disconnected'));
   socket.on(SOCKET_EVENTS.snapshot, (snapshot: WorldSnapshotMessage) => applySnapshot(snapshot));
   socket.on(SOCKET_EVENTS.tick, (snapshot: WorldSnapshotMessage) => applySnapshot(snapshot));
+  socket.on(SOCKET_EVENTS.presence, (message: WorldPresenceMessage) => setViewers(message.viewers));
   socket.on(SOCKET_EVENTS.event, (message: WorldEventMessage) => {
     applyEvent(message.event);
     // 暂停期间 tick 广播停摆,控制事件需就地修正快照,否则 UI 状态滞后一拍

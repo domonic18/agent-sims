@@ -7,6 +7,7 @@ import {
   type IntentAck,
   type SocketRole,
   type WorldEventMessage,
+  type WorldPresenceMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { buildApp } from '../src/app.js';
@@ -90,6 +91,23 @@ describe('socket 同步层', () => {
     spectator.disconnect();
     await until(() => app.clients.list().length === 0);
     expect(app.clients.list()).toHaveLength(0);
+  });
+
+  it('在线人数 presence: 新连即知当前值,连接/断线全端广播', async () => {
+    const a = openSocket();
+    const first = waitFor<WorldPresenceMessage>(a, SOCKET_EVENTS.presence);
+    await connected(a);
+    expect((await first).viewers).toBe(1);
+
+    const b = openSocket();
+    const aSeesTwo = waitFor<WorldPresenceMessage>(a, SOCKET_EVENTS.presence);
+    await connected(b);
+    expect((await aSeesTwo).viewers).toBe(2);
+
+    b.disconnect();
+    const aSeesOne = waitFor<WorldPresenceMessage>(a, SOCKET_EVENTS.presence);
+    expect((await aSeesOne).viewers).toBe(1);
+    a.disconnect();
   });
 
   it('每 tick 广播快照,角色移动产生到达事件', async () => {
