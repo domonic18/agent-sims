@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { NODE_MAX_CHARGES, type WorldEvent } from '@sims/shared';
+import { applyWorldParams, BALANCE } from '../config/balance.js';
 import { Simulation } from './simulation.js';
 
 const LITTER_ID = 'litter:10:14';
@@ -216,6 +217,46 @@ describe('work_task 采集两岗(M-G.6)', () => {
     sim.advanceTicks(1440); // 跨过次日 00:00
     expect(node.charges).toBe(NODE_MAX_CHARGES.berry_bush);
     expect(node.respawnAtDay).toBeNull();
+  });
+
+  it('重生天数热调: NODE_RESPAWN_DAYS=3 采竭记 day+3,第 3 日 00:00 才回满', () => {
+    applyWorldParams({ NODE_RESPAWN_DAYS: 3 });
+    try {
+      const { sim } = simWithGatherer();
+      const node = sim.resourceNodes.get('berry_bush:5:27')!;
+      sim.requestWorkTask('mow', 'berry_bush:5:27');
+      sim.advanceTicks(60);
+      node.charges = 1;
+      sim.requestWorkTask('mow', 'berry_bush:5:27');
+      sim.advanceTicks(60);
+      expect(node.charges).toBe(0);
+      expect(node.respawnAtDay).toBe(sim.clock.day + 3);
+      sim.advanceTicks(1440); // 次日未到
+      expect(node.charges).toBe(0);
+      sim.advanceTicks(1440 * 2); // 跨到第 3 日 00:00
+      expect(node.charges).toBe(NODE_MAX_CHARGES.berry_bush);
+      expect(node.respawnAtDay).toBeNull();
+    } finally {
+      applyWorldParams(); // 复位出厂默认,不污染后续用例
+    }
+  });
+
+  it('拾荒堆热调有限存量: NODE_MAX_CHARGES_JUNK=2 去无限,递减至枯竭记重生', () => {
+    applyWorldParams({ NODE_MAX_CHARGES_JUNK: 2 });
+    try {
+      const { sim } = simWithGatherer();
+      const node = sim.resourceNodes.get('junk_pile:25:20')!;
+      expect(node.charges).toBe(2);
+      sim.requestWorkTask('mow', 'junk_pile:25:20');
+      sim.advanceTicks(60);
+      expect(node.charges).toBe(1);
+      sim.requestWorkTask('mow', 'junk_pile:25:20');
+      sim.advanceTicks(60);
+      expect(node.charges).toBe(0);
+      expect(node.respawnAtDay).toBe(sim.clock.day + BALANCE.NODE_RESPAWN_DAYS);
+    } finally {
+      applyWorldParams();
+    }
   });
 
   it('拾荒: 废料必得;30% 树枝由 rng 决定;拾荒堆存量 null 永不枯竭', () => {

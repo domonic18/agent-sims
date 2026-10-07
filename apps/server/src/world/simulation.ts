@@ -21,7 +21,6 @@ import type {
 import {
   DEFAULT_WORLD_RULES,
   MAINTENANCE_TASKS,
-  NODE_MAX_CHARGES,
   PROPERTY_IDS,
   RECIPES,
   REVIVE_WINDOW_MINUTES,
@@ -32,7 +31,13 @@ import {
   isGatherTask,
   type TileMapDefinition,
 } from '@sims/shared';
-import { applyBalanceOverrides, applyWorldParams, BALANCE, currentWorldParams } from '../config/balance.js';
+import {
+  applyBalanceOverrides,
+  applyWorldParams,
+  BALANCE,
+  currentWorldParams,
+  type BalanceConfig,
+} from '../config/balance.js';
 import {
   finishActivity,
   settleActivityMinute,
@@ -64,6 +69,23 @@ import {
   randomTraits,
   type SocialRelation,
 } from './social.js';
+
+/** 节点 kind → 热调参数键(SYS_CONFIG resources 组);-1 哨兵=null 无限 */
+type NodeChargeKey = Extract<keyof BalanceConfig, `NODE_MAX_CHARGES_${string}`>;
+const NODE_CHARGE_KEYS: Record<ResourceNode['kind'], NodeChargeKey> = {
+  berry_bush: 'NODE_MAX_CHARGES_BERRY',
+  junk_pile: 'NODE_MAX_CHARGES_JUNK',
+  tree: 'NODE_MAX_CHARGES_TREE',
+  rock: 'NODE_MAX_CHARGES_ROCK',
+  metal_pile: 'NODE_MAX_CHARGES_METAL',
+  apple_tree: 'NODE_MAX_CHARGES_APPLE',
+  wheat_patch: 'NODE_MAX_CHARGES_WHEAT',
+};
+
+function nodeMaxCharges(kind: ResourceNode['kind']): number | null {
+  const value = BALANCE[NODE_CHARGE_KEYS[kind]];
+  return value < 0 ? null : value;
+}
 
 /**
  * 世界模拟核心:固定 tick(1 tick = 1 游戏分钟),纯逻辑零 I/O。
@@ -519,8 +541,8 @@ export class Simulation {
     return this.maintenanceSpots.has(targetId);
   }
 
-  /** 资源节点从地图种子重建(构造/setMap/reset 共用):存量按 NODE_MAX_CHARGES 表
-   * (浆果丛 3/树木 5/岩石 4/金属堆 3,拾荒堆无限) */
+  /** 资源节点从地图种子重建(构造/setMap/reset 共用):存量按热调参数
+   * NODE_MAX_CHARGES_*(出厂默认 04 §5.4 表值,拾荒堆 -1=无限) */
   private _rebuildResourceNodes(): void {
     this.resourceNodes.clear();
     for (const seed of this._map.resourceSeeds) {
@@ -530,7 +552,7 @@ export class Simulation {
         kind: seed.kind,
         x: seed.x,
         y: seed.y,
-        charges: NODE_MAX_CHARGES[seed.kind],
+        charges: nodeMaxCharges(seed.kind),
         respawnAtDay: null,
       });
     }
@@ -545,11 +567,11 @@ export class Simulation {
     }
   }
 
-  /** 跨日 00:00 重生(design/09 §2):到日枯竭节点按表回满;拾荒堆无需重生 */
+  /** 跨日 00:00 重生(design/09 §2):到日枯竭节点按热调重生天数回满;拾荒堆无需重生 */
   private _respawnResourceNodes(): void {
     for (const node of this.resourceNodes.values()) {
       if (node.respawnAtDay !== null && this.clock.day >= node.respawnAtDay) {
-        node.charges = NODE_MAX_CHARGES[node.kind];
+        node.charges = nodeMaxCharges(node.kind);
         node.respawnAtDay = null;
       }
     }

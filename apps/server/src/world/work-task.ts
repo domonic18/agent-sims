@@ -244,7 +244,8 @@ export function completeWorkTask(ctx: WorkTaskCompletionContext): 'ok' | 'cancel
   return WORK_TASK_COMPLETIONS[ctx.task](ctx);
 }
 
-/** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭记次日重生。
+/** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭按热调
+ * NODE_RESPAWN_DAYS 记重生日(次日 00:00 计,1=次日回满)。
  * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(有意);以物代薪 pay=0 */
 function completeGather({ sim, character, task, targetId, debtFactor }: WorkTaskCompletionContext): 'ok' {
   const node = sim.resourceNodes.get(targetId)!;
@@ -258,7 +259,7 @@ function completeGather({ sim, character, task, targetId, debtFactor }: WorkTask
   if (node.charges !== null) {
     node.charges -= 1;
     if (node.charges <= 0) {
-      node.respawnAtDay = sim.clock.day + 1;
+      node.respawnAtDay = sim.clock.day + BALANCE.NODE_RESPAWN_DAYS;
     }
   }
   return 'ok';
