@@ -82,6 +82,10 @@ export function startActivity(
   }
   const character = sim.character(characterId);
   ensureAlive(character);
+  // 虚脱门禁(numerical §2.3): 倒地只放行就地休息/睡觉,其余活动拒绝
+  if (character.collapsed && activityId !== 'rest' && activityId !== 'sleep') {
+    throw new Error(`${character.name} 已虚脱倒地,只能就地休息/睡觉恢复`);
+  }
   if (character.activity !== null) {
     throw new Error(`${character.name} 已在进行活动: ${character.activity.activityId}`);
   }

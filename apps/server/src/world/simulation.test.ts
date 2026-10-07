@@ -85,14 +85,16 @@ describe('生死机制(M3.6f 体力区段)', () => {
     return { sim, events };
   }
 
-  it('体力耗尽死亡: 转幽灵态,清路径,发出 character.died', () => {
+  it('体力耗尽累倒送医(growth): 转幽灵态挂救治窗口,清路径,发出 character.died', () => {
     const { sim, events } = simWithMort();
     sim.character('mort').energy = 0.5;
-    sim.requestMoveTo('mort', 12, 12); // 挂一条路径验证死亡清空
-    sim.advanceTicks(30); // 0.5 - 30*0.02 < 0 → 途中死亡(待机代谢 0.02/分)
+    sim.requestMoveTo('mort', 12, 12); // 挂一条路径验证累倒清空
+    sim.advanceTicks(30); // 0.5 - 30*0.02 < 0 → 途中累倒(待机代谢 0.02/分)
     const mort = sim.character('mort');
     expect(mort.alive).toBe(false);
+    expect(mort.collapsed).toBe(false); // 送医走幽灵态,非原地虚脱
     expect(mort.path).toHaveLength(0);
+    expect(mort.diedAtGameMinutes).not.toBeNull();
     expect(events.some((e) => e.type === 'character.died' && e.characterId === 'mort')).toBe(true);
   });
 
@@ -174,16 +176,44 @@ describe('生死机制(M3.6f 体力区段)', () => {
     expect(() => sim.debugRevive('mort')).toThrow(/尚存活/);
   });
 
-  it('世界规则关闭死亡(M5): 体力归 0 躺平,不转幽灵不扣得分', () => {
+  it('世界规则关闭死亡(M5): 体力归 0 原地虚脱,不转幽灵不扣得分', () => {
     const { sim, events } = simWithMort();
     sim.rules.allowDeath = false;
     sim.character('mort').score = 100;
     sim.character('mort').energy = 0.1;
-    sim.advanceTicks(6); // 0.1 - 6*0.02 < 0,若未关规则此刻已死亡
+    sim.advanceTicks(6); // 0.1 - 6*0.02 < 0,若未关规则此刻已送医
     const mort = sim.character('mort');
-    expect(mort.alive).toBe(true); // 躺平但存活
-    expect(mort.energy).toBeLessThanOrEqual(0); // 衰减夹取在 0
+    expect(mort.alive).toBe(true); // 虚脱但存活
+    expect(mort.collapsed).toBe(true); // 原地倒地,不挂救治窗口
+    expect(mort.diedAtGameMinutes).toBeNull();
     expect(mort.score).toBeCloseTo(100, 5); // 未扣减
     expect(events.some((e) => e.type === 'character.died')).toBe(false);
+  });
+
+  it('虚脱门禁(numerical §2.3): 移动/接单/购房拒绝,体力回升即爬起', () => {
+    const { sim } = simWithMort();
+    sim.rules.allowDeath = false; // relaxed: 原地虚脱便于隔离验证
+    sim.character('mort').energy = 0.1;
+    sim.advanceTicks(6);
+    expect(sim.character('mort').collapsed).toBe(true);
+    expect(() => sim.requestMoveTo('mort', 9, 12)).toThrow(/虚脱/);
+    expect(() => sim.requestBuyItem('mort', 'bread')).toThrow(/虚脱/);
+    expect(() => sim.requestStartActivity('mort', 'stroll')).toThrow(/虚脱/);
+    sim.maintenanceSpots.set('litter:10:14', {
+      id: 'litter:10:14',
+      kind: 'litter',
+      x: 10,
+      y: 14,
+      variant: 0,
+    });
+    expect(() => sim.requestWorkTask('mort', 'litter:10:14')).toThrow(/虚脱/);
+    // 喂食(numerical §2.3): 体力回升立即解除
+    sim.character('mort').backpack = { apple: 1 };
+    sim.requestEatItem('mort', 'apple'); // +4 体力
+    const mort = sim.character('mort');
+    expect(mort.collapsed).toBe(false);
+    expect(mort.energy).toBeCloseTo(4, 5);
+    sim.requestMoveTo('mort', 9, 12); // 爬起后可行动
+    expect(mort.path.length).toBeGreaterThan(0);
   });
 });

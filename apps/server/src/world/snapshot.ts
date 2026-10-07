@@ -29,6 +29,7 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
       health: round(character.health),
       coins: character.coins,
       alive: character.alive,
+      collapsed: character.collapsed,
       diedAtGameMinutes: character.diedAtGameMinutes,
       backpack: { ...character.backpack },
       fridge: { ...character.fridge },

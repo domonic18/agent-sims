@@ -126,8 +126,8 @@ export function CharactersSection({
           {!character.alive && (
             <div className="death-banner">
               {snapshot.gameType === 'survival'
-                ? '🤕 重伤休整(饥饿或力竭倒下)'
-                : '☠️ 已死亡(幽灵态)'}
+                ? '🤕 重伤休整(健康归零,唯一死亡闸门)'
+                : '🚑 累倒送医中(体力耗尽)'}
               {character.diedAtGameMinutes !== null && (
                 <DeathCountdown
                   remaining={Math.max(
@@ -138,6 +138,9 @@ export function CharactersSection({
                 />
               )}
             </div>
+          )}
+          {character.alive && character.collapsed && (
+            <div className="death-banner">😵 虚脱倒地——就地休息/睡觉或喂食恢复</div>
           )}
         </div>
       )}

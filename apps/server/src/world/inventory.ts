@@ -1,6 +1,12 @@
 import { getItem, inventoryVolume } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
-import { clampVital, ensureAlive, type WorldCharacter } from './character.js';
+import {
+  clampVital,
+  clearCollapseIfRecovered,
+  ensureAlive,
+  ensureNotCollapsed,
+  type WorldCharacter,
+} from './character.js';
 import { ensureAtOwnHome } from './housing.js';
 import type { Simulation } from './simulation.js';
 
@@ -18,6 +24,7 @@ export function buyItem(sim: Simulation, characterId: string, itemId: string): W
   }
   const character = sim.character(characterId);
   ensureAlive(character);
+  ensureNotCollapsed(character);
   if (!sim.map.contains('shop', character.x, character.y)) {
     throw new Error(`${character.name} 须在商店内购买(先移动到商店)`);
   }
@@ -37,7 +44,8 @@ export function buyItem(sim: Simulation, characterId: string, itemId: string): W
   return character;
 }
 
-/** 吃背包食物(M3.6g):任意地点可吃;扣背包并结算一次性效果;material 不可食用 */
+/** 吃背包食物(M3.6g):任意地点可吃(虚脱倒地可被喂食,体力回升即爬起);
+ * 扣背包并结算一次性效果;material 不可食用 */
 export function eatItem(sim: Simulation, characterId: string, itemId: string): WorldCharacter {
   const item = getItem(itemId);
   if (item === null) {
@@ -58,6 +66,7 @@ export function eatItem(sim: Simulation, characterId: string, itemId: string): W
   }
   character.energy = clampVital(character.energy + effects.energy);
   character.score += effects.score;
+  clearCollapseIfRecovered(character);
   return character;
 }
 
@@ -74,6 +83,7 @@ export function storeItem(
   }
   const character = sim.character(characterId);
   ensureAlive(character);
+  ensureNotCollapsed(character);
   ensureAtOwnHome(sim, character, '存入冰箱');
   if ((character.backpack[itemId] ?? 0) < count) {
     throw new Error(`${character.name} 背包里「${item.name}」不足 ${count} 个`);
@@ -105,6 +115,7 @@ export function takeItem(
   }
   const character = sim.character(characterId);
   ensureAlive(character);
+  ensureNotCollapsed(character);
   ensureAtOwnHome(sim, character, '从冰箱取出');
   if ((character.fridge[itemId] ?? 0) < count) {
     throw new Error(`${character.name} 冰箱里「${item.name}」不足 ${count} 个`);

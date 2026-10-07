@@ -16,13 +16,14 @@ export const characterArrivedEventSchema = z.object({
 
 export type CharacterArrivedEvent = z.infer<typeof characterArrivedEventSchema>;
 
-/** 活动结束原因: 按时长完成/手动停止/被移动打断/就餐余额不足/体力耗尽死亡 */
+/** 活动结束原因: 按时长完成/手动停止/被移动打断/就餐余额不足/倒下(累倒送医或重伤)/虚脱倒地 */
 export const ACTIVITY_FINISH_REASONS = [
   'completed',
   'stopped',
   'interrupted',
   'insufficient_coins',
   'died',
+  'collapsed',
 ] as const;
 
 export type ActivityFinishReason = (typeof ACTIVITY_FINISH_REASONS)[number];
@@ -48,12 +49,13 @@ export const activityFinishedEventSchema = z.object({
 
 export type ActivityFinishedEvent = z.infer<typeof activityFinishedEventSchema>;
 
-/** 体力耗尽死亡:角色转幽灵态,繁荣分扣减挂起进入救治窗口(M-G.5,goal-design §7) */
+/** 倒下(numerical §2.3): growth 体力耗尽=累倒送医,survival 健康归零=重伤休整;
+ * 同转幽灵态挂救治窗口,得分扣减挂起(growth 超时苏醒扣,survival 免扣) */
 export const characterDiedEventSchema = z.object({
   type: z.literal('character.died'),
   characterId: z.string().min(1),
   tick: z.number().int(),
-  /** 本次死亡可被救治(窗口内 rescue/debug 免扣复活);超时后走 auto_revived */
+  /** 本次倒下可被救治(窗口内 rescue/debug 免扣复活);超时后走 auto_revived */
   revivable: z.boolean(),
 });
 

@@ -38,8 +38,11 @@ export interface WorldCharacter {
   activity: CharacterActivity | null;
   /** 住宿状态(null=无住宿) */
   housing: CharacterHousing | null;
-  /** 存活状态(false=幽灵态 M-G.5:拒绝一切意图,等待救治/超时自动复活) */
+  /** 存活状态(false=幽灵态 M-G.5: growth 累倒送医/survival 重伤休整,等待救治/超时苏醒) */
   alive: boolean;
+  /** 体力虚脱倒地(numerical §2.3,alive=true 才有): 原地倒地不挂窗口,
+   * 意图只放行休息/睡觉/进食,体力回升即爬起;健康唯一死亡闸门 */
+  collapsed: boolean;
   /** 死亡时刻(纪元起游戏分钟,null=存活);救治窗口结算基准(M-G.5,goal-design §7) */
   diedAtGameMinutes: number | null;
   /** 随身背包(itemId→数量):买入入库,任意地点 eat_item 消耗;体积受 BACKPACK_VOLUME_LIMIT */
@@ -65,6 +68,21 @@ export const clampVital = (value: number): number =>
 export function ensureAlive(character: WorldCharacter): void {
   if (!character.alive) {
     throw new Error(`${character.name} 已死亡(幽灵态),等待复活`);
+  }
+}
+
+/** 虚脱门禁(numerical §2.3): 倒地角色拒绝行走/消费/社交/接单等意图,
+ * 只放行就地休息/睡觉(经 startActivity 白名单)与进食(eat_item 喂食) */
+export function ensureNotCollapsed(character: WorldCharacter): void {
+  if (character.collapsed) {
+    throw new Error(`${character.name} 已虚脱倒地,只能就地休息/睡觉或喂食恢复`);
+  }
+}
+
+/** 虚脱解除(numerical §2.3): 体力回升即爬起——进食即时解除,休息在 tick 末解除 */
+export function clearCollapseIfRecovered(character: WorldCharacter): void {
+  if (character.collapsed && character.energy > 0) {
+    character.collapsed = false;
   }
 }
 
@@ -101,7 +119,7 @@ export function applyHealthTick(character: WorldCharacter): void {
   }
 }
 
-/** 复活公共路径(M-G.5):满状态回归+清死亡时刻;救治/debug 免扣,timeout 已在调用方扣减。
+/** 复活公共路径(M-G.5):满状态回归+清死亡时刻与虚脱标;救治/debug 免扣,timeout 已在调用方扣减。
  * survival(M-S/S1)超时苏醒=重伤休整结束:健康/体力回恢复线(非满状态);
  * 救治复活仍满状态(医生在生存模式的价值) */
 export function reviveCharacter(
@@ -111,6 +129,7 @@ export function reviveCharacter(
 ): void {
   const injuryWake = sim.gameType === 'survival' && source === 'timeout';
   character.alive = true;
+  character.collapsed = false;
   character.energy = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.REVIVE_ENERGY;
   character.health = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.VITAL_MAX;
   character.diedAtGameMinutes = null;

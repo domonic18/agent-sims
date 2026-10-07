@@ -57,8 +57,11 @@ export interface WorldSnapshotMessage {
     /** 健康(M-S/S1):0~100,仅 survival 模式有压力源(饥饿损耗/吃饱恢复),growth 恒满 */
     health: number;
     coins: number;
-    /** 存活状态(false=幽灵态,拒绝一切意图,等待救治/超时自动复活) */
+    /** 存活状态(false=幽灵态: growth 累倒送医/survival 重伤休整,等待救治/超时苏醒) */
     alive: boolean;
+    /** 体力虚脱倒地(numerical §2.3,alive=true 时): 原地倒地,意图只放行休息/睡觉/进食,
+     * 体力回升即爬起;survival 下健康照跑饥饿线,可滑向重伤休整 */
+    collapsed: boolean;
     /** 死亡时刻(纪元起游戏分钟,null=存活);救治倒计时 = 窗口 - (当前 - 此值)(M-G.5) */
     diedAtGameMinutes: number | null;
     /** 随身背包(itemId→数量,仅 >0 项);买入入此,任意地点可吃 */

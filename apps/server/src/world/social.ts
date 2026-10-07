@@ -7,7 +7,7 @@ import {
   type TraitVector,
 } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
-import { ensureAlive } from './character.js';
+import { ensureAlive, ensureNotCollapsed } from './character.js';
 import type { Simulation } from './simulation.js';
 
 /** 有向关系(A→B):二轴+防刷计数;B→A 是另一条独立记录(social-design §2) */
@@ -75,6 +75,7 @@ export function chat(sim: Simulation, fromId: string, toId: string): string {
   }
   ensureAlive(from);
   ensureAlive(to);
+  ensureNotCollapsed(from);
   const distance = Math.abs(from.x - to.x) + Math.abs(from.y - to.y);
   if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {
     throw new Error(`${from.name} 与 ${to.name} 距离太远(曼哈顿 ${distance}),走近点再聊`);

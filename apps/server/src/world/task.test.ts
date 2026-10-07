@@ -150,7 +150,7 @@ describe('work_task 维护工单(M-G.5)', () => {
     expect(() => sim.requestStartActivity('mow', 'rescue')).toThrow(/work_task/);
   });
 
-  it('作业中体力耗尽死亡打断工单', () => {
+  it('作业中体力耗尽累倒送医打断工单(growth 送医,spot 保留)', () => {
     const { sim, events } = simWithFixtures();
     sim.requestWorkTask('mow', LITTER_ID);
     sim.advanceTicks(5); // 到位作业中

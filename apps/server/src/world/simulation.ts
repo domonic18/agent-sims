@@ -42,6 +42,7 @@ import { GameClock } from './clock.js';
 import {
   applyHealthTick,
   applyVitalDecay,
+  clearCollapseIfRecovered,
   reviveCharacter,
   stepMovement,
   type WorldCharacter,
@@ -167,6 +168,7 @@ export class Simulation {
         paidThroughDay: this.clock.day + BALANCE.SPAWN_PREPAID_DAYS,
       },
       alive: true,
+      collapsed: false,
       diedAtGameMinutes: null,
       backpack: {},
       fridge: {},
@@ -240,6 +242,9 @@ export class Simulation {
     const character = this.character(characterId);
     if (!character.alive) {
       throw new Error(`${character.name} 已死亡(幽灵态),等待复活`);
+    }
+    if (character.collapsed) {
+      throw new Error(`${character.name} 已虚脱倒地,无法移动(先休息或喂食恢复)`);
     }
     if (!this.map.isWalkable(x, y)) {
       throw new Error(`目标不可行走: (${x},${y})`);
@@ -405,6 +410,7 @@ export class Simulation {
         applyHealthTick(character);
       }
       this._checkDeath(character);
+      this._checkCollapse(character);
       this._checkReviveWindow(character);
     }
   }
@@ -535,14 +541,12 @@ export class Simulation {
   }
 
   /**
-   * 体力耗尽死亡(M-G.5 救治窗口,goal-design §7):转幽灵态,清路径/打断活动,
-   * 繁荣分扣减**挂起**——窗口内救治/debug 免扣,超时按现值生效。
-   * survival(M-S/S1)语义为重伤休整:健康归零(饥饿)同样触发,角色不死;
-   * 超时苏醒不扣繁荣分、数值回恢复线(reviveCharacter 分支),救治复活满状态。
+   * 健康归零→幽灵态(numerical §2.3 唯一死亡闸门):仅 survival 重伤休整触发,
+   * 清路径/打断活动,得分扣减**挂起**——窗口内救治/debug 免扣,超时 growth 按现值生效
+   * (survival 免扣、数值回恢复线,见 reviveCharacter 分支)。
    */
   private _checkDeath(character: WorldCharacter): void {
-    // 世界规则关闭死亡(M5):体力卡 0 持续躺平,不转幽灵不扣繁荣分;
-    // survival 下健康同步卡 1(归零即重伤,与关闭语义一致)
+    // 世界规则关闭死亡(M5):健康卡 1 不入重伤(survival);
     if (!this.rules.allowDeath) {
       if (this.gameType === 'survival' && character.health <= 0) {
         character.health = 1;
@@ -550,10 +554,11 @@ export class Simulation {
       return;
     }
     const injured = this.gameType === 'survival' && character.health <= 0;
-    if (!character.alive || (character.energy > 0 && !injured)) {
+    if (!character.alive || !injured) {
       return;
     }
     character.alive = false;
+    character.collapsed = false; // 重伤优先于虚脱(复活统一清标)
     character.path = [];
     character.diedAtGameMinutes = this.clock.gameMinutes;
     finishActivity(this, character, 'died');
@@ -564,6 +569,38 @@ export class Simulation {
       revivable: true,
     };
     this.events.emit(event);
+  }
+
+  /**
+   * 体力虚脱判定(numerical §2.3):体力归零不再死亡——
+   * growth(allowDeath=true)累倒送医:复用幽灵态骨架挂救治窗口,救治满状态回归、
+   * 超时苏醒回恢复线并按比例扣分;survival 与 allowDeath=false 原地虚脱倒地,
+   * 意图门禁只放行休息/睡觉/进食,体力回升即爬起。健康照跑饥饿线,可滑向重伤休整。
+   */
+  private _checkCollapse(character: WorldCharacter): void {
+    clearCollapseIfRecovered(character);
+    if (!character.alive || character.energy > 0) {
+      return;
+    }
+    if (this.gameType === 'growth' && this.rules.allowDeath) {
+      character.alive = false;
+      character.path = [];
+      character.diedAtGameMinutes = this.clock.gameMinutes;
+      finishActivity(this, character, 'died');
+      const event: CharacterDiedEvent = {
+        type: 'character.died',
+        characterId: character.id,
+        tick: this.tick,
+        revivable: true,
+      };
+      this.events.emit(event);
+      return;
+    }
+    character.collapsed = true;
+    character.path = [];
+    if (character.activity !== null) {
+      finishActivity(this, character, 'collapsed');
+    }
   }
 
   /** 救治窗口超时结算(M-G.5):挂起扣减按超时时刻现值 ×(1-比例) 生效,自动复活;

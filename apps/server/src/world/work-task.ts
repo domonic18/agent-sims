@@ -14,7 +14,13 @@ import {
   type WorkTaskId,
 } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
-import { ensureAlive, reviveCharacter, type CharacterActivity, type WorldCharacter } from './character.js';
+import {
+  ensureAlive,
+  ensureNotCollapsed,
+  reviveCharacter,
+  type CharacterActivity,
+  type WorldCharacter,
+} from './character.js';
 import type { Point } from './pathfinding.js';
 import { findPath } from './pathfinding.js';
 import type { Simulation } from './simulation.js';
@@ -35,6 +41,7 @@ export function requestWorkTask(
   const task = resolveTask(sim, targetId);
   const character = sim.character(characterId);
   ensureAlive(character);
+  ensureNotCollapsed(character);
   if (character.activity !== null) {
     throw new Error(`${character.name} 已在进行活动: ${character.activity.activityId}`);
   }

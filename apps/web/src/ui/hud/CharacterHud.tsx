@@ -107,6 +107,11 @@ export function CharacterHud() {
               {chip.icon} {chip.label}
             </span>
           )}
+          {character.alive && character.collapsed && (
+            <span className="hud-tag sad" title="体力耗尽倒地: 只能就地休息/睡觉或喂食恢复">
+              😵 虚脱
+            </span>
+          )}
           {!character.alive && (
             <span className="hud-tag sad" title="角色已倒下,等待救治或超时复活">
               👻 倒下

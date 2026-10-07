@@ -90,7 +90,9 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
         case 'insufficient_coins':
           return { icon: '💸', text: `${who} ${what}余额不足,中断`, tone: 'bad', characterId: event.characterId };
         case 'died':
-          return { icon: '☠️', text: `${who} 体力耗尽,${what}中断`, tone: 'bad', characterId: event.characterId };
+          return { icon: '🚑', text: `${who} 倒下(送医/重伤),${what}中断`, tone: 'bad', characterId: event.characterId };
+        case 'collapsed':
+          return { icon: '😵', text: `${who} 体力耗尽虚脱,${what}中断`, tone: 'bad', characterId: event.characterId };
       }
     }
     case 'character.died':

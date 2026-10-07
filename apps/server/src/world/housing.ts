@@ -1,5 +1,5 @@
 import { getPropertyDefinition, isLeaseValid, PROPERTY_IDS } from '@sims/shared';
-import { ensureAlive, type WorldCharacter } from './character.js';
+import { ensureAlive, ensureNotCollapsed, type WorldCharacter } from './character.js';
 import type { Simulation } from './simulation.js';
 
 /** rest 锚点在住宅时:须为本人住房且租约有效(owned 或未过期);公园等场所放行 */
@@ -54,6 +54,7 @@ export function rentProperty(
   }
   const character = sim.character(characterId);
   ensureAlive(character);
+  ensureNotCollapsed(character);
   if (character.housing?.ownership === 'owned') {
     throw new Error(`${character.name} 已拥有 ${property.name},无需续租`);
   }
@@ -83,6 +84,7 @@ export function buyProperty(
   }
   const character = sim.character(characterId);
   ensureAlive(character);
+  ensureNotCollapsed(character);
   if (character.housing?.ownership === 'owned') {
     throw new Error(`${character.name} 已拥有 ${property.name}`);
   }
