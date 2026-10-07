@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
-import { WALK_SPEED_TILES_PER_TICK, type TileMapDefinition, type WorldEvent } from '@sims/shared';
+import {
+  WALK_SPEED_TILES_PER_TICK,
+  nightIntensity,
+  type TileMapDefinition,
+  type WorldEvent,
+} from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
 import type { CameraMode } from '../store/worldStore';
 import { TILE } from './assets';
@@ -111,11 +116,16 @@ export class WorldScene extends Phaser.Scene {
     const map = (this._map = this.registry.get('map') as TileMapDefinition);
     drawTownMap(this, map);
     createCharacterAnims(this);
+    // 夜色罩挂屏幕空间(scrollFactor 0): 覆盖全视口含地图外区域,尺寸随窗口 resize
     this._nightOverlay = this.add
-      .rectangle(0, 0, map.width * TILE, map.height * TILE, 0x081024, 1)
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x0a0e26, 1)
       .setOrigin(0, 0)
+      .setScrollFactor(0)
       .setAlpha(0)
       .setDepth(100);
+    this.scale.on('resize', (size: Phaser.Structs.Size) => {
+      this._nightOverlay?.setSize(size.width, size.height);
+    });
     this._lightLayer = buildLightLayer(this, map);
     this._selectionMarker = this.add.graphics().setDepth(9);
     // 喷泉是内置地图广场的固定装饰;生成地图无此物件不绘制
@@ -211,13 +221,14 @@ export class WorldScene extends Phaser.Scene {
     this._updateCamera(selectedCharacterId, cameraMode);
     this._keyboard?.step(time);
     if (this._nightOverlay !== null) {
-      // 昼夜色调平滑过渡(M3.6f 加深夜色)
-      const night = snapshot?.clock.isNight ?? false;
-      const target = night ? 0.55 : 0;
+      // 昼夜渐变(暖光对比夜): 夜色强度按 gameMinutes 曲线过渡(20:00 渐入/04:00 渐出),
+      // 快照未到按白昼处理避免开场压暗;灯光层(路灯光圈+屋内暖光)随强度同显
+      const intensity = snapshot === null ? 0 : nightIntensity(snapshot.clock.gameMinutes);
+      const target = 0.72 * intensity;
       const ease = Math.min(1, (delta / 1000) * 2);
       this._nightOverlay.alpha = Phaser.Math.Linear(this._nightOverlay.alpha, target, ease);
       if (this._lightLayer !== null) {
-        this._lightLayer.alpha = Phaser.Math.Linear(this._lightLayer.alpha, night ? 1 : 0, ease);
+        this._lightLayer.alpha = Phaser.Math.Linear(this._lightLayer.alpha, intensity, ease);
       }
     }
     // 1 tick = 1 游戏分钟,倍率加快 tick 频率 → 插值与步频随 timeScale 放大

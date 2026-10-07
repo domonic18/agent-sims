@@ -1,20 +1,62 @@
 import Phaser from 'phaser';
 import type { TileMapDefinition } from '@sims/shared';
 import { TILE } from './assets';
+import { FENCE_LAMPS, PARK_LAMPS, PLAZA_LAMPS, STREET_LAMPS } from './decor';
 import type { CharacterRender } from './character-view';
 
 /** 喷泉占地(仅内置地图广场有喷泉) */
 export const FOUNTAIN_RECT = { x: 30, y: 18, w: 3, h: 3 };
 
+/** 灯光圈纹理(程序生成径向渐变,懒创建一次) */
+const GLOW_TEXTURE_KEY = 'light-glow';
+
+/** 径向光晕贴图: 白→透明,渲染时 tint 上暖色;线性过滤避免像素阶梯(pixelArt 全局 NEAREST 的例外) */
+function ensureGlowTexture(scene: Phaser.Scene): void {
+  if (scene.textures.exists(GLOW_TEXTURE_KEY)) return;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx === null) return;
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, 2, size / 2, size / 2, size / 2);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.4, 'rgba(255,255,255,0.5)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  scene.textures.addCanvas(GLOW_TEXTURE_KEY, canvas);
+  scene.textures.get(GLOW_TEXTURE_KEY).setFilter(Phaser.Textures.FilterMode.LINEAR);
+}
+
 /**
- * 夜间灯光层(M3.6i 收敛): 圆形光圈全部移除(路灯/围栏灯/公园/广场/门口透光),
- * 仅保有门建筑整屋暖色矩形(整间亮),灯柱本体仍由 terrain 绘制。
+ * 夜间灯光层(暖光对比夜): 路灯光圈(decor.lamps,内置地图回退四灯组)+
+ * 门建筑整屋暖色矩形;全部 ADD 混合,显隐由场景按夜色强度插值 layer.alpha。
+ * 灯为静态 Image,无每帧重绘。
  */
 export function buildLightLayer(
   scene: Phaser.Scene,
   map: TileMapDefinition,
 ): Phaser.GameObjects.Container {
+  ensureGlowTexture(scene);
   const layer = scene.add.container(0, 0).setDepth(101);
+  const lamps = map.decor?.lamps ?? [
+    ...STREET_LAMPS,
+    ...PLAZA_LAMPS,
+    ...PARK_LAMPS,
+    ...FENCE_LAMPS,
+  ];
+  for (const [lx, ly] of lamps) {
+    // 灯柱 propSprite 底边居中锚定,光圈中心取灯头上半格
+    layer.add(
+      scene.add
+        .image(lx * TILE + TILE / 2, ly * TILE + TILE / 2, GLOW_TEXTURE_KEY)
+        .setTint(0xffc266)
+        .setAlpha(0.55)
+        .setScale(1.6)
+        .setBlendMode(Phaser.BlendModes.ADD),
+    );
+  }
   for (const place of map.places) {
     if (place.door === undefined) continue;
     // 整屋暖光: 覆盖场所占地的低强度矩形,ADD 混合随夜显隐
