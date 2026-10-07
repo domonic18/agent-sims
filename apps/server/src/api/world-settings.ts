@@ -42,6 +42,24 @@ function settingsView(sim: Simulation): WorldSettingsView {
 }
 
 /**
+ * 参数覆盖校验+应用(世界设置 POST 与后台 sys-config PUT 共用):
+ * 校验(未知 key/越界均拒)→ sim.setParams → world.params 事件 → param-persist
+ * 回写活跃世界 config.rules.params(存档真源)。返回错误文案,null=已应用。
+ */
+export function applySettingParams(
+  sim: Simulation,
+  params: Record<string, number>,
+  reset: boolean,
+): string | null {
+  const errors = validateBalanceOverrides(params);
+  if (errors.length > 0) {
+    return errors.map((e) => `${e.key}: ${e.reason}`).join('; ');
+  }
+  sim.setParams(params, { reset });
+  return null;
+}
+
+/**
  * 写操作准入(游览/操控分层):生产环境须 admin Bearer token(与后台登录同一
  * 凭证),防止公布页面后游客直调接口暂停世界;开发/测试环境豁免(本地走查与
  * 集成测试不便造 token)。读操作公开(游客 HUD/浏览需要)。
@@ -70,15 +88,15 @@ export function registerWorldSettingsRoutes(app: FastifyInstance, sim: Simulatio
       return parseError(reply, issue ? `${issue.path.join('.')}: ${issue.message}` : '请求体不合法');
     }
     const { paused, timeScale, params, resetParams, rules } = parsed.data;
+    // 参数先行(校验失败即 400 不动世界),其余 setter 无失败路径
     if (params !== undefined) {
-      const errors = validateBalanceOverrides(params);
-      if (errors.length > 0) {
-        return parseError(reply, errors.map((e) => `${e.key}: ${e.reason}`).join('; '));
+      const error = applySettingParams(sim, params, resetParams === true);
+      if (error !== null) {
+        return parseError(reply, error);
       }
     }
     if (paused !== undefined) sim.setPaused(paused);
     if (timeScale !== undefined) sim.setTimeScale(timeScale);
-    if (params !== undefined) sim.setParams(params, { reset: resetParams === true });
     if (rules !== undefined && (rules.allowDeath !== undefined || rules.allowChat !== undefined)) {
       sim.setRules(rules);
     }

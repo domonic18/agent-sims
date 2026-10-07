@@ -51,7 +51,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   // 世界事件落库+参数存档订阅(EventBus 零 I/O,宿主侧串行链写入)
   attachWorldEventLog(handle, app.simulation.events);
   attachWorldParamPersist(handle, app.simulation.events);
-  registerAdminApi(app, handle);
+  registerAdminApi(app, handle, app.simulation);
   registerWorldEventRoutes(app, handle);
   registerWorldSettingsRoutes(app, app.simulation);
   if (env.NODE_ENV === 'development') {

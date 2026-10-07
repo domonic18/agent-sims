@@ -1,16 +1,20 @@
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SysConfigView } from '@sims/shared';
-import { applyWorldParams } from '../src/config/balance.js';
+import { applyWorldParams, BALANCE, BALANCE_DEFAULTS } from '../src/config/balance.js';
 import { buildApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
-import { adminUsers } from '../src/db/schema/index.js';
+import { adminUsers, worlds } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
+import { whenParamPersistIdle } from '../src/world/param-persist.js';
 
 // 集成测试:连 dev compose 的 postgres;不可达时整组跳过。
-// 参数世界化后本端点只读(PUT/reset 已移除,修改走 /api/world/settings 设置通道)。
+// 后台参数写通道:PUT 覆盖热调+持久→非法 400 不落值→reset 复位出厂默认;
+// 与 /api/world/settings 共用 applySettingParams(校验→setParams→param-persist)。
 const TEST_USERNAME = 'vitest-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
+const WORLD_NAME = 'vitest-sysconfig-world-参数镇';
 
 let handle: DbHandle;
 let token = '';
@@ -36,16 +40,32 @@ beforeAll(async () => {
       target: adminUsers.username,
       set: { passwordHash: hashPassword(TEST_PASSWORD) },
     });
-  const login = await buildApp().inject({
+  await handle.db.delete(worlds).where(eq(worlds.name, WORLD_NAME));
+  const app = buildApp();
+  token = (
+    await app.inject({
+      method: 'POST',
+      url: '/api/admin/auth/login',
+      payload: { username: TEST_USERNAME, password: TEST_PASSWORD },
+    })
+  ).json<{ token: string }>().token;
+  const res = await app.inject({
     method: 'POST',
-    url: '/api/admin/auth/login',
-    payload: { username: TEST_USERNAME, password: TEST_PASSWORD },
+    url: '/api/admin/worlds',
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      name: WORLD_NAME,
+      characters: [{ name: '阿参', gender: 'female' as const }],
+    },
   });
-  token = login.json<{ token: string }>().token;
+  expect(res.statusCode).toBe(201);
+  await app.close();
 }, 30_000);
 
 afterAll(async () => {
+  applyWorldParams(); // BALANCE 为进程内全局,结束复位避免语义混淆
   if (!dbUp) return;
+  await handle.db.delete(worlds).where(eq(worlds.name, WORLD_NAME));
   await handle.client.end();
 });
 
@@ -66,10 +86,17 @@ const inject = async (
   return { statusCode: res.statusCode, body: res.json<Record<string, unknown>>() };
 };
 
-describe.skipIf(!dbUp)('世界参数目录查询 API(只读)', () => {
+async function activeParamsConfig(): Promise<Record<string, number> | undefined> {
+  const [row] = await handle.db.select().from(worlds).where(eq(worlds.status, 'active'));
+  return (row?.config as { rules?: { params?: Record<string, number> } })?.rules?.params;
+}
+
+describe.skipIf(!dbUp)('/api/admin/sys-config 参数目录读写', () => {
   it('未带 token 401', async () => {
     const res = await inject('GET', '/api/admin/sys-config', undefined, false);
     expect(res.statusCode).toBe(401);
+    const put = await inject('PUT', '/api/admin/sys-config', { params: {} }, false);
+    expect(put.statusCode).toBe(401);
   });
 
   it('GET 返回 fields/defaults/overrides/effective 形状', async () => {
@@ -83,17 +110,56 @@ describe.skipIf(!dbUp)('世界参数目录查询 API(只读)', () => {
     expect(Object.keys(view.effective).sort()).toEqual(keys);
     expect(view.defaults.IDLE_ENERGY_DECAY).toBe(0.02);
     expect(view.effective.IDLE_ENERGY_DECAY).toBe(0.02);
-    // overrides 反映活跃世界 config.rules.params(本测试不建世界,仅验证为对象)
+    // 本文件已建活跃世界:overrides 为其 config.rules.params(创建时未覆盖=空对象)
     expect(typeof view.overrides).toBe('object');
   });
 
-  it('PUT 修改 404(参数修改已迁移设置通道)', async () => {
-    const res = await inject('PUT', '/api/admin/sys-config', { updates: { START_COINS: 50 } });
-    expect(res.statusCode).toBe(404);
+  it('PUT 合法覆盖:BALANCE 热调+config.params 持久+响应 effective 同步', async () => {
+    const res = await inject('PUT', '/api/admin/sys-config', {
+      params: { NODE_MAX_CHARGES_BERRY: 1, NODE_RESPAWN_DAYS: 3 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(BALANCE.NODE_MAX_CHARGES_BERRY).toBe(1);
+    expect(BALANCE.NODE_RESPAWN_DAYS).toBe(3);
+    const view = res.body as unknown as SysConfigView;
+    expect(view.effective.NODE_MAX_CHARGES_BERRY).toBe(1);
+    expect(view.overrides).toMatchObject({ NODE_MAX_CHARGES_BERRY: 1, NODE_RESPAWN_DAYS: 3 });
+    await whenParamPersistIdle();
+    expect(await activeParamsConfig()).toMatchObject({
+      NODE_MAX_CHARGES_BERRY: 1,
+      NODE_RESPAWN_DAYS: 3,
+    });
   });
 
-  it('POST reset 404', async () => {
+  it('PUT 非法输入 400:未知 key/越界/坏类型/非整数,均不落值', async () => {
+    const cases: Array<Record<string, unknown>> = [
+      { params: { NOT_A_KEY: 1 } },
+      { params: { NODE_MAX_CHARGES_BERRY: -5 } },
+      { params: { NODE_RESPAWN_DAYS: 'soon' } },
+      { params: { NODE_RESPAWN_DAYS: 1.5 } },
+    ];
+    for (const payload of cases) {
+      const res = await inject('PUT', '/api/admin/sys-config', payload);
+      expect(res.statusCode, JSON.stringify(payload)).toBe(400);
+      expect((res.body as { error?: string }).error).toBeTruthy();
+    }
+    expect(BALANCE.NODE_MAX_CHARGES_BERRY).toBe(1); // 上一用例残留值,未被非法请求改动
+    expect(BALANCE.NODE_RESPAWN_DAYS).toBe(3);
+  });
+
+  it('POST reset:复位出厂默认,残留覆盖清除且持久', async () => {
     const res = await inject('POST', '/api/admin/sys-config/reset');
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(200);
+    expect(BALANCE.NODE_MAX_CHARGES_BERRY).toBe(BALANCE_DEFAULTS.NODE_MAX_CHARGES_BERRY);
+    expect(BALANCE.NODE_RESPAWN_DAYS).toBe(BALANCE_DEFAULTS.NODE_RESPAWN_DAYS);
+    const view = res.body as unknown as SysConfigView;
+    expect(view.overrides).toMatchObject({
+      NODE_MAX_CHARGES_BERRY: BALANCE_DEFAULTS.NODE_MAX_CHARGES_BERRY,
+      NODE_RESPAWN_DAYS: BALANCE_DEFAULTS.NODE_RESPAWN_DAYS,
+    });
+    await whenParamPersistIdle();
+    expect(await activeParamsConfig()).toMatchObject({
+      NODE_MAX_CHARGES_BERRY: BALANCE_DEFAULTS.NODE_MAX_CHARGES_BERRY,
+    });
   });
 });
