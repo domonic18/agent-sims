@@ -695,3 +695,63 @@ describe('末日生存模式(survival gameType)', () => {
     }
   });
 });
+
+describe('家具朝向系统(2026-10-07 蓝图动线)', () => {
+  const results = Array.from({ length: 20 }, (_, i) => generateTownMap(input(`face-${i}`)));
+  const pooled = Array.from({ length: 20 }, (_, i) =>
+    generateTownMap(input(`face-${i}`, { assetsByKind: { 'indoor/sofa': ['sofa', 'sofa-b'], 'indoor/tv': ['tv', 'tv-b'] } })),
+  );
+
+  it('home 动线: 电视/床贴北墙(facing south),沙发南墙朝北(facing north),无侧墙电视', () => {
+    let seenSofa = 0;
+    for (const { map } of results) {
+      for (const place of map.places) {
+        if (place.id.split('-')[0] !== 'home') continue;
+        for (const f of place.furniture ?? []) {
+          if (f.kind === 'tv') {
+            expect(f.facing).toBe('south'); // 北墙正对房间,不再侧墙"杵中间"
+            expect(f.y).toBe(place.y + 1); // 贴北缘
+          }
+          if (f.kind === 'sofa') {
+            expect(f.facing).toBe('north'); // 南墙与电视对望
+            seenSofa += 1;
+          }
+        }
+      }
+    }
+    expect(seenSofa).toBeGreaterThan(0);
+  });
+
+  it('clinic 无电视(小档北行满且无背面素材),候诊椅顶替', () => {
+    let seenClinic = 0;
+    for (const { map } of results) {
+      for (const place of map.places) {
+        if (place.id.split('-')[0] !== 'clinic') continue;
+        seenClinic += 1;
+        expect((place.furniture ?? []).some((f) => f.kind === 'tv')).toBe(false);
+      }
+    }
+    expect(seenClinic).toBeGreaterThan(0);
+  });
+
+  it('带池定向选材: 南墙沙发出 -b 背面件,北墙电视出正面件(并集非空)', () => {
+    let seenSofaB = 0;
+    let seenTvFront = 0;
+    for (const { map } of pooled) {
+      for (const place of map.places) {
+        for (const f of place.furniture ?? []) {
+          if (f.kind === 'sofa' && f.facing === 'north') {
+            expect(f.sprite).toBe('sofa-b');
+            seenSofaB += 1;
+          }
+          if (f.kind === 'tv' && f.facing === 'south') {
+            expect(f.sprite).toBe('tv'); // 排除 -b 背面件
+            seenTvFront += 1;
+          }
+        }
+      }
+    }
+    expect(seenSofaB).toBeGreaterThan(0);
+    expect(seenTvFront).toBeGreaterThan(0);
+  });
+});
