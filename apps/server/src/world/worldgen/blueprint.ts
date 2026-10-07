@@ -272,10 +272,13 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
   camping: {
     name: '露营地',
     size: [[12, 9], [14, 10]],
-    requiredAnchors: ['rest'],
+    // study 锚点(M-S/S1): survival 配额无学校/图书馆,营地书桌是唯一知识来源,
+    // 缺它则采集类 3 班门槛永久锁死、三件套不可玩
+    requiredAnchors: ['rest', 'study'],
     open: true,
     furniture: [
       { kind: 'bench', w: 1, h: 1, anchor: 'center', activityId: 'rest', domain: 'outdoor' },
+      { kind: 'desk', w: 1, h: 1, anchor: 'center', activityId: 'study' },
       { kind: 'tent', w: 1, h: 1, anchor: 'center', domain: 'outdoor', chance: 0.9 },
       { kind: 'camping-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'camping', maxTiles: 1 }, chance: 0.8 },
       { kind: 'camping-prop', w: 1, h: 1, anchor: 'center', themePick: { theme: 'camping', maxTiles: 1 }, chance: 0.6 },

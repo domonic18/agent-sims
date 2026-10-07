@@ -155,6 +155,10 @@
   background: var(--px-gold);
 }
 
+.px-bar.red > i {
+  background: var(--px-red);
+}
+
 .px-bar > u {
   position: absolute;
   inset: 2px;

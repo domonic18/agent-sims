@@ -4,10 +4,20 @@ import type { CharacterView } from '../side-panel/place';
 import { PixelAvatar } from './PixelAvatar';
 import { activityChip } from './activityChip';
 
-function VitalBar({ label, value, tone }: { label: string; value: number; tone: 'green' | 'gold' }) {
+function VitalBar({
+  label,
+  value,
+  tone,
+  title,
+}: {
+  label: string;
+  value: number;
+  tone: 'green' | 'gold' | 'red';
+  title?: string;
+}) {
   const clamped = Math.max(0, Math.min(100, value));
   return (
-    <div className="hud-vital">
+    <div className="hud-vital" title={title}>
       <span>{label}</span>
       <span className={`px-bar${tone === 'gold' ? ' gold' : ''}`}>
         <i style={{ width: `calc(${clamped}% - 4px)` }} />
@@ -62,6 +72,14 @@ export function CharacterHud() {
         <div className="hud-char-bars">
           <VitalBar label="体力" value={character.energy} tone="green" />
           <VitalBar label="幸福" value={character.happiness} tone="gold" />
+          {snapshot.gameType === 'survival' && (
+            <VitalBar
+              label="健康"
+              value={character.health}
+              tone="red"
+              title="生存模式:体力低于饥饿线持续损耗,吃饱(体力≥康复线)自然恢复;归零重伤休整"
+            />
+          )}
         </div>
 
         <div className="hud-char-stats">

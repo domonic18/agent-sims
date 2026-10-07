@@ -277,8 +277,8 @@ describe('全量素材驱动的场所扩展(重规划)', () => {
         const kind = place.id.split('-')[0];
         if (kind !== 'beach' && kind !== 'camping') continue;
         for (const f of place.furniture ?? []) {
-          // bench/tent 为 kind 池槽位,themePick 槽位才受主题约束
-          if (f.kind === 'bench' || f.kind === 'tent') continue;
+          // bench/tent/desk 为 kind 池槽位,themePick 槽位才受主题约束
+          if (f.kind === 'bench' || f.kind === 'tent' || f.kind === 'desk') continue;
           expect(themeOf(f.sprite ?? '')).toBe(kind);
         }
       }
