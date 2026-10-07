@@ -295,6 +295,13 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     expect(rows).toHaveLength(4);
     const dbRow = rows.find((r) => r.persona.simId === spawned.id);
     expect(dbRow?.persona).toMatchObject({ bio: '爱钓鱼', traits: { sociability: 0.9 } });
+    // GET worlds 活跃世界名单实时反映运行态(动态加人立即可见)
+    const listed = (
+      await app.inject({ method: 'GET', url: '/api/admin/worlds', headers: auth })
+    ).json() as WorldView[];
+    const activeView = listed.find((w) => w.id === world.id)!;
+    expect(activeView.characters.map((c) => c.name)).toContain('新居民');
+    expect(activeView.characters.find((c) => c.name === '新居民')?.persona).toBe('爱钓鱼');
 
     // 空名字 400(zod 校验)
     const blank = await app.inject({

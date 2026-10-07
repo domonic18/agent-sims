@@ -18,6 +18,7 @@ import {
   validateRecipes,
   type CreateWorldRequest,
   type TileMapDefinition,
+  type WorldCharacterConfig,
   type WorldRules,
   type WorldTimeScale,
   type WorldView,
@@ -287,7 +288,33 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       .select()
       .from(worlds)
       .orderBy(desc(worlds.createdAt));
-    return await reply.send(rows.map(toView));
+    // 活跃世界名单以 characters 表为准:动态加人只落库不改 config,运行态须实时可见
+    const active = rows.find((row) => row.status === 'active');
+    const roster = active
+      ? await handle.db.select().from(characters).where(eq(characters.worldId, active.id))
+      : [];
+    return await reply.send(
+      rows.map((row) => {
+        if (row.id !== active?.id) return toView(row);
+        return {
+          ...toView(row),
+          characters: roster.map((c) => {
+            const persona = c.persona as {
+              traits?: WorldCharacterConfig['traits'];
+              bio?: string;
+              modelSlot?: string;
+            };
+            return {
+              name: c.name,
+              gender: c.gender as WorldCharacterConfig['gender'],
+              ...(persona.traits !== undefined ? { traits: persona.traits } : {}),
+              ...(persona.bio !== undefined ? { persona: persona.bio } : {}),
+              ...(persona.modelSlot !== undefined ? { modelSlot: persona.modelSlot } : {}),
+            };
+          }),
+        };
+      }),
+    );
   });
 
   app.post('/api/admin/worlds/preview', async (request, reply) => {
