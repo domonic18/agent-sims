@@ -3,6 +3,7 @@
  * 的生产可用读写口(不同于 /debug 仅 development 注册),及历史事件查询。
  */
 import type { WorldEventsHistoryResponse, WorldSettingsView } from '@sims/shared';
+import { useAuthStore } from '../store/authStore';
 
 export interface WorldSettingsUpdate {
   paused?: boolean;
@@ -14,11 +15,16 @@ export interface WorldSettingsUpdate {
 }
 
 const request = async (path: string, method: 'GET' | 'POST', body?: unknown): Promise<WorldSettingsView> => {
+  // 写操作在生产环境须 admin Bearer(canControlWorld 校验);游客态无头走只读
+  const token = useAuthStore.getState().token;
+  const headers: Record<string, string> = {
+    ...(token !== null ? { authorization: `Bearer ${token}` } : {}),
+    ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+  };
   const response = await fetch(path, {
     method,
-    ...(body === undefined
-      ? {}
-      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+    headers,
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!response.ok) {
     const detail = await response.text();
