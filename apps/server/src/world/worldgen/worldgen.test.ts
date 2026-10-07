@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { TOWN_MAP, type WorldgenParams } from '@sims/shared';
+import { TOWN_MAP, solidDecorRect, type WorldgenParams } from '@sims/shared';
 import { TileMap } from '../map.js';
+import { DECOR_POOLS } from './blueprint.js';
 import { BUILTIN_SEED, generateTownMap, type WorldgenInput } from './generate.js';
 
 const PARAMS: WorldgenParams = { size: 'small', density: 'normal' };
@@ -201,6 +202,19 @@ describe('鲁棒性扩量(300 例:100 种子×3 密度)', () => {
     for (let i = 0; i < 100; i += 1) {
       for (const density of ['sparse', 'normal', 'dense'] as const) {
         const result = generateTownMap(input(`seed-${i}`, { params: { size: 'small', density } }));
+        if (result.report.checks.fallback) fallback += 1;
+      }
+    }
+    expect(fallback).toBe(0);
+  });
+
+  it('零兜底回退(survival 镇内外分区同规模,M-S/S1.5)', () => {
+    let fallback = 0;
+    for (let i = 0; i < 100; i += 1) {
+      for (const density of ['sparse', 'normal', 'dense'] as const) {
+        const result = generateTownMap(
+          input(`seed-${i}`, { gameType: 'survival', params: { size: 'small', density } }),
+        );
         if (result.report.checks.fallback) fallback += 1;
       }
     }
@@ -434,10 +448,10 @@ describe('末日生存模式(survival gameType)', () => {
     }
   });
 
-  it('场所末日化重配: 营地/墓地/废墟/诊所/商店俱全,公寓 2~3', () => {
+  it('场所末日化重配: 营地/墓地/废墟/医院/警察局/诊所/商店俱全,公寓 2~3', () => {
     for (const result of results) {
       const kinds = new Set(result.map.places.map((p) => p.id.split('-')[0]));
-      for (const kind of ['camping', 'graveyard', 'ruins', 'clinic', 'shop']) {
+      for (const kind of ['camping', 'graveyard', 'ruins', 'hospital', 'police', 'clinic', 'shop']) {
         expect(kinds.has(kind)).toBe(true);
       }
       const homes = result.map.places.filter((p) => p.id.startsWith('home')).length;
@@ -538,6 +552,118 @@ describe('末日生存模式(survival gameType)', () => {
         );
       for (const m of metals) expect(inside(m, ruins)).toBe(true);
     }
+  });
+
+  it('镇内外分区: townCore 透传(~62% 中心矩形),镇内场所含于核心,镇外场所与核心不相交(M-S/S1.5)', () => {
+    for (const result of results) {
+      const core = result.map.townCore;
+      expect(core).toBeDefined();
+      if (core === undefined) continue;
+      expect(core.w).toBe(Math.round(result.map.width * 0.62));
+      expect(core.h).toBe(Math.round(result.map.height * 0.62));
+      const contained = (p: { x: number; y: number; w: number; h: number }): boolean =>
+        p.x >= core.x && p.y >= core.y &&
+        p.x + p.w <= core.x + core.w && p.y + p.h <= core.y + core.h;
+      const intersects = (p: { x: number; y: number; w: number; h: number }): boolean =>
+        p.x < core.x + core.w && core.x < p.x + p.w &&
+        p.y < core.y + core.h && core.y < p.y + p.h;
+      for (const place of result.map.places) {
+        const kind = place.id.split('-')[0]!;
+        if (['graveyard', 'ruins', 'hospital', 'police'].includes(kind)) {
+          expect(intersects(place)).toBe(false);
+        } else {
+          expect(contained(place)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('镇界围栏+出口: 围栏沿核心边线留豁口,豁口可行走,主街 BFS 穿豁口可达镇外(M-S/S1.5)', () => {
+    for (const result of results) {
+      const core = result.map.townCore;
+      expect(core).toBeDefined();
+      if (core === undefined) continue;
+      const tileMap = TileMap.fromDefinition(result.map);
+      const fences = result.map.fences ?? [];
+      const fenced = (x: number, y: number): boolean =>
+        fences.some((f) => x >= f.x && x < f.x + f.w && y >= f.y && y < f.y + f.h);
+      const border: Array<[number, number]> = [
+        ...Array.from({ length: core.w }, (_, i) => [core.x + i, core.y] as [number, number]),
+        ...Array.from({ length: core.w }, (_, i) => [core.x + i, core.y + core.h - 1] as [number, number]),
+        ...Array.from({ length: core.h - 2 }, (_, i) => [core.x, core.y + 1 + i] as [number, number]),
+        ...Array.from({ length: core.h - 2 }, (_, i) => [core.x + core.w - 1, core.y + 1 + i] as [number, number]),
+      ];
+      const gaps = border.filter(([x, y]) => !fenced(x, y));
+      expect(gaps.length).toBeGreaterThanOrEqual(1);
+      for (const [x, y] of gaps) expect(tileMap.isWalkable(x, y)).toBe(true);
+      // 出口全链: 自图中心环形扩散找最近可行走格作起点,穿豁口抵达核心外格
+      const cx = Math.floor(result.map.width / 2);
+      const cy = Math.floor(result.map.height / 2);
+      let start: { x: number; y: number } | null = null;
+      for (let r = 0; r < 20 && start === null; r += 1) {
+        for (let dy = -r; dy <= r && start === null; dy += 1) {
+          for (let dx = -r; dx <= r; dx += 1) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            if (tileMap.isWalkable(cx + dx, cy + dy)) {
+              start = { x: cx + dx, y: cy + dy };
+              break;
+            }
+          }
+        }
+      }
+      expect(start).not.toBeNull();
+      if (start === null) continue;
+      const seen = new Set<string>([`${start.x},${start.y}`]);
+      const queue = [start];
+      let outside = false;
+      while (queue.length > 0 && !outside) {
+        const cur = queue.shift()!;
+        for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]] as const) {
+          const nx = cur.x + dx;
+          const ny = cur.y + dy;
+          const key = `${nx},${ny}`;
+          if (seen.has(key) || !tileMap.isWalkable(nx, ny)) continue;
+          seen.add(key);
+          if (nx < core.x || nx >= core.x + core.w || ny < core.y || ny >= core.y + core.h) {
+            outside = true;
+            break;
+          }
+          queue.push({ x: nx, y: ny });
+        }
+      }
+      expect(outside).toBe(true);
+    }
+  });
+
+  it('wreck 废土装饰: solid 条目全落镇外且避让路/场所,占地即 blockedRect;growth 同池零 solid(M-S/S1.5 C3)', () => {
+    const wreckInput = {
+      assetsByKind: { [DECOR_POOLS.wreck]: ['car-wreck-a', 'pole-a', 'barrier-a'] },
+      assetSizes: { 'car-wreck-a': [4, 2], 'pole-a': [1, 4], 'barrier-a': [2, 1] } as const,
+    };
+    const wrecked = Array.from({ length: 20 }, (_, i) =>
+      generateTownMap(input(`surv-${i}`, { gameType: 'survival', ...wreckInput })),
+    );
+    for (const result of wrecked) {
+      const core = result.map.townCore;
+      expect(core).toBeDefined();
+      if (core === undefined) continue;
+      const solid = (result.map.decor?.props ?? []).filter((p) => p.solid === true);
+      expect(solid.length).toBeGreaterThanOrEqual(1);
+      const onRect = (x: number, y: number, rs: ReadonlyArray<{ x: number; y: number; w: number; h: number }>): boolean =>
+        rs.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+      for (const entry of solid) {
+        const rect = solidDecorRect(entry);
+        for (let y = rect.y; y < rect.y + rect.h; y += 1) {
+          for (let x = rect.x; x < rect.x + rect.w; x += 1) {
+            expect(x < core.x || x >= core.x + core.w || y < core.y || y >= core.y + core.h).toBe(true);
+            expect(onRect(x, y, result.map.paths)).toBe(false);
+            expect(onRect(x, y, result.map.places)).toBe(false);
+          }
+        }
+      }
+    }
+    const growth = generateTownMap(input('surv-0', wreckInput));
+    expect((growth.map.decor?.props ?? []).some((p) => p.solid === true)).toBe(false);
   });
 
   it('growth/survival 隔离: growth 并集无墓地废墟,同 seed 两模式地图不同', () => {
