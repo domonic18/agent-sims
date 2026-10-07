@@ -10,6 +10,7 @@ import {
   resourceNodeLabel,
   type ActivityDefinition,
   type GatherTaskDef,
+  type ResourceNode,
 } from '@sims/shared';
 import {
   fetchGameAssetRegistry,
@@ -20,6 +21,28 @@ import { FENCE_DAMAGE_SPRITE, LITTER_SPRITES } from '../../game/maintenance-view
 import type { CharacterView } from '../side-panel/place';
 import { reportAssetIssue } from '../../net/issueApi';
 import { useInspectStore, type InspectTarget } from '../../store/inspectStore';
+import { useWorldStore } from '../../store/worldStore';
+
+/** 节点 kind → SYS_CONFIG resources 组参数键(与 server NODE_CHARGE_KEYS 同源,展示用) */
+const NODE_CHARGE_PARAM_KEYS: Record<ResourceNode['kind'], string> = {
+  berry_bush: 'NODE_MAX_CHARGES_BERRY',
+  junk_pile: 'NODE_MAX_CHARGES_JUNK',
+  tree: 'NODE_MAX_CHARGES_TREE',
+  rock: 'NODE_MAX_CHARGES_ROCK',
+  metal_pile: 'NODE_MAX_CHARGES_METAL',
+  apple_tree: 'NODE_MAX_CHARGES_APPLE',
+  wheat_patch: 'NODE_MAX_CHARGES_WHEAT',
+};
+
+/** 存量上限展示值:每世界生效参数优先(world.params 保鲜),缺省回退出厂表;-1 哨兵=无限 */
+function nodeChargeCap(
+  kind: ResourceNode['kind'],
+  params: Record<string, number> | null,
+): number | null {
+  const fallback = NODE_MAX_CHARGES[kind];
+  const value = params?.[NODE_CHARGE_PARAM_KEYS[kind]] ?? (fallback === null ? -1 : fallback);
+  return value < 0 ? null : value;
+}
 
 /** 家具 emoji 兜底(素材缺失/清单滞后时) */
 const KIND_EMOJI: Record<string, string> = {
@@ -113,6 +136,7 @@ export interface InspectCardProps {
 export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
   const target = useInspectStore((state) => state.target);
   const close = useInspectStore((state) => state.close);
+  const worldParams = useWorldStore((state) => state.params);
   const slug = target !== null ? iconSlugOf(target) : null;
   const iconUrl = useIconUrl(slug);
   const [reportState, setReportState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
@@ -179,7 +203,9 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
         ],
         [
           '存量',
-          r.charges === null ? '无限' : `${r.charges} / ${NODE_MAX_CHARGES[r.kind] ?? '?'}`,
+          r.charges === null
+            ? '无限'
+            : `${r.charges} / ${nodeChargeCap(r.kind, worldParams) ?? '∞'}`,
         ],
       ];
       const task = (Object.values(GATHER_TASKS) as GatherTaskDef[]).find(
