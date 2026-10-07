@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { speechTextStyle } from './text-style';
 
 /** 气泡挂在角色头顶(高于活动气泡 -38 与幽灵徽标 -52) */
 const SPEECH_Y = -62;
@@ -16,22 +17,15 @@ export function showSpeechBubble(
   content: string,
 ): void {
   active.get(node)?.destroy();
-  const text = scene.add
-    .text(0, -3, content, {
-      fontSize: '9px',
-      color: '#333333',
-      align: 'center',
-      wordWrap: { width: 116 },
-    })
-    .setOrigin(0.5, 1);
+  const text = scene.add.text(0, -3, content, speechTextStyle(128)).setOrigin(0.5, 1);
   const width = Math.max(text.width + 14, 26);
   const height = text.height + 7;
   const bg = scene.add.graphics();
   bg.fillStyle(0xffffff, 0.95);
-  bg.fillRoundedRect(-width / 2, -height - 3, width, height, 5);
+  bg.fillRoundedRect(-width / 2, -height - 3, width, height, 6);
   bg.fillTriangle(-4, -3, 4, -3, 0, 2);
-  bg.lineStyle(1, 0x39516a, 0.45);
-  bg.strokeRoundedRect(-width / 2, -height - 3, width, height, 5);
+  bg.lineStyle(1, 0x39516a, 0.6);
+  bg.strokeRoundedRect(-width / 2, -height - 3, width, height, 6);
   const bubble = scene.add.container(0, SPEECH_Y, [bg, text]);
   bubble.setDepth(60);
   node.add(bubble);

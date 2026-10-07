@@ -14,6 +14,7 @@ import {
   characterVariant,
 } from './assets';
 import { characterAnim, registryOf, type GameAssetRegistry } from './manifest';
+import { badgeTextStyle, bubbleEmojiTextStyle, nameTextStyle } from './text-style';
 
 const BUBBLE_RADIUS = 8;
 const BUBBLE_Y = -38;
@@ -280,7 +281,7 @@ function updateBadges(scene: Phaser.Scene, view: CharacterRender, now: number): 
   const ghostText = remaining === null ? '👻' : `👻${Math.ceil(remaining / 60)}h`;
   if (view.ghostBadge === null) {
     view.ghostBadge = scene.add
-      .text(0, BUBBLE_Y - 14, ghostText, { fontSize: '10px' })
+      .text(0, BUBBLE_Y - 14, ghostText, badgeTextStyle())
       .setOrigin(0.5, 0.5);
     view.node.add(view.ghostBadge);
   } else if (view.ghostBadge.text !== ghostText) {
@@ -291,7 +292,7 @@ function updateBadges(scene: Phaser.Scene, view: CharacterRender, now: number): 
   view.sprite.alpha = view.alive ? 1 : 0.55;
   if (view.warnBadge === null) {
     view.warnBadge = scene.add
-      .text(13, -22, '⚡', { fontSize: '10px', color: '#ff4d4d' })
+      .text(13, -22, '⚡', badgeTextStyle('#ff4d4d'))
       .setOrigin(0.5, 0.5)
       .setStroke('rgba(0,0,0,0.5)', 2);
     view.node.add(view.warnBadge);
@@ -315,9 +316,7 @@ function updateBubble(scene: Phaser.Scene, view: CharacterRender, now: number): 
   if (view.bubble === null) {
     const ring = scene.add.graphics();
     const emoji = ACTIVITY_EMOJI[view.activityId as ActivityId] ?? '❓';
-    const text = scene.add
-      .text(0, 0, emoji, { fontSize: '9px', color: '#222222' })
-      .setOrigin(0.5, 0.5);
+    const text = scene.add.text(0, 0, emoji, bubbleEmojiTextStyle()).setOrigin(0.5, 0.5);
     const bubble = scene.add.container(0, BUBBLE_Y, [ring, text]);
     view.node.add(bubble);
     view.bubble = bubble;
@@ -396,7 +395,7 @@ function createCharacterNode(
     .sprite(0, 0, textureKey(variant), (anim.groups.idle! + CHARACTER_ROW_OFFSETS.down) * anim.columns)
     .setOrigin(0.5, 0.82);
   const label = scene.add
-    .text(0, -24, name, { fontSize: '10px', color: '#ffffff' })
+    .text(0, -24, name, nameTextStyle())
     .setOrigin(0.5, 0)
     .setBackgroundColor('rgba(0,0,0,0.45)');
   node.add([sprite, label]);
