@@ -13,6 +13,9 @@ import {
   WORLD_TIME_SCALES,
   WORLDGEN_DENSITIES,
   WORLDGEN_SIZES,
+  cloneRecipes,
+  defaultRecipes,
+  validateRecipes,
   type CreateWorldRequest,
   type TileMapDefinition,
   type WorldRules,
@@ -80,6 +83,7 @@ function normalizeRules(partial: Partial<WorldRules> | undefined): WorldRules {
     allowChat: partial?.allowChat ?? DEFAULT_WORLD_RULES.allowChat,
     initialTimeScale: partial?.initialTimeScale ?? DEFAULT_WORLD_RULES.initialTimeScale,
     ...(partial?.params !== undefined ? { params: partial.params } : {}),
+    ...(partial?.recipes !== undefined ? { recipes: partial.recipes } : {}),
   };
 }
 
@@ -264,6 +268,11 @@ export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle)
     app.simulation.gameType = config.worldgen?.gameType ?? 'growth';
     app.simulation.rules = rules;
     applyWorldParams(rules.params);
+    // 每世界配方恢复(旧世界无存档或校验不过→出厂默认,可用性优先)
+    app.simulation.recipes =
+      rules.recipes !== undefined && validateRecipes(rules.recipes).length === 0
+        ? cloneRecipes(rules.recipes)
+        : defaultRecipes();
     app.simulation.timeScale = rules.initialTimeScale;
     app.simulation.setPaused(true);
   } catch {
@@ -314,6 +323,8 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       return await reply.code(400).send({ error: '请求参数不合法' });
     }
     const rules = normalizeRules(parsed.data.rules);
+    // 每世界配方冻结(v1 不收客户端配方,出厂默认深拷贝入档;admin 配方页后续可编辑)
+    rules.recipes = defaultRecipes();
     // 世界参数目录校验(zod 只保证数字 record;越界/非整数/未知 key 在此拒绝)
     const paramErrors = validateBalanceOverrides(rules.params ?? {});
     if (paramErrors.length > 0) {
@@ -381,6 +392,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
     app.simulation.gameType = parsed.data.worldgen?.gameType ?? 'growth';
     app.simulation.rules = rules;
     applyWorldParams(rules.params); // 先复位出厂默认再应用本世界覆盖,消除上一世界残留
+    app.simulation.setRecipes(rules.recipes!); // 建世界冻结的配方快照灌入运行时
     app.simulation.timeScale = rules.initialTimeScale;
     const simIds: string[] = [];
     for (const [index, character] of config.characters.entries()) {

@@ -2,6 +2,7 @@
  * 世界生命周期管理协议(M3.6k):后台创建/关闭/删除世界,替代 debug 脚本开荒。
  * 架构为"单活跃世界+归档":同时至多一个 active 世界,创建新世界时旧的转 closed。
  */
+import type { CraftRecipeId, RecipeDef } from './production.js';
 import type { GameType, WorldgenParams, WorldgenReport } from './worldgen.js';
 
 /** 性别:v1 为数据字段(入库+快照),暂不影响外观(精灵无性别素材) */
@@ -62,6 +63,9 @@ export interface WorldRules {
   initialTimeScale: WorldTimeScale;
   /** 世界参数(键=balance.ts 目录键,缺省=BALANCE_DEFAULTS);Lab 调试台改参后回写 */
   params?: Record<string, number>;
+  /** 每世界配方(建世界自 defaultRecipes() 深拷贝冻结,admin 配方页编辑后回写;
+   * 旧世界无此字段时运行时兜底出厂默认) */
+  recipes?: Record<CraftRecipeId, RecipeDef>;
 }
 
 export const DEFAULT_WORLD_RULES: WorldRules = {

@@ -149,6 +149,70 @@ describe('食物链制作两配方(2026-10-07 食物经济)', () => {
   });
 });
 
+describe('每世界配方热改(2026-10-07 配置化): 禁用/时长/退料产出快照', () => {
+  it('禁用配方 craft 拒绝;setRecipes 恢复后可制', () => {
+    const { sim } = simWithChef();
+    sim.setRecipes({ ...sim.recipes, craft_bread: { ...sim.recipes.craft_bread!, enabled: false } });
+    sim.character('chef').backpack = { wheat: 2 };
+    expect(() => sim.requestCraft('chef', 'craft_bread')).toThrow(/停用/);
+    sim.setRecipes({ ...sim.recipes, craft_bread: { ...sim.recipes.craft_bread!, enabled: true } });
+    arriveAt(sim, STOVE_USE.x, STOVE_USE.y);
+    expect(() => sim.requestCraft('chef', 'craft_bread')).not.toThrow();
+  });
+
+  it('时长热改吃配方值: bread 20→5 分,5 分完成产出;reset 复位后 20 分不提前完成', () => {
+    const { sim } = simWithChef();
+    sim.setRecipes({ ...sim.recipes, craft_bread: { ...sim.recipes.craft_bread!, durationMinutes: 5 } });
+    sim.character('chef').backpack = { wheat: 2 };
+    arriveAt(sim, STOVE_USE.x, STOVE_USE.y);
+    sim.requestCraft('chef', 'craft_bread');
+    sim.advanceTicks(5); // 到位约 1~2 tick + 作业 5 分
+    let done = sim.character('chef');
+    if (done.activity !== null) sim.advanceTicks(3); // 在途余量,最多 8 分
+    done = sim.character('chef');
+    expect(done.activity).toBeNull();
+    expect(done.backpack.bread).toBe(1);
+
+    sim.reset(); // reset 回出厂默认(20 分)且清空角色,重出生
+    sim.spawnCharacter('chef', 8, 12, '小满');
+    sim.character('chef').knowledge = 3;
+    sim.character('chef').backpack = { wheat: 2 };
+    arriveAt(sim, STOVE_USE.x, STOVE_USE.y);
+    sim.requestCraft('chef', 'craft_bread');
+    sim.advanceTicks(10); // 远未到 20 分
+    expect(sim.character('chef').activity).not.toBeNull();
+  });
+
+  it('在制单不追溯: 开始后退料表改配方,中断按开始时快照退料、完成按快照产出', () => {
+    const { sim } = simWithChef();
+    sim.character('chef').backpack = { wheat: 2 };
+    arriveAt(sim, STOVE_USE.x, STOVE_USE.y);
+    sim.requestCraft('chef', 'craft_bread');
+    // 在制中途改配方: 材料 wheat→berry×1、产物 bread→cake×1
+    sim.setRecipes({
+      ...sim.recipes,
+      craft_bread: {
+        ...sim.recipes.craft_bread!,
+        inputs: [{ itemId: 'berry', count: 1 }],
+        outputs: [{ itemId: 'cake', count: 1 }],
+      },
+    });
+    sim.advanceTicks(3);
+    sim.requestStopActivity('chef'); // 中断: 退 wheat(开始时扣的),不退 berry
+    const chef = sim.character('chef');
+    expect(chef.backpack.wheat).toBe(2);
+    expect(chef.backpack.berry).toBeUndefined();
+
+    // 完成路径: 重新挂单(按新表扣 berry),完成产 cake(新表快照)
+    sim.character('chef').backpack = { berry: 1 };
+    sim.requestCraft('chef', 'craft_bread');
+    sim.advanceTicks(40);
+    const done = sim.character('chef');
+    expect(done.backpack.cake).toBe(1);
+    expect(done.backpack.berry).toBeUndefined();
+  });
+});
+
 describe('修补钉闭环(M-G.6 修理岗消耗品)', () => {
   const FENCE_ID = 'fence:4:26';
 

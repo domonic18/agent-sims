@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { ACTIVITY_DEFINITIONS, JOB_CATEGORIES, type JobCategoryId } from './activities.js';
+import { ITEM_IDS } from './items.js';
 
 /**
  * 生产系统协议面(M-G.6,design/09):资源节点双端形态与采集岗位参数。
@@ -150,6 +152,130 @@ export interface RecipeDef {
   stationKind: 'stove' | 'workbench';
   inputs: RecipeIO[];
   outputs: RecipeIO[];
+  /** 是否启用(禁用后 craft 意图拒绝;每世界快照恒有值,shared 源表缺省视为 true) */
+  enabled?: boolean;
+  /** 制作时长(分钟;每世界快照自活动定义定格,运行时以本值为准,不追溯进行中活动) */
+  durationMinutes?: number;
+  /** 可制作场所(每世界快照自活动定义) */
+  placeIds?: string[];
+  /** 岗位类别门槛快照(自活动定义;craft_berry_pie 等随类别门槛受知识约束) */
+  category?: JobCategoryId;
+}
+
+/**
+ * 出厂配方全集(每世界内容模板):RECIPES 源表 + 自活动定义快照的
+ * durationMinutes/placeIds/category/enabled。建世界时深拷贝冻结进
+ * config.rules.recipes,此后 admin 配方页编辑只改该世界存档与运行时,
+ * shared 源表更新仅影响新世界(与 TOWN_MAP 冻结语义同构)。
+ */
+export function defaultRecipes(): Record<CraftRecipeId, RecipeDef> {
+  return Object.fromEntries(
+    CRAFT_RECIPE_IDS.map((id) => {
+      const recipe = RECIPES[id];
+      const activity = ACTIVITY_DEFINITIONS.find((def) => def.id === id);
+      return [
+        id,
+        {
+          ...recipe,
+          enabled: true,
+          durationMinutes: recipe.durationMinutes ?? activity?.durationMinutes ?? 20,
+          placeIds: recipe.placeIds ?? [...(activity?.placeIds ?? [])],
+          ...(recipe.category ?? activity?.category !== undefined
+            ? { category: recipe.category ?? activity?.category }
+            : {}),
+        },
+      ];
+    }),
+  ) as Record<CraftRecipeId, RecipeDef>;
+}
+
+/** 深拷贝配方全集(server 建世界/恢复时灌入 sim,隔离 admin 运行时修改与存档对象) */
+export function cloneRecipes(recipes: Record<CraftRecipeId, RecipeDef>): Record<CraftRecipeId, RecipeDef> {
+  return Object.fromEntries(
+    CRAFT_RECIPE_IDS.map((id) => {
+      const recipe = recipes[id];
+      return [
+        id,
+        {
+          ...recipe,
+          inputs: recipe.inputs.map((io) => ({ ...io })),
+          outputs: recipe.outputs.map((io) => ({ ...io })),
+          ...(recipe.placeIds !== undefined ? { placeIds: [...recipe.placeIds] } : {}),
+        },
+      ];
+    }),
+  ) as Record<CraftRecipeId, RecipeDef>;
+}
+
+/**
+ * 配方全集校验(后台 PUT 用):id 封闭联合逐项校验,缺项/材料或产物
+ * ItemId 不在目录/数量非正整数/时长越界均拒;返回错误文案列表,空=全部合法。
+ */
+export function validateRecipes(recipes: unknown): string[] {
+  const errors: string[] = [];
+  if (recipes === null || typeof recipes !== 'object' || Array.isArray(recipes)) {
+    return ['配方全集须为对象'];
+  }
+  const record = recipes as Record<string, unknown>;
+  const validIO = (io: unknown): boolean => {
+    if (io === null || typeof io !== 'object') return false;
+    const entry = io as { itemId?: unknown; count?: unknown };
+    return (
+      typeof entry.itemId === 'string' &&
+      (ITEM_IDS as readonly string[]).includes(entry.itemId) &&
+      typeof entry.count === 'number' &&
+      Number.isInteger(entry.count) &&
+      entry.count >= 1 &&
+      entry.count <= 99
+    );
+  };
+  const ioList = (value: unknown): boolean =>
+    Array.isArray(value) && value.length >= 1 && value.length <= 6 && value.every(validIO);
+  for (const id of CRAFT_RECIPE_IDS) {
+    const recipe = record[id];
+    if (recipe === null || typeof recipe !== 'object') {
+      errors.push(`${id}: 缺少配方定义`);
+      continue;
+    }
+    const def = recipe as Record<string, unknown>;
+    if (typeof def.name !== 'string' || def.name.trim() === '' || def.name.length > 20) {
+      errors.push(`${id}.name: 须为 1~20 字文本`);
+    }
+    if (def.stationKind !== 'stove' && def.stationKind !== 'workbench') {
+      errors.push(`${id}.stationKind: 仅支持 stove/workbench`);
+    }
+    if (typeof def.enabled !== 'boolean') {
+      errors.push(`${id}.enabled: 须为布尔`);
+    }
+    if (
+      typeof def.durationMinutes !== 'number' ||
+      !Number.isInteger(def.durationMinutes) ||
+      def.durationMinutes < 1 ||
+      def.durationMinutes > 600
+    ) {
+      errors.push(`${id}.durationMinutes: 须为 1~600 整数分钟`);
+    }
+    if (!ioList(def.inputs)) {
+      errors.push(`${id}.inputs: 须为 1~6 项材料(ItemId 在目录内,数量 1~99 整数)`);
+    }
+    if (!ioList(def.outputs)) {
+      errors.push(`${id}.outputs: 须为 1~6 项产物(ItemId 在目录内,数量 1~99 整数)`);
+    }
+    if (
+      !Array.isArray(def.placeIds) ||
+      def.placeIds.length < 1 ||
+      !def.placeIds.every((p) => typeof p === 'string' && p.length > 0)
+    ) {
+      errors.push(`${id}.placeIds: 须为非空场所 id 数组`);
+    }
+    if (
+      def.category !== undefined &&
+      !(Object.keys(JOB_CATEGORIES) as string[]).includes(def.category as string)
+    ) {
+      errors.push(`${id}.category: 未知岗位类别`);
+    }
+  }
+  return errors;
 }
 
 export const RECIPES: Record<CraftRecipeId, RecipeDef> = {

@@ -22,13 +22,16 @@ import {
   DEFAULT_WORLD_RULES,
   MAINTENANCE_TASKS,
   PROPERTY_IDS,
-  RECIPES,
   REVIVE_WINDOW_MINUTES,
   SHOP_ITEM_IDS,
   TOWN_MAP,
   WORK_TARGETS,
+  cloneRecipes,
+  defaultRecipes,
   getActivityDefinition,
   isGatherTask,
+  type CraftRecipeId,
+  type RecipeDef,
   type TileMapDefinition,
 } from '@sims/shared';
 import {
@@ -114,6 +117,10 @@ export class Simulation {
   timeScale: number = BALANCE.DEFAULT_TIME_SCALE;
   /** 世界规则(M5):默认全开;后台创建世界时随配置覆写,reset 回默认 */
   rules: WorldRules = { ...DEFAULT_WORLD_RULES };
+  /** 每世界配方(2026-10-07 配置化):建世界/恢复时灌入 config.rules.recipes 深拷贝,
+   * admin 配方页运行时改写 live 生效(不追溯在制单,退料/产出凭 activity 快照);
+   * reset 回出厂默认。craft/活动门槛/时长/场所/产出全部读本表 */
+  recipes: Record<CraftRecipeId, RecipeDef> = defaultRecipes();
   /** 游戏模式(M-S/S1):survival 启用生存健康数值;创建/恢复世界时注入,reset 回 growth */
   gameType: GameType = 'growth';
   /** 随机源(损耗生成器 roll;默认 Math.random,测试注入确定性实现) */
@@ -160,6 +167,7 @@ export class Simulation {
     this.paused = false;
     this.timeScale = BALANCE.DEFAULT_TIME_SCALE;
     this.rules = { ...DEFAULT_WORLD_RULES };
+    this.recipes = defaultRecipes();
     this.gameType = 'growth';
     const event: WorldResetEvent = { type: 'world.reset', tick: this.tick };
     this.events.emit(event);
@@ -356,6 +364,16 @@ export class Simulation {
     this.events.emit(event);
   }
 
+  /** 每世界配方查询(id 封闭联合;未知 id 返回 null,craft/活动门槛共用) */
+  recipe(id: string): RecipeDef | null {
+    return (this.recipes as Record<string, RecipeDef>)[id] ?? null;
+  }
+
+  /** 配方全集替换(建世界/恢复灌入深拷贝,与存档对象隔离;admin 编辑走本入口) */
+  setRecipes(recipes: Record<CraftRecipeId, RecipeDef>): void {
+    this.recipes = cloneRecipes(recipes);
+  }
+
   /** 状态快照:调试端点与同步层共用的对外形态(序列化在 snapshot.ts) */
   snapshot(): WorldSnapshotMessage {
     return worldSnapshot(this);
@@ -406,11 +424,16 @@ export class Simulation {
             // 维护工单(M-G.5):在途不结算;到位每分钟先验目标有效再计时
             this._stepWorkTask(character, definition);
           } else {
+            const craftRecipe =
+              character.activity.craftRecipeId !== undefined
+                ? this.recipe(character.activity.craftRecipeId)
+                : null;
             const result = settleActivityMinute(
               character.activity,
               character,
               definition,
               debtFactor(character, this.clock.gameMinutes),
+              craftRecipe?.durationMinutes,
             );
             // 睡眠账本(M-G.2):仅窗口内的入睡分钟累计;06:00 后续睡不进新账本
             if (character.activity.activityId === 'sleep' && inSleepWindow(this.clock)) {
@@ -500,15 +523,17 @@ export class Simulation {
     finishActivity(this, character, 'completed');
   }
 
-  /** 配方完成(M-G.6):产出入包+craft.completed;中断退料在 finishActivity 分流。
+  /** 配方完成(M-G.6):产出凭开始时快照入包+craft.completed;中断退料在
+   * finishActivity 凭快照分流(配方热改不追溯在制单)。
    * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(材料已扣不退,有意) */
   private _completeCraft(character: WorldCharacter): void {
     const recipeId = character.activity?.craftRecipeId;
     if (recipeId === undefined) {
       return;
     }
+    const outputs = character.activity?.craftOutputs ?? this.recipe(recipeId)?.outputs ?? [];
     const factor = debtFactor(character, this.clock.gameMinutes);
-    for (const output of RECIPES[recipeId].outputs) {
+    for (const output of outputs) {
       character.backpack[output.itemId] =
         (character.backpack[output.itemId] ?? 0) + Math.floor(output.count * factor);
     }

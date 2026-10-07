@@ -1,7 +1,7 @@
 import { randomBytes, scryptSync } from 'node:crypto';
 import { eq, like } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CreateWorldRequest, WorldView } from '@sims/shared';
+import { defaultRecipes, type CreateWorldRequest, type WorldView } from '@sims/shared';
 import { buildApp } from '../src/app.js';
 import { restoreActiveWorld } from '../src/admin-api/worlds.js';
 import { env } from '../src/config/env.js';
@@ -176,7 +176,12 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     });
     expect(created.statusCode).toBe(201);
     const world = created.json() as WorldView;
-    expect(world.rules).toEqual({ allowDeath: false, allowChat: false, initialTimeScale: 4 });
+    expect(world.rules).toEqual({
+      allowDeath: false,
+      allowChat: false,
+      initialTimeScale: 4,
+      recipes: defaultRecipes(), // 建世界冻结出厂配方快照
+    });
     // 模拟层规则与初始倍率即时生效
     expect(app.simulation.rules.allowDeath).toBe(false);
     expect(app.simulation.rules.allowChat).toBe(false);
@@ -201,7 +206,12 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     });
     expect(plain.statusCode).toBe(201);
     const plainView = plain.json() as WorldView;
-    expect(plainView.rules).toEqual({ allowDeath: true, allowChat: true, initialTimeScale: 1 });
+    expect(plainView.rules).toEqual({
+      allowDeath: true,
+      allowChat: true,
+      initialTimeScale: 1,
+      recipes: defaultRecipes(),
+    });
     expect(app.simulation.rules.allowDeath).toBe(true);
     expect(app.simulation.timeScale).toBe(1);
     await app.close();

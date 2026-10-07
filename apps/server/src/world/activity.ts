@@ -9,9 +9,7 @@ import {
   GATHER_TASKS,
   JOB_CATEGORIES,
   MAINTENANCE_TASKS,
-  RECIPES,
   furnitureLabel,
-  getRecipe,
   REST_RATES_BY_KIND,
   getActivityDefinition,
 } from '@sims/shared';
@@ -39,8 +37,9 @@ export function finishActivity(
   }
   const activity = character.activity;
   character.activity = null;
-  if (activity.craftRecipeId !== undefined && reason !== 'completed') {
-    for (const input of RECIPES[activity.craftRecipeId].inputs) {
+  // 中断退料凭开始时扣料快照(配方热改不追溯在制单,退错料防错)
+  if (activity.craftInputs !== undefined && reason !== 'completed') {
+    for (const input of activity.craftInputs) {
       character.backpack[input.itemId] = (character.backpack[input.itemId] ?? 0) + input.count;
     }
   }
@@ -76,7 +75,7 @@ export function startActivity(
   if (activityId in MAINTENANCE_TASKS || activityId in GATHER_TASKS) {
     throw new Error(`${definition.name} 为工单岗位,须经 work_task 接单`);
   }
-  const recipe = getRecipe(activityId);
+  const recipe = sim.recipe(activityId);
   if (recipe !== null && opts?.recipeId !== recipe.id) {
     throw new Error(`${definition.name} 为配方制作,须经 craft 意图(验料扣料)开始`);
   }
@@ -98,12 +97,14 @@ export function startActivity(
       `${character.name} 体力过低(${Math.floor(character.energy)}≤${BALANCE.LOW_ENERGY_THRESHOLD}),只能进行基础活动(${BASIC_ACTIVITY_IDS.join('/')})`,
     );
   }
-  // 岗位知识门槛(M-G.4 类别平行模型): 门槛=类别累计学习班数,拒绝并回执缺口
-  if (definition.category !== undefined) {
-    const required = JOB_CATEGORIES[definition.category].requiredKnowledge;
+  // 岗位知识门槛(M-G.4 类别平行模型): 门槛=类别累计学习班数,拒绝并回执缺口;
+  // 配方制作的类别以每世界快照为准(recipe.category)
+  const category = recipe?.category ?? definition.category;
+  if (category !== undefined) {
+    const required = JOB_CATEGORIES[category].requiredKnowledge;
     if (character.knowledge < required) {
       throw new Error(
-        `${character.name} 知识不足: ${JOB_CATEGORIES[definition.category].label}类岗位需学习 ${required} 班(当前 ${character.knowledge})`,
+        `${character.name} 知识不足: ${JOB_CATEGORIES[category].label}类岗位需学习 ${required} 班(当前 ${character.knowledge})`,
       );
     }
   }
@@ -125,16 +126,22 @@ export function startActivity(
       ensureRestAccess(sim, character, anchor.placeId);
     }
   } else if (
-    !definition.placeIds.some((placeId) => sim.map.contains(placeId, character.x, character.y))
+    !(recipe?.placeIds ?? definition.placeIds).some((placeId) =>
+      sim.map.contains(placeId, character.x, character.y),
+    )
   ) {
-    throw new Error(`${definition.name} 须在场所 ${definition.placeIds.join('、')} 入口或范围内`);
+    throw new Error(
+      `${definition.name} 须在场所 ${(recipe?.placeIds ?? definition.placeIds).join('、')} 入口或范围内`,
+    );
   }
   character.activity = {
     activityId,
     elapsed: 0,
     anchorKind,
     targetId: null,
-    ...(recipe !== null ? { craftRecipeId: recipe.id } : {}),
+    ...(recipe !== null
+      ? { craftRecipeId: recipe.id, craftInputs: recipe.inputs, craftOutputs: recipe.outputs }
+      : {}),
   };
   const event: ActivityStartedEvent = {
     type: 'activity.started',
@@ -158,7 +165,8 @@ export function stopActivity(sim: Simulation, characterId: string): WorldCharact
 
 /**
  * 结算活动的一游戏分钟:效果为每分钟净速率(M3.6g,已含活动期间代谢,
- * 调用方待机才走基础代谢衰减),达到 durationMinutes 返回 completed;
+ * 调用方待机才走基础代谢衰减),达到 durationMinutes 返回 completed
+ * (durationOverride=配方制作的每世界时长快照,热改不追溯在制单);
  * 净负金币且余额不足返回 insufficient_coins(结算前判定,金币不透支)。
  * rest/sleep 按锚点家具档位(REST_RATES_BY_KIND: 床/沙发/长椅)取速率。
  * debtFactor(M-G.2 缺觉): 仅乘正金币与正得分,体力与负项不动。
@@ -168,6 +176,7 @@ export function settleActivityMinute(
   character: WorldCharacter,
   definition: ActivityDefinition,
   debtFactor = 1,
+  durationOverride?: number,
 ): SettleResult {
   const rates =
     (definition.id === 'rest' || definition.id === 'sleep') && activity.anchorKind !== null
@@ -189,5 +198,5 @@ export function settleActivityMinute(
     character.coins + (effects.coins > 0 ? effects.coins * debtFactor : effects.coins),
   );
   activity.elapsed += 1;
-  return activity.elapsed >= definition.durationMinutes ? 'completed' : 'continue';
+  return activity.elapsed >= (durationOverride ?? definition.durationMinutes) ? 'completed' : 'continue';
 }

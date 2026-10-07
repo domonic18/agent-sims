@@ -1,17 +1,26 @@
-import type { CharacterAutoRevivedEvent, CharacterRevivedEvent, CraftRecipeId, TraitVector } from '@sims/shared';
+import type {
+  CharacterAutoRevivedEvent,
+  CharacterRevivedEvent,
+  CraftRecipeId,
+  RecipeIO,
+  TraitVector,
+} from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import type { Point } from './pathfinding.js';
 import type { Simulation } from './simulation.js';
 
 /** 角色进行中活动(elapsed 为已进行游戏分钟;anchorKind=rest 档位家具 kind;
  * targetId=work_task 工单目标[维护点 id/待救角色 id],null=普通活动,M-G.5;
- * craftRecipeId=配方制作在制单(M-G.6,内存态不进快照),中断退料/完成产出凭据) */
+ * craftRecipeId=配方制作在制单(M-G.6,内存态不进快照),craftInputs/craftOutputs=
+ * 开始时实际扣料/将产出快照——中断退料与完成产出凭快照结算,配方热改不追溯在制单) */
 export interface CharacterActivity {
   activityId: string;
   elapsed: number;
   anchorKind: string | null;
   targetId: string | null;
   craftRecipeId?: CraftRecipeId;
+  craftInputs?: RecipeIO[];
+  craftOutputs?: RecipeIO[];
 }
 
 /** 住宿状态: 租约付到日(含)或自有 */
