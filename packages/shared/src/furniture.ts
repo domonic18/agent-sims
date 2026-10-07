@@ -56,6 +56,9 @@ export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
   workbench: '木工台',
 };
 
+/** 朝向(家具面朝方向;worldgen 布局时由锚点派生,渲染方向变体消费) */
+export type FacingDirection = 'north' | 'south' | 'east' | 'west';
+
 /**
  * 家具定义:占地 x..x+w-1 / y..y+h-1(格,均不可行走)。
  * 锚点家具(activityId+use):角色立于 use 格即可开始绑定活动;
@@ -77,6 +80,12 @@ export interface FurnitureDefinition {
    * 内置固定地图与未选材场景兼容)
    */
   sprite?: string;
+  /**
+   * 朝向(06-worldgen §3③):worldgen 锚点派生——north 槽→facing south
+   * (贴北墙面朝房间)、south→north、east→west、west→east;center/scatter
+   * 省略。渲染侧按 facing 选方向变体(-b 后缀=背面件)
+   */
+  facing?: FacingDirection;
 }
 
 /** 可作 rest 锚点的家具档位(satisfies 约束新增档位必须先入 FURNITURE_KINDS) */

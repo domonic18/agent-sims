@@ -52,6 +52,8 @@ export interface FurnitureSlot {
   anchor: 'north' | 'west' | 'east' | 'center' | 'south' | 'scatter';
   /** 活动锚点;装饰类省略 */
   activityId?: ActivityId;
+  /** 沿墙排布对齐(06-worldgen §3③): 行锚 start=西→东/end=反向/center=自中点交替;列锚同理;缺省主序 */
+  align?: 'start' | 'center' | 'end';
   /** 装饰类摆放概率(0=必选) */
   chance?: number;
   /** 素材池域(缺省 indoor;户外道具池传 outdoor) */

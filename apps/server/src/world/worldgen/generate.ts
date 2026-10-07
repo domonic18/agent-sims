@@ -11,7 +11,7 @@ import {
   type WorldgenParams,
   type WorldgenReport,
 } from '@sims/shared';
-import type { ActivityId, BlockedRect } from '@sims/shared';
+import type { ActivityId, BlockedRect, FacingDirection } from '@sims/shared';
 import { TileMap } from '../map.js';
 import {
   DECOR_POOLS,
@@ -533,7 +533,7 @@ function slotPool(
   return assetsByKind?.[`${slot.domain ?? 'indoor'}/${slot.kind}`] ?? [];
 }
 
-type SlotWithPool = FurnitureSlot & { pool: readonly string[] };
+export type SlotWithPool = FurnitureSlot & { pool: readonly string[] };
 
 /** 槽位解析:themePick 池空的装饰槽剔除(kind 仅作标签无同名纹理,发出必渲染缺纹理) */
 function resolvedSlots(
@@ -543,6 +543,55 @@ function resolvedSlots(
   return source
     .filter((slot) => slot.themePick === undefined || slotPool(slot, assetsByKind).length > 0)
     .map((slot) => ({ ...slot, pool: slotPool(slot, assetsByKind) }));
+}
+
+/** 第三轮槽位过滤(06-worldgen §3⑤ 梯度降档中段): 仅剔 chance<1 装饰槽,
+ * chance≥1 必选槽保留——旧末轮把必选装饰槽一并剥掉,小房间被剥至仅剩锚点家具 */
+export const attemptCoreSlots = (
+  source: readonly FurnitureSlot[],
+): readonly FurnitureSlot[] =>
+  source.filter((slot) => slot.chance === undefined || slot.chance >= 1);
+
+/** 沿墙候选起点序列(align 对齐,06-worldgen §3③): start=主序/end=逆序/center=自中点向外交替(左先);
+ * 缺省=主序(与旧扫描一致,rng 流零影响——扫描不消费随机) */
+export function alignedScan(
+  min: number,
+  max: number,
+  size: number,
+  align: 'start' | 'center' | 'end' | undefined,
+): number[] {
+  const last = max - size + 1;
+  if (last < min) return [];
+  const all: number[] = [];
+  for (let v = min; v <= last; v += 1) all.push(v);
+  if (align === undefined || align === 'start') return all;
+  if (align === 'end') return [...all].reverse();
+  const mid = Math.floor((all.length - 1) / 2);
+  const order: number[] = [all[mid]!];
+  for (let off = 1; off < all.length; off += 1) {
+    if (mid - off >= 0) order.push(all[mid - off]!);
+    if (mid + off < all.length) order.push(all[mid + off]!);
+  }
+  return order;
+}
+
+/** 锚点→朝向(06-worldgen §3③): 贴墙面朝房间;center/scatter 无朝向 */
+const FACING_BY_ANCHOR: Partial<Record<FurnitureSlot['anchor'], FacingDirection>> = {
+  north: 'south',
+  south: 'north',
+  west: 'east',
+  east: 'west',
+};
+
+/** 背面素材定向选材(-b 后缀约定,05-asset §4): facing north(镜头看背面)池内 -b 件优先,
+ * 其余 facing 排除 -b 件;过滤后为空回退整池。只改 pick 入参不改调用次数,rng 流不变 */
+export function directionalPool(
+  pool: readonly string[],
+  facing: FacingDirection | undefined,
+): readonly string[] {
+  const wanted = facing === 'north';
+  const filtered = pool.filter((slug) => slug.endsWith('-b') === wanted);
+  return filtered.length > 0 ? filtered : pool;
 }
 
 /** 场所构建:门居南墙中点,入口在门外;室内地板/墙色随机;家具按模板布局。
@@ -571,14 +620,16 @@ function buildPlace(
     };
   }
   const doorX = x + Math.floor(w / 2);
-  // 单场所最多重摇 3 次:门→全部使用格 BFS 可达才收(防 use 格被围死);
-  // 末轮剔除装饰类(chance 标记)只保核心锚点家具,确保必可达
+  // 单场所最多重摇 4 次:门→全部使用格 BFS 可达才收(防 use 格被围死);
+  // 梯度降档(06 §3⑤): 全量×2 → 保 chance≥1 必选槽 → 仅保无 chance 核心槽(必可达兜底)
   let furniture: PlaceDefinition['furniture'] = [];
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const source =
-      attempt < 2
-        ? blueprint.furniture
-        : blueprint.furniture.filter((slot) => slot.chance === undefined);
+  const attemptSources: ReadonlyArray<readonly FurnitureSlot[]> = [
+    blueprint.furniture,
+    blueprint.furniture,
+    attemptCoreSlots(blueprint.furniture),
+    blueprint.furniture.filter((slot) => slot.chance === undefined),
+  ];
+  for (const source of attemptSources) {
     const slots = resolvedSlots(source, assetsByKind);
     furniture = layoutFurniture(rng, x, y, w, h, slots, false, null);
     if (interiorReachable(x, y, w, h, doorX, furniture)) break;
@@ -627,9 +678,9 @@ function interiorReachable(
   return uses.every((use) => seen.has(cellKey(use.x, use.y)));
 }
 
-/** 家具布局器:按锚定语义(北墙/西墙/东墙/居中/南缘)行主序找空位,冲突跳过;
- * 槽位带池时落位即随机选材(sprite) */
-function layoutFurniture(
+/** 家具布局器:按锚定语义(北墙/西墙/东墙/居中/南缘)+align 对齐找空位,冲突跳过;
+ * 槽位带池时落位即随机选材(sprite,按 facing 定向),朝向由锚点派生写入 */
+export function layoutFurniture(
   rng: Rng,
   px: number,
   py: number,
@@ -691,22 +742,34 @@ function layoutFurniture(
     if (slot.chance !== undefined && !rng.chance(slot.chance)) continue;
     let placed: { x: number; y: number } | null = null;
     if (slot.anchor === 'north') {
-      for (let xx = minX; xx + slot.w <= maxX + 1 && placed === null; xx += 1) {
-        if (tryPlace(xx, minY, slot.w, slot.h)) placed = { x: xx, y: minY };
+      for (const xx of alignedScan(minX, maxX, slot.w, slot.align)) {
+        if (tryPlace(xx, minY, slot.w, slot.h)) {
+          placed = { x: xx, y: minY };
+          break;
+        }
       }
     } else if (slot.anchor === 'south') {
       const sy = maxY - slot.h + 1;
-      for (let xx = minX; xx + slot.w <= maxX + 1 && placed === null; xx += 1) {
-        if (tryPlace(xx, sy, slot.w, slot.h)) placed = { x: xx, y: sy };
+      for (const xx of alignedScan(minX, maxX, slot.w, slot.align)) {
+        if (tryPlace(xx, sy, slot.w, slot.h)) {
+          placed = { x: xx, y: sy };
+          break;
+        }
       }
     } else if (slot.anchor === 'west') {
-      for (let yy = minY; yy + slot.h <= maxY + 1 && placed === null; yy += 1) {
-        if (tryPlace(minX, yy, slot.w, slot.h)) placed = { x: minX, y: yy };
+      for (const yy of alignedScan(minY, maxY, slot.h, slot.align)) {
+        if (tryPlace(minX, yy, slot.w, slot.h)) {
+          placed = { x: minX, y: yy };
+          break;
+        }
       }
     } else if (slot.anchor === 'east') {
       const ex = maxX - slot.w + 1;
-      for (let yy = minY; yy + slot.h <= maxY + 1 && placed === null; yy += 1) {
-        if (tryPlace(ex, yy, slot.w, slot.h)) placed = { x: ex, y: yy };
+      for (const yy of alignedScan(minY, maxY, slot.h, slot.align)) {
+        if (tryPlace(ex, yy, slot.w, slot.h)) {
+          placed = { x: ex, y: yy };
+          break;
+        }
       }
     } else if (slot.anchor === 'scatter') {
       // 全场散撒(开放装饰场所):从全部可放位 rng 随机取一,道具自然分布不成排
@@ -726,8 +789,11 @@ function layoutFurniture(
     }
     if (placed === null) continue;
     mark(placed.x, placed.y, slot.w, slot.h);
-    // 素材库随机选材:池非空即挑具体 sprite(缺省回退 kind 同名纹理)
-    const sprite = slot.pool.length > 0 ? rng.pick([...slot.pool]) : undefined;
+    // 素材库随机选材:池非空即挑具体 sprite(缺省回退 kind 同名纹理);朝向由锚点派生
+    const facing = FACING_BY_ANCHOR[slot.anchor];
+    const pool = directionalPool(slot.pool, facing);
+    const sprite = pool.length > 0 ? rng.pick([...pool]) : undefined;
+    const facingField = facing !== undefined ? { facing } : {};
     if (slot.activityId !== undefined) {
       const use = deriveUse(placed.x, placed.y, slot.w, slot.h, minX, maxX, minY, maxY, occupied);
       if (use === null) continue; // 无合法使用格(过度拥挤),放弃该件
@@ -741,6 +807,7 @@ function layoutFurniture(
         h: slot.h,
         activityId: slot.activityId,
         use,
+        ...facingField,
         ...(sprite !== undefined ? { sprite } : {}),
       });
     } else {
@@ -750,6 +817,7 @@ function layoutFurniture(
         y: placed.y,
         w: slot.w,
         h: slot.h,
+        ...facingField,
         ...(sprite !== undefined ? { sprite } : {}),
       });
     }
