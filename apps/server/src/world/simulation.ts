@@ -11,6 +11,7 @@ import type {
   WorkTaskId,
   WorldControlEvent,
   WorldEvent,
+  GameType,
   WorldParamsEvent,
   WorldResetEvent,
   WorldRules,
@@ -39,6 +40,7 @@ import {
 } from './activity.js';
 import { GameClock } from './clock.js';
 import {
+  applyHealthTick,
   applyLifeScoreTick,
   applyVitalDecay,
   reviveCharacter,
@@ -87,6 +89,8 @@ export class Simulation {
   timeScale: number = BALANCE.DEFAULT_TIME_SCALE;
   /** 世界规则(M5):默认全开;后台创建世界时随配置覆写,reset 回默认 */
   rules: WorldRules = { ...DEFAULT_WORLD_RULES };
+  /** 游戏模式(M-S/S1):survival 启用生存健康数值;创建/恢复世界时注入,reset 回 growth */
+  gameType: GameType = 'growth';
   /** 随机源(损耗生成器 roll;默认 Math.random,测试注入确定性实现) */
   readonly rng: RandomFn;
 
@@ -129,6 +133,7 @@ export class Simulation {
     this.paused = false;
     this.timeScale = BALANCE.DEFAULT_TIME_SCALE;
     this.rules = { ...DEFAULT_WORLD_RULES };
+    this.gameType = 'growth';
     const event: WorldResetEvent = { type: 'world.reset', tick: this.tick };
     this.events.emit(event);
     this._emitControl();
@@ -155,6 +160,7 @@ export class Simulation {
       path: [],
       energy: BALANCE.START_ENERGY,
       happiness: BALANCE.START_HAPPINESS,
+      health: BALANCE.VITAL_MAX,
       coins: BALANCE.START_COINS,
       activity: null,
       housing: {
@@ -401,6 +407,10 @@ export class Simulation {
       applyLifeScoreTick(character);
       // 同场增益(社交 v1): 活动角色按附近活动人数得幸福修正
       applySocialPresenceBonus(this, character);
+      // 生存健康(M-S/S1):仅 survival 有压力源;置于死亡判定前,健康归零当分钟入重伤
+      if (this.gameType === 'survival') {
+        applyHealthTick(character);
+      }
       this._checkDeath(character);
       this._checkReviveWindow(character);
     }
@@ -533,13 +543,20 @@ export class Simulation {
   /**
    * 体力耗尽死亡(M-G.5 救治窗口,goal-design §7):转幽灵态,清路径/打断活动,
    * 繁荣分扣减**挂起**——窗口内救治/debug 免扣,超时按现值生效。
+   * survival(M-S/S1)语义为重伤休整:健康归零(饥饿)同样触发,角色不死;
+   * 超时苏醒不扣繁荣分、数值回恢复线(reviveCharacter 分支),救治复活满状态。
    */
   private _checkDeath(character: WorldCharacter): void {
-    // 世界规则关闭死亡(M5):体力卡 0 持续躺平,不转幽灵不扣繁荣分
+    // 世界规则关闭死亡(M5):体力卡 0 持续躺平,不转幽灵不扣繁荣分;
+    // survival 下健康同步卡 1(归零即重伤,与关闭语义一致)
     if (!this.rules.allowDeath) {
+      if (this.gameType === 'survival' && character.health <= 0) {
+        character.health = 1;
+      }
       return;
     }
-    if (!character.alive || character.energy > 0) {
+    const injured = this.gameType === 'survival' && character.health <= 0;
+    if (!character.alive || (character.energy > 0 && !injured)) {
       return;
     }
     character.alive = false;
@@ -555,7 +572,8 @@ export class Simulation {
     this.events.emit(event);
   }
 
-  /** 救治窗口超时结算(M-G.5):挂起扣减按超时时刻现值 ×(1-比例) 生效,自动复活 */
+  /** 救治窗口超时结算(M-G.5):挂起扣减按超时时刻现值 ×(1-比例) 生效,自动复活;
+   * survival 重伤休整(M-S/S1)软惩罚原则——超时苏醒不扣繁荣分,数值回恢复线 */
   private _checkReviveWindow(character: WorldCharacter): void {
     if (character.alive || character.diedAtGameMinutes === null) {
       return;
@@ -564,7 +582,9 @@ export class Simulation {
       return;
     }
     // 繁荣分死亡扣减(M3.6j 方案B): 比例扣无套利——活得越厚实,死亡的绝对损失越大
-    character.lifeScore *= 1 - BALANCE.LIFE_SCORE_DEATH_DEDUCTION;
+    if (this.gameType !== 'survival') {
+      character.lifeScore *= 1 - BALANCE.LIFE_SCORE_DEATH_DEDUCTION;
+    }
     reviveCharacter(this, character, 'timeout');
   }
 }

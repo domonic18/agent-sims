@@ -67,6 +67,13 @@ export interface BalanceConfig {
   SLEEP_DEBT_MULTIPLIER: number;
   /** 繁荣分死亡扣减(M3.6j,goal-design §7 方案B): 死亡时 lifeScore ×= (1 - 该值) */
   LIFE_SCORE_DEATH_DEDUCTION: number;
+  /** 生存健康(M-S/S1,仅 survival 模式生效): 体力低于饥饿线持续损耗健康,
+   * 高于康复线自然恢复;健康归零触发重伤休整(复用幽灵态窗口),超时苏醒回恢复线 */
+  SURVIVAL_HUNGER_ENERGY_LINE: number;
+  SURVIVAL_HEALTH_DECAY_PER_MIN: number;
+  SURVIVAL_HEALTH_RECOVER_LINE: number;
+  SURVIVAL_HEALTH_RECOVER_PER_MIN: number;
+  SURVIVAL_INJURY_REVIVE_HEALTH: number;
   /** 世界创建批量出生点(M3.6k):公寓门前广场开阔带,按序轮询;不可行走时跳过 */
   SPAWN_SPOTS: readonly Readonly<{ x: number; y: number }>[];
   /** 社交 v1(social-design/numerical-design §社交): chat 收益=基础值×递减×相性 */
@@ -112,6 +119,11 @@ export const BALANCE: BalanceConfig = {
   SLEEP_MIN_MINUTES: 240,
   SLEEP_DEBT_MULTIPLIER: 0.7,
   LIFE_SCORE_DEATH_DEDUCTION: 0.2,
+  SURVIVAL_HUNGER_ENERGY_LINE: 20,
+  SURVIVAL_HEALTH_DECAY_PER_MIN: 0.03,
+  SURVIVAL_HEALTH_RECOVER_LINE: 60,
+  SURVIVAL_HEALTH_RECOVER_PER_MIN: 0.02,
+  SURVIVAL_INJURY_REVIVE_HEALTH: 30,
   SPAWN_SPOTS: [
     { x: 8, y: 12 },
     { x: 9, y: 12 },

@@ -1,4 +1,5 @@
 import type { WorldEvent } from './events.js';
+import type { GameType } from './worldgen.js';
 import type { MaintenanceSpot } from './maintenance.js';
 import type { ResourceNode } from './production.js';
 import type { SocialRelationView, TraitVector } from './social.js';
@@ -37,6 +38,8 @@ export interface WorldSnapshotMessage {
   tick: number;
   paused: boolean;
   timeScale: number;
+  /** 游戏模式(M-S/S1):growth=成长小镇,survival=末日生存;前端面板按此分流显示 */
+  gameType: GameType;
   clock: {
     gameMinutes: number;
     day: number;
@@ -52,6 +55,8 @@ export interface WorldSnapshotMessage {
     pathRemaining: number;
     energy: number;
     happiness: number;
+    /** 健康(M-S/S1):0~100,仅 survival 模式有压力源(饥饿损耗/吃饱恢复),growth 恒满 */
+    health: number;
     coins: number;
     /** 存活状态(false=幽灵态,拒绝一切意图,等待救治/超时自动复活) */
     alive: boolean;

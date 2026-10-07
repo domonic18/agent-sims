@@ -12,6 +12,7 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
     tick: sim.tick,
     paused: sim.paused,
     timeScale: sim.timeScale,
+    gameType: sim.gameType,
     clock: {
       gameMinutes: sim.clock.gameMinutes,
       day: sim.clock.day,
@@ -26,6 +27,7 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
       pathRemaining: character.path.length,
       energy: round(character.energy),
       happiness: round(character.happiness),
+      health: round(character.health),
       coins: character.coins,
       alive: character.alive,
       diedAtGameMinutes: character.diedAtGameMinutes,

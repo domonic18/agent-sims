@@ -42,6 +42,7 @@ describe('Simulation 模拟核心', () => {
       tick: 60,
       paused: false,
       timeScale: 4,
+      gameType: 'growth',
       clock: { gameMinutes: 540, day: 1, time: '09:00', isNight: false },
       characters: [],
       socials: [],

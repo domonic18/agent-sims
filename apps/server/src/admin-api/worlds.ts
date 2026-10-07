@@ -240,6 +240,7 @@ export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle)
     const rules = normalizeRules(config.rules);
     app.simulation.reset();
     app.simulation.setMap(config.map);
+    app.simulation.gameType = config.worldgen?.gameType ?? 'growth';
     app.simulation.rules = rules;
     applyWorldParams(rules.params);
     app.simulation.timeScale = rules.initialTimeScale;
@@ -356,6 +357,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
     // 重置模拟现场并按配置批量出生(DB 已落世界记录,sim 侧纯内存操作不再失败)
     app.simulation.reset();
     if (mapDefinition !== null) app.simulation.setMap(mapDefinition);
+    app.simulation.gameType = parsed.data.worldgen?.gameType ?? 'growth';
     app.simulation.rules = rules;
     applyWorldParams(rules.params); // 先复位出厂默认再应用本世界覆盖,消除上一世界残留
     app.simulation.timeScale = rules.initialTimeScale;

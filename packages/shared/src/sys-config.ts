@@ -89,6 +89,27 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
     key: 'SLEEP_DEBT_MULTIPLIER', label: '缺觉收益系数', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.05,
     effect: 'live', desc: '缺觉日正收益(金币/产出/正幸福增益)乘该值;体力与负项不动,于下一 06:00 结算生效',
   },
+  // —— 生存健康(仅 survival 模式生效,growth 不衰减) ——
+  {
+    key: 'SURVIVAL_HUNGER_ENERGY_LINE', label: '饥饿线体力', group: 'vitals', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: '生存模式体力低于该值开始损耗健康(饥饿压力)',
+  },
+  {
+    key: 'SURVIVAL_HEALTH_DECAY_PER_MIN', label: '健康饥饿损耗', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.005,
+    effect: 'live', desc: '生存模式每游戏分钟健康损耗量(体力低于饥饿线时)',
+  },
+  {
+    key: 'SURVIVAL_HEALTH_RECOVER_LINE', label: '康复线体力', group: 'vitals', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: '生存模式体力不低于该值时健康自然恢复',
+  },
+  {
+    key: 'SURVIVAL_HEALTH_RECOVER_PER_MIN', label: '健康自然恢复', group: 'vitals', type: 'float', min: 0, max: 1, step: 0.005,
+    effect: 'live', desc: '生存模式每游戏分钟健康恢复量(体力高于康复线时)',
+  },
+  {
+    key: 'SURVIVAL_INJURY_REVIVE_HEALTH', label: '重伤苏醒恢复线', group: 'vitals', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: '生存模式重伤超时苏醒后的健康/体力值(救治复活仍满状态)',
+  },
   // —— 经济 ——
   {
     key: 'START_COINS', label: '出生金币', group: 'economy', type: 'int', min: 0, max: 1000,

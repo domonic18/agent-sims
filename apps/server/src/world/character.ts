@@ -32,6 +32,8 @@ export interface WorldCharacter {
   /** 数值系统 0~100;金币经活动增减(M3.1) */
   energy: number;
   happiness: number;
+  /** 健康(M-S/S1):0~100,survival 模式饥饿损耗/吃饱恢复,growth 恒满无压力源 */
+  health: number;
   coins: number;
   /** 进行中活动(null=空闲) */
   activity: CharacterActivity | null;
@@ -99,15 +101,30 @@ export function applyLifeScoreTick(character: WorldCharacter): void {
   character.lifeScore += character.happiness / BALANCE.DAY_MINUTES;
 }
 
-/** 复活公共路径(M-G.5):满状态回归+清死亡时刻;救治/debug 免扣,timeout 已在调用方扣减 */
+/** 生存健康 tick(M-S/S1,survival 模式每游戏分钟):体力低于饥饿线持续损耗健康
+ * (饥饿压力),高于康复线自然恢复;幽灵态(重伤休整)冻结——结算在窗口超时统一走 */
+export function applyHealthTick(character: WorldCharacter): void {
+  if (!character.alive) return;
+  if (character.energy < BALANCE.SURVIVAL_HUNGER_ENERGY_LINE) {
+    character.health = clampVital(character.health - BALANCE.SURVIVAL_HEALTH_DECAY_PER_MIN);
+  } else if (character.energy >= BALANCE.SURVIVAL_HEALTH_RECOVER_LINE) {
+    character.health = clampVital(character.health + BALANCE.SURVIVAL_HEALTH_RECOVER_PER_MIN);
+  }
+}
+
+/** 复活公共路径(M-G.5):满状态回归+清死亡时刻;救治/debug 免扣,timeout 已在调用方扣减。
+ * survival(M-S/S1)超时苏醒=重伤休整结束:健康/体力回恢复线(非满状态),心情不动;
+ * 救治复活仍满状态(医生在生存模式的价值) */
 export function reviveCharacter(
   sim: Simulation,
   character: WorldCharacter,
   source: 'rescue' | 'debug' | 'timeout',
 ): void {
+  const injuryWake = sim.gameType === 'survival' && source === 'timeout';
   character.alive = true;
-  character.energy = BALANCE.REVIVE_ENERGY;
-  character.happiness = BALANCE.REVIVE_HAPPINESS;
+  character.energy = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.REVIVE_ENERGY;
+  character.happiness = injuryWake ? character.happiness : BALANCE.REVIVE_HAPPINESS;
+  character.health = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.VITAL_MAX;
   character.diedAtGameMinutes = null;
   if (source === 'timeout') {
     const event: CharacterAutoRevivedEvent = {
