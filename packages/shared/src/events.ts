@@ -150,8 +150,17 @@ export const maintenanceSpawnedEventSchema = z.object({
 export type MaintenanceSpawnedEvent = z.infer<typeof maintenanceSpawnedEventSchema>;
 export type { MaintenanceSpot };
 
-/** 工单任务全集(M-G.5 维护三岗+M-G.6 采集两岗):事件与门槛查表共用 */
-const workTaskIdSchema = z.enum(['clean', 'repair', 'rescue', 'gather_berry', 'scavenge']);
+/** 工单任务全集(M-G.5 维护三岗+M-G.6 采集两岗+M-S/S1 生存三岗):事件与门槛查表共用 */
+const workTaskIdSchema = z.enum([
+  'clean',
+  'repair',
+  'rescue',
+  'gather_berry',
+  'scavenge',
+  'chop_tree',
+  'mine_rock',
+  'salvage_metal',
+]);
 
 export type WorkTaskId = z.infer<typeof workTaskIdSchema>;
 

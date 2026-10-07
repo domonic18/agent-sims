@@ -6,11 +6,19 @@
  */
 import type { WorkTaskId } from './events.js';
 import type { MaintenanceSpot } from './maintenance.js';
-import type { ResourceNode } from './production.js';
+import type { GatherTaskId, ResourceNode } from './production.js';
 
-/** 类型守卫:采集两岗(M-G.6)——联合查表与结算分流共用 */
-export function isGatherTask(task: WorkTaskId): task is 'gather_berry' | 'scavenge' {
-  return task === 'gather_berry' || task === 'scavenge';
+const GATHER_TASK_IDS: readonly GatherTaskId[] = [
+  'gather_berry',
+  'scavenge',
+  'chop_tree',
+  'mine_rock',
+  'salvage_metal',
+];
+
+/** 类型守卫:采集岗(M-G.6 两岗+M-S/S1 生存三岗)——联合查表与结算分流共用 */
+export function isGatherTask(task: WorkTaskId): task is GatherTaskId {
+  return (GATHER_TASK_IDS as readonly string[]).includes(task);
 }
 
 /** 工单目标实体族(快照顶层三源) */
@@ -33,6 +41,9 @@ export const WORK_TARGETS: Record<WorkTaskId, WorkTargetMeta> = {
   rescue: { source: 'characters', kind: null, requireCharges: false, noun: '待救', measure: '人' },
   gather_berry: { source: 'resources', kind: 'berry_bush', requireCharges: true, noun: '浆果丛', measure: '处' },
   scavenge: { source: 'resources', kind: 'junk_pile', requireCharges: false, noun: '拾荒堆', measure: '处' },
+  chop_tree: { source: 'resources', kind: 'tree', requireCharges: true, noun: '树木', measure: '棵' },
+  mine_rock: { source: 'resources', kind: 'rock', requireCharges: true, noun: '岩石', measure: '处' },
+  salvage_metal: { source: 'resources', kind: 'metal_pile', requireCharges: true, noun: '金属堆', measure: '处' },
 };
 
 /** 资源节点 kind→中文标签(可采节点族反查;Lab 表单/画布提示用) */

@@ -35,6 +35,10 @@ const JUNK_PILE_COUNT: readonly [number, number] = [2, 4];
 /** 末日生存档:资源采集区加密(废土拾荒) */
 const SURVIVAL_BERRY_BUSH_COUNT: readonly [number, number] = [4, 8];
 const SURVIVAL_JUNK_PILE_COUNT: readonly [number, number] = [5, 9];
+/** 生存资源三件套档(M-S/S1,07-survival §2):树→木材/岩石→石料/废墟金属堆→金属 */
+const SURVIVAL_TREE_COUNT: readonly [number, number] = [5, 9];
+const SURVIVAL_ROCK_COUNT: readonly [number, number] = [3, 6];
+const SURVIVAL_METAL_PILE_COUNT: readonly [number, number] = [3, 6];
 
 export interface WorldgenInput {
   seed: string;
@@ -981,6 +985,43 @@ function scatterResources(
       seeds.push({ kind: 'junk_pile', x, y });
       break;
     }
+  }
+  // 生存资源三件套(M-S/S1,07-survival §2):树→木材(公园/营地)、岩石→石料(公园/废墟)、
+  // 金属堆→金属(废墟)——growth 不进此分支,rng 消耗流零变化
+  if (gameType === 'survival') {
+    const ruins = places.filter((p) => p.id.startsWith('ruins'));
+    const ruinsBlocked = new Set<string>(parkBlocked);
+    for (const ruin of ruins) {
+      for (const f of ruin.furniture ?? []) {
+        mark0(ruinsBlocked, { x: f.x, y: f.y, w: f.w, h: f.h });
+        if (f.use !== undefined) {
+          mark0(ruinsBlocked, { x: f.use.x - 1, y: f.use.y - 1, w: 3, h: 3 }); // 使用格保持四邻可站
+        }
+      }
+      mark0(ruinsBlocked, { x: ruin.entrance.x - 1, y: ruin.entrance.y - 1, w: 3, h: 2 });
+    }
+    const scatterInto = (
+      kind: ResourceNodeSeed['kind'],
+      count: number,
+      areas: PlaceDefinition[],
+      blocked: Set<string>,
+    ): void => {
+      for (let n = 0; n < count && areas.length > 0; n += 1) {
+        const area = rng.pick(areas);
+        for (let tries = 0; tries < 20; tries += 1) {
+          const x = rng.int(area.x + 1, area.x + area.w - 2);
+          const y = rng.int(area.y + 1, area.y + area.h - 2);
+          const key = cellKey(x, y);
+          if (blocked.has(key) || taken.has(key)) continue;
+          taken.add(key);
+          seeds.push({ kind, x, y });
+          break;
+        }
+      }
+    };
+    scatterInto('tree', rng.int(...SURVIVAL_TREE_COUNT), parks, parkBlocked);
+    scatterInto('rock', rng.int(...SURVIVAL_ROCK_COUNT), [...parks, ...ruins], ruinsBlocked);
+    scatterInto('metal_pile', rng.int(...SURVIVAL_METAL_PILE_COUNT), ruins, ruinsBlocked);
   }
   return seeds;
 }

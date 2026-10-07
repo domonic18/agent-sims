@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 export const resourceNodeSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(['berry_bush', 'junk_pile']),
+  kind: z.enum(['berry_bush', 'junk_pile', 'tree', 'rock', 'metal_pile']),
   x: z.number().int(),
   y: z.number().int(),
   /** 剩余可采次数;null=无限(拾荒堆),0=已枯竭(浆果丛待重生) */
@@ -28,7 +28,7 @@ export interface ResourceNodeSeed {
 }
 
 /** 采集岗位(numerical §5.4):同属采集类(知识 3 班门槛,JOB_CATEGORIES.gather) */
-export type GatherTaskId = 'gather_berry' | 'scavenge';
+export type GatherTaskId = 'gather_berry' | 'scavenge' | 'chop_tree' | 'mine_rock' | 'salvage_metal';
 
 export interface GatherYield {
   itemId: string;
@@ -62,10 +62,38 @@ export const GATHER_TASKS: Record<GatherTaskId, GatherTaskDef> = {
     nodeKind: 'junk_pile',
     yields: [{ itemId: 'scrap', count: 1 }, { itemId: 'twig', count: 1, chance: 0.3 }],
   },
+  // 生存资源三件套(M-S/S1,07-survival §2):建造材料采集,S2 建造配方消费
+  chop_tree: {
+    id: 'chop_tree',
+    category: 'gather',
+    durationMinutes: 25,
+    nodeKind: 'tree',
+    yields: [{ itemId: 'wood', count: 2 }],
+  },
+  mine_rock: {
+    id: 'mine_rock',
+    category: 'gather',
+    durationMinutes: 30,
+    nodeKind: 'rock',
+    yields: [{ itemId: 'stone', count: 2 }],
+  },
+  salvage_metal: {
+    id: 'salvage_metal',
+    category: 'gather',
+    durationMinutes: 25,
+    nodeKind: 'metal_pile',
+    yields: [{ itemId: 'metal', count: 2 }],
+  },
 };
 
-/** 浆果丛存量(design/09 §2):采 3 次枯竭,次日 00:00 回满;拾荒堆 charges=null 无限 */
-export const BUSH_MAX_CHARGES = 3;
+/** 节点存量表(design/09 §2):采尽枯竭次日 00:00 回满;拾荒堆无限采(charges=null) */
+export const NODE_MAX_CHARGES: Record<ResourceNode['kind'], number | null> = {
+  berry_bush: 3,
+  junk_pile: null,
+  tree: 5,
+  rock: 4,
+  metal_pile: 3,
+};
 
 /**
  * 配方制作(design/09 §3):key=制作活动 id,站点锚点家具(stove/workbench)

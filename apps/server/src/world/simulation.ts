@@ -19,9 +19,9 @@ import type {
   WorldSnapshotMessage,
 } from '@sims/shared';
 import {
-  BUSH_MAX_CHARGES,
   DEFAULT_WORLD_RULES,
   MAINTENANCE_TASKS,
+  NODE_MAX_CHARGES,
   PROPERTY_IDS,
   RECIPES,
   REVIVE_WINDOW_MINUTES,
@@ -514,7 +514,8 @@ export class Simulation {
     return this.maintenanceSpots.has(targetId);
   }
 
-  /** 资源节点从地图种子重建(构造/setMap/reset 共用):浆果丛满存量,拾荒堆无限 */
+  /** 资源节点从地图种子重建(构造/setMap/reset 共用):存量按 NODE_MAX_CHARGES 表
+   * (浆果丛 3/树木 5/岩石 4/金属堆 3,拾荒堆无限) */
   private _rebuildResourceNodes(): void {
     this.resourceNodes.clear();
     for (const seed of this._map.resourceSeeds) {
@@ -524,17 +525,17 @@ export class Simulation {
         kind: seed.kind,
         x: seed.x,
         y: seed.y,
-        charges: seed.kind === 'berry_bush' ? BUSH_MAX_CHARGES : null,
+        charges: NODE_MAX_CHARGES[seed.kind],
         respawnAtDay: null,
       });
     }
   }
 
-  /** 跨日 00:00 重生(design/09 §2):到日枯竭浆果丛回满;拾荒堆无需重生 */
+  /** 跨日 00:00 重生(design/09 §2):到日枯竭节点按表回满;拾荒堆无需重生 */
   private _respawnResourceNodes(): void {
     for (const node of this.resourceNodes.values()) {
       if (node.respawnAtDay !== null && this.clock.day >= node.respawnAtDay) {
-        node.charges = BUSH_MAX_CHARGES;
+        node.charges = NODE_MAX_CHARGES[node.kind];
         node.respawnAtDay = null;
       }
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUSH_MAX_CHARGES, type WorldEvent } from '@sims/shared';
+import { NODE_MAX_CHARGES, type WorldEvent } from '@sims/shared';
 import { Simulation } from './simulation.js';
 
 const LITTER_ID = 'litter:10:14';
@@ -183,7 +183,7 @@ describe('work_task 采集两岗(M-G.6)', () => {
     sim.character('mow').knowledge = 3;
     sim.resourceNodes.get('berry_bush:5:27')!.charges = 0;
     expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/已采完/);
-    sim.resourceNodes.get('berry_bush:5:27')!.charges = BUSH_MAX_CHARGES;
+    sim.resourceNodes.get('berry_bush:5:27')!.charges = NODE_MAX_CHARGES.berry_bush;
     sim.character('mow').backpack = { berry: 7 }; // 最坏产出 2 体积,7+2>8 放不下
     expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/背包/);
   });
@@ -206,7 +206,7 @@ describe('work_task 采集两岗(M-G.6)', () => {
   it('存量采竭与跨日重生: 3 次采完记 respawnAtDay,次日 00:00 翻滚回满', () => {
     const { sim } = simWithGatherer();
     const node = sim.resourceNodes.get('berry_bush:5:27')!;
-    for (let round = BUSH_MAX_CHARGES; round > 0; round -= 1) {
+    for (let round = NODE_MAX_CHARGES.berry_bush!; round > 0; round -= 1) {
       expect(node.charges).toBe(round);
       sim.requestWorkTask('mow', 'berry_bush:5:27');
       sim.advanceTicks(60);
@@ -214,7 +214,7 @@ describe('work_task 采集两岗(M-G.6)', () => {
     expect(node.charges).toBe(0);
     expect(node.respawnAtDay).toBe(sim.clock.day + 1);
     sim.advanceTicks(1440); // 跨过次日 00:00
-    expect(node.charges).toBe(BUSH_MAX_CHARGES);
+    expect(node.charges).toBe(NODE_MAX_CHARGES.berry_bush);
     expect(node.respawnAtDay).toBeNull();
   });
 
@@ -259,7 +259,7 @@ describe('work_task 采集两岗(M-G.6)', () => {
       kind: 'berry_bush',
       x: 5,
       y: 27,
-      charges: BUSH_MAX_CHARGES,
+      charges: NODE_MAX_CHARGES.berry_bush,
       respawnAtDay: null,
     });
   });
@@ -271,7 +271,7 @@ describe('work_task 采集两岗(M-G.6)', () => {
         expect.objectContaining({
           id: 'berry_bush:5:27',
           kind: 'berry_bush',
-          charges: BUSH_MAX_CHARGES,
+          charges: NODE_MAX_CHARGES.berry_bush,
           respawnAtDay: null,
         }),
         expect.objectContaining({ id: 'junk_pile:55:30', kind: 'junk_pile', charges: null }),

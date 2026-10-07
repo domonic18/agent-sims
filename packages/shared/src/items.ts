@@ -20,6 +20,9 @@ export const ITEM_IDS = [
   'twig',
   'berry_pie',
   'repair_kit',
+  'wood',
+  'stone',
+  'metal',
 ] as const;
 
 export type ItemId = (typeof ITEM_IDS)[number];
@@ -51,6 +54,10 @@ export const ITEMS: readonly ItemDefinition[] = [
   { id: 'scrap', name: '废料', category: 'material', volume: 1 },
   { id: 'twig', name: '树枝', category: 'material', volume: 1 },
   { id: 'repair_kit', name: '修补钉', category: 'material', volume: 1 },
+  // 生存资源三件套(M-S/S1,07-survival §2):建造材料,S2 建造配方消费
+  { id: 'wood', name: '木材', category: 'material', volume: 1 },
+  { id: 'stone', name: '石料', category: 'material', volume: 1 },
+  { id: 'metal', name: '金属', category: 'material', volume: 1 },
 ];
 
 export function getItem(id: string): ItemDefinition | null {

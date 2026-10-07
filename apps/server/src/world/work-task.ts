@@ -226,6 +226,9 @@ const WORK_TASK_COMPLETIONS: Record<WorkTaskId, WorkTaskCompletion> = {
   },
   gather_berry: completeGather,
   scavenge: completeGather,
+  chop_tree: completeGather,
+  mine_rock: completeGather,
+  salvage_metal: completeGather,
 };
 
 export function completeWorkTask(ctx: WorkTaskCompletionContext): 'ok' | 'cancelled' {
