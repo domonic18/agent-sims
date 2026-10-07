@@ -54,6 +54,8 @@ export interface FurnitureSlot {
   activityId?: ActivityId;
   /** 沿墙排布对齐(06-worldgen §3③): 行锚 start=西→东/end=反向/center=自中点交替;列锚同理;缺省主序 */
   align?: 'start' | 'center' | 'end';
+  /** 仅当场所占地宽 ≥ 该值时启用(小档房间塞满会围死使用格,让位给动线家具) */
+  minPlaceW?: number;
   /** 装饰类摆放概率(0=必选) */
   chance?: number;
   /** 素材池域(缺省 indoor;户外道具池传 outdoor) */
@@ -85,8 +87,8 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'tv', w: 2, h: 1, anchor: 'north', align: 'center', chance: 0.6 },
       { kind: 'fridge', w: 1, h: 1, anchor: 'west', chance: 1 },
       { kind: 'desk', w: 2, h: 1, anchor: 'west', activityId: 'study' },
-      { kind: 'bookshelf', w: 2, h: 1, anchor: 'east', chance: 1 },
-      { kind: 'wardrobe', w: 1, h: 2, anchor: 'east', chance: 0.9 },
+      { kind: 'bookshelf', w: 2, h: 1, anchor: 'east', chance: 1, minPlaceW: 12 },
+      { kind: 'wardrobe', w: 1, h: 2, anchor: 'east', chance: 0.9, minPlaceW: 12 },
       { kind: 'sofa', w: 2, h: 1, anchor: 'south', align: 'center', activityId: 'rest' },
       { kind: 'table', w: 2, h: 1, anchor: 'south', chance: 1 },
       { kind: 'plant', w: 1, h: 1, anchor: 'center', chance: 0.7 },

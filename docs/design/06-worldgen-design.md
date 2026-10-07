@@ -53,6 +53,7 @@ TileMapDefinition(与现行 TOWN_MAP 同构) + 生成报告(seed/参数/场所�
 - **生产站点槽位(生产系统,09-production-design.md)**: 餐厅灶台(stove)/办公楼木工台(workbench)——新家具 kind 随素材轮启用,布局模板保证生成,内置图同步补
 - use 格生成: 家具落地后按朝向推导相邻可达格
 - **槽位对齐 align(2026-10-07 家具朝向系统)**: FurnitureSlot 可选 `align: 'start'|'center'|'end'`——行锚(贴南北墙)start=自西向东 / end=自东向西 / center=自中点向外交替探位;列锚(贴东西墙)start=自北向南 / end=反向 / center 同理;省略保持现行主序扫描(rng 流影响最小化)
+- **槽位尺寸门槛 minPlaceW(2026-10-07 走查修正)**: FurnitureSlot 可选 `minPlaceW`——场所占地宽 < 该值时四档 attempt 均剔除该槽。9×8 home 北行床×2+电视恰满内圈,东墙书架落位后把沙发 use 格围死(全 attempt 不可达→裸档仅 4 件);书架/衣柜设 minPlaceW=12 仅大档 home 出,小档让位给完整电视+沙发对望客厅
 - **朝向 facing**: FurnitureDefinition 可选 `facing: 'north'|'south'|'east'|'west'`,布局成功时由锚点派生——north 槽→facing south(贴北墙、面朝房间),south→north,east→west,west→east;center/scatter 省略。server 生成时定稿随地图下发,渲染侧暂不消费(为方向变体翻转预留协议位)
 - **背面素材定向选材(-b 后缀约定)**: slug 以 `-b` 结尾的素材为背面视角件(如 sofa-b)。facing=north(贴南墙,镜头看到背面)时池内 -b 件优先,其余 facing 排除 -b 件(正面视角);过滤后为空回退整池。选材仍只消耗一次 rng.pick——调用次数不变,后续 rng 流不动
 - **家居动线模板(home)**: 床×2 贴北墙两角(align start/end)+电视北墙正中(center)+书桌/冰箱西墙+书架/衣柜东墙+餐桌居中+沙发南墙居中(与电视对望,facing north 选 sofa-b)+盆栽散撒——「电视靠墙、沙发对望」的居家布局;南墙中格为门时 guard 守卫将沙发挤向门侧
@@ -110,3 +111,4 @@ antd Steps 五步向导重构现行 WorldPanel 创建表单:
 | 日期 | 变更 | 原因 |
 |------|------|------|
 | 2026-10-07 | **家具朝向系统+蓝图布局重构**: §3③ 增槽位对齐 align(start/center/end)/朝向 facing(锚点派生,随地图下发)/背面素材定向选材(-b 后缀,facing=north 优先且 rng 调用次数不变)/home 家居动线模板(电视北墙正中+沙发南墙对望+床两角/桌柜沿侧墙)/gym·restaurant·cafe 电视 east→north、clinic 去 tv 改 bench 候诊椅;§3⑤ 室内 3-attempt 末轮语义修正——仅剔 chance<1 装饰槽,chance≥1 必选槽保留(旧口径连必选槽一并剥掉,小房间被剥至仅剩锚点家具) | 用户走查: ①「电视放房间中间,不像真正家里」——三真因: 无朝向概念素材恒正面(侧墙电视视觉杵中间)/home 电视与沙发同贴南墙还被门 guard 挤位/attempt-3 剥光缺陷放大空旷感;sofa-b 背面件已在池内却被随机误用,顺带定向化;医院问题经确认保持现状(growth 仅诊所/survival 旧医院镇外系前轮定稿) |
+| 2026-10-07 | §3③ 增槽位尺寸门槛 minPlaceW: home 书架/衣柜设 12,小档房间剔除该槽 | 容器走查: 9×8 home 北行床×2+电视恰满内圈,东墙书架落位围死沙发 use 格→四档全不可达→裸档仅 4 件(探针复现);小档让位保完整电视+沙发对望客厅 |

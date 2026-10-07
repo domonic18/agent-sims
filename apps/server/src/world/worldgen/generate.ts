@@ -596,7 +596,7 @@ export function directionalPool(
 
 /** 场所构建:门居南墙中点,入口在门外;室内地板/墙色随机;家具按模板布局。
  * 开放场所(公园类)无门无墙,入口在上缘。 */
-function buildPlace(
+export function buildPlace(
   rng: Rng,
   kind: PlaceKind,
   id: string,
@@ -623,10 +623,13 @@ function buildPlace(
   // 单场所最多重摇 4 次:门→全部使用格 BFS 可达才收(防 use 格被围死);
   // 梯度降档(06 §3⑤): 全量×2 → 保 chance≥1 必选槽 → 仅保无 chance 核心槽(必可达兜底)
   let furniture: PlaceDefinition['furniture'] = [];
+  // 小档房间塞满会围死使用格——minPlaceW 槽位按占地宽启停(06 §3⑤)
+  const sizeFits = (slot: FurnitureSlot): boolean =>
+    slot.minPlaceW === undefined || w >= slot.minPlaceW;
   const attemptSources: ReadonlyArray<readonly FurnitureSlot[]> = [
-    blueprint.furniture,
-    blueprint.furniture,
-    attemptCoreSlots(blueprint.furniture),
+    blueprint.furniture.filter(sizeFits),
+    blueprint.furniture.filter(sizeFits),
+    attemptCoreSlots(blueprint.furniture).filter(sizeFits),
     blueprint.furniture.filter((slot) => slot.chance === undefined),
   ];
   for (const source of attemptSources) {
