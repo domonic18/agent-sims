@@ -237,6 +237,50 @@ describe('work_task 采集两岗(M-G.6)', () => {
     expect(unlucky.character('sca').backpack.twig).toBeUndefined();
   });
 
+  it('生存三件套: 伐木/搜刮金属产出入包存量递减,背包满拒单(M-S/S1)', () => {
+    const { sim, events } = simWithGatherer();
+    const tree = {
+      id: 'tree:9:13',
+      kind: 'tree' as const,
+      x: 9,
+      y: 13,
+      charges: NODE_MAX_CHARGES.tree!,
+      respawnAtDay: null,
+    };
+    const pile = {
+      id: 'metal_pile:10:13',
+      kind: 'metal_pile' as const,
+      x: 10,
+      y: 13,
+      charges: NODE_MAX_CHARGES.metal_pile!,
+      respawnAtDay: null,
+    };
+    expect(sim.map.isWalkable(tree.x, tree.y), 'fixture 树格须可行走').toBe(true);
+    expect(sim.map.isWalkable(pile.x, pile.y), 'fixture 金属堆格须可行走').toBe(true);
+    sim.resourceNodes.set(tree.id, tree);
+    sim.resourceNodes.set(pile.id, pile);
+
+    sim.character('mow').backpack = { scrap: 7 }; // 木材产出 2 格放不下(上限 8)
+    expect(() => sim.requestWorkTask('mow', 'tree:9:13')).toThrow(/背包/);
+    sim.character('mow').backpack = {};
+
+    sim.requestWorkTask('mow', 'tree:9:13');
+    sim.advanceTicks(60); // 25 分作业+在途
+    let mow = sim.character('mow');
+    expect(mow.activity).toBeNull();
+    expect(mow.backpack.wood).toBe(2);
+    expect(mow.coins).toBe(0); // 以物代薪
+    expect(tree.charges).toBe(NODE_MAX_CHARGES.tree! - 1);
+
+    sim.requestWorkTask('mow', 'metal_pile:10:13');
+    sim.advanceTicks(60);
+    mow = sim.character('mow');
+    expect(mow.backpack.metal).toBe(2);
+    expect(mow.backpack.wood).toBe(2); // 首单产出保留
+    expect(pile.charges).toBe(NODE_MAX_CHARGES.metal_pile! - 1);
+    expect(events.filter((e) => e.type === 'work_task.completed').length).toBe(2);
+  });
+
   it('竞态-节点被采空: 作业中存量归零→cancelled 无产出', () => {
     const { sim, events } = simWithGatherer();
     sim.requestWorkTask('mow', 'berry_bush:5:27');

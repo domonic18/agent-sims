@@ -503,13 +503,45 @@ describe('末日生存模式(survival gameType)', () => {
     }
   });
 
+  it('生存资源三件套: 树木 5~9 落公园/营地,岩石 3~6 落公园/营地/废墟,金属堆 3~6 落废墟(M-S/S1)', () => {
+    for (const result of results) {
+      const resources = result.map.resources ?? [];
+      const trees = resources.filter((r) => r.kind === 'tree');
+      const rocks = resources.filter((r) => r.kind === 'rock');
+      const metals = resources.filter((r) => r.kind === 'metal_pile');
+      expect(trees.length).toBeGreaterThanOrEqual(5);
+      expect(trees.length).toBeLessThanOrEqual(9);
+      expect(rocks.length).toBeGreaterThanOrEqual(3);
+      expect(rocks.length).toBeLessThanOrEqual(6);
+      expect(metals.length).toBeGreaterThanOrEqual(3);
+      expect(metals.length).toBeLessThanOrEqual(6);
+      const parks = result.map.places.filter(
+        (p) => p.id.startsWith('park') || p.id.startsWith('camping'),
+      );
+      const ruins = result.map.places.filter((p) => p.id.startsWith('ruins'));
+      const inside = (node: { x: number; y: number }, areas: typeof parks): boolean =>
+        areas.some(
+          (p) => node.x > p.x && node.x < p.x + p.w - 1 && node.y > p.y && node.y < p.y + p.h - 1,
+        );
+      for (const t of trees) expect(inside(t, parks)).toBe(true);
+      for (const r of rocks) expect(inside(r, [...parks, ...ruins])).toBe(true);
+      for (const m of metals) expect(inside(m, ruins)).toBe(true);
+    }
+  });
+
   it('growth/survival 隔离: growth 并集无墓地废墟,同 seed 两模式地图不同', () => {
     for (let i = 0; i < 20; i += 1) {
       const growth = generateTownMap(input(`iso-${i}`));
       const kinds = new Set(growth.map.places.map((p) => p.id.split('-')[0]));
       expect(kinds.has('graveyard')).toBe(false);
       expect(kinds.has('ruins')).toBe(false);
+      expect(
+        (growth.map.resources ?? []).some(
+          (r) => r.kind === 'tree' || r.kind === 'rock' || r.kind === 'metal_pile',
+        ),
+      ).toBe(false);
       const survival = generateTownMap(input(`iso-${i}`, { gameType: 'survival' }));
+      expect((survival.map.resources ?? []).some((r) => r.kind === 'tree')).toBe(true);
       expect(survival.map).not.toEqual(growth.map);
     }
   });
