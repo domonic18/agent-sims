@@ -19,7 +19,7 @@ function VitalBar({
   return (
     <div className="hud-vital" title={title}>
       <span>{label}</span>
-      <span className={`px-bar${tone === 'gold' ? ' gold' : ''}`}>
+      <span className={`px-bar${tone === 'gold' ? ' gold' : tone === 'red' ? ' red' : ''}`}>
         <i style={{ width: `calc(${clamped}% - 4px)` }} />
         <u />
       </span>
