@@ -18,14 +18,14 @@
 
 ## 2. 采集(物品型作业)
 
-- **节点实体**: `{ id, kind: 'berry_bush'|'junk_pile'|'apple_tree'|'wheat_patch', x, y, charges, respawnAtDay }`——与 08 maintenance spot 同一实体体系(统一快照协议);苹果树/麦丛为食物链节点(2026-10-07,数值见 04 §5.4)
+- **节点实体**: `{ id, kind: 'berry_bush'|'junk_pile'|'apple_tree'|'wheat_patch', x, y, charges, respawnAtDay }`——与 08 maintenance spot 同一实体体系(统一快照协议);苹果树/麦丛为食物链节点(2026-10-07,数值见 04 §5.4)。**存量上限/重生天数为每世界热调参数**(2026-10-07 配置化,SYS_CONFIG resources 组 `NODE_MAX_CHARGES_*`×7 与 `NODE_RESPAWN_DAYS`,junk -1=无限;04 §5.4 表值=出厂默认)
 - **采集作业**: `work_task`(目标=节点)→ 到位作业计时 → 产出入背包(背包满拒单) → charges-1 → 0 时枯竭进重生计时
 - **无工资,物品即收益**——免费食物/材料路线,与工资型作业(维护岗)构成双轨奖励模型;**食物链直采<制作**(同 20 分直采 +4 体力 < 面包 +6 < 三明治 +8),商店(04 §3.2)售罄后采集/制作为唯一食物来源
 - 拾荒堆与街道杂物的区分: 杂物是**卫生任务**(清洁工清理后消失),拾荒堆是**资源点**(固定点位可反复采集)
 
 ## 3. 制作(配方驱动)
 
-- **配方注册表**: `{ recipeId, inputs: [{itemId, count}], output, stationKind, minutes }`——后台可管理(07 §5 复用承诺),M4 Agent 可读可规划
+- **配方注册表**: `{ recipeId, inputs: [{itemId, count}], output, stationKind, minutes }`——**每世界可配置**(2026-10-07 配置化: worlds.config.rules.recipes 建世界深拷贝 RECIPES 冻结,admin 配方页可编辑 inputs/outputs/时长/站点/启停,live 生效不追溯进行中活动;缺省=shared 出厂默认;v1 仅编辑既有 4 条,新增配方后置)。M4 Agent 可读可规划(07 §5 复用承诺)
 - **新意图** `craft { characterId, recipeId }`: 校验站点在位 + 材料足(背包扣料) → 作业计时(走活动净速率框架) → 产物入背包
 - v1 两条配方串起三环,2026-10-07 食物链增两条(面包/三明治,产出复用货架同 ItemId):
 
@@ -50,7 +50,7 @@
 |---|---|
 | work_task 推广 | target 语义从"损耗点"扩为"节点/损耗点";校验存量/破损态;奖励按实体类型分流(物品型/工资型) |
 | craft 意图 | 站点锚点+payload(recipeId);材料校验;复用活动计时框架 |
-| 快照 | 节点存量/损耗点照常下发;配方表为静态内容(shared 定义),M4 规划可读 |
+| 快照 | 节点存量/损耗点照常下发;配方为每世界内容(GET /api/world/recipes+world.recipes 事件,缺省 shared 出厂默认),M4 规划可读 |
 
 ## 6. 素材需求
 
