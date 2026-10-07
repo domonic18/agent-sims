@@ -25,6 +25,7 @@ import {
   type WorldgenReport,
 } from '@sims/shared';
 import { publishTarget, readManifestVersion } from '../assets/paths.js';
+import { restoreLatestArchive } from './world-archives.js';
 import { TileMap } from '../world/map.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
 import { DECOR_POOLS } from '../world/worldgen/blueprint.js';
@@ -248,8 +249,9 @@ function shortId(): string {
 /**
  * 启动恢复(C4):进程重启后按 active 世界的 config.map 复原地图现场
  * (同种子可重生成,但落库直读免重算且与创建时严格一致);
- * 无 active/旧世界无 map/定义非法 → 静默保持内置地图,世界可用性优先。
- * 角色与数值现场恢复不在本次(follow-up),恢复后冻结待角色创建。
+ * 无 active/旧世界无 map(内置固定地图)/定义非法 → 保持内置地图,世界可用性优先。
+ * C8 起任意地图形态下有档即灌最近一档(角色/数值/时钟现场,paused/timeScale 按存档),
+ * 无档维持冻结空场待角色创建。
  */
 export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle): Promise<void> {
   const [row] = await handle.db
@@ -260,24 +262,30 @@ export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle)
     .limit(1);
   if (!row) return;
   const config = row.config as CreateWorldRequest & { map?: TileMapDefinition };
-  if (config.map === undefined) return;
-  try {
-    TileMap.fromDefinition(config.map); // 先验定义合法性(非法即走兜底)
-    const rules = normalizeRules(config.rules);
-    app.simulation.reset();
-    app.simulation.setMap(config.map);
-    app.simulation.gameType = config.worldgen?.gameType ?? 'growth';
-    app.simulation.rules = rules;
-    applyWorldParams(rules.params);
-    // 每世界配方恢复(旧世界无存档或校验不过→出厂默认,可用性优先)
-    app.simulation.recipes =
-      rules.recipes !== undefined && validateRecipes(rules.recipes).length === 0
-        ? cloneRecipes(rules.recipes)
-        : defaultRecipes();
-    app.simulation.timeScale = rules.initialTimeScale;
+  if (config.map !== undefined) {
+    try {
+      TileMap.fromDefinition(config.map); // 先验定义合法性(非法即走兜底)
+      const rules = normalizeRules(config.rules);
+      app.simulation.reset();
+      app.simulation.setMap(config.map);
+      app.simulation.gameType = config.worldgen?.gameType ?? 'growth';
+      app.simulation.rules = rules;
+      applyWorldParams(rules.params);
+      // 每世界配方恢复(旧世界无存档或校验不过→出厂默认,可用性优先)
+      app.simulation.recipes =
+        rules.recipes !== undefined && validateRecipes(rules.recipes).length === 0
+          ? cloneRecipes(rules.recipes)
+          : defaultRecipes();
+      app.simulation.timeScale = rules.initialTimeScale;
+    } catch {
+      // 地图定义非法(协议变更/损坏):静默回内置地图
+      return;
+    }
+  }
+  // 有档灌最近一档(restoreArchive 连带 rules/params/recipes/gameType/时钟);
+  // 无档冻结空场(内置地图世界出厂态+冻结,与 C4 行为一致)
+  if (!(await restoreLatestArchive(app, handle, row.id))) {
     app.simulation.setPaused(true);
-  } catch {
-    // 地图定义非法(协议变更/损坏):静默回内置地图
   }
 }
 

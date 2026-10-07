@@ -6,6 +6,8 @@ import { buildApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
 import { adminUsers, worlds } from '../src/db/schema/index.js';
+import { AUTO_LABEL_PREFIX, persistAutoArchive } from '../src/admin-api/world-archives.js';
+import { restoreActiveWorld } from '../src/admin-api/worlds.js';
 
 // 集成测试:连 dev compose 的 postgres(需已 migrate+seed);库不可达时整组跳过
 const TEST_USERNAME = 'vitest-archive-admin';
@@ -215,5 +217,62 @@ describe.skipIf(!dbUp)('世界存档多档 save/load(C6)', () => {
     });
     expect(missing.statusCode).toBe(404);
     await app.close();
+  });
+});
+
+describe.skipIf(!dbUp)('退出自动存档+启动自动恢复(C8)', () => {
+  it('persist 自动档只留最近 3 条且手动档不清理;新实例 restoreActiveWorld 现场还原;无居民跳过', async () => {
+    const app = buildApp();
+    const auth = { authorization: `Bearer ${await login(app)}` };
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: { ...CREATE_BODY, name: `${WORLD_NAME_PREFIX}自动档镇` },
+    });
+    expect(created.statusCode).toBe(201);
+    const world = created.json() as WorldView & { simIds: string[] };
+
+    // 手动档不受自动档保留策略清理
+    const manual = await app.inject({
+      method: 'POST',
+      url: '/api/admin/world-archives',
+      headers: auth,
+      payload: { label: '手动保留档' },
+    });
+    expect(manual.statusCode).toBe(201);
+
+    // 现场标记:tick 30 + coins 42,此后 persist #1
+    app.simulation.advanceTicks(30);
+    const jiaId = world.simIds[0]!;
+    app.simulation.character(jiaId).coins = 42;
+    expect(await persistAutoArchive(app, handle)).toBe(true);
+
+    // 再 persist 4 次 → 自动档共 5 条,清理后只留最近 3 条
+    for (let i = 0; i < 4; i += 1) {
+      app.simulation.advanceTicks(1);
+      expect(await persistAutoArchive(app, handle)).toBe(true);
+    }
+    const list = (
+      await app.inject({ method: 'GET', url: '/api/admin/world-archives', headers: auth })
+    ).json() as WorldArchiveView[];
+    const autoLabels = list
+      .filter((a) => a.label.startsWith(AUTO_LABEL_PREFIX))
+      .map((a) => a.label);
+    expect(autoLabels).toHaveLength(3);
+    expect(list.some((a) => a.label === '手动保留档')).toBe(true);
+
+    // 模拟重启:全新 app 实例走 restoreActiveWorld,现场回到最后一次 persist 时刻
+    const app2 = buildApp();
+    await restoreActiveWorld(app2, handle);
+    expect(app2.simulation.tick).toBe(34);
+    expect(app2.simulation.characters.size).toBe(2);
+    expect(app2.simulation.character(jiaId).coins).toBe(42);
+
+    // 无居民(空场)不落档
+    app2.simulation.reset();
+    expect(await persistAutoArchive(app2, handle)).toBe(false);
+    await app.close();
+    await app2.close();
   });
 });

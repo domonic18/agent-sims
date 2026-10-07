@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq, like, notInArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   SOCKET_EVENTS,
@@ -11,6 +11,21 @@ import type { SimulationArchive } from '../world/simulation.js';
 import { requireAdmin } from './auth.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 自动档标签前缀(关闭时自动存档);同名前缀的手动档会被保留策略清理,起名请避开 */
+export const AUTO_LABEL_PREFIX = '自动 · ';
+/** 自动档保留条数(每世界),防退出存档膨胀 */
+const AUTO_KEEP = 3;
+
+/** 存档载荷最低完整性校验(时钟数字+角色数组),损坏档拒绝恢复 */
+function isValidArchive(payload: unknown): payload is SimulationArchive {
+  return (
+    typeof payload === 'object' &&
+    payload !== null &&
+    typeof (payload as SimulationArchive).clockGameMinutes === 'number' &&
+    Array.isArray((payload as SimulationArchive).characters)
+  );
+}
 
 /** 存档行 → 列表视图(payload 不外透;characterCount 由载荷长度派生) */
 function toView(
@@ -97,12 +112,7 @@ export function registerWorldArchiveRoutes(app: FastifyInstance, handle: DbHandl
       return await reply.code(400).send({ error: '存档属于其他世界,与当前活跃世界不符' });
     }
     const archive = row.payload as SimulationArchive;
-    if (
-      archive === null ||
-      typeof archive !== 'object' ||
-      typeof archive.clockGameMinutes !== 'number' ||
-      !Array.isArray(archive.characters)
-    ) {
+    if (!isValidArchive(archive)) {
       return await reply.code(400).send({ error: '存档载荷损坏,无法恢复' });
     }
     app.simulation.restoreArchive(archive);
@@ -136,4 +146,71 @@ export function registerWorldArchiveRoutes(app: FastifyInstance, handle: DbHandl
     }
     return await reply.send({ ok: true });
   });
+}
+
+/**
+ * 关闭自动存档(C8):进程退出前把活跃世界现场存为「自动 ·」档。
+ * 无活跃世界/空 sim(无居民)静默跳过;写入后清理该世界更旧的自动档只留最近 AUTO_KEEP 条。
+ * 返回是否落档(供退出日志);存档失败向上抛由调用方决定退出路径。
+ */
+export async function persistAutoArchive(app: FastifyInstance, handle: DbHandle): Promise<boolean> {
+  const [world] = await handle.db
+    .select()
+    .from(worlds)
+    .where(eq(worlds.status, 'active'))
+    .orderBy(desc(worlds.createdAt))
+    .limit(1);
+  if (!world || app.simulation.characters.size === 0) return false;
+  const label = `${AUTO_LABEL_PREFIX}${new Date().toLocaleString('zh-CN', { hour12: false })}`;
+  const [row] = await handle.db
+    .insert(worldArchives)
+    .values({ worldId: world.id, label, payload: app.simulation.serialize() })
+    .returning();
+  if (!row) return false;
+  const kept = await handle.db
+    .select({ id: worldArchives.id })
+    .from(worldArchives)
+    .where(eq(worldArchives.worldId, world.id))
+    .orderBy(desc(worldArchives.createdAt))
+    .limit(AUTO_KEEP);
+  const stale = and(
+    eq(worldArchives.worldId, world.id),
+    like(worldArchives.label, `${AUTO_LABEL_PREFIX}%`),
+    notInArray(
+      worldArchives.id,
+      kept.map((k) => k.id),
+    ),
+  );
+  await handle.db.delete(worldArchives).where(stale);
+  return true;
+}
+
+/**
+ * 启动自动恢复(C8):灌回活跃世界最近一档(角色/数值/时钟现场)。
+ * 无档/载荷损坏静默返回 false(调用方维持冻结空场);成功回写 worldState 单行表。
+ */
+export async function restoreLatestArchive(
+  app: FastifyInstance,
+  handle: DbHandle,
+  worldId: string,
+): Promise<boolean> {
+  const [row] = await handle.db
+    .select()
+    .from(worldArchives)
+    .where(eq(worldArchives.worldId, worldId))
+    .orderBy(desc(worldArchives.createdAt))
+    .limit(1);
+  if (!row || !isValidArchive(row.payload)) return false;
+  const archive = row.payload;
+  app.simulation.restoreArchive(archive);
+  await handle.db
+    .update(worldState)
+    .set({
+      tick: archive.tick,
+      paused: archive.paused,
+      timeScale: archive.timeScale,
+      updatedAt: new Date(),
+    })
+    .where(eq(worldState.id, 1));
+  return true;
 }
