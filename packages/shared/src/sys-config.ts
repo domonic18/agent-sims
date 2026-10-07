@@ -14,7 +14,7 @@ export const SYS_CONFIG_EFFECT_LABELS: Record<SysConfigEffect, string> = {
   spawn: '新角色生效',
 };
 
-export const SYS_CONFIG_GROUPS = ['time', 'vitals', 'economy', 'social'] as const;
+export const SYS_CONFIG_GROUPS = ['time', 'vitals', 'economy', 'social', 'resources'] as const;
 
 export type SysConfigGroup = (typeof SYS_CONFIG_GROUPS)[number];
 
@@ -23,6 +23,7 @@ export const SYS_CONFIG_GROUP_LABELS: Record<SysConfigGroup, string> = {
   vitals: '体力与生存',
   economy: '经济',
   social: '社交',
+  resources: '资源与刷新',
 };
 
 export interface SysConfigField {
@@ -127,6 +128,39 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
   {
     key: 'FAMILIARITY_DECAY_PER_DAY', label: '熟悉度每日衰减', group: 'social', type: 'int', min: 0, max: 100,
     effect: 'live', desc: '世界日翻转时未互动关系的衰减量',
+  },
+  // —— 资源与刷新(采集节点存量/重生,04 §5.4 表值=出厂默认) ——
+  {
+    key: 'NODE_MAX_CHARGES_BERRY', label: '浆果丛存量', group: 'resources', type: 'int', min: 1, max: 99,
+    effect: 'live', desc: '浆果丛可采集次数上限,采竭后按重生天数回满',
+  },
+  {
+    key: 'NODE_MAX_CHARGES_JUNK', label: '拾荒堆存量', group: 'resources', type: 'int', min: -1, max: 99,
+    effect: 'live', desc: '拾荒堆可采集次数上限;-1=无限(默认,不枯竭)',
+  },
+  {
+    key: 'NODE_MAX_CHARGES_TREE', label: '树木存量', group: 'resources', type: 'int', min: 1, max: 99,
+    effect: 'live', desc: '树木(生存)可采集次数上限',
+  },
+  {
+    key: 'NODE_MAX_CHARGES_ROCK', label: '岩石存量', group: 'resources', type: 'int', min: 1, max: 99,
+    effect: 'live', desc: '岩石(生存)可采集次数上限',
+  },
+  {
+    key: 'NODE_MAX_CHARGES_METAL', label: '金属堆存量', group: 'resources', type: 'int', min: 1, max: 99,
+    effect: 'live', desc: '金属堆(生存)可采集次数上限',
+  },
+  {
+    key: 'NODE_MAX_CHARGES_APPLE', label: '苹果树存量', group: 'resources', type: 'int', min: 1, max: 99,
+    effect: 'live', desc: '苹果树可采集次数上限',
+  },
+  {
+    key: 'NODE_MAX_CHARGES_WHEAT', label: '麦丛存量', group: 'resources', type: 'int', min: 1, max: 99,
+    effect: 'live', desc: '麦丛可采集次数上限',
+  },
+  {
+    key: 'NODE_RESPAWN_DAYS', label: '节点重生天数', group: 'resources', type: 'int', min: 1, max: 7,
+    effect: 'live', desc: '采竭节点回满所需天数(次日 00:00 计),1=次日回满',
   },
 ];
 

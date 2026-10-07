@@ -109,7 +109,11 @@ export const GATHER_TASKS: Record<GatherTaskId, GatherTaskDef> = {
   },
 };
 
-/** 节点存量表(design/09 §2):采尽枯竭次日 00:00 回满;拾荒堆无限采(charges=null) */
+/**
+ * 节点存量表(design/09 §2):采尽枯竭后按重生天数回满;拾荒堆无限采(charges=null)。
+ * 表值=出厂默认,运行时以 BALANCE.NODE_MAX_CHARGES_*(SYS_CONFIG resources 组热调)为准,
+ * server 读点见 work-task/simulation。
+ */
 export const NODE_MAX_CHARGES: Record<ResourceNode['kind'], number | null> = {
   berry_bush: 3,
   junk_pile: null,

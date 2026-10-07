@@ -87,6 +87,16 @@ export interface BalanceConfig {
   SOCIAL_CHAT_DISTANCE: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
   FAMILIARITY_DECAY_PER_DAY: number;
+  /** 资源节点存量上限(04 §5.4 表值=出厂默认;junk -1=无限不枯竭) */
+  NODE_MAX_CHARGES_BERRY: number;
+  NODE_MAX_CHARGES_JUNK: number;
+  NODE_MAX_CHARGES_TREE: number;
+  NODE_MAX_CHARGES_ROCK: number;
+  NODE_MAX_CHARGES_METAL: number;
+  NODE_MAX_CHARGES_APPLE: number;
+  NODE_MAX_CHARGES_WHEAT: number;
+  /** 采竭节点回满所需天数(次日 00:00 计) */
+  NODE_RESPAWN_DAYS: number;
 }
 
 export const BALANCE: BalanceConfig = {
@@ -141,6 +151,14 @@ export const BALANCE: BalanceConfig = {
   CHAT_DECAY_STEPS: [1, 0.6, 0.4, 0.3, 0.2, 0.1],
   SOCIAL_CHAT_DISTANCE,
   FAMILIARITY_DECAY_PER_DAY: 1,
+  NODE_MAX_CHARGES_BERRY: 3,
+  NODE_MAX_CHARGES_JUNK: -1,
+  NODE_MAX_CHARGES_TREE: 5,
+  NODE_MAX_CHARGES_ROCK: 4,
+  NODE_MAX_CHARGES_METAL: 3,
+  NODE_MAX_CHARGES_APPLE: 4,
+  NODE_MAX_CHARGES_WHEAT: 3,
+  NODE_RESPAWN_DAYS: 1,
 };
 
 /** 开放字段出厂默认快照(模块加载即固化,与 DB overrides 无关;sys-config GET 用) */
