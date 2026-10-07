@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { maintenanceSpotSchema, type MaintenanceSpot } from './maintenance.js';
+import type { CraftRecipeId, RecipeDef } from './production.js';
 
 /**
  * 世界事件(离散事件即时触发,不占 tick):事件总线承载并供感知层消费。
@@ -110,6 +111,20 @@ export const worldRulesEventSchema = z.object({
 });
 
 export type WorldRulesEvent = z.infer<typeof worldRulesEventSchema>;
+
+/** 世界配方热改广播(admin 配方页 PUT):recipes 为四配方全集(每世界快照) */
+export interface WorldRecipesEvent {
+  type: 'world.recipes';
+  tick: number;
+  recipes: Record<CraftRecipeId, RecipeDef>;
+}
+
+// 配方合法性由 validateRecipes 单点负责,协议面仅约束形状(record 宽松放行)
+export const worldRecipesEventSchema = z.object({
+  type: z.literal('world.recipes'),
+  tick: z.number().int(),
+  recipes: z.record(z.string(), z.unknown()) as z.ZodType<Record<CraftRecipeId, RecipeDef>>,
+});
 
 /** 世界重置(M3.6k 后台创建/删除世界):所有角色清场,快照流自动收敛 */
 export const worldResetEventSchema = z.object({
@@ -232,6 +247,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   worldControlEventSchema,
   worldParamsEventSchema,
   worldRulesEventSchema,
+  worldRecipesEventSchema,
   worldResetEventSchema,
   socialChatEventSchema,
   friendshipFormedEventSchema,

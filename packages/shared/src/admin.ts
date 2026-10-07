@@ -1,4 +1,5 @@
 import type { AssetAnimConfig, AssetStatus } from './asset-manifest.js';
+import type { CraftRecipeId, RecipeDef } from './production.js';
 
 /**
  * 后台模型槽位:五类模型(慢思考/轻量对话/Jev/视觉审核/embedding)的后台配置键,
@@ -169,6 +170,7 @@ export const ADMIN_API = {
   tokenUsageEntries: '/api/admin/token-usage/entries',
   sysConfig: '/api/admin/sys-config',
   sysConfigReset: '/api/admin/sys-config/reset',
+  worldRecipes: '/api/admin/world-recipes',
   assetCategories: '/api/admin/assets/categories',
   assets: '/api/admin/assets',
   asset: (id: number) => `/api/admin/assets/${id}`,
@@ -320,6 +322,11 @@ export interface AssetIssueView {
 export interface AssetIssueListResponse {
   total: number;
   items: AssetIssueView[];
+}
+
+/** GET/PUT /api/admin/world-recipes 与 GET /api/world/recipes 共用响应 */
+export interface WorldRecipesView {
+  recipes: Record<CraftRecipeId, RecipeDef>;
 }
 
 export interface WorldEventEntryView {

@@ -374,6 +374,20 @@ export class Simulation {
     this.recipes = cloneRecipes(recipes);
   }
 
+  /**
+   * 配方运行时热改(admin 配方页):应用全集后广播 world.recipes 事件
+   * (经离散事件流转发多端,param-persist 回写活跃世界存档);
+   * 合法性由调用方 validateRecipes 先行,在制单不追溯(凭挂单快照结算)。
+   */
+  updateRecipes(recipes: Record<CraftRecipeId, RecipeDef>): void {
+    this.setRecipes(recipes);
+    this.events.emit({
+      type: 'world.recipes',
+      tick: this.tick,
+      recipes: cloneRecipes(recipes),
+    });
+  }
+
   /** 状态快照:调试端点与同步层共用的对外形态(序列化在 snapshot.ts) */
   snapshot(): WorldSnapshotMessage {
     return worldSnapshot(this);

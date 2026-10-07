@@ -275,6 +275,12 @@ export function validateRecipes(recipes: unknown): string[] {
       errors.push(`${id}.category: 未知岗位类别`);
     }
   }
+  const known = new Set<string>(CRAFT_RECIPE_IDS);
+  for (const key of Object.keys(record)) {
+    if (!known.has(key)) {
+      errors.push(`${key}: 未知配方 id(仅支持 ${CRAFT_RECIPE_IDS.join('/')})`);
+    }
+  }
   return errors;
 }
 

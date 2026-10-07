@@ -46,6 +46,7 @@ export function eventLogCategory(type: WorldEvent['type']): EventLogCategory {
     case 'world.control':
     case 'world.params':
     case 'world.rules':
+    case 'world.recipes':
     case 'world.reset':
       return 'world';
   }
@@ -141,6 +142,13 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
       };
     case 'world.reset':
       return { icon: '🌍', text: '世界已重置', tone: 'info', characterId: null };
+    case 'world.recipes':
+      return {
+        icon: '📖',
+        text: `配方更新(${Object.keys(event.recipes).length} 条)`,
+        tone: 'info',
+        characterId: null,
+      };
     case 'social.chat': {
       const delta = event.affinityDelta;
       const tail = delta !== 0 ? `(好感${delta > 0 ? '+' : ''}${delta})` : '';

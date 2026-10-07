@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { WorldSettingsView } from '@sims/shared';
+import type { WorldRecipesView, WorldSettingsView } from '@sims/shared';
 import { currentWorldParams, TIME_SCALES, validateBalanceOverrides } from '../config/balance.js';
 import { env } from '../config/env.js';
 import { verifyAdminToken } from '../utils/token.js';
@@ -77,6 +77,9 @@ export function canControlWorld(request: FastifyRequest): boolean {
  */
 export function registerWorldSettingsRoutes(app: FastifyInstance, sim: Simulation): void {
   app.get('/api/world/settings', async () => settingsView(sim));
+
+  /** 每世界配方公开读口(游客页配方文案/材料清单展示需要) */
+  app.get('/api/world/recipes', async (): Promise<WorldRecipesView> => ({ recipes: sim.recipes }));
 
   app.post('/api/world/settings', async (request, reply) => {
     if (!canControlWorld(request)) {
