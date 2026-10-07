@@ -128,6 +128,13 @@
   color: var(--px-dim);
 }
 
+/* 下拉与输入框同款像素框,固定宽度不与名字输入抢空间 */
+.lab-select {
+  flex: 0 0 auto;
+  width: 76px;
+  padding: 4px 2px;
+}
+
 /* ---- 参数热调 ---- */
 .param-group {
   margin-bottom: 6px;

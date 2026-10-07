@@ -12,6 +12,8 @@ import {
   type AssetStatus,
   type AdminLoginRequest,
   type AdminLoginResponse,
+  type AddWorldCharacterRequest,
+  type AddWorldCharacterResponse,
   type AuditLogEntriesResponse,
   type CreateWorldRequest,
   type GameType,
@@ -217,6 +219,15 @@ export async function closeWorld(id: string): Promise<WorldView> {
 export async function deleteWorld(id: string): Promise<void> {
   await adminFetch<unknown>(WORLD_ADMIN_API.world.replace(':id', id), {
     method: 'DELETE',
+  });
+}
+
+export async function addWorldCharacter(
+  payload: AddWorldCharacterRequest,
+): Promise<AddWorldCharacterResponse> {
+  return await adminFetch<AddWorldCharacterResponse>(WORLD_ADMIN_API.characters, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 

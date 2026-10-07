@@ -247,6 +247,85 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     await app.close();
   });
 
+  it('运行中加居民:出生入场落库;超限/空名字/无活跃世界拒绝', async () => {
+    const app = buildApp();
+    const auth = { authorization: `Bearer ${await login(app)}` };
+
+    // 无活跃世界:清掉历史前缀世界与模拟现场,从零构造
+    await handle.db.delete(worlds).where(like(worlds.name, `${WORLD_NAME_PREFIX}%`));
+    app.simulation.reset();
+    const noWorld = await app.inject({
+      method: 'POST',
+      url: '/api/admin/characters',
+      headers: auth,
+      payload: { name: '路人', gender: 'male' },
+    });
+    expect(noWorld.statusCode).toBe(400);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: CREATE_BODY,
+    });
+    expect(created.statusCode).toBe(201);
+    const world = created.json() as WorldView & { simIds: string[] };
+
+    const added = await app.inject({
+      method: 'POST',
+      url: '/api/admin/characters',
+      headers: auth,
+      payload: { name: '新居民', gender: 'female', traits: { sociability: 0.9 }, persona: '爱钓鱼' },
+    });
+    expect(added.statusCode).toBe(201);
+    const spawned = added.json() as { id: string; name: string; x: number; y: number };
+    expect(spawned.name).toBe('新居民');
+    expect(app.simulation.characters.size).toBe(4);
+    const simChar = app.simulation.characters.get(spawned.id);
+    expect(simChar?.traits.sociability).toBe(0.9);
+    // 出生点可行走且不与现有角色重叠
+    expect(app.simulation.map.isWalkable(simChar!.x, simChar!.y)).toBe(true);
+    expect(
+      [...app.simulation.characters.values()].filter(
+        (c) => c.id !== spawned.id && c.x === simChar!.x && c.y === simChar!.y,
+      ),
+    ).toHaveLength(0);
+    // 人物落库关联活跃世界
+    const rows = await handle.db.select().from(characters).where(eq(characters.worldId, world.id));
+    expect(rows).toHaveLength(4);
+    const dbRow = rows.find((r) => r.persona.simId === spawned.id);
+    expect(dbRow?.persona).toMatchObject({ bio: '爱钓鱼', traits: { sociability: 0.9 } });
+
+    // 空名字 400(zod 校验)
+    const blank = await app.inject({
+      method: 'POST',
+      url: '/api/admin/characters',
+      headers: auth,
+      payload: { name: '  ', gender: 'male' },
+    });
+    expect(blank.statusCode).toBe(400);
+
+    // 超限 400:补到 12 人后再加
+    for (let i = app.simulation.characters.size; i < 12; i += 1) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/admin/characters',
+        headers: auth,
+        payload: { name: `批量${i}`, gender: 'male' },
+      });
+      expect(res.statusCode).toBe(201);
+    }
+    expect(app.simulation.characters.size).toBe(12);
+    const overflow = await app.inject({
+      method: 'POST',
+      url: '/api/admin/characters',
+      headers: auth,
+      payload: { name: '第十三人', gender: 'male' },
+    });
+    expect(overflow.statusCode).toBe(400);
+    await app.close();
+  });
+
   it('关闭活跃世界:标记归档+暂停模拟;重复关闭幂等', async () => {
     const app = buildApp();
     const auth = { authorization: `Bearer ${await login(app)}` };

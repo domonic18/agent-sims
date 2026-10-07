@@ -12,6 +12,7 @@ import {
   Input,
   InputNumber,
   List,
+  Modal,
   Popconfirm,
   Radio,
   Row,
@@ -45,7 +46,7 @@ import {
   type WorldPreviewResponse,
   type WorldView,
 } from '@sims/shared';
-import { ApiError, closeWorld, createWorld, deleteWorld, fetchSysConfig, fetchWorlds, previewWorld } from './api';
+import { ApiError, addWorldCharacter, closeWorld, createWorld, deleteWorld, fetchSysConfig, fetchWorlds, previewWorld } from './api';
 
 interface CharacterRow {
   name: string;
@@ -116,16 +117,61 @@ function WorldParamsCollapse({ busy }: { busy: boolean }) {
   );
 }
 
-function CurrentWorldCard({ active, busy, onClose }: { active: WorldView; busy: boolean; onClose: () => void }) {
+function CurrentWorldCard({
+  active,
+  busy,
+  onClose,
+  onAdded,
+}: {
+  active: WorldView;
+  busy: boolean;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const { message } = AntdApp.useApp();
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addForm] = Form.useForm<CharacterRow & { gender: Gender }>();
+
+  const submitAdd = async (): Promise<void> => {
+    const values = await addForm.validateFields();
+    setAddBusy(true);
+    try {
+      const spawned = await addWorldCharacter({
+        name: values.name.trim(),
+        gender: values.gender,
+        ...(values.persona?.trim() ? { persona: values.persona.trim() } : {}),
+      });
+      message.success(`「${spawned.name}」已入驻小镇 (${spawned.x},${spawned.y})`);
+      setAddOpen(false);
+      addForm.resetFields();
+      onAdded();
+    } catch (err) {
+      message.error(err instanceof ApiError ? err.message : '添加失败');
+    } finally {
+      setAddBusy(false);
+    }
+  };
+
   return (
     <Card
       title="当前世界"
       extra={
-        <Popconfirm title="关闭并归档该世界?模拟将暂停" okText="关闭" onConfirm={onClose}>
-          <Button size="small" disabled={busy}>
-            关闭世界
+        <Space>
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            disabled={busy || active.characters.length >= WORLD_CHARACTER_LIMITS.max}
+            onClick={() => setAddOpen(true)}
+          >
+            添加居民
           </Button>
-        </Popconfirm>
+          <Popconfirm title="关闭并归档该世界?模拟将暂停" okText="关闭" onConfirm={onClose}>
+            <Button size="small" disabled={busy}>
+              关闭世界
+            </Button>
+          </Popconfirm>
+        </Space>
       }
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
@@ -161,6 +207,45 @@ function CurrentWorldCard({ active, busy, onClose }: { active: WorldView; busy: 
           <Tag color="default">倍率 {active.rules.initialTimeScale}x</Tag>
         </Flex>
       </Space>
+      <Modal
+        title="添加居民"
+        open={addOpen}
+        okText="入驻"
+        onCancel={() => setAddOpen(false)}
+        confirmLoading={addBusy}
+        onOk={() => void submitAdd()}
+      >
+        <Form form={addForm} layout="vertical" requiredMark={false}>
+          <Form.Item
+            name="name"
+            label="名字"
+            rules={[
+              { required: true, whitespace: true, message: '名字不能为空' },
+              { max: 20, message: '至多 20 字' },
+            ]}
+          >
+            <Input
+              maxLength={20}
+              placeholder="居民名"
+              suffix={
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => addForm.setFieldValue('name', pickRandomName('unspecified'))}
+                >
+                  随机
+                </Button>
+              }
+            />
+          </Form.Item>
+          <Form.Item name="gender" label="性别" initialValue="unspecified">
+            <Select options={GENDERS.map((g) => ({ value: g, label: GENDER_LABELS[g] }))} />
+          </Form.Item>
+          <Form.Item name="persona" label="人设(预留)" >
+            <Input maxLength={100} placeholder="一句话人设,预留字段" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Card>
   );
 }
@@ -346,7 +431,12 @@ export function WorldPanel() {
         {active === null ? (
           <Empty description="暂无活跃世界——用下方表单创建一个" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
-          <CurrentWorldCard active={active} busy={busy} onClose={() => void close(active.id)} />
+          <CurrentWorldCard
+            active={active}
+            busy={busy}
+            onClose={() => void close(active.id)}
+            onAdded={() => void load()}
+          />
         )}
       </Card>
 

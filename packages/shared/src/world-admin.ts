@@ -132,6 +132,17 @@ export interface WorldPreviewResponse {
   spawnSamples: ReadonlyArray<readonly [number, number]>;
 }
 
+/** POST /api/admin/characters 请求体:复用世界人物配置段(C5 动态加居民) */
+export type AddWorldCharacterRequest = WorldCharacterConfig;
+
+/** POST /api/admin/characters 响应:模拟层生成的短 id 与出生格 */
+export interface AddWorldCharacterResponse {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+}
+
 /** 世界生命周期端点(admin 鉴权同模型配置) */
 export const WORLD_ADMIN_API = {
   /** GET 列表 / POST 创建 */
@@ -142,6 +153,8 @@ export const WORLD_ADMIN_API = {
   worldClose: '/api/admin/worlds/:id/close',
   /** DELETE 删除记录(人物级联清理) */
   world: '/api/admin/worlds/:id',
+  /** POST 运行中世界动态加居民(C5) */
+  characters: '/api/admin/characters',
 } as const;
 
 const NAME_POOLS: Record<Exclude<Gender, 'unspecified'>, string[]> = {

@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  GENDERS,
+  GENDER_LABELS,
   SYS_CONFIG_FIELDS,
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
+  type Gender,
 } from '@sims/shared';
+import { addWorldCharacter, fetchWorlds, getToken } from '../admin/api';
 import {
   debugSpawn,
   debugTick,
@@ -43,6 +47,12 @@ export default function LabPage() {
   // dev 通道可用性(生产 /debug 未注册 → 404 → 整块隐藏)
   const [devAvailable, setDevAvailable] = useState(false);
   const [spawnName, setSpawnName] = useState('');
+  // 管理员通道(有 token 且校验通过才显示;与 admin 后台共享 localStorage)
+  const [adminAvailable, setAdminAvailable] = useState(false);
+  const [adminName, setAdminName] = useState('');
+  const [adminGender, setAdminGender] = useState<Gender>('unspecified');
+  const [adminPersona, setAdminPersona] = useState('');
+  const [adminMsg, setAdminMsg] = useState<string | null>(null);
   const nextLogIdRef = useRef(1);
   const spawnCountRef = useRef(0);
 
@@ -70,6 +80,16 @@ export default function LabPage() {
     void probeDebugAvailable().then((ok) => {
       if (!cancelled) setDevAvailable(ok);
     });
+    // admin 探测:本地有 token 才打接口,401 会清 token(下次进页不再显示)
+    if (getToken() !== null) {
+      void fetchWorlds()
+        .then(() => {
+          if (!cancelled) setAdminAvailable(true);
+        })
+        .catch(() => {
+          if (!cancelled) setAdminAvailable(false);
+        });
+    }
     return () => {
       cancelled = true;
     };
@@ -147,6 +167,26 @@ export default function LabPage() {
       setControlError(null);
     } catch (error) {
       setControlError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const addResident = async (): Promise<void> => {
+    const name = adminName.trim();
+    if (name === '') {
+      setAdminMsg('名字不能为空');
+      return;
+    }
+    try {
+      const spawned = await addWorldCharacter({
+        name,
+        gender: adminGender,
+        ...(adminPersona.trim() !== '' ? { persona: adminPersona.trim() } : {}),
+      });
+      setAdminMsg(`「${spawned.name}」已入驻 (${spawned.x},${spawned.y})`);
+      setAdminName('');
+      setAdminPersona('');
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -292,6 +332,46 @@ export default function LabPage() {
                     ✚ 复活 {character.name}
                   </button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {adminAvailable && (
+            <div className="px-box lab-panel-px">
+              <div className="px-inner lab-panel-inner">
+                <h3>管理员 · 添加居民</h3>
+                <div className="lab-btn-row">
+                  <input
+                    className="lab-input"
+                    placeholder="新居民名字"
+                    maxLength={20}
+                    value={adminName}
+                    onChange={(e) => setAdminName(e.target.value)}
+                  />
+                  <select
+                    className="lab-input lab-select"
+                    value={adminGender}
+                    onChange={(e) => setAdminGender(e.target.value as Gender)}
+                  >
+                    {GENDERS.map((g) => (
+                      <option key={g} value={g}>
+                        {GENDER_LABELS[g]}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" className="px-btn" onClick={() => void addResident()}>
+                    ➕ 入驻
+                  </button>
+                </div>
+                <input
+                  className="lab-input"
+                  style={{ width: '100%', marginTop: 6 }}
+                  placeholder="人设一句话(可选,预留字段)"
+                  maxLength={100}
+                  value={adminPersona}
+                  onChange={(e) => setAdminPersona(e.target.value)}
+                />
+                {adminMsg !== null && <p className="hint">{adminMsg}</p>}
               </div>
             </div>
           )}

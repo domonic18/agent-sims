@@ -438,6 +438,73 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
     return await reply.code(201).send({ ...toView(row), simIds });
   });
 
+  // 运行中世界动态加居民(C5):body 复用创建时的 character 段;下一 tick 快照自动同步(web 零改动)
+  app.post('/api/admin/characters', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const parsed = characterSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return await reply.code(400).send({ error: parsed.error.issues[0]?.message ?? '参数不合法' });
+    }
+    const [row] = await handle.db
+      .select()
+      .from(worlds)
+      .where(eq(worlds.status, 'active'))
+      .orderBy(desc(worlds.createdAt))
+      .limit(1);
+    if (!row) {
+      return await reply.code(400).send({ error: '当前没有运行中的世界' });
+    }
+    if (app.simulation.characters.size + 1 > WORLD_CHARACTER_LIMITS.max) {
+      return await reply.code(400).send({
+        error: `居民数已达上限 (${WORLD_CHARACTER_LIMITS.max}),无法再添加`,
+      });
+    }
+    // 出生点:生成地图 BFS 收集可行走格,内置地图静态点表;避开已占用格
+    const config = row.config as CreateWorldRequest & { map?: TileMapDefinition };
+    const occupied = new Set(
+      [...app.simulation.characters.values()].map((c) => `${c.x},${c.y}`),
+    );
+    const candidates =
+      config.map !== undefined
+        ? generateSpawnSpots(config.map, app.simulation.characters.size + 1)
+        : BALANCE.SPAWN_SPOTS;
+    const spot = candidates.find((s) => !occupied.has(`${s.x},${s.y}`));
+    if (spot === undefined) {
+      return await reply.code(500).send({ error: '无可用的出生点' });
+    }
+    const simId = shortId();
+    const created = app.simulation.spawnCharacter(
+      simId,
+      spot.x,
+      spot.y,
+      parsed.data.name,
+      parsed.data.traits,
+    );
+    try {
+      await handle.db.insert(characters).values({
+        tier: 'core',
+        name: parsed.data.name,
+        worldId: row.id,
+        gender: parsed.data.gender,
+        persona: {
+          simId,
+          ...(parsed.data.traits ? { traits: parsed.data.traits } : {}),
+          ...(parsed.data.persona ? { bio: parsed.data.persona } : {}),
+          ...(parsed.data.modelSlot ? { modelSlot: parsed.data.modelSlot } : {}),
+        },
+        position: { x: created.x, y: created.y },
+        stats: {
+          energy: created.energy,
+          score: created.score,
+          coins: created.coins,
+        },
+      });
+    } catch {
+      // 人物档案落库失败不阻断入场(模拟层为权威状态)
+    }
+    return await reply.code(201).send({ id: simId, name: created.name, x: created.x, y: created.y });
+  });
+
   app.post('/api/admin/worlds/:id/close', async (request, reply) => {
     if (!requireAdmin(request, reply)) return;
     const params = request.params as { id: string };
