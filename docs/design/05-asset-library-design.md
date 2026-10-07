@@ -85,6 +85,7 @@ apps/web/public/assets/manifest.json   # 元数据清单(分类/尺寸/占地/ti
 - manifest 含 categories 树 + assets 数组(仅 active);发布是**幂等重建**(产物目录整体重新生成,无增量状态)
 - 渲染层启动时 fetch manifest 构建 registry(tile 条带仍是裁切产物——**裁切脚本退役**,tile 由发布器从库内 tile 素材拼条带)
 - 世界生成(worldgen)在 server 侧同样读 manifest 做布局决策,双端共用(@sims/shared 定义 manifest Zod schema,单一真相源)
+- **方向变体(-b 后缀)约定(2026-10-07 家具朝向系统)**: 同 kind 池内 slug 以 `-b` 结尾的件为**背面视角**(如 indoor/sofa 池的 sofa 正面/sofa-b 背面,双份 manifest 均已入池);worldgen 按家具 facing 定向选材——facing=north(贴南墙、镜头看到背面)时 -b 件优先,其余 facing 排除 -b 件,池过滤后为空回退整池。新导入方向变体素材须沿用该命名约定
 
 ## 5. 关键决策
 
