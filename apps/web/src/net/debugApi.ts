@@ -2,13 +2,18 @@
  * Lab 调试台控制通道:暂停/倍率/参数走 /api/world/settings 常开端点
  * (开发/生产通用);复活等纯调试动作仍走 /debug/*(仅 development 注册)。
  */
+import { useAuthStore } from '../store/authStore';
 
 const request = async <T>(path: string, method: 'GET' | 'POST', body?: unknown): Promise<T> => {
+  // /api/world/settings 写操作在生产须 admin Bearer(canControlWorld 校验),与 worldApi 同口径
+  const token = useAuthStore.getState().token;
   const response = await fetch(path, {
     method,
-    ...(body === undefined
-      ? {}
-      : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
+    headers: {
+      ...(token !== null && path.startsWith('/api/') ? { authorization: `Bearer ${token}` } : {}),
+      ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (!response.ok) {
     const detail = await response.text();

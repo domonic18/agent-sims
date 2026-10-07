@@ -381,7 +381,7 @@ export function ActivitySection({
     if (def.id === 'sleep') {
       return renderSleepRow(def);
     }
-    if (def.id in MAINTENANCE_TASKS || def.id === 'gather_berry' || def.id === 'scavenge') {
+    if (def.id in MAINTENANCE_TASKS || def.id in GATHER_TASKS) {
       return renderWorkRow(def, locked);
     }
     const anchors = activityAnchors(map, def.id);
