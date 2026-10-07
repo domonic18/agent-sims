@@ -61,6 +61,9 @@ export interface TileMapDefinition {
   patches?: PatchRect[];
   /** 围栏段清单(M-G.5 数据化):公园北缘等;缺省=无围栏 */
   fences?: FenceRect[];
+  /** 镇内核心区(survival 镇内外分区,M-S/S1.5):核心矩形,边线即镇界围栏(路格豁口=出口),
+   * town 场所含于核心、wild 场所居环带;growth 缺省=无分区 */
+  townCore?: BlockedRect;
   /** 资源节点种子(M-G.6 生产系统):浆果丛/拾荒堆,占格不可行走;缺省=无节点 */
   resources?: ResourceNodeSeed[];
   /** 户外装饰坐标(生成地图数据化;内置地图缺省) */

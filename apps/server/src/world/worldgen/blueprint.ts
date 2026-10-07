@@ -287,7 +287,8 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
   },
   graveyard: {
     name: '僵尸墓地',
-    size: [[12, 9], [14, 10]],
+    // 镇外环带尺寸(M-S/S1.5):small 图镇外上下带深 ~8,墓地纵向 ≤8 才放得下
+    size: [[11, 7], [13, 8]],
     requiredAnchors: [],
     open: true,
     furniture: [
@@ -304,7 +305,8 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
   },
   ruins: {
     name: '废墟',
-    size: [[12, 9], [14, 10]],
+    // 镇外环带尺寸(M-S/S1.5):与墓地同约束(纵向 ≤8)
+    size: [[11, 7], [13, 8]],
     requiredAnchors: [],
     open: true,
     furniture: [
@@ -321,15 +323,20 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
   },
 };
 
-/** growth 配额:各分区场所清单(数量区间由密度参数在生成器内定;
+/** 配额行(两模式共用):数量区间由密度参数在生成器内定;
  * [0,n] 区间为锦上添花型新场所——空间不足自然裁掉,不挤占核心八类;
- * essential=核心活动场所,随机撒放空间不足时确定性兜底必须放得下) */
-export const GROWTH_QUOTA: ReadonlyArray<{
+ * essential=核心活动场所,随机撒放空间不足时确定性兜底必须放得下 */
+export interface QuotaRow {
   kind: PlaceKind;
   zone: Zone;
   count: [number, number];
   essential: boolean;
-}> = [
+  /** 镇内外分区(survival,M-S/S1.5):town=含于镇内核心,wild=镇外环带;缺省=不分区 */
+  area?: 'town' | 'wild';
+}
+
+/** growth 配额:各分区场所清单 */
+export const GROWTH_QUOTA: ReadonlyArray<QuotaRow> = [
   { kind: 'home', zone: 'sw', count: [3, 4], essential: true },
   { kind: 'park', zone: 'se', count: [1, 1], essential: true },
   { kind: 'library', zone: 'nw', count: [1, 1], essential: true },
@@ -347,32 +354,40 @@ export const GROWTH_QUOTA: ReadonlyArray<{
 ];
 
 /**
- * 末日生存模式配额(survival gameType):场所末日化重配——
- * 公寓减量/幸存者营地必出/僵尸墓地+废墟必出(区域标记,僵尸实体随 M-S)/
- * 医疗与补给点保留,其余生活设施按空间可选。
+ * 末日生存模式配额(survival gameType;M-S/S1.5 镇内外分区)——
+ * 镇内核心: 公寓/营地/诊所/商店(生活与医疗闭环),餐厅/公园可选;
+ * 镇外环带: 僵尸墓地+废墟必出(危险区外迁,僵尸实体随 M-S);
+ * 文教等城镇设施自生存配额移除(核心收窄,荒凉感)。
+ * hospital/police 镇外场所随 C3 接入。
  */
-export const SURVIVAL_QUOTA: ReadonlyArray<{
-  kind: PlaceKind;
-  zone: Zone;
-  count: [number, number];
-  essential: boolean;
-}> = [
-  { kind: 'home', zone: 'sw', count: [2, 3], essential: true },
-  { kind: 'camping', zone: 'sw', count: [1, 1], essential: true },
-  { kind: 'graveyard', zone: 'nw', count: [1, 2], essential: true },
-  { kind: 'ruins', zone: 'ne', count: [1, 2], essential: true },
-  { kind: 'clinic', zone: 'ne', count: [1, 1], essential: true },
-  { kind: 'shop', zone: 'ne', count: [1, 1], essential: true },
-  { kind: 'restaurant', zone: 'ne', count: [0, 1], essential: false },
-  { kind: 'park', zone: 'se', count: [0, 1], essential: false },
-  { kind: 'library', zone: 'nw', count: [0, 1], essential: false },
-  { kind: 'office', zone: 'nw', count: [0, 1], essential: false },
-  { kind: 'school', zone: 'nw', count: [0, 1], essential: false },
-  { kind: 'hotel', zone: 'nw', count: [0, 1], essential: false },
-  { kind: 'cafe', zone: 'ne', count: [0, 1], essential: false },
-  { kind: 'beach', zone: 'se', count: [0, 1], essential: false },
-  { kind: 'plaza', zone: 'se', count: [0, 1], essential: false },
+export const SURVIVAL_QUOTA: ReadonlyArray<QuotaRow> = [
+  { kind: 'home', zone: 'sw', count: [2, 3], essential: true, area: 'town' },
+  { kind: 'camping', zone: 'sw', count: [1, 1], essential: true, area: 'town' },
+  { kind: 'clinic', zone: 'ne', count: [1, 1], essential: true, area: 'town' },
+  { kind: 'shop', zone: 'ne', count: [1, 1], essential: true, area: 'town' },
+  { kind: 'graveyard', zone: 'nw', count: [1, 1], essential: true, area: 'wild' },
+  { kind: 'ruins', zone: 'ne', count: [1, 1], essential: true, area: 'wild' },
+  { kind: 'restaurant', zone: 'ne', count: [0, 1], essential: false, area: 'town' },
+  { kind: 'park', zone: 'se', count: [0, 1], essential: false, area: 'town' },
 ];
+
+/**
+ * survival small 档尺寸覆写(M-S/S1.5 镇内外分区):small 图镇外环带为上下带深 ≤6 /
+ * 左右带宽 ≤10 的窄框,home/camping 全档尺寸与 wild 蓝图大档放不下——小图取带状适配
+ * 单体;medium/large 不覆写保留全档。growth 不读此表(地图零变化)。
+ */
+export const SURVIVAL_SMALL_SIZE_OVERRIDES: Partial<
+  Record<PlaceKind, ReadonlyArray<readonly [number, number]>>
+> = {
+  home: [[8, 7]],
+  camping: [[10, 8]],
+  clinic: [[8, 7]],
+  shop: [[8, 7]],
+  restaurant: [[8, 7]],
+  park: [[12, 8]],
+  graveyard: [[10, 7], [12, 6]],
+  ruins: [[10, 7], [12, 6]],
+};
 
 /** 内景地板/墙体 tile 池(与素材库 tile slug 对应) */
 export const FLOOR_TILE_POOL = [

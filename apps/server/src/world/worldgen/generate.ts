@@ -18,6 +18,7 @@ import {
   GROWTH_QUOTA,
   PLACE_BLUEPRINTS,
   SURVIVAL_QUOTA,
+  SURVIVAL_SMALL_SIZE_OVERRIDES,
   WALL_TILE_POOL,
   type FurnitureSlot,
   type PlaceKind,
@@ -116,10 +117,14 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
 
   // ① 骨架:蜿蜒路网——中心广场随机偏移,四方向随机游走延伸(段长 3~6,30% 折弯),
   // 密度短枝路自已铺路段引出;只进 paths(纯视觉+撒放预留),不阻塞通行
-  const { rects: paths, plaza } = buildRoadNetwork(rng, width, height, densityIndex);
+  const { rects: paths, plaza } = buildRoadNetwork(
+    rng, width, height, densityIndex, input.gameType === 'survival',
+  );
   const patches: NonNullable<TileMapDefinition['patches']> = [{ ...plaza, tile: PLAZA_TILE }];
   const midX = plaza.x + Math.floor(plaza.w / 2);
   const midY = plaza.y + Math.floor(plaza.h / 2);
+  // 镇内核心(survival 分区): 以广场中心为镇中心,growth 不分区(rng 流零消耗)
+  const townCore = input.gameType === 'survival' ? buildTownCore(width, height) : null;
 
   // ② 场所随机撒放:四象限为偏好区(主街分割),核心场所必得、可选场所放不下即裁;
   // 占用网格含 ±1 缓冲(场所间不贴脸、不压路、不越界),撒放顺序即配额顺序
@@ -148,9 +153,14 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
     const count = densityIndex === 0 ? quota.count[0] : rng.int(quota.count[0], quota.count[1]);
     const zone = zones[quota.zone];
     for (let n = 0; n < count; n += 1) {
-      const [w, h] = rng.pick(PLACE_BLUEPRINTS[quota.kind].size);
+      const sizePool =
+        input.gameType === 'survival' && input.params.size === 'small'
+          ? SURVIVAL_SMALL_SIZE_OVERRIDES[quota.kind] ?? PLACE_BLUEPRINTS[quota.kind].size
+          : PLACE_BLUEPRINTS[quota.kind].size;
+      const [w, h] = rng.pick(sizePool);
       const spot = tryScatterPlace(
         rng, zone, width, height, w, h, occupied, occupiedCore, entrances, quota.essential,
+        quota.area ?? null, townCore, quota.kind,
       );
       if (spot === null) break;
       const seq = (counters.get(quota.kind) ?? 0) + 1;
@@ -189,6 +199,10 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
     }
   }
 
+  // ③.5 镇界围栏(survival):沿核心边线连续段成栏,落在路格上的围栏位跳过=镇出口
+  // (先路后栏;随 fences 数组下发,资源/装饰既有避让自动生效)
+  if (townCore !== null) fences.push(...townFences(townCore, paths));
+
   // ④ 资源节点撒点(M-G.6):公园浆果丛/街道拾荒堆,占格不可行走站四邻作业
   const resources = scatterResources(rng, input.gameType, width, height, places, paths, fences, pond);
 
@@ -208,6 +222,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
     fences,
     resources,
     patches,
+    ...(townCore !== null ? { townCore } : {}),
   };
   // ⑤ 校验:TileMap 构造即校验(入口/门洞/家具/室内连通);再验锚点与全局连通
   const tileMap = TileMap.fromDefinition(map);
@@ -234,6 +249,8 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
  * 可选场所两轮皆败即裁(锦上添花型,空间不足自然消失)。随机轮查缓冲占用
  * (场所间留缝/不贴路),兜底轮只查核心占用(矩形本身不重叠)——支路把象限切成
  * 窄条时核心场所允许贴路而立,不再触发整图重试。
+ * 镇内外分区(survival,M-S/S1.5):town 矩形含于核心内圈(入口行不越围栏),
+ * wild 矩形与核心外扩一圈不相交(围栏外留走环);两轮随机与兜底扫描全带约束。
  */
 function tryScatterPlace(
   rng: Rng,
@@ -246,6 +263,9 @@ function tryScatterPlace(
   occupiedCore: Set<string>,
   entrances: Set<string>,
   essential: boolean,
+  area: 'town' | 'wild' | null,
+  townCore: BlockedRect | null,
+  label: string,
 ): { x: number; y: number } | null {
   // y 界保持 2/height-2:入口格在 y-1 或 y+h 行,须落在可行走带内(0/末行为边界墙)
   const inBounds = (x: number, y: number): boolean =>
@@ -263,8 +283,28 @@ function tryScatterPlace(
     }
     return false;
   };
+  const areaOk = (x: number, y: number): boolean => {
+    if (area === null || townCore === null) return true;
+    if (area === 'town') {
+      // 核心内圈(围栏线内缩 1):有门场所入口行 y+h 与开放场所入口行 y-1 均不出栏
+      return (
+        x >= townCore.x + 1 &&
+        y >= townCore.y + 2 &&
+        x + w <= townCore.x + townCore.w - 2 &&
+        y + h <= townCore.y + townCore.h - 2
+      );
+    }
+    // 与核心外扩一圈不相交(镇界围栏外留一圈走环)
+    return (
+      x + w <= townCore.x - 1 ||
+      x >= townCore.x + townCore.w + 1 ||
+      y + h <= townCore.y - 1 ||
+      y >= townCore.y + townCore.h + 1
+    );
+  };
   const fits = (x: number, y: number, grid: Set<string>): boolean => {
     if (!inBounds(x, y)) return false;
+    if (!areaOk(x, y)) return false;
     if (coversEntrance(x, y)) return false;
     const pad = grid === occupiedCore ? 0 : 1;
     for (let yy = y - pad; yy <= y + h - 1 + pad; yy += 1) {
@@ -297,7 +337,7 @@ function tryScatterPlace(
     }
   }
   if (!essential) return null;
-  throw new Error('撒放空间不足');
+  throw new Error(`撒放空间不足:${label}`);
 }
 
 /** 公园水系:先定池塘(家具/花木布局避开) */
@@ -339,6 +379,55 @@ function graveyardFences(place: PlaceDefinition): BlockedRect[] {
   pushV(place.x, midY + 3, place.y + place.h - 2);
   pushV(place.x + place.w - 1, place.y + 1, midY - 1);
   pushV(place.x + place.w - 1, midY + 3, place.y + place.h - 2);
+  return rects;
+}
+
+/**
+ * 镇内核心矩形(survival,M-S/S1.5):以地图中心为中心,三档统一 62%——
+ * 镇内活动容量与 medium/large 已验证水位一致;镇外四向环带(上下带深 ~6/左右带宽 ~10)
+ * 由 wild 蓝图与 small 覆写尺寸适配。四周边线即镇界围栏线(townFences),路格豁口为出口。
+ */
+function buildTownCore(width: number, height: number): BlockedRect {
+  const w = Math.round(width * 0.62);
+  const h = Math.round(height * 0.62);
+  return { x: Math.floor((width - w) / 2), y: Math.floor((height - h) / 2), w, h };
+}
+
+/**
+ * 镇界围栏(survival):沿核心四周边线逐格成段(连续格合并为整条矩形),
+ * 落在任何路格上的围栏位跳过——主干道臂横穿边线处即天然镇出口
+ * (先路后栏:门前路 pass③ 已铺完)。角格归横边,竖边让出两角。
+ */
+function townFences(core: BlockedRect, paths: readonly BlockedRect[]): BlockedRect[] {
+  const onPath = (x: number, y: number): boolean =>
+    paths.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+  const rects: BlockedRect[] = [];
+  const runH = (y: number, x0: number, x1: number): void => {
+    let start: number | null = null;
+    for (let x = x0; x <= x1 + 1; x += 1) {
+      const solid = x <= x1 && !onPath(x, y);
+      if (solid && start === null) start = x;
+      if (!solid && start !== null) {
+        rects.push({ x: start, y, w: x - start, h: 1 });
+        start = null;
+      }
+    }
+  };
+  const runV = (x: number, y0: number, y1: number): void => {
+    let start: number | null = null;
+    for (let y = y0; y <= y1 + 1; y += 1) {
+      const solid = y <= y1 && !onPath(x, y);
+      if (solid && start === null) start = y;
+      if (!solid && start !== null) {
+        rects.push({ x, y: start, w: 1, h: y - start });
+        start = null;
+      }
+    }
+  };
+  runH(core.y, core.x, core.x + core.w - 1);
+  runH(core.y + core.h - 1, core.x, core.x + core.w - 1);
+  runV(core.x, core.y + 1, core.y + core.h - 2);
+  runV(core.x + core.w - 1, core.y + 1, core.y + core.h - 2);
   return rects;
 }
 
@@ -801,16 +890,20 @@ const PLAZA_TILE = 'tile-plaza';
 
 /**
  * 蜿蜒路网:中心广场(边长 4~6,随机偏移 ±2)+ 四方向随机游走延伸——段宽 2/段长 3~6,
- * 30% 折弯垂直偏移 2~4(连接段锚定刚铺段前端 2 格,路网必连通),距边 4~6 停;
- * 短枝路 sparse 1/normal 2/dense 4 自随机已铺段垂直引出(长 5~10)。
+ * 折弯垂直偏移 2~4(连接段锚定刚铺段前端 2 格,路网必连通),距边 4~6 停;
+ * 短枝路自随机已铺段垂直引出(长 5~10)。growth 折弯 30%/枝路 1-2-4 不变;
+ * survival 降折弯(12%)/减枝路(0-1-2)——镇内核心容量吃紧,整片内圈不被
+ * 折弯带切碎是 essential 场所撒放前提(M-S/S1.5)。
  */
 function buildRoadNetwork(
   rng: Rng,
   width: number,
   height: number,
   densityIndex: number,
+  survival: boolean,
 ): { rects: BlockedRect[]; plaza: BlockedRect } {
   const rects: BlockedRect[] = [];
+  const bendChance = survival ? 0.12 : 0.3;
   const plazaSize = rng.int(4, 6);
   const plaza: BlockedRect = {
     x: Math.floor(width / 2) + rng.int(-2, 2) - Math.floor(plazaSize / 2),
@@ -842,7 +935,7 @@ function buildRoadNetwork(
         y += s * len;
       }
       // 折弯:垂直偏移 2~4,连接段跨新旧行带并锚定刚铺段前端
-      if (!rng.chance(0.3)) continue;
+      if (!rng.chance(bendChance)) continue;
       const k = rng.int(2, 4);
       if (horizontal) {
         const opts: number[] = [];
@@ -866,7 +959,7 @@ function buildRoadNetwork(
     }
   }
   // 短枝路:自随机已铺段(含广场)垂直引出,长 5~10,越界侧自动改向
-  const branchCount = [1, 2, 4][densityIndex] ?? 2;
+  const branchCount = survival ? [0, 1, 2][densityIndex] ?? 1 : [1, 2, 4][densityIndex] ?? 2;
   for (let i = 0; i < branchCount; i += 1) {
     const base = rng.pick(rects);
     const len = rng.int(5, 10);
@@ -940,6 +1033,9 @@ function scatterResources(
   const streetBlocked = new Set<string>();
   for (const path of paths) mark0(streetBlocked, path); // 拾荒堆不上路面
   if (pond !== null) mark0(streetBlocked, pond);
+  if (gameType === 'survival') {
+    for (const fence of fences) mark0(streetBlocked, fence); // 镇界围栏格不落堆(S1.5;growth 零变化)
+  }
   const parks = places.filter(
     (p) => p.id.startsWith('park') || (gameType === 'survival' && p.id.startsWith('camping')),
   );
