@@ -62,6 +62,9 @@ export const ACTIVITY_EMOJI: Record<ActivityId, string> = {
   rescue: '🚑',
   gather_berry: '🧺',
   scavenge: '♻️',
+  chop_tree: '🪓',
+  mine_rock: '⛏️',
+  salvage_metal: '🔩',
   craft_berry_pie: '🥧',
   craft_repair_kit: '🔨',
 };
@@ -83,6 +86,9 @@ export const ACTIVITY_POSES: Record<ActivityId, 'idle' | 'run' | 'lie' | 'sit'> 
   rescue: 'idle',
   gather_berry: 'idle',
   scavenge: 'idle',
+  chop_tree: 'idle',
+  mine_rock: 'idle',
+  salvage_metal: 'idle',
   craft_berry_pie: 'idle',
   craft_repair_kit: 'idle',
 };

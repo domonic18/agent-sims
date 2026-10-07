@@ -8,6 +8,7 @@ import {
   REVIVE_WINDOW_MINUTES,
   SOCIAL_PRESENCE_DISTANCE,
   WORK_TARGETS,
+  isGatherTask,
   countWorkTargets,
   findActivityAnchorAt,
   getActivityDefinition,
@@ -38,13 +39,21 @@ function DeathCountdown({ remaining }: { remaining: number }) {
   );
 }
 
-function VitalBar({ label, value }: { label: string; value: number }) {
+function VitalBar({
+  label,
+  value,
+  title,
+}: {
+  label: string;
+  value: number;
+  title?: string;
+}) {
   const clamped = Math.max(0, Math.min(100, value));
   // 体力区段配色(M3.6f): >低体力阈值 绿 / ≤阈值 橙 / ≤危急值 红
   const level =
     value <= CRITICAL_ENERGY_LEVEL ? 'critical' : value <= LOW_ENERGY_THRESHOLD ? 'warn' : 'ok';
   return (
-    <div className="vital">
+    <div className="vital" title={title}>
       <span className="vital-label">{label}</span>
       <div className="vital-track">
         <div className={`vital-fill ${level}`} style={{ width: `${clamped}%` }} />
@@ -86,8 +95,22 @@ export function CharactersSection({
         <div className="vitals">
           <VitalBar label="体力" value={character.energy} />
           <VitalBar label="幸福" value={character.happiness} />
+          {snapshot.gameType === 'survival' && (
+            <VitalBar
+              label="健康"
+              value={character.health}
+              title="生存模式:体力低于饥饿线持续损耗,吃饱(体力≥康复线)自然恢复;归零重伤休整"
+            />
+          )}
           <div className="coins">金币 {formatCoins(character.coins)}</div>
-          <div className="coins" title="生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7)">
+          <div
+            className="coins"
+            title={
+              snapshot.gameType === 'survival'
+                ? '生涯质量账本 ≈ 累计等效幸福天;重伤休整是软惩罚,苏醒不扣分(07-survival §4)'
+                : '生涯质量账本 ≈ 累计等效幸福天;死亡 ×0.8(goal-design §5/§7)'
+            }
+          >
             繁荣分 {formatCoins(character.lifeScore)}
           </div>
           <div className="coins" title="完成一次完整学习 +1;解锁岗位类别(M-G.4)">
@@ -103,7 +126,9 @@ export function CharactersSection({
           )}
           {!character.alive && (
             <div className="death-banner">
-              ☠️ 已死亡(幽灵态)
+              {snapshot.gameType === 'survival'
+                ? '🤕 重伤休整(饥饿或力竭倒下)'
+                : '☠️ 已死亡(幽灵态)'}
               {character.diedAtGameMinutes !== null && (
                 <DeathCountdown
                   remaining={Math.max(
@@ -284,7 +309,7 @@ export function ActivitySection({
   const renderWorkRow = (def: ActivityDefinition, locked: boolean) => {
     const task = def.id as WorkTaskId;
     const count = workTargetCount(task);
-    const gather = task === 'gather_berry' || task === 'scavenge';
+    const gather = isGatherTask(task);
     const durationMinutes = gather
       ? GATHER_TASKS[task].durationMinutes
       : MAINTENANCE_TASKS[task].durationMinutes;

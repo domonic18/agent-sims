@@ -208,7 +208,13 @@ export function ActionBar({
           label="⛏ 采集 ▾"
           title="选择采集工单"
           disabled={dead}
-          items={[taskItem('gather_berry'), taskItem('scavenge')]}
+          items={[
+            taskItem('gather_berry'),
+            taskItem('scavenge'),
+            taskItem('chop_tree'),
+            taskItem('mine_rock'),
+            taskItem('salvage_metal'),
+          ]}
         />
         <Menu
           label="🔨 工作 ▾"

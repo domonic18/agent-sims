@@ -6,14 +6,16 @@ import {
   getItem,
   GATHER_TASKS,
   MAINTENANCE_TASKS,
+  NODE_MAX_CHARGES,
   resourceNodeLabel,
   type ActivityDefinition,
+  type GatherTaskDef,
 } from '@sims/shared';
 import {
   fetchGameAssetRegistry,
   type GameAssetRegistry,
 } from '../../game/manifest';
-import { BERRY_BUSH_SPRITE, JUNK_PILE_SPRITE } from '../../game/resources-view';
+import { NODE_SPRITE_OF } from '../../game/resources-view';
 import { FENCE_DAMAGE_SPRITE, LITTER_SPRITES } from '../../game/maintenance-view';
 import type { CharacterView } from '../side-panel/place';
 import { reportAssetIssue } from '../../net/issueApi';
@@ -40,7 +42,7 @@ function iconSlugOf(target: InspectTarget): string | null {
       return f.sprite ?? (f.kind === 'shelf' && f.w > f.h ? 'bench' : f.kind);
     }
     case 'resource':
-      return target.resource.kind === 'berry_bush' ? BERRY_BUSH_SPRITE : JUNK_PILE_SPRITE;
+      return NODE_SPRITE_OF[target.resource.kind] ?? null;
     case 'maintenance':
       return target.spot.kind === 'litter'
         ? LITTER_SPRITES[target.spot.variant % LITTER_SPRITES.length] ?? null
@@ -170,15 +172,26 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
       title = resourceNodeLabel(r.kind);
       tag = '资源';
       tone = 'resource';
-      rows = [['位置', `(${r.x}, ${r.y})`], ['存量', r.charges === null ? '无限' : `${r.charges} / 3`]];
-      const task = r.kind === 'berry_bush' ? GATHER_TASKS.gather_berry : GATHER_TASKS.scavenge;
-      const yields = task.yields
+      rows = [
+        [
+          '位置',
+          `(${r.x}, ${r.y})`,
+        ],
+        [
+          '存量',
+          r.charges === null ? '无限' : `${r.charges} / ${NODE_MAX_CHARGES[r.kind] ?? '?'}`,
+        ],
+      ];
+      const task = (Object.values(GATHER_TASKS) as GatherTaskDef[]).find(
+        (t) => t.nodeKind === r.kind,
+      );
+      const yields = (task?.yields ?? [])
         .map((y) => `${getItem(y.itemId)?.name ?? y.itemId}×${y.count}${y.chance !== undefined ? `(概率 ${(y.chance * 100).toFixed(0)}%)` : ''}`)
         .join('、');
       desc =
-        r.kind === 'berry_bush'
-          ? `采集 ${task.durationMinutes} 分钟产出 ${yields};采空后次日清晨重生。`
-          : `翻找 ${task.durationMinutes} 分钟,可获得 ${yields};拾荒堆永不枯竭。`;
+        r.charges === null
+          ? `翻找 ${task?.durationMinutes ?? '?'} 分钟,可获得 ${yields};永不枯竭。`
+          : `采集 ${task?.durationMinutes ?? '?'} 分钟产出 ${yields};采空后次日清晨重生。`;
       action = { label: '⛏ 去采集', run: guard(() => props.onWorkTask(r.id)) };
       break;
     }

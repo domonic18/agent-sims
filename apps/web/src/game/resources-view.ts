@@ -2,22 +2,42 @@ import Phaser from 'phaser';
 import type { ResourceNode } from '@sims/shared';
 import { TILE } from './assets';
 
-/** 资源节点贴图: 浆果丛=灌木,拾荒堆=满垃圾桶(与散落杂物小件区分) */
+/** 资源节点贴图按 kind 表驱动:浆果丛=灌木,拾荒堆=满垃圾桶,树/岩/金属堆为
+ * M-S/S1 生存三件套(树 2x2 原生越格上悬,余 1x1) */
 export const BERRY_BUSH_SPRITE = 'garden-bush-2965';
 export const JUNK_PILE_SPRITE = 'city-props-small-full-trash-can-1691';
+export const TREE_SPRITE = 'camping-tree-1013';
+export const ROCK_SPRITE = 'camping-rock-883';
+export const METAL_PILE_SPRITE = 'garage-sales-air-conditioner-unit-2810';
+
+const NODE_SPRITES: Record<ResourceNode['kind'], string> = {
+  berry_bush: BERRY_BUSH_SPRITE,
+  junk_pile: JUNK_PILE_SPRITE,
+  tree: TREE_SPRITE,
+  rock: ROCK_SPRITE,
+  metal_pile: METAL_PILE_SPRITE,
+};
+
+const NODE_FALLBACK_COLORS: Record<ResourceNode['kind'], number> = {
+  berry_bush: 0x3f7d3a,
+  junk_pile: 0x6b6b6b,
+  tree: 0x2f6b34,
+  rock: 0x8a8a8a,
+  metal_pile: 0x706e6a,
+};
 
 /** preload 声明:资源层贴图 slug(纹理缺失渲染层有色块兜底) */
-export const RESOURCE_SPRITES: ReadonlySet<string> = new Set([
-  BERRY_BUSH_SPRITE,
-  JUNK_PILE_SPRITE,
-]);
+export const RESOURCE_SPRITES: ReadonlySet<string> = new Set(Object.values(NODE_SPRITES));
 
-/** 枯竭态(浆果丛 charges=0 待重生)半透明示意 */
+/** kind→贴图 slug 反查(InspectCard 缩略图同源) */
+export const NODE_SPRITE_OF: Readonly<Record<ResourceNode['kind'], string>> = NODE_SPRITES;
+
+/** 枯竭态(charges=0 待重生)半透明示意 */
 const DRAINED_ALPHA = 0.45;
 
 /**
  * 资源节点 diff 渲染(M-G.6):节点增删即贴图增删,同 id 不重建;
- * 浆果丛采竭(charges=0)半透明,次日 00:00 重生回满恢复。
+ * 采竭(charges=0)半透明,次日 00:00 重生回满恢复。
  * 节点占格不可行走由服务端地图裁决,渲染层纯展示。
  */
 export function syncResourceViews(
@@ -44,7 +64,7 @@ export function syncResourceViews(
 }
 
 function createResourceNode(scene: Phaser.Scene, node: ResourceNode): Phaser.GameObjects.Container {
-  const slug = node.kind === 'berry_bush' ? BERRY_BUSH_SPRITE : JUNK_PILE_SPRITE;
+  const slug = NODE_SPRITES[node.kind];
   const container = scene.add.container(node.x * TILE, node.y * TILE);
   container.add(
     scene.textures.exists(slug)
@@ -54,7 +74,7 @@ function createResourceNode(scene: Phaser.Scene, node: ResourceNode): Phaser.Gam
           TILE / 2,
           8,
           8,
-          node.kind === 'berry_bush' ? 0x3f7d3a : 0x6b6b6b,
+          NODE_FALLBACK_COLORS[node.kind],
           0.85,
         ),
   );
