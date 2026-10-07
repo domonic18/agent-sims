@@ -29,7 +29,8 @@ export function buildRegistry(manifest: AssetManifest): GameAssetRegistry {
 }
 
 export async function fetchGameAssetRegistry(): Promise<GameAssetRegistry> {
-  const res = await fetch('/assets/manifest.json', { cache: 'no-store' });
+  // no-cache=本地缓存+协商复用(304):清单 2MB/gzip 136KB,发布后 etag 变自动失效
+  const res = await fetch('/assets/manifest.json', { cache: 'no-cache' });
   if (!res.ok) {
     throw new Error(`素材清单加载失败(HTTP ${res.status})——请先在后台素材管理「发布到游戏」`);
   }

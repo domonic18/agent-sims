@@ -24,8 +24,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // antd 只被 /admin 懒加载 chunk 引用,独立 vendor 分包,游戏 bundle 零污染
-        manualChunks: { antd: ['antd', '@ant-design/icons', 'dayjs'] },
+        // antd 只被 /admin 懒加载 chunk 引用,独立 vendor 分包,游戏 bundle 零污染;
+        // phaser 独立分包(L3):引擎版本稳定,跨部署缓存复用,游戏代码迭代不打掉它
+        manualChunks: {
+          antd: ['antd', '@ant-design/icons', 'dayjs'],
+          phaser: ['phaser'],
+        },
       },
     },
   },
