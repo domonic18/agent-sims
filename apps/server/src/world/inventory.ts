@@ -11,8 +11,9 @@ import { ensureAtOwnHome } from './housing.js';
 import type { Simulation } from './simulation.js';
 
 /**
- * 购买商品(M3.6g 背包制):须在商店内;买入入随身背包,
- * 体积超限拒绝;经 eat_item 意图随时进食(任意地点)。
+ * 购买商品(M3.6g 背包制;食物经济 2026-10-07 售罄即止):须在商店内;
+ * 货架余量扣减(售罄拒绝);买入入随身背包,体积超限拒绝;
+ * 经 eat_item 意图随时进食(任意地点)。
  */
 export function buyItem(sim: Simulation, characterId: string, itemId: string): WorldCharacter {
   const item = getItem(itemId);
@@ -28,6 +29,12 @@ export function buyItem(sim: Simulation, characterId: string, itemId: string): W
   if (!sim.map.contains('shop', character.x, character.y)) {
     throw new Error(`${character.name} 须在商店内购买(先移动到商店)`);
   }
+  const stock = sim.shopStock.get(itemId) ?? 0;
+  if (stock <= 0) {
+    throw new Error(
+      `商店「${item.name}」已售罄(初始存量卖完即止,不再补货;可采集或制作获取)`,
+    );
+  }
   const used = inventoryVolume(character.backpack);
   if (used + item.volume > BALANCE.BACKPACK_VOLUME_LIMIT) {
     throw new Error(
@@ -40,6 +47,7 @@ export function buyItem(sim: Simulation, characterId: string, itemId: string): W
     );
   }
   character.coins -= item.price;
+  sim.shopStock.set(itemId, stock - 1);
   character.backpack[itemId] = (character.backpack[itemId] ?? 0) + 1;
   return character;
 }

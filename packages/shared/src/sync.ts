@@ -94,6 +94,8 @@ export interface WorldSnapshotMessage {
   maintenance: MaintenanceSpot[];
   /** 资源节点全量(M-G.6 生产系统):charges=null 无限/0 枯竭,web diff 渲染 */
   resources: ResourceNode[];
+  /** 商店货架余量(食物经济 2026-10-07):itemId→剩余份数,售罄即止不补货;web 展示/禁购 */
+  shopStock: Record<string, number>;
 }
 
 /** world.event 消息封装:事件本体即 shared WorldEvent */

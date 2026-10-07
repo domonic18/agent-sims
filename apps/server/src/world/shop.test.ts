@@ -143,6 +143,38 @@ describe('商店背包制(M3.2 店内购买;M3.6g 背包/冰箱两级库存+体�
   });
 });
 
+describe('商店初始存量售罄即止(食物经济 2026-10-07,04 §3.2)', () => {
+  it('构造即铺货: 8 货架食物各 SHOP_INITIAL_FOOD_STOCK 份,快照透传余量', () => {
+    const sim = new Simulation();
+    expect(sim.shopStock.size).toBe(8);
+    expect(sim.shopStock.get('bread')).toBe(BALANCE.SHOP_INITIAL_FOOD_STOCK);
+    expect(sim.snapshot().shopStock).toEqual(Object.fromEntries(sim.shopStock));
+  });
+
+  it('售罄即止: 第 4 次购买拒绝且不扣币(文案指引采集/制作),他品独立计数,跨日不补货', () => {
+    const { sim, id } = simWith('pete', 100);
+    sim.requestBuyItem(id, 'bread');
+    sim.requestBuyItem(id, 'bread');
+    sim.requestBuyItem(id, 'bread'); // 3→0
+    expect(sim.shopStock.get('bread')).toBe(0);
+    sim.character(id).coins = 100; // 余额充足仍拒
+    expect(() => sim.requestBuyItem(id, 'bread')).toThrow(/已售罄.*采集或制作/);
+    expect(sim.character(id).backpack).toEqual({ bread: 3 }); // 拒绝不入包
+    sim.requestBuyItem(id, 'apple'); // 他品库存独立
+    expect(sim.shopStock.get('apple')).toBe(BALANCE.SHOP_INITIAL_FOOD_STOCK - 1);
+    sim.advanceTicks(1440); // 跨日: 售罄即止,无补货路径
+    expect(sim.shopStock.get('bread')).toBe(0);
+  });
+
+  it('reset 重铺货: 售罄世界重置后货架回满(与 resourceNodes 恢复语义同构)', () => {
+    const { sim, id } = simWith('quinn', 100);
+    sim.requestBuyItem(id, 'cake');
+    expect(sim.shopStock.get('cake')).toBe(BALANCE.SHOP_INITIAL_FOOD_STOCK - 1);
+    sim.reset();
+    expect(sim.shopStock.get('cake')).toBe(BALANCE.SHOP_INITIAL_FOOD_STOCK);
+  });
+});
+
 describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () => {
   it('目录完整性: 16 项,food 必带 effects,material 不可食用,货架恰为 8 项派生', () => {
     expect(ITEMS).toHaveLength(16);

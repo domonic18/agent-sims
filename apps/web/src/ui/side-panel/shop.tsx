@@ -152,11 +152,14 @@ export function ShopSection({
   character,
   atPlace,
   pending,
+  shopStock,
   buyItem,
 }: {
   character: CharacterView;
   atPlace: PlaceDefinition | null;
   pending: GoAndDoPending | null;
+  /** 商店货架余量(itemId→剩余份数,售罄即止) */
+  shopStock: Record<string, number>;
   buyItem: (itemId: string) => Promise<void>;
 }) {
   const dead = !character.alive;
@@ -164,26 +167,34 @@ export function ShopSection({
   const inShop = atPlace !== null && placeIdMatches('shop', atPlace.id);
   return (
     <section className="panel-section">
-      <h3>商店{inShop ? ' · 在店内' : ''}</h3>
+      <h3>商店{inShop ? ' · 在店内' : ''}(初始存量 · 售罄即止)</h3>
       <ul className="shop-list">
         {SHOP_ITEMS.map((item) => {
           const pendingBuy = pending?.kind === 'buy' && pending.id === item.id;
+          const stock = shopStock[item.id] ?? 0;
+          const soldOut = stock <= 0;
           return (
             <li key={item.id}>
               <span>
                 {item.name}
                 <small>
-                  {item.price}币 体积{item.volume} 体力+{item.effects.energy}
+                  {item.price}币 余{stock} 体积{item.volume} 体力+{item.effects.energy}
                   {item.effects.score > 0 ? ` 得分+${item.effects.score}` : ''}
                 </small>
               </span>
               <button
                 type="button"
-                disabled={moving || dead}
-                title={inShop ? '购入放入背包(随身可吃)' : '自动前往商店并购入背包'}
+                disabled={moving || dead || soldOut}
+                title={
+                  soldOut
+                    ? '已售罄——初始存量卖完即止,可采集或制作获取'
+                    : inShop
+                      ? '购入放入背包(随身可吃)'
+                      : '自动前往商店并购入背包'
+                }
                 onClick={() => void buyItem(item.id)}
               >
-                {pendingBuy ? '途中…' : inShop ? '购入' : '到店购买'}
+                {soldOut ? '售罄' : pendingBuy ? '途中…' : inShop ? '购入' : '到店购买'}
               </button>
             </li>
           );
@@ -214,7 +225,7 @@ export function BackpackSection({
         背包(随身) · 体积 {backpackUsed}/{BACKPACK_VOLUME_LIMIT}
       </h3>
       {entries.length === 0 ? (
-        <p className="hint">空空如也——到商店购入食物随身携带</p>
+        <p className="hint">空空如也——到商店购入,或采集/制作获取食物</p>
       ) : (
         <ul className="shop-list">
           {entries.map(([itemId, count]) => {

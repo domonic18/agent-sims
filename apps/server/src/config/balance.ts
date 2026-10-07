@@ -49,6 +49,9 @@ export interface BalanceConfig {
   /** 出生初始金币与预付租金天数(M3.6f 出生即租住公寓) */
   START_COINS: number;
   SPAWN_PREPAID_DAYS: number;
+  /** 商店初始食物存量(食物经济 2026-10-07,数值文档 §3.2): 每货架食物份数,
+   * 世界创建/重启重建时初始化,售罄即止不再补货——长期食物来源=采集/制作 */
+  SHOP_INITIAL_FOOD_STOCK: number;
   /** 快照数值保留小数位(协议序列化口径) */
   SNAPSHOT_DECIMALS: number;
   /** 携带/囤粮体积上限(M3.6g,数值文档 §3.2):背包随身,冰箱家中存取 */
@@ -103,6 +106,7 @@ export const BALANCE: BalanceConfig = {
   IDLE_ENERGY_DECAY: 0.02,
   START_COINS: 0,
   SPAWN_PREPAID_DAYS: 1,
+  SHOP_INITIAL_FOOD_STOCK: 3,
   SNAPSHOT_DECIMALS: 1,
   BACKPACK_VOLUME_LIMIT,
   FRIDGE_VOLUME_LIMIT,

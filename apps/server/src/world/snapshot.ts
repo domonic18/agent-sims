@@ -63,5 +63,6 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
     })),
     maintenance: [...sim.maintenanceSpots.values()].map((spot) => ({ ...spot })),
     resources: [...sim.resourceNodes.values()].map((node) => ({ ...node })),
+    shopStock: Object.fromEntries(sim.shopStock),
   };
 }

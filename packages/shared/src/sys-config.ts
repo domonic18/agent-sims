@@ -104,6 +104,10 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
     effect: 'spawn', desc: '新角色出生时的初始金币',
   },
   {
+    key: 'SHOP_INITIAL_FOOD_STOCK', label: '商店初始食物存量', group: 'economy', type: 'int', min: 0, max: 50,
+    effect: 'live', desc: '世界创建时每种货架食物的初始份数,售罄即止不再补货(采集/制作为长期食物来源);热调仅影响新世界,重启重建同样重置',
+  },
+  {
     key: 'SPAWN_PREPAID_DAYS', label: '出生预付房租', group: 'economy', type: 'int', min: 0, max: 30,
     effect: 'spawn', desc: '新角色出生时预付的房租天数',
   },

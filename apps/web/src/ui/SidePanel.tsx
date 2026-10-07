@@ -147,7 +147,13 @@ export function SidePanel() {
 
       {character !== null && tab === 'items' && (
         <>
-          <ShopSection character={character} atPlace={atPlace} pending={pending} buyItem={buyItem} />
+          <ShopSection
+            character={character}
+            atPlace={atPlace}
+            pending={pending}
+            shopStock={snapshot.shopStock}
+            buyItem={buyItem}
+          />
           <CraftSection character={character} pending={pending} startCraft={startCraft} />
           <BackpackSection character={character} atPlace={atPlace} day={day} run={run} />
           <FridgeSection character={character} atPlace={atPlace} day={day} run={run} />

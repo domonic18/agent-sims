@@ -25,6 +25,7 @@ import {
   PROPERTY_IDS,
   RECIPES,
   REVIVE_WINDOW_MINUTES,
+  SHOP_ITEM_IDS,
   TOWN_MAP,
   WORK_TARGETS,
   getActivityDefinition,
@@ -81,6 +82,9 @@ export class Simulation {
   readonly maintenanceSpots = new Map<string, MaintenanceSpot>();
   /** 资源节点(M-G.6 生产系统):key = 节点 id `kind:x:y`,reset 从地图种子重建(存量回满) */
   readonly resourceNodes = new Map<string, ResourceNode>();
+  /** 商店货架余量(食物经济 2026-10-07):key = 货架 itemId;售罄即止不补货,
+   * 构造/reset 按 SHOP_INITIAL_FOOD_STOCK 重置(与 resourceNodes 恢复语义同构) */
+  readonly shopStock = new Map<string, number>();
   /** 世界事件总线:离散事件与控制变更即时分发,感知/同步层订阅 */
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
@@ -96,6 +100,7 @@ export class Simulation {
   constructor(rng: RandomFn = Math.random) {
     this.rng = rng;
     this._rebuildResourceNodes();
+    this._initShopStock();
   }
 
   /** 世界地图(M-L.5:创建世界时注入生成地图;缺省内置固定地图) */
@@ -127,6 +132,7 @@ export class Simulation {
     this.socials.clear();
     this.maintenanceSpots.clear();
     this._rebuildResourceNodes();
+    this._initShopStock();
     this.tick = 0;
     this.clock.reset();
     this.paused = false;
@@ -527,6 +533,15 @@ export class Simulation {
         charges: NODE_MAX_CHARGES[seed.kind],
         respawnAtDay: null,
       });
+    }
+  }
+
+  /** 商店货架初始化(构造/reset 共用):8 货架食物按 SHOP_INITIAL_FOOD_STOCK 各置份数;
+   * 售罄即止,无任何补货路径(食物经济 2026-10-07,数值文档 §3.2) */
+  private _initShopStock(): void {
+    this.shopStock.clear();
+    for (const itemId of SHOP_ITEM_IDS) {
+      this.shopStock.set(itemId, BALANCE.SHOP_INITIAL_FOOD_STOCK);
     }
   }
 
