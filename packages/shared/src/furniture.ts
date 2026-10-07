@@ -3,6 +3,7 @@
  * 世界内置内容,不可购买。协议面一部分——服务端模拟与客户端渲染共用。
  */
 import type { ActivityId } from './activities.js';
+import { getRecipe } from './production.js';
 
 /** 家具/设施类型全集 */
 export const FURNITURE_KINDS = [
@@ -102,7 +103,9 @@ export type SleepAnchorKind = (typeof SLEEP_ANCHOR_KINDS)[number];
 /**
  * 锚点家具是否服务某活动(M-G.2 锚点绑定泛化):声明绑定直接命中;
  * sleep 额外复用绑 rest 且档位 ∈ SLEEP_ANCHOR_KINDS 的家具——床双服务
- * rest/sleep,地图数据保持单一绑定 activityId:'rest' 不变。
+ * rest/sleep,地图数据保持单一绑定 activityId:'rest' 不变;
+ * 配方站点泛化(M-G.6/2026-10-07 食物链):灶台/木工台只声明一个同名配方,
+ * 其余同 stationKind 配方(craft_bread/craft_sandwich…)复用同锚点。
  * 双端同源(server TileMap / web place.ts / findActivityAnchorAt 共用)。
  */
 export function furnitureServesActivity(
@@ -111,9 +114,15 @@ export function furnitureServesActivity(
   activityId: string,
 ): boolean {
   if (boundActivityId === activityId) return true;
-  return (
+  if (
     activityId === 'sleep' &&
     boundActivityId === 'rest' &&
     (SLEEP_ANCHOR_KINDS as readonly string[]).includes(kind)
-  );
+  ) {
+    return true;
+  }
+  const boundRecipe = getRecipe(boundActivityId);
+  if (boundRecipe === null) return false;
+  const recipe = getRecipe(activityId);
+  return recipe !== null && recipe.stationKind === boundRecipe.stationKind;
 }

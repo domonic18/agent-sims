@@ -94,6 +94,61 @@ describe('craft 配方制作(M-G.6)', () => {
   });
 });
 
+describe('食物链制作两配方(2026-10-07 食物经济)', () => {
+  it('craft_bread 闭环: 缺料拒,灶台旁开始扣料 20 分面包入包;中断退料', () => {
+    const { sim, events } = simWithChef();
+    sim.character('chef').backpack = { wheat: 1 };
+    expect(() => sim.requestCraft('chef', 'craft_bread')).toThrow(/材料不足/);
+    sim.character('chef').backpack = { wheat: 3 };
+    arriveAt(sim, STOVE_USE.x, STOVE_USE.y); // 站点泛化: 灶台锚点服务同 stationKind 配方
+    const chef = sim.requestCraft('chef', 'craft_bread');
+    expect(chef.backpack.wheat).toBe(1); // 开始扣 2 留 1
+    expect(chef.activity).toMatchObject({ craftRecipeId: 'craft_bread' });
+    sim.advanceTicks(5);
+    sim.requestStopActivity('chef'); // 中断全额退料
+    expect(sim.character('chef').backpack.wheat).toBe(3);
+    expect(events.some((e) => e.type === 'craft.completed')).toBe(false);
+    sim.requestCraft('chef', 'craft_bread');
+    sim.advanceTicks(40); // 20 分作业
+    const done = sim.character('chef');
+    expect(done.activity).toBeNull();
+    expect(done.backpack.wheat).toBe(1);
+    expect(done.backpack.bread).toBe(1);
+    expect(events.some((e) => e.type === 'craft.completed')).toBe(true);
+  });
+
+  it('craft_sandwich 闭环: bread+apple 双料扣验,25 分三明治入包', () => {
+    const { sim, events } = simWithChef();
+    sim.character('chef').backpack = { bread: 1 }; // 缺苹果
+    expect(() => sim.requestCraft('chef', 'craft_sandwich')).toThrow(/材料不足/);
+    sim.character('chef').backpack = { bread: 1, apple: 2 };
+    arriveAt(sim, STOVE_USE.x, STOVE_USE.y);
+    sim.requestCraft('chef', 'craft_sandwich');
+    const chef = sim.character('chef');
+    expect(chef.backpack.bread).toBeUndefined(); // 双料全扣
+    expect(chef.backpack.apple).toBe(1);
+    sim.advanceTicks(45); // 25 分作业
+    const done = sim.character('chef');
+    expect(done.activity).toBeNull();
+    expect(done.backpack.sandwich).toBe(1);
+    expect(events.some((e) => e.type === 'craft.completed')).toBe(true);
+  });
+
+  it('缺觉 floor: 单件产出 ×0.7 取整为 0,材料已扣不退(有意)', () => {
+    const { sim, events } = simWithChef();
+    sim.character('chef').backpack = { wheat: 2 };
+    arriveAt(sim, STOVE_USE.x, STOVE_USE.y);
+    sim.character('chef').sleepDebtEndGameMinutes = sim.clock.gameMinutes + 60; // 挂缺觉惩罚
+    sim.requestCraft('chef', 'craft_bread');
+    sim.advanceTicks(40);
+    const done = sim.character('chef');
+    expect(done.activity).toBeNull();
+    expect(done.backpack.bread ?? 0).toBe(0); // floor(1×0.7)=0
+    expect(done.backpack.wheat).toBeUndefined();
+    expect(events.some((e) => e.type === 'craft.completed')).toBe(true);
+  });
+});
+
 describe('修补钉闭环(M-G.6 修理岗消耗品)', () => {
   const FENCE_ID = 'fence:4:26';
 

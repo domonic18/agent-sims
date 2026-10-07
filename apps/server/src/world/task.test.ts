@@ -281,6 +281,56 @@ describe('work_task 采集两岗(M-G.6)', () => {
     expect(events.filter((e) => e.type === 'work_task.completed').length).toBe(2);
   });
 
+  it('食物链两岗: 采苹果/收小麦产出入包存量递减,采竭记跨日重生(2026-10-07)', () => {
+    const { sim, events } = simWithGatherer();
+    const appleTree = {
+      id: 'apple_tree:9:13',
+      kind: 'apple_tree' as const,
+      x: 9,
+      y: 13,
+      charges: NODE_MAX_CHARGES.apple_tree!,
+      respawnAtDay: null,
+    };
+    const wheatPatch = {
+      id: 'wheat_patch:10:13',
+      kind: 'wheat_patch' as const,
+      x: 10,
+      y: 13,
+      charges: NODE_MAX_CHARGES.wheat_patch!,
+      respawnAtDay: null,
+    };
+    expect(sim.map.isWalkable(appleTree.x, appleTree.y), 'fixture 苹果树格须可行走').toBe(true);
+    expect(sim.map.isWalkable(wheatPatch.x, wheatPatch.y), 'fixture 麦丛格须可行走').toBe(true);
+    sim.resourceNodes.set(appleTree.id, appleTree);
+    sim.resourceNodes.set(wheatPatch.id, wheatPatch);
+
+    sim.requestWorkTask('mow', 'apple_tree:9:13');
+    sim.advanceTicks(60); // 20 分作业+在途
+    let mow = sim.character('mow');
+    expect(mow.activity).toBeNull();
+    expect(mow.backpack.apple).toBe(1);
+    expect(mow.coins).toBe(0); // 以物代薪
+    expect(appleTree.charges).toBe(NODE_MAX_CHARGES.apple_tree! - 1);
+
+    sim.requestWorkTask('mow', 'wheat_patch:10:13');
+    sim.advanceTicks(60);
+    mow = sim.character('mow');
+    expect(mow.backpack.wheat).toBe(2);
+    expect(wheatPatch.charges).toBe(NODE_MAX_CHARGES.wheat_patch! - 1);
+    expect(events.filter((e) => e.type === 'work_task.completed').length).toBe(2);
+
+    // 麦丛采竭与跨日重生(同浆果丛语义)
+    for (let round = wheatPatch.charges; round > 0; round -= 1) {
+      sim.requestWorkTask('mow', 'wheat_patch:10:13');
+      sim.advanceTicks(60);
+    }
+    expect(wheatPatch.charges).toBe(0);
+    expect(wheatPatch.respawnAtDay).toBe(sim.clock.day + 1);
+    sim.advanceTicks(1440);
+    expect(wheatPatch.charges).toBe(NODE_MAX_CHARGES.wheat_patch);
+    expect(wheatPatch.respawnAtDay).toBeNull();
+  });
+
   it('竞态-节点被采空: 作业中存量归零→cancelled 无产出', () => {
     const { sim, events } = simWithGatherer();
     sim.requestWorkTask('mow', 'berry_bush:5:27');

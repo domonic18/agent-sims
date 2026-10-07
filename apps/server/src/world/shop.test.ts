@@ -173,6 +173,21 @@ describe('商店初始存量售罄即止(食物经济 2026-10-07,04 §3.2)', () 
     sim.reset();
     expect(sim.shopStock.get('cake')).toBe(BALANCE.SHOP_INITIAL_FOOD_STOCK);
   });
+
+  it('SHOP_INITIAL_FOOD_STOCK=0 边界: 开局即售罄,购买拒绝并指引采集/制作', () => {
+    const original = BALANCE.SHOP_INITIAL_FOOD_STOCK;
+    BALANCE.SHOP_INITIAL_FOOD_STOCK = 0;
+    try {
+      const sim = new Simulation();
+      expect(sim.shopStock.get('bread')).toBe(0);
+      sim.spawnCharacter('zero', IN_SHOP.x, IN_SHOP.y, '零');
+      sim.character('zero').coins = 50;
+      expect(() => sim.requestBuyItem('zero', 'bread')).toThrow(/已售罄.*采集或制作/);
+      expect(sim.character('zero').coins).toBe(50);
+    } finally {
+      BALANCE.SHOP_INITIAL_FOOD_STOCK = original;
+    }
+  });
 });
 
 describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () => {

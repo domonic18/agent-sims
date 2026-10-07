@@ -165,21 +165,27 @@ describe('站点与资源节点撒点(M-G.6)', () => {
     }
   });
 
-  it('资源节点: 浆果丛 4~7 全落公园内部,拾荒堆 2~4 全落场所外,同格不重叠', () => {
+  it('资源节点: 食物节点(浆果 4~7/苹果树 2~4/麦丛 2~4)全落公园内部,拾荒堆 2~4 全落场所外,同格不重叠', () => {
     for (const result of results) {
       const resources = result.map.resources ?? [];
       const berries = resources.filter((r) => r.kind === 'berry_bush');
+      const apples = resources.filter((r) => r.kind === 'apple_tree');
+      const wheat = resources.filter((r) => r.kind === 'wheat_patch');
       const junk = resources.filter((r) => r.kind === 'junk_pile');
       expect(berries.length).toBeGreaterThanOrEqual(4);
       expect(berries.length).toBeLessThanOrEqual(7);
+      expect(apples.length).toBeGreaterThanOrEqual(2);
+      expect(apples.length).toBeLessThanOrEqual(4);
+      expect(wheat.length).toBeGreaterThanOrEqual(2);
+      expect(wheat.length).toBeLessThanOrEqual(4);
       expect(junk.length).toBeGreaterThanOrEqual(2);
       expect(junk.length).toBeLessThanOrEqual(4);
       const parks = result.map.places.filter((p) => p.id.startsWith('park'));
-      for (const berry of berries) {
+      for (const food of [...berries, ...apples, ...wheat]) {
         expect(
           parks.some(
             (p) =>
-              berry.x > p.x && berry.x < p.x + p.w - 1 && berry.y > p.y && berry.y < p.y + p.h - 1,
+              food.x > p.x && food.x < p.x + p.w - 1 && food.y > p.y && food.y < p.y + p.h - 1,
           ),
         ).toBe(true);
       }
@@ -487,23 +493,29 @@ describe('末日生存模式(survival gameType)', () => {
     }
   });
 
-  it('资源加密: 浆果 5~9 落公园/营地内部,拾荒堆 5~9 全落场所外', () => {
+  it('资源加密: 食物节点(浆果 5~9/苹果树 3~6/麦丛 3~6)落公园/营地内部,拾荒堆 5~9 全落场所外', () => {
     for (const result of results) {
       const resources = result.map.resources ?? [];
       const berries = resources.filter((r) => r.kind === 'berry_bush');
+      const apples = resources.filter((r) => r.kind === 'apple_tree');
+      const wheat = resources.filter((r) => r.kind === 'wheat_patch');
       const junk = resources.filter((r) => r.kind === 'junk_pile');
       expect(berries.length).toBeGreaterThanOrEqual(5);
       expect(berries.length).toBeLessThanOrEqual(9);
+      expect(apples.length).toBeGreaterThanOrEqual(3);
+      expect(apples.length).toBeLessThanOrEqual(6);
+      expect(wheat.length).toBeGreaterThanOrEqual(3);
+      expect(wheat.length).toBeLessThanOrEqual(6);
       expect(junk.length).toBeGreaterThanOrEqual(5);
       expect(junk.length).toBeLessThanOrEqual(9);
       const sites = result.map.places.filter(
         (p) => p.id.startsWith('park') || p.id.startsWith('camping'),
       );
       expect(sites.length).toBeGreaterThanOrEqual(1);
-      for (const berry of berries) {
+      for (const food of [...berries, ...apples, ...wheat]) {
         expect(
           sites.some(
-            (p) => berry.x > p.x && berry.x < p.x + p.w - 1 && berry.y > p.y && berry.y < p.y + p.h - 1,
+            (p) => food.x > p.x && food.x < p.x + p.w - 1 && food.y > p.y && food.y < p.y + p.h - 1,
           ),
         ).toBe(true);
       }
