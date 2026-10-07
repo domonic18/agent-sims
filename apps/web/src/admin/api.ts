@@ -26,6 +26,7 @@ import {
   type TokenUsageWindow,
   type SysConfigView,
   type WorldEventEntriesResponse,
+  type WorldRecipesView,
   WORLD_ADMIN_API,
   type WorldPreviewResponse,
   type WorldView,
@@ -117,6 +118,19 @@ export async function updateSysConfig(
 
 export async function resetSysConfig(): Promise<SysConfigView> {
   return await adminFetch<SysConfigView>(ADMIN_API.sysConfigReset, { method: 'POST' });
+}
+
+export async function fetchWorldRecipes(): Promise<WorldRecipesView> {
+  return await adminFetch<WorldRecipesView>(ADMIN_API.worldRecipes);
+}
+
+export async function updateWorldRecipes(
+  recipes: WorldRecipesView['recipes'],
+): Promise<WorldRecipesView> {
+  return await adminFetch<WorldRecipesView>(ADMIN_API.worldRecipes, {
+    method: 'PUT',
+    body: JSON.stringify({ recipes }),
+  });
 }
 
 export async function updateModelConfig(

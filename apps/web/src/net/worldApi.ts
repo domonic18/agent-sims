@@ -2,7 +2,7 @@
  * /api/world 常开控制通道(游戏内设置菜单):暂停/倍率/世界参数/世界规则
  * 的生产可用读写口(不同于 /debug 仅 development 注册),及历史事件查询。
  */
-import type { WorldEventsHistoryResponse, WorldSettingsView } from '@sims/shared';
+import type { WorldEventsHistoryResponse, WorldRecipesView, WorldSettingsView } from '@sims/shared';
 import { useAuthStore } from '../store/authStore';
 
 export interface WorldSettingsUpdate {
@@ -38,6 +38,15 @@ export const getWorldSettings = (): Promise<WorldSettingsView> =>
 
 export const updateWorldSettings = (update: WorldSettingsUpdate): Promise<WorldSettingsView> =>
   request('/api/world/settings', 'POST', update);
+
+/** 每世界配方公开读口(游客免登录;游戏页装载回填 worldStore) */
+export const getWorldRecipes = async (): Promise<WorldRecipesView> => {
+  const response = await fetch('/api/world/recipes', { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`/api/world/recipes 失败(${response.status})`);
+  }
+  return (await response.json()) as WorldRecipesView;
+};
 
 export const getWorldEvents = async (query: { limit?: number; characterId?: string; type?: string } = {}): Promise<WorldEventsHistoryResponse> => {
   const params = new URLSearchParams();

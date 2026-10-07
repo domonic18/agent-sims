@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { WorldScene } from './WorldScene';
 import type { TileMapDefinition } from '@sims/shared';
 import { fetchGameAssetRegistry } from './manifest';
+import { getWorldRecipes } from '../net/worldApi';
 import { useWorldStore } from '../store/worldStore';
 import { CameraModeChip } from '../ui/hud/CameraModeChip';
 
@@ -23,8 +24,8 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
     if (!host) return;
     let cancelled = false;
     let game: Phaser.Game | null = null;
-    void Promise.all([fetchGameAssetRegistry(), fetchMapDefinition()])
-      .then(([registry, map]) => {
+    void Promise.all([fetchGameAssetRegistry(), fetchMapDefinition(), getWorldRecipes().catch(() => null)])
+      .then(([registry, map, recipes]) => {
         if (cancelled) return;
         game = new Phaser.Game({
           type: Phaser.AUTO,
@@ -43,6 +44,8 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
         game.registry.set('interactive', interactive);
         // React 侧同样持一份(侧面板场所/锚点/商店查此源),与 Phaser registry 同源
         useWorldStore.getState().setMap(map);
+        // 每世界配方回填(制作面板/Lab 意图下拉消费;失败不打断画布,消费端出厂兜底)
+        if (recipes !== null) useWorldStore.getState().applyRecipes(recipes.recipes);
       })
       .catch((err: unknown) => {
         if (!cancelled) setAssetError(err instanceof Error ? err.message : '素材清单加载失败');

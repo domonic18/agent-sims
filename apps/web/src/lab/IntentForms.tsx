@@ -4,13 +4,13 @@ import {
   CRAFT_RECIPE_IDS,
   CHAT_DAILY_GAINED,
   PROPERTY_DEFINITIONS,
-  RECIPES,
   SHOP_ITEMS,
   resourceNodeLabel,
   type CraftRecipeId,
   type Intent,
   type WorldSnapshotMessage,
 } from '@sims/shared';
+import { selectWorldRecipes, useWorldStore } from '../store/worldStore';
 
 type CharacterSnapshot = WorldSnapshotMessage['characters'][number];
 
@@ -338,6 +338,9 @@ function WorkTaskForm({
 
 function CraftForm({ character, onRun }: { character: CharacterSnapshot; onRun: RunFn }) {
   const [recipeId, setRecipeId] = useState<CraftRecipeId>(CRAFT_RECIPE_IDS[0] ?? 'craft_berry_pie');
+  const recipes = useWorldStore(selectWorldRecipes);
+  const current = recipes[recipeId];
+  const disabledRecipe = current?.enabled === false;
   return (
     <span className="intent-controls">
       <select
@@ -346,14 +349,16 @@ function CraftForm({ character, onRun }: { character: CharacterSnapshot; onRun: 
         title="须站在站点家具(灶台/木工台)使用格或四邻"
       >
         {CRAFT_RECIPE_IDS.map((id) => (
-          <option key={id} value={id}>
-            {RECIPES[id].name}
+          <option key={id} value={id} disabled={recipes[id].enabled === false}>
+            {recipes[id].name}
+            {recipes[id].enabled === false ? '(已停用)' : ''}
           </option>
         ))}
       </select>
       <button
         type="button"
-        disabled={!character.alive}
+        disabled={!character.alive || disabledRecipe}
+        title={disabledRecipe ? '该配方已被管理员停用' : undefined}
         onClick={() => void onRun({ type: 'craft', characterId: character.id, recipeId }, `craft(${recipeId})`)}
       >
         制作

@@ -3,7 +3,6 @@ import {
   CRAFT_RECIPE_IDS,
   FRIDGE_VOLUME_LIMIT,
   PROPERTY_DEFINITIONS,
-  RECIPES,
   SHOP_ITEMS,
   getItem,
   inventoryVolume,
@@ -11,6 +10,7 @@ import {
   type CraftRecipeId,
   type PlaceDefinition,
 } from '@sims/shared';
+import { selectWorldRecipes, useWorldStore } from '../../store/worldStore';
 import { homeAccess, type CharacterView } from './place';
 import type { GoAndDoPending, RunIntent } from './useGoAndDo';
 
@@ -35,12 +35,14 @@ export function CraftSection({
 }) {
   const dead = !character.alive;
   const moving = character.pathRemaining > 0;
+  const recipes = useWorldStore(selectWorldRecipes);
   return (
     <section className="panel-section">
       <h3>制作</h3>
       <ul className="shop-list">
-        {CRAFT_RECIPE_IDS.map((id) => RECIPES[id]).map((recipe) => {
+        {CRAFT_RECIPE_IDS.map((id) => recipes[id]).map((recipe) => {
           const pendingCraft = pending?.kind === 'craft' && pending.id === recipe.id;
+          const disabledRecipe = recipe.enabled === false;
           const materials = recipe.inputs
             .map(
               (input) =>
@@ -57,14 +59,21 @@ export function CraftSection({
             <li key={recipe.id}>
               <span>
                 {recipe.name}
+                {disabledRecipe && <small> · 已停用</small>}
                 <small>
                   {STATION_LABEL[recipe.stationKind]} · {materials} → {outputs}
                 </small>
               </span>
               <button
                 type="button"
-                disabled={moving || dead || !ready}
-                title={ready ? '自动前往站点使用格开始制作(中断退料)' : '材料不足——先采集或拾荒'}
+                disabled={moving || dead || !ready || disabledRecipe}
+                title={
+                  disabledRecipe
+                    ? '该配方已被管理员停用'
+                    : ready
+                      ? '自动前往站点使用格开始制作(中断退料)'
+                      : '材料不足——先采集或拾荒'
+                }
                 onClick={() => void startCraft(recipe.id)}
               >
                 {pendingCraft ? '途中…' : '制作'}

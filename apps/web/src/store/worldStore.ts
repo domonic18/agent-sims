@@ -1,10 +1,13 @@
 import { create } from 'zustand';
-import type {
-  TileMapDefinition,
-  WorkTaskId,
-  WorldEvent,
-  WorldRulesView,
-  WorldSnapshotMessage,
+import {
+  RECIPES,
+  type CraftRecipeId,
+  type RecipeDef,
+  type TileMapDefinition,
+  type WorkTaskId,
+  type WorldEvent,
+  type WorldRulesView,
+  type WorldSnapshotMessage,
 } from '@sims/shared';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
@@ -19,6 +22,10 @@ export interface SequencedEvent {
 }
 
 const EVENT_QUEUE_MAX = 128;
+
+/** 配方读用选择器:世界快照未拉到时出厂表兜底(admin 未热改过时两者一致) */
+export const selectWorldRecipes = (state: WorldStore): Record<CraftRecipeId, RecipeDef> =>
+  state.recipes ?? RECIPES;
 
 /**
  * 世界状态仓:同步层(net/socket)写入,React HUD 与 Phaser 场景读取。
@@ -43,6 +50,9 @@ export interface WorldStore {
   /** 世界参数生效全集与规则视图(设置弹窗首开 GET 回填,此后 world.params/rules 事件保鲜) */
   params: Record<string, number> | null;
   rules: WorldRulesView | null;
+  /** 每世界配方全集(页面装载 GET 回填,此后 world.recipes 事件保鲜;null=未拉到,消费端出厂兜底) */
+  recipes: Record<CraftRecipeId, RecipeDef> | null;
+  applyRecipes: (recipes: Record<CraftRecipeId, RecipeDef>) => void;
   /** 连续作业开关(M-G.5/M-G.6):key=characterId,开启后该角色空闲即自动接最近同岗单(含采集岗) */
   continuousWork: Record<string, WorkTaskId>;
   toggleContinuousWork: (characterId: string, task: WorkTaskId | null) => void;
@@ -71,6 +81,7 @@ export const useWorldStore = create<WorldStore>((set) => ({
   map: null,
   params: null,
   rules: null,
+  recipes: null,
   continuousWork: {},
   setStatus: (status) => set({ status }),
   setMap: (map) => set({ map }),
@@ -100,6 +111,7 @@ export const useWorldStore = create<WorldStore>((set) => ({
     })),
   applyParams: (params) => set({ params }),
   applyRules: (rules) => set({ rules }),
+  applyRecipes: (recipes) => set({ recipes }),
   toggleContinuousWork: (characterId, task) =>
     set((state) => {
       const continuousWork = { ...state.continuousWork };

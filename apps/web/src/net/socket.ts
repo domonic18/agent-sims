@@ -11,7 +11,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { useWorldStore } from '../store/worldStore';
 
-const { setStatus, applySnapshot, applyEvent, applyControl, applyParams, applyRules } =
+const { setStatus, applySnapshot, applyEvent, applyControl, applyParams, applyRules, applyRecipes } =
   useWorldStore.getState();
 
 let worldSocket: Socket | null = null;
@@ -43,6 +43,8 @@ export function connectWorld(): Socket {
       applyParams(message.event.params);
     } else if (message.event.type === 'world.rules') {
       applyRules(message.event.rules);
+    } else if (message.event.type === 'world.recipes') {
+      applyRecipes(message.event.recipes);
     }
   });
   return socket;

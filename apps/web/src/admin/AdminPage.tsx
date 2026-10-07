@@ -24,6 +24,7 @@ import {
   RobotOutlined,
   SettingOutlined,
   UserOutlined,
+  ExperimentOutlined,
 } from '@ant-design/icons';
 import zhCN from 'antd/locale/zh_CN';
 import 'dayjs/locale/zh-cn';
@@ -35,6 +36,7 @@ import { AssetsPanel } from './AssetsPanel';
 import { LogsPanel } from './LogsPanel';
 import { WorldPanel } from './WorldPanel';
 import { SysConfigPanel } from './SysConfigPanel';
+import { RecipesPanel } from './RecipesPanel';
 import { AnimPreviewPanel } from './AnimPreviewPanel';
 import { SettingsPanel } from './SettingsPanel';
 
@@ -87,7 +89,16 @@ function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   );
 }
 
-type AdminTab = 'world' | 'params' | 'models' | 'usage' | 'assets' | 'anim' | 'logs' | 'settings';
+type AdminTab =
+  | 'world'
+  | 'params'
+  | 'recipes'
+  | 'models'
+  | 'usage'
+  | 'assets'
+  | 'anim'
+  | 'logs'
+  | 'settings';
 
 const NAV_ITEMS: MenuProps['items'] = [
   {
@@ -96,6 +107,7 @@ const NAV_ITEMS: MenuProps['items'] = [
     children: [
       { key: 'world', icon: <GlobalOutlined />, label: '世界管理' },
       { key: 'params', icon: <ControlOutlined />, label: '世界参数' },
+      { key: 'recipes', icon: <ExperimentOutlined />, label: '世界配方' },
       { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
@@ -211,6 +223,8 @@ function AdminShell() {
             <WorldPanel />
           ) : tab === 'params' ? (
             <SysConfigPanel />
+          ) : tab === 'recipes' ? (
+            <RecipesPanel />
           ) : tab === 'anim' ? (
             <AnimPreviewPanel />
           ) : tab === 'usage' ? (
