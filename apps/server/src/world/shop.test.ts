@@ -176,8 +176,8 @@ describe('商店初始存量售罄即止(食物经济 2026-10-07,04 §3.2)', () 
 });
 
 describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () => {
-  it('目录完整性: 16 项,food 必带 effects,material 不可食用,货架恰为 8 项派生', () => {
-    expect(ITEMS).toHaveLength(16);
+  it('目录完整性: 17 项,food 必带 effects,material 不可食用,货架恰为 8 项派生', () => {
+    expect(ITEMS).toHaveLength(17);
     expect(SHOP_ITEMS).toHaveLength(8); // 货架=带定价子集(引用一致)
     for (const item of ITEMS) {
       expect(getItem(item.id)).toBe(item);

@@ -3,12 +3,15 @@ import type { ResourceNode } from '@sims/shared';
 import { TILE } from './assets';
 
 /** 资源节点贴图按 kind 表驱动:浆果丛=灌木,拾荒堆=满垃圾桶,树/岩/金属堆为
- * M-S/S1 生存三件套(树 2x2 原生越格上悬,余 1x1) */
+ * M-S/S1 生存三件套(树 2x2 原生越格上悬,余 1x1);
+ * 食物链两节点(2026-10-07):苹果树=苹果堆,麦丛=带土作物 */
 export const BERRY_BUSH_SPRITE = 'garden-bush-2965';
 export const JUNK_PILE_SPRITE = 'city-props-small-full-trash-can-1691';
 export const TREE_SPRITE = 'camping-tree-1013';
 export const ROCK_SPRITE = 'camping-rock-883';
 export const METAL_PILE_SPRITE = 'garage-sales-air-conditioner-unit-2810';
+export const APPLE_TREE_SPRITE = 'camping-apples-668';
+export const WHEAT_PATCH_SPRITE = 'beach-small-sprout-3-vers-259';
 
 const NODE_SPRITES: Record<ResourceNode['kind'], string> = {
   berry_bush: BERRY_BUSH_SPRITE,
@@ -16,6 +19,8 @@ const NODE_SPRITES: Record<ResourceNode['kind'], string> = {
   tree: TREE_SPRITE,
   rock: ROCK_SPRITE,
   metal_pile: METAL_PILE_SPRITE,
+  apple_tree: APPLE_TREE_SPRITE,
+  wheat_patch: WHEAT_PATCH_SPRITE,
 };
 
 const NODE_FALLBACK_COLORS: Record<ResourceNode['kind'], number> = {
@@ -24,6 +29,8 @@ const NODE_FALLBACK_COLORS: Record<ResourceNode['kind'], number> = {
   tree: 0x2f6b34,
   rock: 0x8a8a8a,
   metal_pile: 0x706e6a,
+  apple_tree: 0xc0472f,
+  wheat_patch: 0xc9a83a,
 };
 
 /** preload 声明:资源层贴图 slug(纹理缺失渲染层有色块兜底) */

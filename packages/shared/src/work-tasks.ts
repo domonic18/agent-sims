@@ -14,6 +14,8 @@ const GATHER_TASK_IDS: readonly GatherTaskId[] = [
   'chop_tree',
   'mine_rock',
   'salvage_metal',
+  'pick_apple',
+  'harvest_wheat',
 ];
 
 /** 类型守卫:采集岗(M-G.6 两岗+M-S/S1 生存三岗)——联合查表与结算分流共用 */
@@ -44,6 +46,8 @@ export const WORK_TARGETS: Record<WorkTaskId, WorkTargetMeta> = {
   chop_tree: { source: 'resources', kind: 'tree', requireCharges: true, noun: '树木', measure: '棵' },
   mine_rock: { source: 'resources', kind: 'rock', requireCharges: true, noun: '岩石', measure: '处' },
   salvage_metal: { source: 'resources', kind: 'metal_pile', requireCharges: true, noun: '金属堆', measure: '处' },
+  pick_apple: { source: 'resources', kind: 'apple_tree', requireCharges: true, noun: '苹果树', measure: '棵' },
+  harvest_wheat: { source: 'resources', kind: 'wheat_patch', requireCharges: true, noun: '麦丛', measure: '处' },
 };
 
 /** 资源节点 kind→中文标签(可采节点族反查;Lab 表单/画布提示用) */

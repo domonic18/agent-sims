@@ -23,6 +23,7 @@ export const ITEM_IDS = [
   'wood',
   'stone',
   'metal',
+  'wheat',
 ] as const;
 
 export type ItemId = (typeof ITEM_IDS)[number];
@@ -51,6 +52,7 @@ export const ITEMS: readonly ItemDefinition[] = [
   // 采集/制作产出(非货架,04-numerical §5.4)
   { id: 'berry', name: '浆果', category: 'food', volume: 1, effects: { energy: 2, score: 0 } },
   { id: 'berry_pie', name: '浆果派', category: 'food', volume: 2, effects: { energy: 8, score: 4 } },
+  { id: 'wheat', name: '小麦', category: 'material', volume: 1 },
   { id: 'scrap', name: '废料', category: 'material', volume: 1 },
   { id: 'twig', name: '树枝', category: 'material', volume: 1 },
   { id: 'repair_kit', name: '修补钉', category: 'material', volume: 1 },

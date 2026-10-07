@@ -65,8 +65,12 @@ export const ACTIVITY_EMOJI: Record<ActivityId, string> = {
   chop_tree: '🪓',
   mine_rock: '⛏️',
   salvage_metal: '🔩',
+  pick_apple: '🍎',
+  harvest_wheat: '🌾',
   craft_berry_pie: '🥧',
   craft_repair_kit: '🔨',
+  craft_bread: '🍞',
+  craft_sandwich: '🥪',
 };
 
 /** 活动 → 静止姿态:躺(lie,rest 横卧床/长椅)/原地跑(run,workout)/坐(sit,桌台/柜台类)/站立(idle) */
@@ -89,8 +93,12 @@ export const ACTIVITY_POSES: Record<ActivityId, 'idle' | 'run' | 'lie' | 'sit'> 
   chop_tree: 'idle',
   mine_rock: 'idle',
   salvage_metal: 'idle',
+  pick_apple: 'idle',
+  harvest_wheat: 'idle',
   craft_berry_pie: 'idle',
   craft_repair_kit: 'idle',
+  craft_bread: 'idle',
+  craft_sandwich: 'idle',
 };
 
 /** 角色 id → 配色变体 slug(稳定哈希,同一角色始终同一套衣服;变体列表来自 manifest) */

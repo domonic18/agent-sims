@@ -28,8 +28,12 @@ export const ACTIVITY_IDS = [
   'chop_tree',
   'mine_rock',
   'salvage_metal',
+  'pick_apple',
+  'harvest_wheat',
   'craft_berry_pie',
   'craft_repair_kit',
+  'craft_bread',
+  'craft_sandwich',
 ] as const;
 
 export type ActivityId = (typeof ACTIVITY_IDS)[number];
@@ -219,7 +223,25 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     effects: { energy: -0.15, score: 0, coins: 0 },
     category: 'gather',
   },
-  // 制作两配方(M-G.6,design/09 §3/numerical §5.4):站点锚点活动(灶台/木工台),
+  // 食物链采集两岗(2026-10-07,numerical §5.4):直采恢复<制作——苹果直食 +4,
+  // 小麦为面包原料(经灶台制作 +6,再制三明治 +8)
+  {
+    id: 'pick_apple',
+    name: '采摘苹果',
+    placeIds: [],
+    durationMinutes: 20,
+    effects: { energy: -0.15, score: 0, coins: 0 },
+    category: 'gather',
+  },
+  {
+    id: 'harvest_wheat',
+    name: '收割小麦',
+    placeIds: [],
+    durationMinutes: 20,
+    effects: { energy: -0.15, score: 0, coins: 0 },
+    category: 'gather',
+  },
+  // 制作配方(M-G.6+2026-10-07 食物链,design/09 §3/numerical §5.4):站点锚点活动(灶台/木工台),
   // 须经 craft 意图开始(验料扣料,中断退料,完成产出入包),直发 start_activity 拒绝
   {
     id: 'craft_berry_pie',
@@ -236,6 +258,24 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     durationMinutes: 15,
     effects: { energy: -0.1, score: 0.05, coins: 0 },
     category: 'build',
+  },
+  // 食物链制作两配方(2026-10-07,numerical §5.4):产出复用货架同 ItemId,
+  // 制作恢复>直采(面包 +6/三明治 +8 > 直采苹果 +4/浆果×2 = +4)
+  {
+    id: 'craft_bread',
+    name: '制作面包',
+    placeIds: ['restaurant'],
+    durationMinutes: 20,
+    effects: { energy: -0.1, score: 0.05, coins: 0 },
+    category: 'gather',
+  },
+  {
+    id: 'craft_sandwich',
+    name: '制作三明治',
+    placeIds: ['restaurant'],
+    durationMinutes: 25,
+    effects: { energy: -0.1, score: 0.05, coins: 0 },
+    category: 'gather',
   },
 ];
 

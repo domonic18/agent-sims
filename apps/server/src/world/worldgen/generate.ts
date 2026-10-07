@@ -32,11 +32,17 @@ export const BUILTIN_SEED = '__builtin__';
 
 /** 资源节点撒点数量档(TD-1 自 scatterResources 字面量具名,design/09 §2):
  * 浆果丛易枯竭(重生次日)、拾荒堆无限,数量太少则以物代薪无目标可接 */
-const BERRY_BUSH_COUNT: readonly [number, number] = [3, 6];
+const BERRY_BUSH_COUNT: readonly [number, number] = [4, 7];
 const JUNK_PILE_COUNT: readonly [number, number] = [2, 4];
-/** 末日生存档:资源采集区加密(废土拾荒) */
-const SURVIVAL_BERRY_BUSH_COUNT: readonly [number, number] = [4, 8];
+/** 食物链节点档(2026-10-07,numerical §5.4):苹果树/麦丛与浆果丛同落食物区,
+ * 售罄即止后长期食物来源=直采(苹果)与制作原料(小麦) */
+const APPLE_TREE_COUNT: readonly [number, number] = [2, 4];
+const WHEAT_PATCH_COUNT: readonly [number, number] = [2, 4];
+/** 末日生存档:资源采集区加密(废土拾荒+食物区) */
+const SURVIVAL_BERRY_BUSH_COUNT: readonly [number, number] = [5, 9];
 const SURVIVAL_JUNK_PILE_COUNT: readonly [number, number] = [5, 9];
+const SURVIVAL_APPLE_TREE_COUNT: readonly [number, number] = [3, 6];
+const SURVIVAL_WHEAT_PATCH_COUNT: readonly [number, number] = [3, 6];
 /** 生存资源三件套档(M-S/S1,07-survival §2):树→木材/岩石→石料/废墟金属堆→金属;
  * S1.5 起树/岩迁镇外簇(森林/岩石区),数量随簇加密 */
 const SURVIVAL_TREE_COUNT: readonly [number, number] = [6, 10];
@@ -1149,10 +1155,11 @@ function nearestRoadCell(
 }
 
 /**
- * 资源节点撒点(M-G.6):浆果丛落公园空地(survival 加落幸存者营地),拾荒堆落街道空地
- * (避池塘/家具/使用格三邻域、场所缓冲带/道路/围栏);占格不可行走,重摇尽力放置。
- * survival 模式数量加密(资源采集区),growth 保持原档。
- * S1.5 起三件套迁镇外:树→森林簇/岩石→岩石区/金属堆→废墟(浆果食物近家不变)。
+ * 资源节点撒点(M-G.6+2026-10-07 食物链):食物节点(浆果丛/苹果树/麦丛)落公园空地
+ * (survival 加落幸存者营地),拾荒堆落街道空地(避池塘/家具/使用格三邻域、场所缓冲带/道路/围栏);
+ * 占格不可行走,重摇尽力放置。survival 模式数量加密(资源采集区)。
+ * S1.5 起三件套迁镇外:树→森林簇/岩石→岩石区/金属堆→废墟(食物节点近家不变)。
+ * 食物链新增撒点循环改变 rng 消耗序列:growth 同种子地图与旧版有意不同(非回归)。
  */
 function scatterResources(
   rng: Rng,
@@ -1223,6 +1230,25 @@ function scatterResources(
       break;
     }
   }
+  // 食物链两节点(2026-10-07,numerical §5.4):复制浆果丛落位(食物区=公园,survival 加营地)
+  const appleCount = rng.int(...(gameType === 'survival' ? SURVIVAL_APPLE_TREE_COUNT : APPLE_TREE_COUNT));
+  const wheatCount = rng.int(...(gameType === 'survival' ? SURVIVAL_WHEAT_PATCH_COUNT : WHEAT_PATCH_COUNT));
+  const scatterFoodNode = (kind: ResourceNodeSeed['kind'], count: number): void => {
+    for (let n = 0; n < count && parks.length > 0; n += 1) {
+      const park = rng.pick(parks);
+      for (let tries = 0; tries < 20; tries += 1) {
+        const x = rng.int(park.x + 1, park.x + park.w - 2);
+        const y = rng.int(park.y + 1, park.y + park.h - 2);
+        const key = cellKey(x, y);
+        if (parkBlocked.has(key) || taken.has(key)) continue;
+        taken.add(key);
+        seeds.push({ kind, x, y });
+        break;
+      }
+    }
+  };
+  scatterFoodNode('apple_tree', appleCount);
+  scatterFoodNode('wheat_patch', wheatCount);
   // 生存资源三件套(M-S/S1,07-survival §2;S1.5 镇外迁移):树→森林簇、岩石→岩石区、
   // 金属堆→废墟——growth 不进此分支,rng 消耗流零变化
   if (gameType === 'survival' && wild !== null) {

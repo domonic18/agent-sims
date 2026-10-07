@@ -165,13 +165,13 @@ describe('站点与资源节点撒点(M-G.6)', () => {
     }
   });
 
-  it('资源节点: 浆果丛 3~6 全落公园内部,拾荒堆 2~4 全落场所外,同格不重叠', () => {
+  it('资源节点: 浆果丛 4~7 全落公园内部,拾荒堆 2~4 全落场所外,同格不重叠', () => {
     for (const result of results) {
       const resources = result.map.resources ?? [];
       const berries = resources.filter((r) => r.kind === 'berry_bush');
       const junk = resources.filter((r) => r.kind === 'junk_pile');
-      expect(berries.length).toBeGreaterThanOrEqual(3);
-      expect(berries.length).toBeLessThanOrEqual(6);
+      expect(berries.length).toBeGreaterThanOrEqual(4);
+      expect(berries.length).toBeLessThanOrEqual(7);
       expect(junk.length).toBeGreaterThanOrEqual(2);
       expect(junk.length).toBeLessThanOrEqual(4);
       const parks = result.map.places.filter((p) => p.id.startsWith('park'));
@@ -487,13 +487,13 @@ describe('末日生存模式(survival gameType)', () => {
     }
   });
 
-  it('资源加密: 浆果 4~8 落公园/营地内部,拾荒堆 5~9 全落场所外', () => {
+  it('资源加密: 浆果 5~9 落公园/营地内部,拾荒堆 5~9 全落场所外', () => {
     for (const result of results) {
       const resources = result.map.resources ?? [];
       const berries = resources.filter((r) => r.kind === 'berry_bush');
       const junk = resources.filter((r) => r.kind === 'junk_pile');
-      expect(berries.length).toBeGreaterThanOrEqual(4);
-      expect(berries.length).toBeLessThanOrEqual(8);
+      expect(berries.length).toBeGreaterThanOrEqual(5);
+      expect(berries.length).toBeLessThanOrEqual(9);
       expect(junk.length).toBeGreaterThanOrEqual(5);
       expect(junk.length).toBeLessThanOrEqual(9);
       const sites = result.map.places.filter(

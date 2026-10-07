@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 export const resourceNodeSchema = z.object({
   id: z.string().min(1),
-  kind: z.enum(['berry_bush', 'junk_pile', 'tree', 'rock', 'metal_pile']),
+  kind: z.enum(['berry_bush', 'junk_pile', 'tree', 'rock', 'metal_pile', 'apple_tree', 'wheat_patch']),
   x: z.number().int(),
   y: z.number().int(),
   /** 剩余可采次数;null=无限(拾荒堆),0=已枯竭(浆果丛待重生) */
@@ -28,7 +28,14 @@ export interface ResourceNodeSeed {
 }
 
 /** 采集岗位(numerical §5.4):同属采集类(知识 3 班门槛,JOB_CATEGORIES.gather) */
-export type GatherTaskId = 'gather_berry' | 'scavenge' | 'chop_tree' | 'mine_rock' | 'salvage_metal';
+export type GatherTaskId =
+  | 'gather_berry'
+  | 'scavenge'
+  | 'chop_tree'
+  | 'mine_rock'
+  | 'salvage_metal'
+  | 'pick_apple'
+  | 'harvest_wheat';
 
 export interface GatherYield {
   itemId: string;
@@ -84,6 +91,22 @@ export const GATHER_TASKS: Record<GatherTaskId, GatherTaskDef> = {
     nodeKind: 'metal_pile',
     yields: [{ itemId: 'metal', count: 2 }],
   },
+  // 食物链采集两岗(2026-10-07,numerical §5.4):直采恢复<制作——苹果直食 +4,
+  // 小麦为面包原料(经灶台制作 +6,再制三明治 +8)
+  pick_apple: {
+    id: 'pick_apple',
+    category: 'gather',
+    durationMinutes: 20,
+    nodeKind: 'apple_tree',
+    yields: [{ itemId: 'apple', count: 1 }],
+  },
+  harvest_wheat: {
+    id: 'harvest_wheat',
+    category: 'gather',
+    durationMinutes: 20,
+    nodeKind: 'wheat_patch',
+    yields: [{ itemId: 'wheat', count: 2 }],
+  },
 };
 
 /** 节点存量表(design/09 §2):采尽枯竭次日 00:00 回满;拾荒堆无限采(charges=null) */
@@ -93,6 +116,8 @@ export const NODE_MAX_CHARGES: Record<ResourceNode['kind'], number | null> = {
   tree: 5,
   rock: 4,
   metal_pile: 3,
+  apple_tree: 4,
+  wheat_patch: 3,
 };
 
 /**
@@ -100,9 +125,14 @@ export const NODE_MAX_CHARGES: Record<ResourceNode['kind'], number | null> = {
  * 绑定同名活动;开始验料扣料,中断退料,完成产出入包(产出体积恒<输入)。
  * 制作类别门槛随活动定义(craft_berry_pie→gather 3 班,craft_repair_kit→build 6 班)。
  */
-export type CraftRecipeId = 'craft_berry_pie' | 'craft_repair_kit';
+export type CraftRecipeId = 'craft_berry_pie' | 'craft_repair_kit' | 'craft_bread' | 'craft_sandwich';
 
-export const CRAFT_RECIPE_IDS = ['craft_berry_pie', 'craft_repair_kit'] as const;
+export const CRAFT_RECIPE_IDS = [
+  'craft_berry_pie',
+  'craft_repair_kit',
+  'craft_bread',
+  'craft_sandwich',
+] as const;
 
 export interface RecipeIO {
   itemId: string;
@@ -132,6 +162,22 @@ export const RECIPES: Record<CraftRecipeId, RecipeDef> = {
     stationKind: 'workbench',
     inputs: [{ itemId: 'scrap', count: 2 }],
     outputs: [{ itemId: 'repair_kit', count: 1 }],
+  },
+  // 食物链制作两配方(2026-10-07,numerical §5.4):产出复用货架同 ItemId,
+  // 制作恢复>直采(面包 +6/三明治 +8 > 直采苹果 +4/浆果×2 = +4)
+  craft_bread: {
+    id: 'craft_bread',
+    name: '面包',
+    stationKind: 'stove',
+    inputs: [{ itemId: 'wheat', count: 2 }],
+    outputs: [{ itemId: 'bread', count: 1 }],
+  },
+  craft_sandwich: {
+    id: 'craft_sandwich',
+    name: '三明治',
+    stationKind: 'stove',
+    inputs: [{ itemId: 'bread', count: 1 }, { itemId: 'apple', count: 1 }],
+    outputs: [{ itemId: 'sandwich', count: 1 }],
   },
 };
 
