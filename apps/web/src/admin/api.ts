@@ -35,7 +35,19 @@ import {
   type WorldView,
 } from '@sims/shared';
 
-const TOKEN_STORAGE_KEY = 'sims_admin_token';
+// 与 authStore(sims.admin.token)共用同一键:游戏页/后台/lab 同一登录态,
+// 任意一侧登录三处可见(issueApi 曾因键分裂被迫直连 workaround)
+const TOKEN_STORAGE_KEY = 'sims.admin.token';
+const LEGACY_TOKEN_KEY = 'sims_admin_token';
+
+// 一次性迁移:历史后台登录留下的旧键并入统一键,避免已登录用户被迫重登
+if (localStorage.getItem(TOKEN_STORAGE_KEY) === null) {
+  const legacy = localStorage.getItem(LEGACY_TOKEN_KEY);
+  if (legacy !== null) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, legacy);
+    localStorage.removeItem(LEGACY_TOKEN_KEY);
+  }
+}
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_STORAGE_KEY);
