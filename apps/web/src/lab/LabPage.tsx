@@ -7,8 +7,17 @@ import {
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
   type Gender,
+  type WorldArchiveView,
 } from '@sims/shared';
-import { addWorldCharacter, fetchWorlds, getToken } from '../admin/api';
+import {
+  addWorldCharacter,
+  deleteWorldArchive,
+  fetchWorldArchives,
+  fetchWorlds,
+  getToken,
+  loadWorldArchive,
+  saveWorldArchive,
+} from '../admin/api';
 import {
   debugSpawn,
   debugTick,
@@ -53,6 +62,9 @@ export default function LabPage() {
   const [adminGender, setAdminGender] = useState<Gender>('unspecified');
   const [adminPersona, setAdminPersona] = useState('');
   const [adminMsg, setAdminMsg] = useState<string | null>(null);
+  // 世界存档(C6):列表/保存命名/读取删除
+  const [archives, setArchives] = useState<WorldArchiveView[]>([]);
+  const [archiveLabel, setArchiveLabel] = useState('');
   const nextLogIdRef = useRef(1);
   const spawnCountRef = useRef(0);
 
@@ -185,6 +197,48 @@ export default function LabPage() {
       setAdminMsg(`「${spawned.name}」已入驻 (${spawned.x},${spawned.y})`);
       setAdminName('');
       setAdminPersona('');
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const refreshArchives = async (): Promise<void> => {
+    try {
+      setArchives(await fetchWorldArchives());
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  // admin 面板可用后拉一次存档列表
+  useEffect(() => {
+    if (adminAvailable) void refreshArchives();
+  }, [adminAvailable]);
+
+  const saveArchive = async (): Promise<void> => {
+    try {
+      const saved = await saveWorldArchive(archiveLabel);
+      setAdminMsg(`已保存「${saved.label}」(${saved.characterCount} 位居民)`);
+      setArchiveLabel('');
+      await refreshArchives();
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const loadArchive = async (archive: WorldArchiveView): Promise<void> => {
+    try {
+      await loadWorldArchive(archive.id);
+      setAdminMsg(`已读取「${archive.label}」`);
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const removeArchive = async (archive: WorldArchiveView): Promise<void> => {
+    try {
+      await deleteWorldArchive(archive.id);
+      await refreshArchives();
     } catch (error) {
       setAdminMsg(error instanceof Error ? error.message : String(error));
     }
@@ -372,6 +426,53 @@ export default function LabPage() {
                   onChange={(e) => setAdminPersona(e.target.value)}
                 />
                 {adminMsg !== null && <p className="hint">{adminMsg}</p>}
+
+                <h3 style={{ marginTop: 14 }}>管理员 · 世界存档</h3>
+                <div className="lab-btn-row">
+                  <input
+                    className="lab-input"
+                    placeholder="存档名(留空自动时间戳)"
+                    maxLength={40}
+                    value={archiveLabel}
+                    onChange={(e) => setArchiveLabel(e.target.value)}
+                  />
+                  <button type="button" className="px-btn" onClick={() => void saveArchive()}>
+                    💾 保存
+                  </button>
+                </div>
+                <ul className="lab-archive-list">
+                  {archives.length === 0 ? (
+                    <li className="hint">暂无存档</li>
+                  ) : (
+                    archives.map((archive) => (
+                      <li key={archive.id} className="lab-archive-row">
+                        <div className="lab-archive-meta">
+                          <b>{archive.label}</b>
+                          <small>
+                            {new Date(archive.createdAt).toLocaleString('zh-CN', { hour12: false })} ·{' '}
+                            {archive.characterCount} 位居民
+                          </small>
+                        </div>
+                        <span className="lab-btn-row">
+                          <button
+                            type="button"
+                            className="px-btn"
+                            onClick={() => void loadArchive(archive)}
+                          >
+                            读取
+                          </button>
+                          <button
+                            type="button"
+                            className="px-btn"
+                            onClick={() => void removeArchive(archive)}
+                          >
+                            删除
+                          </button>
+                        </span>
+                      </li>
+                    ))
+                  )}
+                </ul>
               </div>
             </div>
           )}

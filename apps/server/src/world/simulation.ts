@@ -91,6 +91,28 @@ function nodeMaxCharges(kind: ResourceNode['kind']): number | null {
 }
 
 /**
+ * 世界存档载荷(C6):serialize() 产出、restoreArchive() 消费。
+ * 全部为 JSON-safe 纯数据(EventBus 与 TileMap 不入档:前者是订阅关系,
+ * 后者由 active 世界 config.map 重建);Map 以 entries 数组存档保 key。
+ */
+export interface SimulationArchive {
+  tick: number;
+  paused: boolean;
+  timeScale: number;
+  gameType: GameType;
+  rules: WorldRules;
+  recipes: Record<CraftRecipeId, RecipeDef>;
+  /** 全局热调参数现场(BALANCE 进程态):load 时复位出厂后整体灌回 */
+  params: Record<string, number>;
+  clockGameMinutes: number;
+  characters: WorldCharacter[];
+  socials: Array<[string, SocialRelation]>;
+  maintenanceSpots: Array<[string, MaintenanceSpot]>;
+  resourceNodes: Array<[string, ResourceNode]>;
+  shopStock: Array<[string, number]>;
+}
+
+/**
  * 世界模拟核心:固定 tick(1 tick = 1 游戏分钟),纯逻辑零 I/O。
  * 推进来源有二:实时驱动器(TickDriver,暂停时冻结)与手动推进
  * (调试端点/headless,不受暂停限制)。
@@ -391,6 +413,72 @@ export class Simulation {
   /** 状态快照:调试端点与同步层共用的对外形态(序列化在 snapshot.ts) */
   snapshot(): WorldSnapshotMessage {
     return worldSnapshot(this);
+  }
+
+  /**
+   * 世界现场序列化(C6 存档):五个状态 Map+控制面+时钟全量导出,
+   * 深拷贝隔离(后续 tick 不影响已存档载荷)。
+   */
+  serialize(): SimulationArchive {
+    return {
+      tick: this.tick,
+      paused: this.paused,
+      timeScale: this.timeScale,
+      gameType: this.gameType,
+      rules: JSON.parse(JSON.stringify(this.rules)) as WorldRules,
+      recipes: cloneRecipes(this.recipes),
+      params: currentWorldParams(),
+      clockGameMinutes: this.clock.gameMinutes,
+      characters: JSON.parse(JSON.stringify([...this.characters.values()])) as WorldCharacter[],
+      socials: JSON.parse(JSON.stringify([...this.socials.entries()])) as Array<
+        [string, SocialRelation]
+      >,
+      maintenanceSpots: JSON.parse(JSON.stringify([...this.maintenanceSpots.entries()])) as Array<
+        [string, MaintenanceSpot]
+      >,
+      resourceNodes: JSON.parse(JSON.stringify([...this.resourceNodes.entries()])) as Array<
+        [string, ResourceNode]
+      >,
+      shopStock: [...this.shopStock.entries()],
+    };
+  }
+
+  /**
+   * 世界现场恢复(C6 读档):调用方先 reset()+setMap(config.map)(覆盖触发的
+   * 资源/货架重建),再灌本档全部状态;控制面变更经 world.control 事件广播收敛,
+   * 每 tick 全量快照自动同步客户端。地图不入档——由 active 世界 config.map 重建。
+   */
+  restoreArchive(archive: SimulationArchive): void {
+    this.characters.clear();
+    this.socials.clear();
+    this.maintenanceSpots.clear();
+    this.resourceNodes.clear();
+    this.shopStock.clear();
+    this.tick = archive.tick;
+    this.clock.restore(archive.clockGameMinutes);
+    this.paused = archive.paused;
+    this.timeScale = archive.timeScale;
+    this.gameType = archive.gameType;
+    this.rules = JSON.parse(JSON.stringify(archive.rules)) as WorldRules;
+    this.setRecipes(archive.recipes);
+    // 参数现场灌回(先复位出厂清残留,再整体应用存档值)
+    applyWorldParams(archive.params);
+    for (const [key, value] of archive.socials) {
+      this.socials.set(key, JSON.parse(JSON.stringify(value)) as SocialRelation);
+    }
+    for (const [key, value] of archive.maintenanceSpots) {
+      this.maintenanceSpots.set(key, JSON.parse(JSON.stringify(value)) as MaintenanceSpot);
+    }
+    for (const [key, value] of archive.resourceNodes) {
+      this.resourceNodes.set(key, JSON.parse(JSON.stringify(value)) as ResourceNode);
+    }
+    for (const [key, value] of archive.shopStock) {
+      this.shopStock.set(key, value);
+    }
+    for (const character of archive.characters) {
+      this.characters.set(character.id, JSON.parse(JSON.stringify(character)) as WorldCharacter);
+    }
+    this._emitControl();
   }
 
   private _emitControl(): void {

@@ -71,6 +71,13 @@
       "when": 1791288894882,
       "tag": "0009_pink_maverick",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791390505077,
+      "tag": "0010_world_archives",
+      "breakpoints": true
     }
   ]
 }

@@ -21,3 +21,18 @@ export const worlds = pgTable('worlds', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp('closed_at', { withTimezone: true }),
 });
+
+/**
+ * 世界存档多档(C6):管理员手动保存的模拟现场快照,payload 为
+ * SimulationArchive 全量 JSON(tick/时钟/角色/社交/维护/资源/货架/控制面)。
+ * 归属保存时活跃世界;load 校验 worldId 与当前活跃世界一致。
+ */
+export const worldArchives = pgTable('world_archives', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  worldId: uuid('world_id')
+    .notNull()
+    .references(() => worlds.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  payload: jsonb('payload').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

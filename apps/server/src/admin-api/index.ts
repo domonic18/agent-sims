@@ -9,6 +9,7 @@ import { registerLogRoutes } from './logs.js';
 import { registerModelConfigRoutes } from './model-configs.js';
 import { registerSysConfigRoutes } from './sys-configs.js';
 import { registerTokenUsageRoutes } from './token-usage.js';
+import { registerWorldArchiveRoutes } from './world-archives.js';
 import { registerWorldRecipeRoutes } from './world-recipes.js';
 import { registerWorldRoutes } from './worlds.js';
 
@@ -20,6 +21,7 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle, sim: Si
   registerWorldRecipeRoutes(app, sim);
   registerTokenUsageRoutes(app, handle);
   registerWorldRoutes(app, handle);
+  registerWorldArchiveRoutes(app, handle);
   registerAssetRoutes(app, handle);
   registerAssetIssueRoutes(app, handle);
   registerLogRoutes(app, handle);

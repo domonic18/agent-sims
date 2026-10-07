@@ -49,6 +49,11 @@ export class GameClock {
     this._minutes = BALANCE.START_MINUTE_OF_DAY;
   }
 
+  /** 灌入存档时刻(纪元起累计游戏分钟;世界存档 load 恢复现场) */
+  restore(gameMinutes: number): void {
+    this._minutes = gameMinutes;
+  }
+
   /** 当日 HH:mm(24 小时制) */
   formatTime(): string {
     const hh = String(this.hour).padStart(2, '0');

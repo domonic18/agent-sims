@@ -143,6 +143,16 @@ export interface AddWorldCharacterResponse {
   y: number;
 }
 
+/** 世界存档列表视图(GET /api/admin/world-archives;payload 不外透) */
+export interface WorldArchiveView {
+  id: string;
+  worldId: string;
+  worldName: string;
+  label: string;
+  characterCount: number;
+  createdAt: string;
+}
+
 /** 世界生命周期端点(admin 鉴权同模型配置) */
 export const WORLD_ADMIN_API = {
   /** GET 列表 / POST 创建 */
@@ -155,6 +165,12 @@ export const WORLD_ADMIN_API = {
   world: '/api/admin/worlds/:id',
   /** POST 运行中世界动态加居民(C5) */
   characters: '/api/admin/characters',
+  /** GET 列表 / POST 保存当前活跃世界存档(C6) */
+  archives: '/api/admin/world-archives',
+  /** POST 读取存档恢复现场 */
+  archiveLoad: '/api/admin/world-archives/:id/load',
+  /** DELETE 删除存档 */
+  archive: '/api/admin/world-archives/:id',
 } as const;
 
 const NAME_POOLS: Record<Exclude<Gender, 'unspecified'>, string[]> = {

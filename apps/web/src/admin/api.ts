@@ -27,6 +27,7 @@ import {
   type TokenUsageSummary,
   type TokenUsageWindow,
   type SysConfigView,
+  type WorldArchiveView,
   type WorldEventEntriesResponse,
   type WorldRecipesView,
   WORLD_ADMIN_API,
@@ -229,6 +230,27 @@ export async function addWorldCharacter(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ============ 世界存档多档(C6) ============
+
+export async function fetchWorldArchives(): Promise<WorldArchiveView[]> {
+  return await adminFetch<WorldArchiveView[]>(WORLD_ADMIN_API.archives);
+}
+
+export async function saveWorldArchive(label?: string): Promise<WorldArchiveView> {
+  return await adminFetch<WorldArchiveView>(WORLD_ADMIN_API.archives, {
+    method: 'POST',
+    body: JSON.stringify(label !== undefined && label.trim() !== '' ? { label: label.trim() } : {}),
+  });
+}
+
+export async function loadWorldArchive(id: string): Promise<void> {
+  await adminFetch<unknown>(WORLD_ADMIN_API.archiveLoad.replace(':id', id), { method: 'POST' });
+}
+
+export async function deleteWorldArchive(id: string): Promise<void> {
+  await adminFetch<unknown>(WORLD_ADMIN_API.archive.replace(':id', id), { method: 'DELETE' });
 }
 
 // ============ 素材管理(M-L.2) ============
