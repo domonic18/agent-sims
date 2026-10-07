@@ -2,6 +2,7 @@ import {
   TOWN_MAP,
   WORLDGEN_DENSITIES,
   WORLDGEN_SIZE_GRIDS,
+  solidDecorRect,
   type DecorEntry,
   type GameType,
   type PlaceDefinition,
@@ -59,6 +60,8 @@ export interface WorldgenInput {
   manifestVersion: string;
   /** kind → 可选素材 slug 池(素材库随机选材;缺省 sprite 省略=kind 同名纹理) */
   assetsByKind?: Readonly<Record<string, readonly string[]>>;
+  /** 装饰 slug → sprite 占地格数(solid 装饰转 blockedRect 用;缺省 1×1) */
+  assetSizes?: Readonly<Record<string, readonly [number, number]>>;
 }
 
 export interface WorldgenResult {
@@ -228,7 +231,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   const decor = buildDecor(
     rng, width, height, densityIndex, input.gameType,
     places, paths, plaza, pond, fences, resources, input.assetsByKind,
-    townCore === null ? null : wildClusters,
+    townCore === null ? null : wildClusters, townCore, input.assetSizes,
   );
 
   const map: TileMapDefinition = {
@@ -796,6 +799,8 @@ function buildDecor(
   resources: ResourceNodeSeed[],
   assetsByKind: Readonly<Record<string, readonly string[]>> | undefined,
   wild: { forests: BlockedRect[]; rocks: BlockedRect[] } | null,
+  townCore: BlockedRect | null,
+  assetSizes: Readonly<Record<string, readonly [number, number]>> | undefined,
 ): TileMapDefinition['decor'] {
   const densityScale = [0.6, 1, 1.4][densityIndex] ?? 1;
   const trees: Array<[number, number]> = [];
@@ -811,6 +816,7 @@ function buildDecor(
     street: assetsByKind?.[DECOR_POOLS.street] ?? [],
     lamp: assetsByKind?.[DECOR_POOLS.lamp] ?? [],
     flat: assetsByKind?.[DECOR_POOLS.flat] ?? [],
+    wreck: assetsByKind?.[DECOR_POOLS.wreck] ?? [],
   };
   type StandingKind = keyof typeof DECOR_POOLS;
   /** 落一件立式装饰:池非空出数据条目,池空回退旧字段(bench/street 无旧纹理,弃放) */
@@ -829,6 +835,21 @@ function buildDecor(
     taken.add(cellKey(x, y));
     if (pools.flat.length > 0) flats.push({ slug: rng.pick(pools.flat), x, y });
     else flowers.push([x, y]);
+  };
+  /** 落一件 solid 镇外装饰:全占地逐格避让校验后占格(占地式与 TileMap blockedRect 同源) */
+  const addWreck = (x: number, y: number): boolean => {
+    const slug = rng.pick(pools.wreck);
+    const [w, h] = assetSizes?.[slug] ?? [1, 1];
+    const entry: DecorEntry = { slug, x, y, w, h, solid: true };
+    const rect = solidDecorRect(entry);
+    for (let yy = rect.y; yy < rect.y + rect.h; yy += 1) {
+      for (let xx = rect.x; xx < rect.x + rect.w; xx += 1) {
+        if (!free(xx, yy)) return false;
+      }
+    }
+    mark0(taken, rect);
+    props.push(entry);
+    return true;
   };
 
   const placeRects = places.map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h }));
@@ -961,6 +982,20 @@ function buildDecor(
           if (rng.chance(0.2 * densityScale)) addFlat(x, y);
         }
       }
+    }
+  }
+
+  // pass4.6 镇外废土装饰(survival):残骸/电线杆/路障撒镇外带(solid 不可穿越,
+  // 全占地避让;连通校验兜底)——growth 零变化
+  if (gameType === 'survival' && wild !== null && townCore !== null && pools.wreck.length > 0) {
+    const inCore = (x: number, y: number): boolean =>
+      x >= townCore.x && x < townCore.x + townCore.w && y >= townCore.y && y < townCore.y + townCore.h;
+    const wreckCount = Math.round(rng.int(8, 14) * densityScale);
+    for (let i = 0, placed = 0; i < wreckCount * 4 && placed < wreckCount; i += 1) {
+      const x = rng.int(1, width - 2);
+      const y = rng.int(1, height - 2);
+      if (inCore(x, y)) continue;
+      if (addWreck(x, y)) placed += 1;
     }
   }
 

@@ -36,6 +36,11 @@ export interface DecorEntry {
   slug: string;
   x: number;
   y: number;
+  /** 实体装饰(废车/电线杆等):不可穿越,占地转 blockedRect */
+  solid?: boolean;
+  /** sprite 占地格数(solid 必填;propSprite 底边居中锚定) */
+  w?: number;
+  h?: number;
 }
 
 /** 户外装饰坐标(生成地图数据化;内置地图缺省由渲染层静态坐标兜底)。
@@ -51,6 +56,14 @@ export interface DecorDefinition {
   flats?: ReadonlyArray<DecorEntry>;
   /** 公园水系(渲染 8 向水岸;blockedRects 需含同矩形) */
   pond?: { x: number; y: number; w: number; h: number };
+}
+
+/** solid 装饰占地矩形(propSprite 底边居中锚定:水平以锚格为中心、纵向自锚格向上 h 格;
+ * 生成器占格与 TileMap blockedRect 同源此式) */
+export function solidDecorRect(entry: DecorEntry): { x: number; y: number; w: number; h: number } {
+  const w = entry.w ?? 1;
+  const h = entry.h ?? 1;
+  return { x: entry.x - Math.floor((w - 1) / 2), y: entry.y - h + 1, w, h };
 }
 
 /** 生成报告(向导第⑤步预览与调试端点用;无时间戳保证可比对) */

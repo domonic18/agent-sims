@@ -4,6 +4,7 @@ import {
   findPlaceByRef,
   furnitureRectsOf,
   isInPlace,
+  solidDecorRect,
   wallRectsOf,
   type BlockedRect,
   type AnyFurnitureKind,
@@ -40,6 +41,10 @@ export class TileMap {
     this.definition = definition;
     this.resourceSeeds = definition.resources ?? [];
     const resourceRects: BlockedRect[] = this.resourceSeeds.map((r) => ({ x: r.x, y: r.y, w: 1, h: 1 }));
+    // solid 装饰(废车/电线杆等,M-S/S1.5):占地式与生成器占格同源
+    const solidDecorRects: BlockedRect[] = (definition.decor?.props ?? [])
+      .filter((p) => p.solid === true)
+      .map((p) => solidDecorRect(p));
     // 边界墙(网格最内一圈,渲染为树林/围墙)+ 定制障碍 + 建筑墙体 + 家具占地 + 围栏段 + 资源节点
     const others: BlockedRect[] = [
       ...definition.blockedRects,
@@ -50,6 +55,7 @@ export class TileMap {
       ...definition.places.flatMap(wallRectsOf),
       ...definition.places.flatMap(furnitureRectsOf),
       ...(definition.fences ?? []),
+      ...solidDecorRects,
     ];
     this._blocked = [...others, ...resourceRects];
     this._validatePlaces();

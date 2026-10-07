@@ -113,9 +113,13 @@ function toView(row: typeof worlds.$inferSelect): WorldView {
  * 发布产物 manifest → worldgen 素材池(素材库随机选材):
  * - {domain}/{kind}:域分键家具池(室内家具与户外道具互不混)
  * - theme/{slug}@{maxTiles}:主题道具池(户外开放场所与室内主题角装饰,按占地上限预过滤)
- * - decor/{slot}:户外装饰池(DECOR_POOLS 同名;立式限宽 ≤2 格,贴地限 1×1)
+ * - decor/{slot}:户外装饰池(DECOR_POOLS 同名;立式限宽 ≤2 格,贴地限 1×1,wreck 宽件 ≤4)
+ * sizes:装饰 slug → sprite 占地格数(solid 装饰转 blockedRect 用)
  */
-function loadAssetsByKind(): Record<string, string[]> | undefined {
+function loadAssetsByKind(): {
+  pool: Record<string, string[]>;
+  sizes: Record<string, readonly [number, number]>;
+} | undefined {
   try {
     const raw = JSON.parse(readFileSync(path.join(publishTarget(), 'manifest.json'), 'utf8')) as {
       assets?: Array<{
@@ -136,9 +140,11 @@ function loadAssetsByKind(): Record<string, string[]> | undefined {
       [DECOR_POOLS.street]: ['hydrant', 'sign', 'mailbox', 'trashbin', 'barrel'],
       [DECOR_POOLS.lamp]: ['street-lamp'],
       [DECOR_POOLS.flat]: ['flowers', 'grass-tufts', 'stone'],
+      [DECOR_POOLS.wreck]: ['car-wreck', 'electric-pole', 'barrier', 'sidewalk-obstacle'],
     };
     const decorMembers: Record<string, Array<{ slug: string; gridW: number; gridH: number }>> = {};
     const pool: Record<string, string[]> = {};
+    const sizes: Record<string, readonly [number, number]> = {};
     for (const asset of raw.assets ?? []) {
       (pool[`${asset.domain}/${asset.categorySlug}`] ??= []).push(asset.slug);
       const modular = asset.slug.includes('modular') || asset.slug.includes('-line-');
@@ -160,13 +166,28 @@ function loadAssetsByKind(): Record<string, string[]> | undefined {
     }
     for (const [poolKey, members] of Object.entries(decorMembers)) {
       const flat = poolKey === DECOR_POOLS.flat;
-      const ok = members.filter((a) => (flat ? a.gridW === 1 && a.gridH === 1 : a.gridW <= 2));
-      if (ok.length > 0) (pool[poolKey] ??= []).push(...ok.map((a) => a.slug));
+      const wide = poolKey === DECOR_POOLS.wreck; // 残骸/电线杆等宽件(solid 占地)
+      const ok = members.filter((a) =>
+        flat ? a.gridW === 1 && a.gridH === 1 : a.gridW <= (wide ? 4 : 2)
+      );
+      if (ok.length > 0) {
+        (pool[poolKey] ??= []).push(...ok.map((a) => a.slug));
+        for (const a of ok) sizes[a.slug] = [a.gridW, a.gridH];
+      }
     }
-    return pool;
+    return { pool, sizes };
   } catch {
     return undefined;
   }
+}
+
+/** worldgen 输入的素材参数包(池 + solid 占地尺寸;manifest 缺省时全缺省,同参同图) */
+function loadAssetInput(): {
+  assetsByKind?: Record<string, string[]>;
+  assetSizes?: Record<string, readonly [number, number]>;
+} {
+  const pools = loadAssetsByKind();
+  return pools === undefined ? {} : { assetsByKind: pools.pool, assetSizes: pools.sizes };
 }
 
 /** 生成地图出生点:自地图中心环形扩散找最近可行走格作 BFS 起点(随机撒放后中心可能被场所占据),
@@ -273,7 +294,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       params: parsed.data.params,
       manifestVersion: readManifestVersion(),
       // 与创建路径同参:themePick 槽位影响 rng 消耗流,缺池会致同种子预览/成图分叉
-      assetsByKind: loadAssetsByKind(),
+      ...loadAssetInput(),
     });
     const samples = generateSpawnSpots(result.map, 3).map((spot) => [spot.x, spot.y] as const);
     return await reply.send({
@@ -310,7 +331,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
         gameType: parsed.data.worldgen.gameType,
         params: parsed.data.worldgen.params,
         manifestVersion: readManifestVersion(),
-        assetsByKind: loadAssetsByKind(),
+        ...loadAssetInput(),
       });
       mapDefinition = result.map;
       worldgenReport = result.report;

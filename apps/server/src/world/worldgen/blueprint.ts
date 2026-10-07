@@ -37,7 +37,10 @@ export type PlaceKind =
   | 'camping'
   /** 末日生存(survival 模式):僵尸出没墓地/废墟区(区域标记,僵尸实体随 M-S) */
   | 'graveyard'
-  | 'ruins';
+  | 'ruins'
+  /** 镇外废土场所(M-S/S1.5):旧医院(落脚点)/警察局 */
+  | 'hospital'
+  | 'police';
 
 export type Zone = 'nw' | 'ne' | 'sw' | 'se';
 
@@ -321,6 +324,41 @@ export const PLACE_BLUEPRINTS: Record<PlaceKind, {
       { kind: 'ruin-prop', w: 2, h: 2, anchor: 'scatter', themePick: { theme: 'military-base', maxTiles: 4 }, chance: 0.5 },
     ],
   },
+  hospital: {
+    name: '旧医院',
+    // 镇外环带尺寸(M-S/S1.5):纵向 ≤9(medium 下带深 9)
+    size: [[12, 9]],
+    // 床绑 rest 双服务 sleep(furnitureServesActivity);镇外安全屋落脚点
+    requiredAnchors: ['rest', 'study'],
+    furniture: [
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'bed', w: 2, h: 3, anchor: 'north', activityId: 'rest' },
+      { kind: 'desk', w: 2, h: 1, anchor: 'east', activityId: 'study' },
+      { kind: 'bookshelf', w: 2, h: 1, anchor: 'east', chance: 0.8 },
+      { kind: 'counter', w: 2, h: 1, anchor: 'west', chance: 0.8 },
+      { kind: 'wardrobe', w: 1, h: 2, anchor: 'west', chance: 0.5 },
+      { kind: 'hospital-prop', w: 1, h: 2, anchor: 'scatter', themePick: { theme: 'hotel-and-hospital', maxTiles: 2 }, chance: 0.8 },
+      { kind: 'hospital-prop', w: 1, h: 2, anchor: 'scatter', themePick: { theme: 'hotel-and-hospital', maxTiles: 2 }, chance: 0.6 },
+      { kind: 'hospital-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'hotel-and-hospital', maxTiles: 1 }, chance: 0.5 },
+    ],
+  },
+  police: {
+    name: '警察局',
+    // 镇外环带尺寸(M-S/S1.5):纵向 ≤8
+    size: [[10, 8]],
+    requiredAnchors: ['work', 'rest'],
+    furniture: [
+      { kind: 'desk', w: 2, h: 1, anchor: 'north', activityId: 'work' },
+      { kind: 'desk', w: 2, h: 1, anchor: 'north', activityId: 'work' },
+      { kind: 'counter', w: 3, h: 1, anchor: 'west', chance: 1 },
+      { kind: 'bench', w: 2, h: 1, anchor: 'south', activityId: 'rest' },
+      { kind: 'bookshelf', w: 2, h: 1, anchor: 'east', chance: 0.8 },
+      { kind: 'police-prop', w: 1, h: 1, anchor: 'scatter', themePick: { theme: 'police-station', maxTiles: 1 }, chance: 0.7 },
+      { kind: 'police-prop', w: 2, h: 1, anchor: 'scatter', themePick: { theme: 'police-station', maxTiles: 2 }, chance: 0.6 },
+      { kind: 'police-prop', w: 2, h: 2, anchor: 'scatter', themePick: { theme: 'police-station', maxTiles: 4 }, chance: 0.5 },
+    ],
+  },
 };
 
 /** 配额行(两模式共用):数量区间由密度参数在生成器内定;
@@ -356,9 +394,8 @@ export const GROWTH_QUOTA: ReadonlyArray<QuotaRow> = [
 /**
  * 末日生存模式配额(survival gameType;M-S/S1.5 镇内外分区)——
  * 镇内核心: 公寓/营地/诊所/商店(生活与医疗闭环),餐厅/公园可选;
- * 镇外环带: 僵尸墓地+废墟必出(危险区外迁,僵尸实体随 M-S);
+ * 镇外环带: 僵尸墓地+废墟必出(危险区外迁,僵尸实体随 M-S),旧医院/警察局必出(废土场所);
  * 文教等城镇设施自生存配额移除(核心收窄,荒凉感)。
- * hospital/police 镇外场所随 C3 接入。
  */
 export const SURVIVAL_QUOTA: ReadonlyArray<QuotaRow> = [
   { kind: 'home', zone: 'sw', count: [2, 3], essential: true, area: 'town' },
@@ -367,6 +404,8 @@ export const SURVIVAL_QUOTA: ReadonlyArray<QuotaRow> = [
   { kind: 'shop', zone: 'ne', count: [1, 1], essential: true, area: 'town' },
   { kind: 'graveyard', zone: 'nw', count: [1, 1], essential: true, area: 'wild' },
   { kind: 'ruins', zone: 'ne', count: [1, 1], essential: true, area: 'wild' },
+  { kind: 'hospital', zone: 'sw', count: [1, 1], essential: true, area: 'wild' },
+  { kind: 'police', zone: 'se', count: [1, 1], essential: true, area: 'wild' },
   { kind: 'restaurant', zone: 'ne', count: [0, 1], essential: false, area: 'town' },
   { kind: 'park', zone: 'se', count: [0, 1], essential: false, area: 'town' },
 ];
@@ -385,8 +424,10 @@ export const SURVIVAL_SMALL_SIZE_OVERRIDES: Partial<
   shop: [[8, 7]],
   restaurant: [[8, 7]],
   park: [[12, 8]],
-  graveyard: [[10, 7], [12, 6]],
-  ruins: [[10, 7], [12, 6]],
+  graveyard: [[10, 6]],
+  ruins: [[10, 6]],
+  hospital: [[10, 6]],
+  police: [[10, 6]],
 };
 
 /** 内景地板/墙体 tile 池(与素材库 tile slug 对应) */
@@ -423,4 +464,6 @@ export const DECOR_POOLS = {
   lamp: 'decor/lamp',
   /** 贴地花丛草石(庭院/公园/间隙 overlay) */
   flat: 'decor/flat',
+  /** 镇外废土装饰(survival):残骸/电线杆/路障——宽件池,solid 占地 */
+  wreck: 'decor/wreck',
 } as const;
