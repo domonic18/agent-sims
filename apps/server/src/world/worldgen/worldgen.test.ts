@@ -503,28 +503,39 @@ describe('末日生存模式(survival gameType)', () => {
     }
   });
 
-  it('生存资源三件套: 树木 5~9 落公园/营地,岩石 3~6 落公园/营地/废墟,金属堆 3~6 落废墟(M-S/S1)', () => {
+  it('生存资源三件套: 树 6~10/岩石 4~7 迁镇外(不在镇内场所),金属堆 3~6 落废墟(M-S/S1.5)', () => {
     for (const result of results) {
       const resources = result.map.resources ?? [];
       const trees = resources.filter((r) => r.kind === 'tree');
       const rocks = resources.filter((r) => r.kind === 'rock');
       const metals = resources.filter((r) => r.kind === 'metal_pile');
-      expect(trees.length).toBeGreaterThanOrEqual(5);
-      expect(trees.length).toBeLessThanOrEqual(9);
-      expect(rocks.length).toBeGreaterThanOrEqual(3);
-      expect(rocks.length).toBeLessThanOrEqual(6);
+      expect(trees.length).toBeGreaterThanOrEqual(6);
+      expect(trees.length).toBeLessThanOrEqual(10);
+      expect(rocks.length).toBeGreaterThanOrEqual(4);
+      expect(rocks.length).toBeLessThanOrEqual(7);
       expect(metals.length).toBeGreaterThanOrEqual(3);
       expect(metals.length).toBeLessThanOrEqual(6);
-      const parks = result.map.places.filter(
-        (p) => p.id.startsWith('park') || p.id.startsWith('camping'),
-      );
+      const core = result.map.townCore;
+      expect(core).toBeDefined();
       const ruins = result.map.places.filter((p) => p.id.startsWith('ruins'));
-      const inside = (node: { x: number; y: number }, areas: typeof parks): boolean =>
+      const insidePlace = (node: { x: number; y: number }): boolean =>
+        result.map.places.some(
+          (p) => node.x >= p.x && node.x < p.x + p.w && node.y >= p.y && node.y < p.y + p.h,
+        );
+      const inTown = (node: { x: number; y: number }): boolean =>
+        core !== undefined &&
+        node.x >= core.x - 1 &&
+        node.x < core.x + core.w + 1 &&
+        node.y >= core.y - 1 &&
+        node.y < core.y + core.h + 1;
+      for (const t of [...trees, ...rocks]) {
+        expect(inTown(t)).toBe(false);
+        expect(insidePlace(t)).toBe(false);
+      }
+      const inside = (node: { x: number; y: number }, areas: typeof ruins): boolean =>
         areas.some(
           (p) => node.x > p.x && node.x < p.x + p.w - 1 && node.y > p.y && node.y < p.y + p.h - 1,
         );
-      for (const t of trees) expect(inside(t, parks)).toBe(true);
-      for (const r of rocks) expect(inside(r, [...parks, ...ruins])).toBe(true);
       for (const m of metals) expect(inside(m, ruins)).toBe(true);
     }
   });

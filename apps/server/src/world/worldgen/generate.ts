@@ -36,10 +36,20 @@ const JUNK_PILE_COUNT: readonly [number, number] = [2, 4];
 /** 末日生存档:资源采集区加密(废土拾荒) */
 const SURVIVAL_BERRY_BUSH_COUNT: readonly [number, number] = [4, 8];
 const SURVIVAL_JUNK_PILE_COUNT: readonly [number, number] = [5, 9];
-/** 生存资源三件套档(M-S/S1,07-survival §2):树→木材/岩石→石料/废墟金属堆→金属 */
-const SURVIVAL_TREE_COUNT: readonly [number, number] = [5, 9];
-const SURVIVAL_ROCK_COUNT: readonly [number, number] = [3, 6];
+/** 生存资源三件套档(M-S/S1,07-survival §2):树→木材/岩石→石料/废墟金属堆→金属;
+ * S1.5 起树/岩迁镇外簇(森林/岩石区),数量随簇加密 */
+const SURVIVAL_TREE_COUNT: readonly [number, number] = [6, 10];
+const SURVIVAL_ROCK_COUNT: readonly [number, number] = [4, 7];
 const SURVIVAL_METAL_PILE_COUNT: readonly [number, number] = [3, 6];
+/** 镇外簇档(M-S/S1.5,07-survival §2):森林=伐木区(树资源+密树装饰),岩石区=采矿(石);
+ * 簇须整个落进镇外环带——上下带深 ~6~8/左右带宽 ~10~16 约束了簇的最大外形 */
+const SURVIVAL_FOREST_COUNT: readonly [number, number] = [2, 3];
+const SURVIVAL_ROCK_AREA_COUNT: readonly [number, number] = [1, 2];
+const FOREST_SIZE: readonly [[number, number], [number, number]] = [[10, 13], [6, 8]];
+const ROCK_AREA_SIZE: readonly [[number, number], [number, number]] = [[9, 11], [5, 7]];
+/** small 档(带最窄:上下深 ≤6/左右宽 ≤10)紧凑簇 */
+const FOREST_SIZE_SMALL: readonly [[number, number], [number, number]] = [[8, 10], [5, 6]];
+const ROCK_AREA_SIZE_SMALL: readonly [[number, number], [number, number]] = [[7, 9], [4, 5]];
 
 export interface WorldgenInput {
   seed: string;
@@ -202,14 +212,23 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   // ③.5 镇界围栏(survival):沿核心边线连续段成栏,落在路格上的围栏位跳过=镇出口
   // (先路后栏;随 fences 数组下发,资源/装饰既有避让自动生效)
   if (townCore !== null) fences.push(...townFences(townCore, paths));
+  // ③.6 镇外簇(survival):森林/岩石区矩形——资源三件套的伐木/采矿落点与密植装饰区
+  const wildClusters =
+    townCore === null
+      ? { forests: [], rocks: [] }
+      : buildWildClusters(rng, width, height, townCore, paths, places, input.params.size === 'small');
 
   // ④ 资源节点撒点(M-G.6):公园浆果丛/街道拾荒堆,占格不可行走站四邻作业
-  const resources = scatterResources(rng, input.gameType, width, height, places, paths, fences, pond);
+  const resources = scatterResources(
+    rng, input.gameType, width, height, places, paths, fences, pond,
+    townCore === null ? null : wildClusters,
+  );
 
   // ⑤ 户外装饰(池驱动五 pass):decor 避让资源与全部既有占用
   const decor = buildDecor(
     rng, width, height, densityIndex, input.gameType,
     places, paths, plaza, pond, fences, resources, input.assetsByKind,
+    townCore === null ? null : wildClusters,
   );
 
   const map: TileMapDefinition = {
@@ -429,6 +448,68 @@ function townFences(core: BlockedRect, paths: readonly BlockedRect[]): BlockedRe
   runV(core.x, core.y + 1, core.y + core.h - 2);
   runV(core.x + core.w - 1, core.y + 1, core.y + core.h - 2);
   return rects;
+}
+
+/**
+ * 镇外簇(survival,M-S/S1.5):森林(伐木)/岩石区(采矿)矩形落位——整簇须落进
+ * 镇外环带(避核心外扩一圈=围栏外走环),再避道路/场所 ±1 缓冲/已放簇(簇间隔一圈);
+ * 簇本身不阻塞行走,仅承载资源撒点与 buildDecor 密植。small 档带最窄,取紧凑簇。
+ */
+function buildWildClusters(
+  rng: Rng,
+  width: number,
+  height: number,
+  townCore: BlockedRect,
+  paths: readonly BlockedRect[],
+  places: readonly PlaceDefinition[],
+  small: boolean,
+): { forests: BlockedRect[]; rocks: BlockedRect[] } {
+  const expandedCore = { x: townCore.x - 1, y: townCore.y - 1, w: townCore.w + 2, h: townCore.h + 2 };
+  const inRect = (x: number, y: number, r: BlockedRect): boolean =>
+    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+  const onPath = (x: number, y: number): boolean =>
+    paths.some((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+  const nearPlace = (x: number, y: number): boolean =>
+    places.some((p) => x >= p.x - 1 && x < p.x + p.w + 1 && y >= p.y - 1 && y < p.y + p.h + 1);
+  const taken = new Set<string>();
+  const cellFree = (x: number, y: number): boolean =>
+    !inRect(x, y, expandedCore) && !onPath(x, y) && !nearPlace(x, y) && !taken.has(cellKey(x, y));
+  const place = (count: number, size: readonly [[number, number], [number, number]]): BlockedRect[] => {
+    const rects: BlockedRect[] = [];
+    // 野带窄且被路/镇外场所/邻簇切碎,整矩形落位命中率低——
+    // 先按全尺寸 50 试,再退最小尺寸 80 试兜底(小图单岩石区全败即 0 采矿点)
+    const tryPlace = (w: number, h: number, tries: number): BlockedRect | null => {
+      for (let i = 0; i < tries; i += 1) {
+        const x = rng.int(1, width - 1 - w);
+        const y = rng.int(2, height - 2 - h);
+        let ok = true;
+        for (let yy = y; yy < y + h && ok; yy += 1) {
+          for (let xx = x; xx < x + w && ok; xx += 1) ok = cellFree(xx, yy);
+        }
+        if (!ok) continue;
+        mark0(taken, { x: x - 1, y: y - 1, w: w + 2, h: h + 2 }); // 簇间隔一圈
+        return { x, y, w, h };
+      }
+      return null;
+    };
+    for (let n = 0; n < count; n += 1) {
+      const w = rng.int(size[0][0], size[0][1]);
+      const h = rng.int(size[1][0], size[1][1]);
+      const rect = tryPlace(w, h, 50) ?? tryPlace(size[0][0], size[1][0], 80);
+      if (rect !== null) rects.push(rect);
+    }
+    return rects;
+  };
+  // 岩石区先放:数量少(小图 1 个,全败即 0 采矿点)且矩形更小,优先占带内完整空位
+  const rocks = place(
+    small ? 1 : rng.int(...SURVIVAL_ROCK_AREA_COUNT),
+    small ? ROCK_AREA_SIZE_SMALL : ROCK_AREA_SIZE,
+  );
+  const forests = place(
+    small ? 2 : rng.int(...SURVIVAL_FOREST_COUNT),
+    small ? FOREST_SIZE_SMALL : FOREST_SIZE,
+  );
+  return { forests, rocks };
 }
 
 /** 槽位素材池解析:主题道具池(theme/{slug}@{maxTiles})或域分键 kind 池({domain}/{kind}) */
@@ -714,6 +795,7 @@ function buildDecor(
   fences: BlockedRect[],
   resources: ResourceNodeSeed[],
   assetsByKind: Readonly<Record<string, readonly string[]>> | undefined,
+  wild: { forests: BlockedRect[]; rocks: BlockedRect[] } | null,
 ): TileMapDefinition['decor'] {
   const densityScale = [0.6, 1, 1.4][densityIndex] ?? 1;
   const trees: Array<[number, number]> = [];
@@ -858,6 +940,28 @@ function buildDecor(
     if (roll) addStanding(x, y, 'tree');
     else if (rng.chance(0.5)) addStanding(x, y, 'bush');
     else addFlat(x, y);
+  }
+
+  // pass4.5 镇外簇密植(survival):森林簇密树/偶灌木成林,岩石区贴地碎石——
+  // 资源节点已在 noGo,decor 只补视觉体量(growth 零变化)
+  if (gameType === 'survival' && wild !== null) {
+    for (const forest of wild.forests) {
+      for (let y = forest.y; y < forest.y + forest.h; y += 1) {
+        for (let x = forest.x; x < forest.x + forest.w; x += 1) {
+          if (!free(x, y)) continue;
+          if (rng.chance(0.3 * densityScale)) addStanding(x, y, 'tree');
+          else if (rng.chance(0.08)) addStanding(x, y, 'bush');
+        }
+      }
+    }
+    for (const rock of wild.rocks) {
+      for (let y = rock.y; y < rock.y + rock.h; y += 1) {
+        for (let x = rock.x; x < rock.x + rock.w; x += 1) {
+          if (!free(x, y)) continue;
+          if (rng.chance(0.2 * densityScale)) addFlat(x, y);
+        }
+      }
+    }
   }
 
   // pass5 边界树带:内圈隔格交错(替代渲染层写死 cypress,生成图由数据驱动)
@@ -1013,6 +1117,7 @@ function nearestRoadCell(
  * 资源节点撒点(M-G.6):浆果丛落公园空地(survival 加落幸存者营地),拾荒堆落街道空地
  * (避池塘/家具/使用格三邻域、场所缓冲带/道路/围栏);占格不可行走,重摇尽力放置。
  * survival 模式数量加密(资源采集区),growth 保持原档。
+ * S1.5 起三件套迁镇外:树→森林簇/岩石→岩石区/金属堆→废墟(浆果食物近家不变)。
  */
 function scatterResources(
   rng: Rng,
@@ -1023,6 +1128,7 @@ function scatterResources(
   paths: BlockedRect[],
   fences: BlockedRect[],
   pond: BlockedRect | null,
+  wild: { forests: BlockedRect[]; rocks: BlockedRect[] } | null,
 ): ResourceNodeSeed[] {
   const parkBlocked = new Set<string>();
   for (const path of paths) mark0(parkBlocked, path); // 浆果丛不落路面
@@ -1082,9 +1188,11 @@ function scatterResources(
       break;
     }
   }
-  // 生存资源三件套(M-S/S1,07-survival §2):树→木材(公园/营地)、岩石→石料(公园/废墟)、
-  // 金属堆→金属(废墟)——growth 不进此分支,rng 消耗流零变化
-  if (gameType === 'survival') {
+  // 生存资源三件套(M-S/S1,07-survival §2;S1.5 镇外迁移):树→森林簇、岩石→岩石区、
+  // 金属堆→废墟——growth 不进此分支,rng 消耗流零变化
+  if (gameType === 'survival' && wild !== null) {
+    const clusterBlocked = new Set<string>();
+    for (const path of paths) mark0(clusterBlocked, path);
     const ruins = places.filter((p) => p.id.startsWith('ruins'));
     const ruinsBlocked = new Set<string>(parkBlocked);
     for (const ruin of ruins) {
@@ -1099,7 +1207,7 @@ function scatterResources(
     const scatterInto = (
       kind: ResourceNodeSeed['kind'],
       count: number,
-      areas: PlaceDefinition[],
+      areas: readonly BlockedRect[],
       blocked: Set<string>,
     ): void => {
       for (let n = 0; n < count && areas.length > 0; n += 1) {
@@ -1115,8 +1223,8 @@ function scatterResources(
         }
       }
     };
-    scatterInto('tree', rng.int(...SURVIVAL_TREE_COUNT), parks, parkBlocked);
-    scatterInto('rock', rng.int(...SURVIVAL_ROCK_COUNT), [...parks, ...ruins], ruinsBlocked);
+    scatterInto('tree', rng.int(...SURVIVAL_TREE_COUNT), wild.forests, clusterBlocked);
+    scatterInto('rock', rng.int(...SURVIVAL_ROCK_COUNT), wild.rocks, clusterBlocked);
     scatterInto('metal_pile', rng.int(...SURVIVAL_METAL_PILE_COUNT), ruins, ruinsBlocked);
   }
   return seeds;
