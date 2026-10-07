@@ -1,4 +1,4 @@
-# agent-sims 服务端镜像(多阶段;启动顺序 migrate → seed → 服务)
+# agent-sims 服务端镜像(多阶段;启动顺序 migrate → seed → 素材自检 → 服务)
 FROM node:22-alpine AS build
 WORKDIR /repo
 # npmjs 直连在构建机网络下不稳定,统一走 npmmirror(corepack 拉取 pnpm 与依赖安装)
@@ -15,4 +15,5 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /out ./
 EXPOSE 3100
-CMD ["sh", "-c", "node dist/db/migrate.js && node dist/db/seed/index.js && node dist/index.js"]
+# 素材自检(表空告警+发布产物缺失补发布)失败不阻塞服务启动
+CMD ["sh", "-c", "node dist/db/migrate.js && node dist/db/seed/index.js && (node dist/assets/cli.js check || echo '[entry] 素材自检异常,跳过') && node dist/index.js"]

@@ -2,10 +2,15 @@
  * 素材库 CLI(M-L.1):`pnpm --filter server assets:import` 按内置清单导入(幂等);
  * `pnpm --filter server assets:publish` 发布 active 集 → web public/assets
  * (library/ + manifest.json)。源目录可用 ASSET_IMPORT_SOURCE 覆盖(默认 /tmp/asset-import)。
+ * `check` 为容器启动链自检: 素材表空告警+发布产物缺失补发布,永不阻塞启动。
  */
+import { access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { count } from 'drizzle-orm';
 import { createDb } from '../db/client.js';
 import { env } from '../config/env.js';
+import { assetCategories, assets } from '../db/schema/asset.js';
 import { buildImportPlan } from './import-plan.js';
 import { buildSinglesImportList } from './singles-import.js';
 import { importAssets, publishManifest } from './library.js';
@@ -56,8 +61,38 @@ try {
     console.log(
       `[assets] 发布 ${result.assetCount} 件 → ${result.manifestPath} (version=${result.version})`,
     );
+  } else if (command === 'check') {
+    // 启动链自检(Dockerfile CMD 消费): 素材表空→告警提示恢复路径;
+    // 发布产物 manifest 缺失且有存量→自动补发布。任何异常只告警,不阻塞服务启动。
+    try {
+      const [assetRow] = await db.select({ n: count() }).from(assets);
+      const [categoryRow] = await db.select({ n: count() }).from(assetCategories);
+      const assetCount = assetRow?.n ?? 0;
+      if (assetCount === 0) {
+        console.error(
+          `[assets] ⚠ 素材表为空(分类 ${categoryRow?.n ?? 0} 条)——游戏内容与后台素材管理将不可用。` +
+            `恢复: 取 workspace/backups 最新备份经 docker/restore-db.sh 灌回`,
+        );
+      } else {
+        console.log(`[assets] 自检通过: 素材 ${assetCount} 条 / 分类 ${categoryRow?.n ?? 0} 条`);
+      }
+      try {
+        await access(join(publishTarget, 'manifest.json'));
+      } catch {
+        if (assetCount > 0) {
+          const result = await publishManifest(db, libraryRoot, publishTarget);
+          console.log(
+            `[assets] 发布产物缺失,已自动补发布 ${result.assetCount} 件 (version=${result.version})`,
+          );
+        } else {
+          console.error('[assets] 发布产物缺失且素材表为空,跳过补发布');
+        }
+      }
+    } catch (err) {
+      console.error(`[assets] 自检异常(不阻塞启动): ${err instanceof Error ? err.message : String(err)}`);
+    }
   } else {
-    console.error(`未知命令: ${command}(可用: import | publish)`);
+    console.error(`未知命令: ${command}(可用: import | import-singles | publish | check)`);
     process.exitCode = 1;
   }
 } finally {
