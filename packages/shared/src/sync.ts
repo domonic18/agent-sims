@@ -18,6 +18,8 @@ export const SOCKET_EVENTS = {
   event: 'world.event',
   /** server→client 连接数变化时:当前在线查看人数(全部 socket 连接都计入) */
   presence: 'world.presence',
+  /** server→client Agent 自治决策气泡(M4c):意图+理由,头顶气泡渲染 */
+  decision: 'agent.decision',
 } as const;
 
 export type SocketEventName = (typeof SOCKET_EVENTS)[keyof typeof SOCKET_EVENTS];
@@ -25,6 +27,15 @@ export type SocketEventName = (typeof SOCKET_EVENTS)[keyof typeof SOCKET_EVENTS]
 /** 在线人数消息(presence):页面打开的连接数,直播场景即访客数 */
 export interface WorldPresenceMessage {
   viewers: number;
+}
+
+/** Agent 决策气泡消息(M4c):自治角色 react 时广播;世界域零感知,
+ * agents 泵直发(意图+理由模板,web 头顶气泡 ~5s 消散) */
+export interface AgentDecisionMessage {
+  characterId: string;
+  name: string;
+  text: string;
+  gameMinutes: number;
 }
 
 /** client→server 意图通道(M3.4):player 可发,spectator 服务端丢弃 */

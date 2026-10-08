@@ -14,12 +14,14 @@ import {
 import {
   addWorldCharacter,
   deleteWorldArchive,
+  fetchCharacterAutonomy,
   fetchCharacterMemories,
   fetchWorldArchives,
   fetchWorlds,
   getToken,
   loadWorldArchive,
   saveWorldArchive,
+  setCharacterAutonomy,
 } from '../admin/api';
 import {
   debugSpawn,
@@ -82,6 +84,8 @@ export default function LabPage() {
   const [memQuery, setMemQuery] = useState('');
   const [memData, setMemData] = useState<MemoryPanelResponse | null>(null);
   const [memLoading, setMemLoading] = useState(false);
+  // 自治开关(M4c):null=未查询;共享记忆面板的角色选择
+  const [autonomyOn, setAutonomyOn] = useState<boolean | null>(null);
   const nextLogIdRef = useRef(1);
   const spawnCountRef = useRef(0);
 
@@ -291,6 +295,28 @@ export default function LabPage() {
   useEffect(() => {
     if (adminAvailable && memCharId !== '') void loadMemories(memCharId, '');
   }, [adminAvailable, memCharId]);
+
+  // 自治状态随角色切换拉取;角色不在世界(404)按未开启处理
+  useEffect(() => {
+    setAutonomyOn(null);
+    if (!adminAvailable || memCharId === '') return;
+    fetchCharacterAutonomy(memCharId)
+      .then((r) => setAutonomyOn(r.enabled))
+      .catch(() => setAutonomyOn(false));
+  }, [adminAvailable, memCharId]);
+
+  const toggleAutonomy = async (): Promise<void> => {
+    if (memCharId === '' || autonomyOn === null) return;
+    const next = !autonomyOn;
+    try {
+      await setCharacterAutonomy(memCharId, next);
+      setAutonomyOn(next);
+      const name = snapshot?.characters.find((c) => c.id === memCharId)?.name ?? '角色';
+      setAdminMsg(`${name} 自治已${next ? '开启' : '关闭'}`);
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const paramsDirty =
     paramsOriginal !== null &&
@@ -530,6 +556,14 @@ export default function LabPage() {
               <div className="px-inner lab-panel-inner">
                 <h3>管理员 · 记忆面板</h3>
                 <div className="lab-btn-row">
+                  <button
+                    type="button"
+                    className="px-btn"
+                    disabled={memCharId === '' || autonomyOn === null}
+                    onClick={() => void toggleAutonomy()}
+                  >
+                    {autonomyOn === null ? '自治:—' : autonomyOn ? '自治:开(点击关闭)' : '自治:关(点击开启)'}
+                  </button>
                   <select
                     className="lab-input lab-memory-char"
                     value={memCharId}

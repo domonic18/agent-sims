@@ -16,6 +16,7 @@ import {
   type CharacterRender,
 } from './character-view';
 import { buildLightLayer, drawSelectionMarker, FOUNTAIN_RECT, FountainFx } from './effects';
+import { flushDecisionBubbles } from './decision-bubble';
 import { handleMapClick, KeyboardController } from './input';
 import { MAINTENANCE_SPRITES, syncMaintenanceViews } from './maintenance-view';
 import { RESOURCE_SPRITES, syncResourceViews } from './resources-view';
@@ -223,6 +224,7 @@ export class WorldScene extends Phaser.Scene {
     syncMaintenanceViews(this, this._maintenanceViews, snapshot?.maintenance ?? []);
     syncResourceViews(this, this._resourceViews, snapshot?.resources ?? []);
     this._drainSocialEvents(events);
+    flushDecisionBubbles(this, this._views);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;
     this._updateCamera(selectedCharacterId, cameraMode);
     this._keyboard?.step(time);

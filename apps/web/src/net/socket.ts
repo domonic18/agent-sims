@@ -2,6 +2,7 @@ import { io, type Socket } from 'socket.io-client';
 import {
   CLIENT_EVENTS,
   SOCKET_EVENTS,
+  type AgentDecisionMessage,
   type Intent,
   type IntentAck,
   type SocketRole,
@@ -11,6 +12,7 @@ import {
 } from '@sims/shared';
 import { useAuthStore } from '../store/authStore';
 import { useWorldStore } from '../store/worldStore';
+import { pushDecisionMessage } from '../game/decision-bubble';
 
 const {
   setStatus,
@@ -44,6 +46,8 @@ export function connectWorld(): Socket {
   socket.on(SOCKET_EVENTS.snapshot, (snapshot: WorldSnapshotMessage) => applySnapshot(snapshot));
   socket.on(SOCKET_EVENTS.tick, (snapshot: WorldSnapshotMessage) => applySnapshot(snapshot));
   socket.on(SOCKET_EVENTS.presence, (message: WorldPresenceMessage) => setViewers(message.viewers));
+  // Agent 决策气泡(M4c):进 Phaser 侧队列,不落 React store
+  socket.on(SOCKET_EVENTS.decision, (message: AgentDecisionMessage) => pushDecisionMessage(message));
   socket.on(SOCKET_EVENTS.event, (message: WorldEventMessage) => {
     applyEvent(message.event);
     // 暂停期间 tick 广播停摆,控制事件需就地修正快照,否则 UI 状态滞后一拍

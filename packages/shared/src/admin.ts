@@ -184,6 +184,7 @@ export const ADMIN_API = {
   logTechLogs: '/api/admin/logs/tech-logs',
   logAuditLogs: '/api/admin/logs/audit-logs',
   characterMemories: (id: string) => `/api/admin/characters/${id}/memories`,
+  characterAutonomy: (id: string) => `/api/admin/characters/${id}/autonomy`,
 } as const;
 
 /** token 用量统计窗口 */

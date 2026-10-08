@@ -287,6 +287,18 @@ export async function fetchCharacterMemories(
   );
 }
 
+/** 自治开关(M4c):开启后该角色进 AgentScheduler 泵(rule 阈值巡检+jev 事件微决策) */
+export async function fetchCharacterAutonomy(characterId: string): Promise<{ enabled: boolean }> {
+  return await adminFetch<{ enabled: boolean }>(ADMIN_API.characterAutonomy(characterId));
+}
+
+export async function setCharacterAutonomy(characterId: string, enabled: boolean): Promise<void> {
+  await adminFetch(ADMIN_API.characterAutonomy(characterId), {
+    method: 'POST',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 // ============ 素材管理(M-L.2) ============
 
 export interface AssetListQuery {
