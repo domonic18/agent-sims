@@ -100,7 +100,7 @@ describe('ModelRouter.systemOne', () => {
     const result = await router.systemOne(
       'jev',
       'state',
-      { q: { type: 'noul', criteria: { text: '闲置?' } } },
+      { q: { type: 'noul', instructions: '闲置?' } },
       { taskType: 'unit_test' },
     );
     expect(result.answers.q).toEqual({ type: 'noul', noul: 0.7 });

@@ -101,7 +101,7 @@ async function probeModel(config: SlotRuntimeConfig): Promise<{ ok: boolean; det
       await chatViaSystemOne(
         config,
         'probe',
-        { demo: { type: 'choice', criteria: { text: '连通测试' }, choices: ['A', 'B'] } },
+        { demo: { type: 'choice', instructions: '连通测试', criteria: { A: '选项 A', B: '选项 B' } } },
         opts,
         fetch,
       );
@@ -264,7 +264,13 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
           const result = await router.systemOne(
             target,
             prompt,
-            { demo: { type: 'choice', criteria: { text: '试调用问题' }, choices: ['A', 'B', 'C'] } },
+            {
+              demo: {
+                type: 'choice',
+                instructions: '试调用:从选项中挑一个',
+                criteria: { A: '选项 A', B: '选项 B', C: '选项 C' },
+              },
+            },
             { taskType: 'admin_invoke' },
           );
           const payload: ModelConfigInvokeResult = {

@@ -18,12 +18,14 @@ export interface LlmEmbedResult {
   promptTokens: number;
 }
 
-/** Jev 原生 SystemOne 类型化问答(/v1/systemone,2026-10-05 实测定稿):
- * 问题按 key 分组,答案按同 key 返回;输出仅 choice/score/noul 三型。 */
+/** Jev 原生 SystemOne 类型化问答(/v1/systemone,官方文档对齐 2026-10-08):
+ * 问题按 key 分组,答案按同 key 返回;输出仅 choice/score/noul 三型。
+ * score 题 criteria=分级量表数组,答案 score 为选中档位下标(0 起);
+ * 传单条 criteria 会退化为单选项分类,恒回 0——量表必须给全档位。 */
 export type SystemOneQuestion =
-  | { type: 'choice'; criteria: { text: string }; choices: string[] }
-  | { type: 'score'; criteria: string[]; range: [number, number] }
-  | { type: 'noul'; criteria: { text: string } };
+  | { type: 'choice'; instructions: string; criteria: Record<string, string> }
+  | { type: 'score'; instructions: string; criteria: string[] }
+  | { type: 'noul'; instructions: string };
 
 export type SystemOneAnswer =
   | { type: 'choice'; choice: string; probabilities: Record<string, number>; confidence: number }

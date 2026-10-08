@@ -126,7 +126,7 @@ describe('chatViaSystemOne', () => {
     const result = await chatViaSystemOne(
       cfg('systemone'),
       '小镇居民,精力充沛',
-      { go: { type: 'choice', criteria: { text: '去哪' }, choices: ['A', 'B'] } },
+      { go: { type: 'choice', instructions: '去哪', criteria: { A: '选项A', B: '选项B' } } },
       { timeoutMs: 1000 },
       impl,
     );
@@ -138,7 +138,7 @@ describe('chatViaSystemOne', () => {
     expect(body).toEqual({
       model: 'test-model',
       state: '小镇居民,精力充沛',
-      questions: { go: { type: 'choice', criteria: { text: '去哪' }, choices: ['A', 'B'] } },
+      questions: { go: { type: 'choice', instructions: '去哪', criteria: { A: '选项A', B: '选项B' } } },
     });
   });
 

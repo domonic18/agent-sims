@@ -167,7 +167,7 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     expect(row.type).toBe('event');
     expect(row.characterId).toBe(CHAR_A); // 事件 id 即表主键(单一 id 贯穿)
     expect(row.content).toBe('我学习了 60 分钟');
-    expect(row.importance).toBe(8);
+    expect(row.importance).toBe(9); // score 答案为量表下标 0 起:stub 回 8 → 第 9 档
     expect(row.embedding).toHaveLength(2048);
     expect(row.gameMinutes).toBe(minutesAtWrite);
     expect(scoreCalls()).toBe(1);

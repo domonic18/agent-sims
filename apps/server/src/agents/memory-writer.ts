@@ -33,6 +33,19 @@ const FINISH_REASON_NOTE: Record<string, string> = {
 };
 
 const DEFAULT_IMPORTANCE = 5; // Jev 打分失败兜底=中位数
+/** 十级重要性量表(score 题分级标准,答案 score=选中档位下标 0 起,+1 得 1~10 分) */
+const IMPORTANCE_SCALE = [
+  '毫无影响:转瞬即忘的琐事',
+  '几乎无影响:对后续生活没有可感作用',
+  '轻微影响:偶尔回想起,不改变行为',
+  '略有影响:以后做类似事情时可能参考',
+  '一般影响:对日常安排有小幅参考价值',
+  '中等影响:会影响近期的选择或偏好',
+  '较大影响:改变对某些人或事的看法',
+  '重大影响:显著改变近期的目标或计划',
+  '深远影响:动摇长期目标或重要人际关系',
+  '决定性影响:彻底改变人生走向的事件',
+];
 const MAX_INFLIGHT = 6; // 全局并发管线(LLM 双调用/条)上限,超出丢弃新事件并记日志
 
 interface MemoryTask {
@@ -96,14 +109,15 @@ export class MemoryWriter {
           {
             importance: {
               type: 'score',
-              criteria: ['这段经历对该居民未来行为与决策的影响程度'],
-              range: [1, 10],
+              instructions: '评估这段经历对该居民未来行为与决策的影响程度,选出最贴合的一档',
+              criteria: IMPORTANCE_SCALE,
             },
           },
           { taskType: 'memory.importance', characterId: task.characterId },
         );
         const answer = result.answers.importance;
-        importance = answer?.type === 'score' ? clampImportance(answer.score) : DEFAULT_IMPORTANCE;
+        importance =
+          answer?.type === 'score' ? clampImportance(answer.score + 1) : DEFAULT_IMPORTANCE;
       } catch (err) {
         logTech('warn', 'memory', 'Jev 打分失败,兜底中位数', {
           characterId: task.characterId,
