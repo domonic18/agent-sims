@@ -132,32 +132,59 @@ export class MemoryWriter {
           err: errMsg(err),
         });
       }
-      let embedding: number[] | null = null;
-      try {
-        const emb = await this.llm.embed('embedding', [task.content], {
-          taskType: 'memory.embed',
-          characterId: task.characterId,
-        });
-        embedding = emb.vector;
-      } catch (err) {
-        logTech('warn', 'memory', '向量化失败,记忆以无向量落库', {
-          characterId: task.characterId,
-          err: errMsg(err),
-        });
-      }
-      await this.handle.db.insert(memories).values({
-        characterId: task.characterId,
-        type: task.type,
-        content: task.content,
-        importance,
-        embedding,
-        gameMinutes: this.sim.clock.gameMinutes,
-      });
+      await this.persist(task, importance);
     } catch (err) {
       logTech('error', 'memory', '记忆落库失败', {
         characterId: task.characterId,
         err: errMsg(err),
       });
+    }
+  }
+
+  /** 向量化+落库(Jev 打分之后/跳过时的公共尾段) */
+  private async persist(task: MemoryTask, importance: number): Promise<void> {
+    let embedding: number[] | null = null;
+    try {
+      const emb = await this.llm.embed('embedding', [task.content], {
+        taskType: 'memory.embed',
+        characterId: task.characterId,
+      });
+      embedding = emb.vector;
+    } catch (err) {
+      logTech('warn', 'memory', '向量化失败,记忆以无向量落库', {
+        characterId: task.characterId,
+        err: errMsg(err),
+      });
+    }
+    await this.handle.db.insert(memories).values({
+      characterId: task.characterId,
+      type: task.type,
+      content: task.content,
+      importance,
+      embedding,
+      gameMinutes: this.sim.clock.gameMinutes,
+    });
+  }
+
+  /**
+   * 直写记忆(M4d 慢层):跳过 Jev 打分,importance 由调用方给定(如计划=6)。
+   * 走同一条并发管线护栏(满载丢弃+技术日志),供日程生成等非事件时刻写入。
+   */
+  async writeManual(characterId: string, content: string, importance: number): Promise<void> {
+    if (this.inFlight >= MAX_INFLIGHT) {
+      logTech('warn', 'memory', '记忆管线已满,丢弃直写', { characterId });
+      return;
+    }
+    this.inFlight += 1;
+    try {
+      await this.persist({ characterId, type: 'event', content }, clampImportance(importance));
+    } catch (err) {
+      logTech('error', 'memory', '直写记忆落库失败', {
+        characterId,
+        err: errMsg(err),
+      });
+    } finally {
+      this.inFlight -= 1;
     }
   }
 

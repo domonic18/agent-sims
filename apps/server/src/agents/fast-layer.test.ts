@@ -2,7 +2,8 @@ import { TOWN_MAP, SHOP_ITEMS } from '@sims/shared';
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
-import { jevDecide, ruleDecide, type Decision } from './fast-layer.js';
+import { jevDecide, planDecide, ruleDecide, type Decision } from './fast-layer.js';
+import type { DayPlan } from './slow-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 
 const DAY = 4;
@@ -155,5 +156,60 @@ describe('jevDecide(systemone choice 候选选一)', () => {
   it('失能(死亡/虚脱倒地)→ null,不给倒下角色派去处', async () => {
     expect(await jevDecide(stubLlm('公园'), char({ alive: false }), TOWN_MAP)).toBeNull();
     expect(await jevDecide(stubLlm('公园'), char({ collapsed: true }), TOWN_MAP)).toBeNull();
+  });
+});
+
+describe('planDecide(日程执行,慢层计划快层两段式)', () => {
+  const plan: DayPlan = {
+    day: 1,
+    blocks: [{ startMin: 480, endMin: 720, activityId: 'study' }],
+    source: 'llm',
+  };
+  const studyAnchors = [{ x: 11, y: 12 }];
+  const anchorsOf = (activityId: string): Array<{ x: number; y: number }> =>
+    activityId === 'study' ? studyAnchors : [];
+
+  it('无计划/异日计划 → null(日程不越日生效)', () => {
+    expect(planDecide(char({}), undefined, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(planDecide(char({}), plan, 2, 480, TOWN_MAP, anchorsOf)).toBeNull();
+  });
+
+  it('块内:不在锚点先 move_to 使用格;到位→start_activity(气泡带活动名)', () => {
+    const far = planDecide(char({}), plan, 1, 480, TOWN_MAP, anchorsOf);
+    expect(far).not.toBeNull();
+    expect(far!.layer).toBe('plan');
+    expect(far!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 11, y: 12 });
+    const near = planDecide(char({ x: 11, y: 12 }), plan, 1, 480, TOWN_MAP, anchorsOf);
+    expect(near!.intent).toEqual({
+      type: 'start_activity',
+      characterId: 'char-1',
+      activityId: 'study',
+    });
+    expect(near!.bubble).toContain('学习');
+  });
+
+  it('空档(计划外时间)→ null,交还后续层级', () => {
+    expect(planDecide(char({}), plan, 1, 900, TOWN_MAP, anchorsOf)).toBeNull();
+  });
+
+  it('体力过低(≤20)只放行基础活动块,非基础块→ null 让位生存压力', () => {
+    expect(planDecide(char({ energy: 10 }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
+  });
+
+  it('夜间(22 点起):有房走向床锚点,就位→sleep;无房→ null 不强排', () => {
+    const beds = [{ x: 5, y: 6 }];
+    const nightAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+      activityId === 'sleep' && placeId === 'home-a' ? beds : [];
+    const housing = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: 6 };
+    const goBed = planDecide(char({ housing }), plan, 1, 1320, TOWN_MAP, nightAnchors);
+    expect(goBed!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
+    expect(goBed!.bubble).toContain('睡觉');
+    const inBed = planDecide(char({ x: 5, y: 6, housing }), plan, 1, 1320, TOWN_MAP, nightAnchors);
+    expect(inBed!.intent).toEqual({
+      type: 'start_activity',
+      characterId: 'char-1',
+      activityId: 'sleep',
+    });
+    expect(planDecide(char({ housing: null }), plan, 1, 1320, TOWN_MAP, nightAnchors)).toBeNull();
   });
 });

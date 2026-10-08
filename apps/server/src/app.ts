@@ -59,12 +59,13 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   // 记忆写入(M4b/A2):订阅同一总线,管线异步走 Jev/embedding,不阻塞 tick;
   // llm 装饰器供检索 API 复用(测试可覆写为桩)
   app.decorate('llm', new ModelRouter(handle));
-  attachMemoryWriter(app.simulation, handle, app.llm);
-  // Agent 调度泵(M4c):自治角色默认空集(开关走 admin API),react 气泡经独立 socket 事件广播
+  const memoryWriter = attachMemoryWriter(app.simulation, handle, app.llm);
+  // Agent 调度泵(M4c/M4d):自治角色默认空集(开关走 admin API),react 气泡经独立 socket 事件广播
   const agentScheduler = new AgentScheduler({
     sim: app.simulation,
     handle,
     llm: app.llm,
+    memoryWriter,
     onBubble: (message) => {
       app.io.emit(SOCKET_EVENTS.decision, message satisfies AgentDecisionMessage);
     },

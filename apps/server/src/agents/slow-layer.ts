@@ -88,6 +88,15 @@ export function planBlockAt(plan: DayPlan, minuteOfDay: number): PlanBlock | nul
   return plan.blocks.find((b) => b.startMin <= minuteOfDay && minuteOfDay < b.endMin) ?? null;
 }
 
+/** 计划的人类可读摘要(记忆写回/日程面板共用):「学习(08:00~12:00)、就餐(12:00~13:00)」 */
+export function describePlan(plan: DayPlan): string {
+  const hhmm = (m: number): string =>
+    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return plan.blocks
+    .map((b) => `${getActivityDefinition(b.activityId)?.name ?? b.activityId}(${hhmm(b.startMin)}~${hhmm(b.endMin)})`)
+    .join('、');
+}
+
 function housingLine(char: WorldCharacter): string {
   if (char.housing === null) return '居无定所';
   if (char.housing.ownership === 'owned') return '有自有住房';

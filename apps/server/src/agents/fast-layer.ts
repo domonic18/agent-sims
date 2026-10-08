@@ -1,6 +1,8 @@
 import {
+  BASIC_ACTIVITY_IDS,
   findPlaceAt,
   findPlaceByRef,
+  getActivityDefinition,
   getItem,
   getPropertyDefinition,
   ITEMS,
@@ -10,11 +12,12 @@ import {
 } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
+import { planBlockAt, type DayPlan } from './slow-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 
 /** 快层判定输出(agent-design §4.3):continue=当前行为仍有效零模型;react=产出一个意图交执行 */
 export interface Decision {
-  layer: 'rule' | 'jev';
+  layer: 'rule' | 'plan' | 'jev';
   action: 'continue' | 'react';
   intent?: Intent;
   /** react 时的决策气泡文案(意图+理由模板) */
@@ -158,6 +161,105 @@ function housingRef(char: WorldCharacter): string | null {
   return char.housing === null
     ? null
     : getPropertyDefinition(char.housing.propertyId)?.placeId ?? null;
+}
+
+/** 活动目标格:锚点活动(书桌/床/跑步机)取使用格,无锚点取首个场所入口 */
+function activitySpot(
+  map: TileMapDefinition,
+  activityId: string,
+  placeIds: readonly string[],
+  anchors: Array<{ x: number; y: number }>,
+): { x: number; y: number; placeName: string } | null {
+  if (anchors.length > 0) {
+    return { x: anchors[0]!.x, y: anchors[0]!.y, placeName: '' };
+  }
+  const place = placeIds.map((id) => findPlaceByRef(map, id)).find((p) => p !== null);
+  if (place === undefined || place === null) return null;
+  return { x: place.entrance.x, y: place.entrance.y, placeName: place.name };
+}
+
+function onSpot(char: WorldCharacter, spots: Array<{ x: number; y: number }>): boolean {
+  return spots.some((s) => s.x === char.x && s.y === char.y);
+}
+
+/**
+ * 日程执行(agent-design §3.3 慢思考产块、快层执行):空闲角色按当日计划块
+ * 两段式行动——不在目标格先 move_to,到位后 start_activity。夜间(22:00~6:00)
+ * 空闲强制回家睡(有住房才安排);体力过低只放行基础活动块。无计划/空档/无锚点
+ * 返回 null,交还 jev/continue,日程压力绝不阻塞快层。
+ */
+export function planDecide(
+  char: WorldCharacter,
+  plan: DayPlan | undefined,
+  day: number,
+  minuteOfDay: number,
+  map: TileMapDefinition,
+  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+): Decision | null {
+  if (plan === undefined || plan.day !== day) return null;
+  const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
+  if (night) return planNight(char, map, anchorsOf);
+  const block = planBlockAt(plan, minuteOfDay);
+  if (block === null) return null;
+  if (
+    char.energy <= BALANCE.LOW_ENERGY_THRESHOLD &&
+    !(BASIC_ACTIVITY_IDS as readonly string[]).includes(block.activityId)
+  ) {
+    return null; // 体力见底:日程让位生存压力(rule 链),非基础块不硬排
+  }
+  const definition = getActivityDefinition(block.activityId);
+  if (definition === null) return null;
+  const anchors = anchorsOf(block.activityId, null);
+  const atTarget = anchors.length > 0 ? onSpot(char, anchors) : inAnyPlace(map, char, definition.placeIds);
+  if (atTarget) {
+    return {
+      layer: 'plan',
+      action: 'react',
+      intent: { type: 'start_activity', characterId: char.id, activityId: block.activityId },
+      bubble: `到地方了,按日程开始${definition.name}`,
+    };
+  }
+  const spot = activitySpot(map, block.activityId, definition.placeIds, anchors);
+  if (spot === null) return null;
+  return {
+    layer: 'plan',
+    action: 'react',
+    intent: { type: 'move_to', characterId: char.id, x: spot.x, y: spot.y },
+    bubble: spot.placeName === '' ? `按日程去${definition.name}` : `按日程去${spot.placeName}${definition.name}`,
+  };
+}
+
+/** 夜间空闲:有住房且家里有床锚点→就位睡觉;否则交还(无居所不强排) */
+function planNight(
+  char: WorldCharacter,
+  map: TileMapDefinition,
+  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+): Decision | null {
+  if (char.housing === null) return null;
+  const homePlaceId = getPropertyDefinition(char.housing.propertyId)?.placeId;
+  if (homePlaceId === undefined) return null;
+  const beds = anchorsOf('sleep', homePlaceId);
+  if (beds.length === 0) return null;
+  if (onSpot(char, beds)) {
+    return {
+      layer: 'plan',
+      action: 'react',
+      intent: { type: 'start_activity', characterId: char.id, activityId: 'sleep' },
+      bubble: '夜深了,按日程上床睡觉',
+    };
+  }
+  const home = findPlaceByRef(map, homePlaceId);
+  if (home === null) return null;
+  return {
+    layer: 'plan',
+    action: 'react',
+    intent: { type: 'move_to', characterId: char.id, x: beds[0]!.x, y: beds[0]!.y },
+    bubble: `夜深了,按日程回${home.name}睡觉`,
+  };
+}
+
+function inAnyPlace(map: TileMapDefinition, char: WorldCharacter, placeIds: readonly string[]): boolean {
+  return placeIds.some((id) => findPlaceAt(map, char.x, char.y)?.id === id);
 }
 
 /** lab 观测辅助:地点列表(气泡文案/测试用) */
