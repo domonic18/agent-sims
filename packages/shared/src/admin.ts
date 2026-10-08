@@ -183,6 +183,7 @@ export const ADMIN_API = {
   logWorldEvents: '/api/admin/logs/world-events',
   logTechLogs: '/api/admin/logs/tech-logs',
   logAuditLogs: '/api/admin/logs/audit-logs',
+  characterMemories: (id: string) => `/api/admin/characters/${id}/memories`,
 } as const;
 
 /** token 用量统计窗口 */

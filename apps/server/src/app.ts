@@ -12,7 +12,7 @@ import { initTechLog, logTech, whenTechLogIdle } from './telemetry.js';
 import { attachWorldEventLog } from './world/event-log.js';
 import { attachWorldParamPersist } from './world/param-persist.js';
 import { ModelRouter } from './llm/router.js';
-import { attachMemoryWriter } from './agents/memory-writer.js';
+import { attachMemoryWriter, type MemoryLlm } from './agents/memory-writer.js';
 import { Simulation } from './world/simulation.js';
 
 declare module 'fastify' {
@@ -21,6 +21,7 @@ declare module 'fastify' {
     clients: ClientRegistry;
     io: Server;
     db: DbHandle;
+    llm: MemoryLlm;
   }
 }
 
@@ -53,8 +54,10 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   // 世界事件落库+参数存档订阅(EventBus 零 I/O,宿主侧串行链写入)
   attachWorldEventLog(handle, app.simulation.events);
   attachWorldParamPersist(handle, app.simulation.events);
-  // 记忆写入(M4b/A2):订阅同一总线,管线异步走 Jev/embedding,不阻塞 tick
-  attachMemoryWriter(app.simulation, handle, new ModelRouter(handle));
+  // 记忆写入(M4b/A2):订阅同一总线,管线异步走 Jev/embedding,不阻塞 tick;
+  // llm 装饰器供检索 API 复用(测试可覆写为桩)
+  app.decorate('llm', new ModelRouter(handle));
+  attachMemoryWriter(app.simulation, handle, app.llm);
   registerAdminApi(app, handle, app.simulation);
   registerWorldEventRoutes(app, handle);
   registerWorldSettingsRoutes(app, app.simulation);

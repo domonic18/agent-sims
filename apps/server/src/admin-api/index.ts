@@ -6,6 +6,7 @@ import { registerAssetIssueRoutes } from './asset-issues.js';
 import { registerAssetRoutes } from './assets.js';
 import { registerAuthRoutes } from './auth.js';
 import { registerLogRoutes } from './logs.js';
+import { registerMemoryRoutes } from './memories.js';
 import { registerModelConfigRoutes } from './model-configs.js';
 import { registerSysConfigRoutes } from './sys-configs.js';
 import { registerTokenUsageRoutes } from './token-usage.js';
@@ -24,5 +25,6 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle, sim: Si
   registerWorldArchiveRoutes(app, handle);
   registerAssetRoutes(app, handle);
   registerAssetIssueRoutes(app, handle);
+  registerMemoryRoutes(app, handle, sim);
   registerLogRoutes(app, handle);
 }
