@@ -13,6 +13,7 @@ import { attachWorldEventLog } from './world/event-log.js';
 import { attachWorldParamPersist } from './world/param-persist.js';
 import { ModelRouter } from './llm/router.js';
 import { attachMemoryWriter, type MemoryLlm } from './agents/memory-writer.js';
+import { attachMemoryConsolidator } from './agents/memory-consolidation.js';
 import { AgentScheduler } from './agents/scheduler.js';
 import { SOCKET_EVENTS, type AgentDecisionMessage } from '@sims/shared';
 import { Simulation } from './world/simulation.js';
@@ -60,6 +61,8 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   // llm 装饰器供检索 API 复用(测试可覆写为桩)
   app.decorate('llm', new ModelRouter(handle));
   const memoryWriter = attachMemoryWriter(app.simulation, handle, app.llm);
+  // 梦境固化(M5):订阅 sleep.settled,睡饱者次晨慢槽整理当日记忆产 dream,离线照常
+  attachMemoryConsolidator(app.simulation, handle, app.llm, memoryWriter);
   // Agent 调度泵(M4c/M4d):自治角色默认空集(开关走 admin API),react 气泡经独立 socket 事件广播
   const agentScheduler = new AgentScheduler({
     sim: app.simulation,
