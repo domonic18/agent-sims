@@ -86,11 +86,13 @@ export const buyPropertyIntentSchema = z.object({
 
 export type BuyPropertyIntent = z.infer<typeof buyPropertyIntentSchema>;
 
-/** 聊天(社交 v1):双方同处一地(同场所或曼哈顿 ≤2),每日同对限次防刷 */
+/** 聊天(社交 v1):双方同处一地(同场所或曼哈顿 ≤2),每日同对限次防刷。
+ * line 缺省走模板池;事件响应等场景可携带具体台词(如获救道谢),≤80 字 */
 export const chatIntentSchema = z.object({
   type: z.literal('chat'),
   characterId: z.string().min(1),
   targetId: z.string().min(1),
+  line: z.string().min(1).max(80).optional(),
 });
 
 export type ChatIntent = z.infer<typeof chatIntentSchema>;

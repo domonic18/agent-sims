@@ -74,6 +74,9 @@ export interface ActivityDefinition {
   effects: ActivityEffects;
   /** 岗位类别(缺省=日常活动,无知识门槛);门槛查 JOB_CATEGORIES */
   category?: JobCategoryId;
+  /** 事件可打断性(10-cognition §7.1 ③): none=不可打断(排事后处理,睡眠一律不打断),
+   * low=仅高强度事件(≥8)可申请中断评估,缺省 high=显著事件(≥6)即可进中断评估 */
+  interruptibility?: 'none' | 'low' | 'high';
 }
 
 export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
@@ -83,6 +86,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     placeIds: ['library', 'home-a'],
     durationMinutes: 60,
     effects: { energy: -0.12, score: 0, coins: 0 },
+    interruptibility: 'low',
   },
   {
     id: 'work',
@@ -91,6 +95,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     durationMinutes: 120,
     effects: { energy: -0.15, score: 0, coins: 0.8 },
     category: 'fallback',
+    interruptibility: 'low',
   },
   {
     id: 'rest',
@@ -108,6 +113,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     placeIds: ['home-a', 'home-b', 'home-c', 'home-d'],
     durationMinutes: 480,
     effects: { energy: 0, score: 0, coins: 0 },
+    interruptibility: 'none',
   },
   {
     id: 'workout',
@@ -129,6 +135,7 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     placeIds: ['restaurant'],
     durationMinutes: 30,
     effects: { energy: 0.05, score: 0.2, coins: -0.4 },
+    interruptibility: 'none',
   },
   {
     id: 'waiter',
