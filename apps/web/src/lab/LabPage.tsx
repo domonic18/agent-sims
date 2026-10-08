@@ -42,6 +42,7 @@ import {
   setTimeScale,
 } from '../net/debugApi';
 import { connectWorld, sendIntent } from '../net/socket';
+import { formatGameMinutes } from '../format';
 import { useWorldStore } from '../store/worldStore';
 import { Toasts } from '../ui/Toasts';
 import { EventList } from '../ui/hud/EventList';
@@ -73,15 +74,6 @@ function blockRange(startMin: number, endMin: number): string {
   const hhmm = (m: number): string =>
     `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   return `${hhmm(startMin)}~${hhmm(endMin)}`;
-}
-
-/** 游戏分钟 → 第 X 天 HH:MM(记忆条目时间戳) */
-function formatGameMinutes(gameMinutes: number | null): string {
-  if (gameMinutes === null) return '未知时刻';
-  const day = Math.floor(gameMinutes / 1440) + 1;
-  const hh = String(Math.floor((gameMinutes % 1440) / 60)).padStart(2, '0');
-  const mm = String(gameMinutes % 60).padStart(2, '0');
-  return `第 ${day} 天 ${hh}:${mm}`;
 }
 
 /**

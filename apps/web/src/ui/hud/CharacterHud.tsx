@@ -34,9 +34,11 @@ function VitalBar({
 export function CharacterHud({
   onHosting,
   onMindTalk,
+  onMemories,
 }: {
   onHosting?: (characterId: string) => void;
   onMindTalk?: (characterId: string) => void;
+  onMemories?: (characterId: string) => void;
 }) {
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
@@ -185,6 +187,14 @@ export function CharacterHud({
             onClick={() => onMindTalk?.(character.id)}
           >
             🗣 意识访谈
+          </button>
+          <button
+            type="button"
+            className="px-btn"
+            title="查看 TA 的记忆流(只读,需管理员)"
+            onClick={() => onMemories?.(character.id)}
+          >
+            🧠 记忆
           </button>
         </div>
           </>

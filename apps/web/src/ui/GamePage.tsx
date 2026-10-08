@@ -11,6 +11,7 @@ import { LoginModal } from './LoginModal';
 import { CharacterHud } from './hud/CharacterHud';
 import { HostingModal } from './hud/HostingModal';
 import { MindTalkModal } from './hud/MindTalkModal';
+import { MemoryModal } from './hud/MemoryModal';
 import { ActionBar } from './hud/ActionBar';
 import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
@@ -47,6 +48,7 @@ export default function GamePage() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [hostingOpenId, setHostingOpenId] = useState<string | null>(null);
   const [mindTalkOpenId, setMindTalkOpenId] = useState<string | null>(null);
+  const [memoryOpenId, setMemoryOpenId] = useState<string | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
   // 弹窗打开前世界在运行则自动暂停,关闭时恢复(若期间被他人恢复则不双写)
   const resumeOnCloseRef = useRef(false);
@@ -154,6 +156,7 @@ export default function GamePage() {
             return;
           }
           setMindTalkOpenId(null);
+          setMemoryOpenId(null);
           setHostingOpenId(id);
         }}
         onMindTalk={(id) => {
@@ -162,7 +165,17 @@ export default function GamePage() {
             return;
           }
           setHostingOpenId(null);
+          setMemoryOpenId(null);
           setMindTalkOpenId(id);
+        }}
+        onMemories={(id) => {
+          if (!isAdmin) {
+            setLoginOpen(true);
+            return;
+          }
+          setHostingOpenId(null);
+          setMindTalkOpenId(null);
+          setMemoryOpenId(id);
         }}
       />
 
@@ -274,6 +287,13 @@ export default function GamePage() {
           characterId={mindTalkOpenId}
           characterName={snapshot?.characters.find((item) => item.id === mindTalkOpenId)?.name ?? '居民'}
           onClose={() => setMindTalkOpenId(null)}
+        />
+      )}
+      {memoryOpenId !== null && (
+        <MemoryModal
+          characterId={memoryOpenId}
+          characterName={snapshot?.characters.find((item) => item.id === memoryOpenId)?.name ?? '居民'}
+          onClose={() => setMemoryOpenId(null)}
         />
       )}
 
