@@ -66,6 +66,8 @@ export interface BalanceConfig {
   SLEEP_MIN_MINUTES: number;
   /** 白天反思触发阈值(10-cognition §5): 未固化记忆 importance 累计达到即触发一次反思(去 dream 段) */
   REFLECTION_IMPORTANCE_THRESHOLD: number;
+  /** 情绪半衰期(10-cognition §4.4): valence 冲量按 0.5^(经历游戏分钟/该值) 衰减,4 游戏时减半 */
+  MOOD_HALF_LIFE_MINUTES: number;
   SLEEP_DEBT_MULTIPLIER: number;
   /** 累倒苏醒扣分(numerical §2.3/§2.5): growth 送医窗口超时苏醒 score ×= (1 - 该值);救治免扣 */
   SCORE_WAKE_DEDUCTION: number;
@@ -126,6 +128,7 @@ export const BALANCE: BalanceConfig = {
   REVIVE_ENERGY: 100,
   SLEEP_MIN_MINUTES: 240,
   REFLECTION_IMPORTANCE_THRESHOLD: 150,
+  MOOD_HALF_LIFE_MINUTES: 240,
   SLEEP_DEBT_MULTIPLIER: 0.7,
   SCORE_WAKE_DEDUCTION: 0.2,
   SURVIVAL_HUNGER_ENERGY_LINE: 20,

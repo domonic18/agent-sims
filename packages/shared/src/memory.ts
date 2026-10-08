@@ -49,3 +49,24 @@ export interface MemoryImpressionsResponse {
   name: string;
   items: MemoryImpressionItem[];
 }
+
+/** 情绪(C2,10-cognition §4.4): 冲量流水与衰减后的当前态(面板/访谈间接观测,不进快照) */
+export interface MoodPoint {
+  gameMinutes: number | null;
+  delta: number;
+  labels: string[];
+  createdAt: string;
+}
+
+export interface MoodCurrent {
+  valence: number;
+  labels: string[];
+  since: number | null;
+}
+
+export interface CharacterMoodResponse {
+  characterId: string;
+  name: string;
+  current: MoodCurrent;
+  history: MoodPoint[];
+}

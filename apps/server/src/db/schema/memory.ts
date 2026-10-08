@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, text, timestamp, unique, uuid, vector } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, real, text, timestamp, unique, uuid, vector } from 'drizzle-orm/pg-core';
 import { characters } from './agent.js';
 
 // pgvector 对 vector 类型的 HNSW/IVFFlat 索引上限 2000 维,embedding-3 为 2048 维,
@@ -37,3 +37,17 @@ export const characterImpressions = pgTable(
   },
   (t) => [unique('character_impressions_pair_key').on(t.characterId, t.aboutId)],
 );
+
+/** L5 情绪(10-cognition §4.4): append-only 冲量流水——每行=一次事件打的情绪冲量,
+ * 当前情绪=各行按半衰期衰减后求和(agents/mood.ts aggregateMood 纯函数),
+ * 行本身即面板历史,重启零恢复成本 */
+export const characterMoods = pgTable('character_moods', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  characterId: uuid('character_id')
+    .notNull()
+    .references(() => characters.id, { onDelete: 'cascade' }),
+  delta: real('delta').notNull(), // 本次事件冲量 -1~1
+  labels: jsonb('labels').$type<string[]>().notNull(), // 事件标签(倒下了/获救/做出成品…)
+  gameMinutes: integer('game_minutes'), // 事件发生的游戏内分钟(衰减时序基准)
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

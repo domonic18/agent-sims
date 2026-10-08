@@ -8,6 +8,7 @@ import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
 import { characters, worlds } from '../src/db/schema/index.js';
 import { cognitionTrace } from '../src/db/schema/agent.js';
+import { characterMoods } from '../src/db/schema/memory.js';
 import { memories } from '../src/db/schema/memory.js';
 import { issueAdminToken } from '../src/utils/token.js';
 
@@ -236,5 +237,20 @@ describe.skipIf(!dbUp)('意识访谈 API(观察者与 agent 对话,写回记忆)
       payload: { text: '在吗' },
     });
     expect(anon.statusCode).toBe(401);
+  });
+
+  it('情绪注入(C2): 有非平静情绪时 system 带情绪块,平静时不注入', async () => {
+    await handle.db.insert(characterMoods).values({
+      characterId: CHAR_ID,
+      delta: -0.6,
+      labels: ['倒下了'],
+      gameMinutes: app.simulation.clock.gameMinutes,
+    });
+    const stub = chatLlm(['唉,还躺着呢。']);
+    app.llm = stub.llm;
+    const res = await post({ text: '你现在感觉怎么样?' });
+    expect(res.statusCode).toBe(200);
+    expect(stub.chats[0]!.system).toContain('[你当前的情绪]');
+    expect(stub.chats[0]!.system).toContain('倒下了');
   });
 });

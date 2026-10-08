@@ -8,6 +8,7 @@ import { registerAuthRoutes } from './auth.js';
 import { registerAutonomyRoutes } from './autonomy.js';
 import { registerHostingRoutes } from './hosting.js';
 import { registerMindTalkRoutes } from './mindtalk.js';
+import { registerMoodRoutes } from './mood.js';
 import { registerLogRoutes } from './logs.js';
 import { registerMemoryRoutes } from './memories.js';
 import { registerModelConfigRoutes } from './model-configs.js';
@@ -35,6 +36,7 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle, sim: Si
   registerHostingRoutes(app, sim);
   registerPersonaRoutes(app, handle, sim);
   registerMindTalkRoutes(app, handle, sim);
+  registerMoodRoutes(app, handle, sim);
   registerScheduleRoutes(app, sim);
   registerLogRoutes(app, handle);
 }

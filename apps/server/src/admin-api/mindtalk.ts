@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { retrieveMemories } from '../agents/memory-retrieval.js';
 import type { MemoryLlm } from '../agents/memory-writer.js';
+import { describeMood, readMood } from '../agents/mood.js';
 import { loadPersonaContext } from '../agents/slow-layer.js';
 import type { DbHandle } from '../db/client.js';
 import { cognitionTrace } from '../db/schema/agent.js';
@@ -114,10 +115,13 @@ export function registerMindTalkRoutes(
     const char = sim.characters.get(id)!;
     const llm = app.llm as MemoryLlm;
     try {
-      const [memoriesLines, thoughts, persona] = await Promise.all([
+      const [memoriesLines, thoughts, persona, moodLine] = await Promise.all([
         loadRelevantMemories(llm, handle, id, question, sim.clock.gameMinutes),
         loadRecentThoughts(handle, id),
         loadPersonaContext(handle, id),
+        readMood(handle, id, sim.clock.gameMinutes)
+          .then(describeMood)
+          .catch(() => null),
       ]);
       const status = char.activity !== null
         ? `正在「${char.activity.activityId}」,体力 ${Math.round(char.energy)},金币 ${Math.round(char.coins)}`
@@ -127,6 +131,7 @@ export function registerMindTalkRoutes(
         memoriesLines.length > 0 ? `[与这个问题相关的记忆]\n${memoriesLines.map((m) => `- ${m}`).join('\n')}` : '',
         thoughts.length > 0 ? `[你最近心里想的]\n${thoughts.map((m) => `- ${m}`).join('\n')}` : '',
         persona !== undefined ? `[你的人设]\n${persona}` : '',
+        moodLine !== null ? `[你当前的情绪] ${moodLine}。回答的语气自然带出这份情绪,不必直接点破。` : '',
       ]
         .filter((block) => block !== '')
         .join('\n\n');

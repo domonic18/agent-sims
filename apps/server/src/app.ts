@@ -14,6 +14,7 @@ import { attachWorldParamPersist } from './world/param-persist.js';
 import { ModelRouter } from './llm/router.js';
 import { attachMemoryWriter, type MemoryLlm } from './agents/memory-writer.js';
 import { attachMemoryConsolidator } from './agents/memory-consolidation.js';
+import { attachMoodTracker } from './agents/mood.js';
 import { AgentScheduler } from './agents/scheduler.js';
 import { SOCKET_EVENTS, type AgentDecisionMessage } from '@sims/shared';
 import { Simulation } from './world/simulation.js';
@@ -63,6 +64,8 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   const memoryWriter = attachMemoryWriter(app.simulation, handle, app.llm);
   // 梦境固化(M5):订阅 sleep.settled,睡饱者次晨慢槽整理当日记忆产 dream,离线照常
   attachMemoryConsolidator(app.simulation, handle, app.llm, memoryWriter);
+  // 情绪打标(C2):订阅世界事件按规则表写冲量流水,零模型,离线照常
+  const moodTracker = attachMoodTracker(app.simulation, handle);
   // Agent 调度泵(M4c/M4d):自治角色默认空集(开关走 admin API),react 气泡经独立 socket 事件广播
   const agentScheduler = new AgentScheduler({
     sim: app.simulation,
@@ -81,6 +84,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   }
   app.addHook('onClose', async () => {
     agentScheduler.dispose();
+    moodTracker.dispose();
     // io.close 同时关闭底层 http server,先于 fastify 关停以避免双路并发 close 竞态
     await new Promise<void>((resolve) => {
       app.io.close(() => resolve());

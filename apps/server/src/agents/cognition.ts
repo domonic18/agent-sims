@@ -70,3 +70,27 @@ export const schedule = {
     plans.delete(characterId);
   },
 };
+
+/** 情绪脑状态(10-cognition §4.4,L5): valence -1~1(负=低落正=愉快,半衰期衰减),
+ * labels=近期情绪事件标签,since=本轮情绪起点(游戏分钟)。
+ * 不进快照不下发——玩家经访谈/面板间接观测;真源在 character_moods 表,
+ * 本 Map 是 MoodTracker 维护的同步镜像(供后续快层零延迟读取) */
+export interface MoodState {
+  valence: number;
+  labels: string[];
+  since: number | null;
+}
+
+const moods = new Map<string, MoodState>();
+
+export const mood = {
+  set(characterId: string, state: MoodState): void {
+    moods.set(characterId, state);
+  },
+  get(characterId: string): MoodState | undefined {
+    return moods.get(characterId);
+  },
+  clear(characterId: string): void {
+    moods.delete(characterId);
+  },
+};

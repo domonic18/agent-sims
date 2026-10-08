@@ -259,6 +259,7 @@ export const ADMIN_API = {
   logAuditLogs: '/api/admin/logs/audit-logs',
   characterMemories: (id: string) => `/api/admin/characters/${id}/memories`,
   characterImpressions: (id: string) => `/api/admin/characters/${id}/impressions`,
+  characterMood: (id: string) => `/api/admin/characters/${id}/mood`,
   characterAutonomy: (id: string) => `/api/admin/characters/${id}/autonomy`,
   characterSchedule: (id: string) => `/api/admin/characters/${id}/schedule`,
   characterReplan: (id: string) => `/api/admin/characters/${id}/replan`,
