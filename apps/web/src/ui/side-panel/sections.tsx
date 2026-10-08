@@ -22,6 +22,7 @@ import {
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { formatCoins } from '../../format';
+import { pushToast } from '../../store/toastStore';
 import { activityAnchors, findPlaceByRef } from './place';
 import type { CharacterView } from './place';
 import type { GoAndDoPending, RunIntent } from './useGoAndDo';
@@ -337,7 +338,7 @@ export function ActivitySection({
         </label>
         <button
           type="button"
-          disabled={moving || dead || locked || count === 0}
+          disabled={moving || dead}
           title={
             locked
               ? `知识不足: 需学习 ${JOB_CATEGORIES[def.category!].requiredKnowledge} 班`
@@ -345,7 +346,18 @@ export function ActivitySection({
                 ? '当前无工单目标'
                 : `前往最近目标作业,${reward}`
           }
-          onClick={() => void startWorkTask(task)}
+          onClick={() => {
+            // 可解释拒绝:锁定/无目标仍可点击,点击即 toast 说明(disabled 会吞掉点击零反馈)
+            if (locked) {
+              pushToast(false, `知识不足: ${def.name} 需先学习 ${JOB_CATEGORIES[def.category!].requiredKnowledge} 班`);
+              return;
+            }
+            if (count === 0) {
+              pushToast(false, `当前没有${WORK_TARGETS[task].noun}可作业`);
+              return;
+            }
+            void startWorkTask(task);
+          }}
         >
           接单
         </button>
@@ -364,13 +376,19 @@ export function ActivitySection({
         </span>
         <button
           type="button"
-          disabled={moving || dead || homeless}
+          disabled={moving || dead}
           title={
             homeless
               ? '无住房,先在资产页租住公寓才能睡觉'
               : '回家上床睡 8 小时;昨夜 22:00~06:00 累计睡 ≥4 小时免缺觉惩罚(须自家床)'
           }
-          onClick={() => void startSleep()}
+          onClick={() => {
+            if (homeless) {
+              pushToast(false, '无住房,先在资产页租住公寓才能睡觉');
+              return;
+            }
+            void startSleep();
+          }}
         >
           {enRoute ? '途中…' : '睡觉'}
         </button>
@@ -412,7 +430,7 @@ export function ActivitySection({
         </span>
         <button
           type="button"
-          disabled={moving || dead || locked}
+          disabled={moving || dead}
           title={
             (locked
               ? `知识不足: 需学习 ${JOB_CATEGORIES[def.category!].requiredKnowledge} 班`
@@ -421,7 +439,13 @@ export function ActivitySection({
                 : `自动前往 ${targetLabel} 并开始`) +
             (def.id === 'rest' ? '恢复速率: 床最快/沙发次之/长椅最慢' : '')
           }
-          onClick={() => void startActivity(def)}
+          onClick={() => {
+            if (locked) {
+              pushToast(false, `知识不足: ${def.name} 需先学习 ${JOB_CATEGORIES[def.category!].requiredKnowledge} 班`);
+              return;
+            }
+            void startActivity(def);
+          }}
         >
           {enRoute ? '途中…' : '开始'}
         </button>

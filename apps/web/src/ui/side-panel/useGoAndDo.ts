@@ -86,7 +86,10 @@ export function useGoAndDo(
             const place = findPlaceByRef(map, first);
             return place !== null ? { x: place.entrance.x, y: place.entrance.y } : null;
           })();
-    if (target === null) return;
+    if (target === null) {
+      pushToast(false, `「${def.name}」没有可前往的目标位置`);
+      return;
+    }
     const ack = await sendIntent({
       type: 'move_to',
       characterId: character.id,
@@ -108,7 +111,10 @@ export function useGoAndDo(
       return;
     }
     const shop = findPlaceByRef(map, 'shop');
-    if (shop === null) return;
+    if (shop === null) {
+      pushToast(false, '地图上没有商店,无法前往购买');
+      return;
+    }
     const ack = await sendIntent({
       type: 'move_to',
       characterId: character.id,
@@ -121,11 +127,14 @@ export function useGoAndDo(
     setPending(ack.ok ? { kind: 'buy', id: itemId } : null);
   };
 
-  /** 接工单(M-G.5/M-G.6):单意图自带寻路,选最近同岗目标直接下发,无目标静默 */
+  /** 接工单(M-G.5/M-G.6):单意图自带寻路,选最近同岗目标直接下发,无目标 toast 说明 */
   const startWorkTask = async (task: WorkTaskId): Promise<void> => {
     if (character === null || snapshot === null) return;
     const target = nearestWorkTarget(task, character, snapshot);
-    if (target === null) return;
+    if (target === null) {
+      pushToast(false, '当前没有可接的同岗工单目标');
+      return;
+    }
     await run({ type: 'work_task', characterId: character.id, targetId: target.targetId });
   };
 
@@ -146,7 +155,10 @@ export function useGoAndDo(
               : best,
           )
         : null;
-    if (nearest === null) return;
+    if (nearest === null) {
+      pushToast(false, '地图上没有可用的制作站点');
+      return;
+    }
     const ack = await sendIntent({
       type: 'move_to',
       characterId: character.id,
@@ -161,7 +173,7 @@ export function useGoAndDo(
 
   /** 睡觉(M-G.2,纯玩家手动): 系统一律不代劳,只此入口。
    * 不复用 startActivity——它选最近锚点,可能是邻居家床(服务端必拒);
-   * 此处锚点过滤 placeId===housing.propertyId 只认自家床,无租房静默(按钮置灰由调用方判定) */
+   * 此处锚点过滤 placeId===housing.propertyId 只认自家床,无租房/无床 toast 说明 */
   const startSleep = async (): Promise<void> => {
     if (character === null || snapshot === null || map === null) return;
     const housing = character.housing;
@@ -169,9 +181,15 @@ export function useGoAndDo(
       await run({ type: 'start_activity', characterId: character.id, activityId: 'sleep' });
       return;
     }
-    if (housing === null) return;
+    if (housing === null) {
+      pushToast(false, '无住房,先在资产页租住公寓才能睡觉');
+      return;
+    }
     const ownBeds = activityAnchors(map, 'sleep').filter((a) => a.placeId === housing.propertyId);
-    if (ownBeds.length === 0) return;
+    if (ownBeds.length === 0) {
+      pushToast(false, '地图上找不到自家床,无法入睡');
+      return;
+    }
     const nearest = ownBeds.reduce((best, a) =>
       Math.abs(a.x - character.x) + Math.abs(a.y - character.y) <
       Math.abs(best.x - character.x) + Math.abs(best.y - character.y)
