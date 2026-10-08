@@ -3,15 +3,18 @@ import { Link } from 'react-router-dom';
 import {
   GENDERS,
   GENDER_LABELS,
+  MEMORY_TYPE_LABELS,
   SYS_CONFIG_FIELDS,
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
   type Gender,
+  type MemoryPanelResponse,
   type WorldArchiveView,
 } from '@sims/shared';
 import {
   addWorldCharacter,
   deleteWorldArchive,
+  fetchCharacterMemories,
   fetchWorldArchives,
   fetchWorlds,
   getToken,
@@ -39,6 +42,15 @@ import './lab.css';
 const LOG_MAX = 100;
 const TIME_SCALES = [1, 4, 16] as const;
 
+/** 游戏分钟 → 第 X 天 HH:MM(记忆条目时间戳) */
+function formatGameMinutes(gameMinutes: number | null): string {
+  if (gameMinutes === null) return '未知时刻';
+  const day = Math.floor(gameMinutes / 1440) + 1;
+  const hh = String(Math.floor((gameMinutes % 1440) / 60)).padStart(2, '0');
+  const mm = String(gameMinutes % 60).padStart(2, '0');
+  return `第 ${day} 天 ${hh}:${mm}`;
+}
+
 /**
  * /lab 世界实验室(UI-1 C5 三栏游戏化,无画布): 左·世界控制(时钟/参数热调/dev 居民管理),
  * 中·意图调试(13 意图全量表单+回执终端),右·世界事件实时流(复用日志中文格式化)。
@@ -65,6 +77,11 @@ export default function LabPage() {
   // 世界存档(C6):列表/保存命名/读取删除
   const [archives, setArchives] = useState<WorldArchiveView[]>([]);
   const [archiveLabel, setArchiveLabel] = useState('');
+  // 记忆面板(M4b/A3):角色选择/检索词/响应(只读)
+  const [memCharId, setMemCharId] = useState('');
+  const [memQuery, setMemQuery] = useState('');
+  const [memData, setMemData] = useState<MemoryPanelResponse | null>(null);
+  const [memLoading, setMemLoading] = useState(false);
   const nextLogIdRef = useRef(1);
   const spawnCountRef = useRef(0);
 
@@ -243,6 +260,37 @@ export default function LabPage() {
       setAdminMsg(error instanceof Error ? error.message : String(error));
     }
   };
+
+  const loadMemories = async (characterId: string, q: string): Promise<void> => {
+    if (characterId === '') return;
+    setMemLoading(true);
+    try {
+      setMemData(
+        await fetchCharacterMemories(characterId, {
+          ...(q.trim() !== '' ? { q: q.trim() } : {}),
+          limit: 50,
+        }),
+      );
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemLoading(false);
+    }
+  };
+
+  const searchMemories = async (): Promise<void> => {
+    await loadMemories(memCharId, memQuery);
+  };
+
+  // 快照就绪后默认选中第一位居民;admin 通道就绪或切换角色时回退时间浏览
+  useEffect(() => {
+    const first = snapshot?.characters[0];
+    if (memCharId === '' && first !== undefined) setMemCharId(first.id);
+  }, [snapshot, memCharId]);
+
+  useEffect(() => {
+    if (adminAvailable && memCharId !== '') void loadMemories(memCharId, '');
+  }, [adminAvailable, memCharId]);
 
   const paramsDirty =
     paramsOriginal !== null &&
@@ -473,6 +521,82 @@ export default function LabPage() {
                     ))
                   )}
                 </ul>
+              </div>
+            </div>
+          )}
+
+          {adminAvailable && (
+            <div className="px-box lab-panel-px">
+              <div className="px-inner lab-panel-inner">
+                <h3>管理员 · 记忆面板</h3>
+                <div className="lab-btn-row">
+                  <select
+                    className="lab-input lab-memory-char"
+                    value={memCharId}
+                    onChange={(e) => setMemCharId(e.target.value)}
+                  >
+                    {(snapshot?.characters ?? []).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="lab-input"
+                    placeholder="语义检索记忆…"
+                    maxLength={100}
+                    value={memQuery}
+                    onChange={(e) => setMemQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void searchMemories();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="px-btn"
+                    disabled={memCharId === ''}
+                    onClick={() => void searchMemories()}
+                  >
+                    🔍 检索
+                  </button>
+                </div>
+                {memLoading && <p className="hint">加载中…</p>}
+                {memData !== null && !memLoading && (
+                  <>
+                    {memData.notice !== null && <p className="lab-err">{memData.notice}</p>}
+                    <p className="hint">
+                      {memData.mode === 'search'
+                        ? `三因子检索 · 命中 ${memData.items.length} 条`
+                        : `最近 ${memData.items.length} 条`}
+                    </p>
+                    <ul className="lab-memory-list">
+                      {memData.items.length === 0 ? (
+                        <li className="hint">暂无记忆</li>
+                      ) : (
+                        memData.items.map((item) => (
+                          <li key={item.id} className="lab-memory-item">
+                            <span className={`lab-mem-badge ${item.type}`}>
+                              {MEMORY_TYPE_LABELS[item.type]}
+                            </span>
+                            <div className="lab-memory-body">
+                              <div>{item.content}</div>
+                              <small>
+                                {formatGameMinutes(item.gameMinutes)} · 重要度 {item.importance}
+                                {item.score !== undefined && item.factors !== undefined
+                                  ? ` · 综合 ${item.score.toFixed(2)}(相关 ${
+                                      item.factors.relevance === null
+                                        ? '—'
+                                        : item.factors.relevance.toFixed(2)
+                                    })`
+                                  : ''}
+                              </small>
+                            </div>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </>
+                )}
               </div>
             </div>
           )}

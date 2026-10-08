@@ -22,6 +22,7 @@ import {
   type ModelConfigUpdate,
   type ModelConfigView,
   type ModelSlot,
+  type MemoryPanelResponse,
   type TechLogEntriesResponse,
   type TokenUsageEntriesResponse,
   type TokenUsageSummary,
@@ -263,6 +264,27 @@ export async function loadWorldArchive(id: string): Promise<void> {
 
 export async function deleteWorldArchive(id: string): Promise<void> {
   await adminFetch<unknown>(WORLD_ADMIN_API.archive.replace(':id', id), { method: 'DELETE' });
+}
+
+// ============ 记忆面板(M4b/A3) ============
+
+export interface CharacterMemoriesQuery {
+  /** 检索词(缺省=按时间倒序浏览) */
+  q?: string;
+  limit?: number;
+}
+
+export async function fetchCharacterMemories(
+  characterId: string,
+  query: CharacterMemoriesQuery = {},
+): Promise<MemoryPanelResponse> {
+  const params = new URLSearchParams();
+  if (query.q !== undefined && query.q.trim() !== '') params.set('q', query.q.trim());
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  const qs = params.toString();
+  return await adminFetch<MemoryPanelResponse>(
+    `${ADMIN_API.characterMemories(characterId)}${qs !== '' ? `?${qs}` : ''}`,
+  );
 }
 
 // ============ 素材管理(M-L.2) ============
