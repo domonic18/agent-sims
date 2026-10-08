@@ -46,6 +46,8 @@ export interface SlotRuntimeConfig {
   baseUrl: string;
   model: string;
   apiKey: string;
+  /** 最大输出 tokens 上限,null=不干预(任务值/适配器缺省生效) */
+  maxTokens: number | null;
 }
 
 export interface LlmCallOptions {

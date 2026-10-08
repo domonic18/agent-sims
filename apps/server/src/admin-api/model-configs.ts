@@ -33,6 +33,8 @@ const putSchema = z.object({
   model: z.string().min(1).optional(),
   /** 只写字段:空串或缺省=保留原值 */
   apiKey: z.string().optional(),
+  /** 缺省=不动,null=清除回内置默认 */
+  maxTokens: z.number().int().min(1).max(1_000_000).nullable().optional(),
   enabled: z.boolean().optional(),
 });
 
@@ -48,6 +50,7 @@ function toView(
       model: '',
       apiKeyMasked: '',
       apiKeyConfigured: false,
+      maxTokens: null,
       enabled: false,
       lastTestedAt: null,
       lastTestStatus: null,
@@ -70,6 +73,7 @@ function toView(
     model: row.model,
     apiKeyMasked: masked,
     apiKeyConfigured: Boolean(row.apiKeyEncrypted),
+    maxTokens: row.maxTokens ?? null,
     enabled: row.enabled,
     lastTestedAt: row.lastTestedAt?.toISOString() ?? null,
     lastTestStatus: row.lastTestStatus ?? null,
@@ -127,6 +131,7 @@ async function testSlot(handle: DbHandle, slot: ModelSlot): Promise<{ ok: boolea
       baseUrl: row.baseUrl,
       model: row.model,
       apiKey,
+      maxTokens: null,
     });
   } catch {
     return { ok: false, detail: '密钥解密失败(MASTER_KEY 与密文不匹配)' };
@@ -195,6 +200,7 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
         baseUrl: data.baseUrl ?? '',
         model: data.model ?? '',
         apiKeyEncrypted: data.apiKey ? encryptSecret(data.apiKey, env.MASTER_KEY) : null,
+        maxTokens: data.maxTokens ?? null,
         enabled: data.enabled ?? false,
         updatedAt: new Date(),
       })
@@ -207,6 +213,7 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
           ...(data.apiKey
             ? { apiKeyEncrypted: encryptSecret(data.apiKey, env.MASTER_KEY) }
             : {}),
+          ...(data.maxTokens !== undefined ? { maxTokens: data.maxTokens } : {}),
           ...(data.enabled !== undefined ? { enabled: data.enabled } : {}),
           updatedAt: new Date(),
         },

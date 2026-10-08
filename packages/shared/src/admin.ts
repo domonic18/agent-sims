@@ -82,6 +82,17 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
   { id: 'openai', label: 'OpenAI', baseUrlByProtocol: { openai: 'https://api.openai.com/v1' } },
 ];
 
+/**
+ * 各槽位最大输出 tokens 的内置默认(后台设置留空时生效):max_tokens 只是上限,
+ * 按实际产出计费,宁大勿小——思考型模型 thinking 会吃掉小上限导致正文为空。
+ * 仅 chat 形态槽位可设(jev systemone/embedding 协议不涉及)。
+ */
+export const MODEL_SLOT_MAX_TOKENS: Partial<Record<ModelSlot, number>> = {
+  slow: 2048,
+  light: 1024,
+  vision: 1024,
+};
+
 /** GET /api/admin/model-configs 响应条目(apiKey 只回掩码,密文永不外发) */
 export interface ModelConfigView {
   slot: ModelSlot;
@@ -90,6 +101,8 @@ export interface ModelConfigView {
   model: string;
   apiKeyMasked: string;
   apiKeyConfigured: boolean;
+  /** 最大输出 tokens 上限,null=用 MODEL_SLOT_MAX_TOKENS 内置默认 */
+  maxTokens: number | null;
   enabled: boolean;
   lastTestedAt: string | null;
   lastTestStatus: 'success' | 'failed' | null;
@@ -97,12 +110,13 @@ export interface ModelConfigView {
   updatedAt: string;
 }
 
-/** PUT /api/admin/model-configs/:slot 请求(apiKey 只写:空/缺省=保留原值) */
+/** PUT /api/admin/model-configs/:slot 请求(apiKey 只写:空/缺省=保留原值;maxTokens 缺省=不动,null=清除回内置默认) */
 export interface ModelConfigUpdate {
   protocol?: ModelProtocol;
   baseUrl?: string;
   model?: string;
   apiKey?: string;
+  maxTokens?: number | null;
   enabled?: boolean;
 }
 

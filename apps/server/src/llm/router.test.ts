@@ -5,12 +5,17 @@ import type { FetchImpl } from './adapters.js';
 import type { SlotRuntimeConfig } from './types.js';
 import type { TokenUsageEntry } from './usage.js';
 
-const cfg = (protocol: SlotRuntimeConfig['protocol'], slot: ModelSlot = 'slow'): SlotRuntimeConfig => ({
+const cfg = (
+  protocol: SlotRuntimeConfig['protocol'],
+  slot: ModelSlot = 'slow',
+  maxTokens: number | null = null,
+): SlotRuntimeConfig => ({
   slot,
   protocol,
   baseUrl: 'https://api.example.com/v1',
   model: 'test-model',
   apiKey: 'sk-test',
+  maxTokens,
 });
 
 function mockFetch(status: number, body: unknown): FetchImpl {
@@ -25,11 +30,12 @@ function buildRouter(
   protocol: SlotRuntimeConfig['protocol'],
   fetchBody: unknown,
   slot: ModelSlot = 'slow',
+  maxTokens: number | null = null,
 ) {
   const persisted: TokenUsageEntry[] = [];
   const router = new ModelRouter({} as never, {
     fetchImpl: mockFetch(200, fetchBody),
-    loadConfig: async () => cfg(protocol, slot),
+    loadConfig: async () => cfg(protocol, slot, maxTokens),
     persistUsage: async (entry) => {
       persisted.push(entry);
     },
@@ -87,6 +93,38 @@ describe('ModelRouter.chat', () => {
       router.chat('slow', [{ role: 'user', content: 'q' }], { taskType: 'unit_test' }),
     ).rejects.toThrow(/500/);
     expect(persisted).toEqual([]);
+  });
+
+  it('maxTokens:槽位设置值覆盖任务值,null 时任务值透传', async () => {
+    const bodies: Array<{ max_tokens?: number }> = [];
+    const echoFetch = (async (_url: unknown, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: '答' }],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as FetchImpl;
+    const persisted: TokenUsageEntry[] = [];
+    const router = new ModelRouter({} as never, {
+      fetchImpl: echoFetch,
+      loadConfig: async () => cfg('anthropic', 'light', 2048),
+      persistUsage: async (entry) => {
+        persisted.push(entry);
+      },
+    });
+    await router.chat('light', [{ role: 'user', content: 'q' }], { taskType: 'unit_test', maxTokens: 512 });
+    const fallback = new ModelRouter({} as never, {
+      fetchImpl: echoFetch,
+      loadConfig: async () => cfg('anthropic', 'light'),
+      persistUsage: async (entry) => {
+        persisted.push(entry);
+      },
+    });
+    await fallback.chat('light', [{ role: 'user', content: 'q' }], { taskType: 'unit_test', maxTokens: 512 });
+    expect(bodies.map((b) => b.max_tokens)).toEqual([2048, 512]);
   });
 });
 

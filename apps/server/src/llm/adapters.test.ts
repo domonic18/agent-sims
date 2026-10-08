@@ -15,6 +15,7 @@ const cfg = (protocol: SlotRuntimeConfig['protocol']): SlotRuntimeConfig => ({
   baseUrl: 'https://api.example.com/v1',
   model: 'test-model',
   apiKey: 'sk-test',
+  maxTokens: null,
 });
 
 function mockFetch(status: number, body: unknown): { impl: FetchImpl; calls: Request[] } {

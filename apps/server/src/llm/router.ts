@@ -77,6 +77,7 @@ export class ModelRouter {
           baseUrl: row.baseUrl,
           model: row.model,
           apiKey,
+          maxTokens: row.maxTokens ?? null,
         };
       });
     this.persistUsage = opts.persistUsage ?? ((entry) => recordTokenUsage(handle, entry));
@@ -110,7 +111,9 @@ export class ModelRouter {
     return this.runLogged(slot, task.taskType, 'chat', async () => {
       const cfg = await this.loadConfig(slot);
       const opts = {
-        maxTokens: task.maxTokens,
+        // 槽位设置值覆盖任务值(后台可调,救思考型模型 thinking 吃光小上限);
+        // 连通探测不经 router,恒 maxTokens=1 不受影响
+        maxTokens: cfg.maxTokens ?? task.maxTokens,
         temperature: task.temperature,
         timeoutMs: env.LLM_TIMEOUT_MS,
       };

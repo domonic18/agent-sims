@@ -17,6 +17,8 @@ export const modelConfigs = pgTable('model_configs', {
   baseUrl: text('base_url').notNull().default(''),
   model: text('model').notNull().default(''),
   apiKeyEncrypted: text('api_key_encrypted'), // AES-256-GCM 密文,null=未配置
+  /** 最大输出 tokens 上限,null=用各任务内置默认(设置后覆盖该槽全部 chat 调用) */
+  maxTokens: integer('max_tokens'),
   enabled: boolean('enabled').notNull().default(false),
   lastTestedAt: timestamp('last_tested_at', { withTimezone: true }),
   lastTestStatus: text('last_test_status').$type<'success' | 'failed'>(),

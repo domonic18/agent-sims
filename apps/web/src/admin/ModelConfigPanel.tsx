@@ -7,6 +7,7 @@ import {
   Descriptions,
   Flex,
   Input,
+  InputNumber,
   Select,
   Space,
   Switch,
@@ -19,6 +20,7 @@ import {
   MODEL_PROVIDER_PRESETS,
   MODEL_SLOT_GROUPS,
   MODEL_SLOT_LABELS,
+  MODEL_SLOT_MAX_TOKENS,
   MODEL_SLOT_PROTOCOLS,
   type ModelConfigInvokeResult,
   type ModelConfigTestResult,
@@ -56,6 +58,7 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
   const [baseUrl, setBaseUrl] = useState(view.baseUrl);
   const [model, setModel] = useState(view.model);
   const [apiKey, setApiKey] = useState('');
+  const [maxTokens, setMaxTokens] = useState<number | null>(view.maxTokens);
   const [enabled, setEnabled] = useState(view.enabled);
   const [prompt, setPrompt] = useState('');
   const [saving, setSaving] = useState(false);
@@ -71,6 +74,7 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
     setProviderId('');
     setBaseUrl(view.baseUrl);
     setModel(view.model);
+    setMaxTokens(view.maxTokens);
     setEnabled(view.enabled);
     setApiKey('');
     setEditing(true);
@@ -97,6 +101,7 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
       const payload: ModelConfigUpdate = { baseUrl, model, enabled };
       if (allowedProtocols.length > 1) payload.protocol = protocol;
       if (apiKey) payload.apiKey = apiKey;
+      if (supportsMaxTokens) payload.maxTokens = maxTokens;
       onChanged(await updateModelConfig(view.slot, payload));
       setEditing(false);
       message.success(`${MODEL_SLOT_LABELS[view.slot]}配置已保存`);
@@ -136,6 +141,8 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
 
   const tag = statusTag(view);
   const isEmbedding = view.slot === 'embedding';
+  const supportsMaxTokens = view.slot in MODEL_SLOT_MAX_TOKENS;
+  const defaultMaxTokens = MODEL_SLOT_MAX_TOKENS[view.slot];
 
   return (
     <Card
@@ -192,6 +199,22 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
             </Typography.Text>
             <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" />
           </label>
+          {supportsMaxTokens && (
+            <label style={{ display: 'block' }}>
+              <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
+                最大输出 tokens(留空用内置默认)
+              </Typography.Text>
+              <InputNumber
+                value={maxTokens}
+                onChange={(v) => setMaxTokens(typeof v === 'number' ? v : null)}
+                min={1}
+                max={1_000_000}
+                precision={0}
+                style={{ width: '100%' }}
+                placeholder={`内置默认 ${defaultMaxTokens}(思考型模型建议留足余量)`}
+              />
+            </label>
+          )}
           <label style={{ display: 'block' }}>
             <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
               API Key{view.apiKeyConfigured ? `(已配置 ${view.apiKeyMasked},留空保留)` : '(未配置)'}
@@ -220,6 +243,15 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
             { key: 'protocol', label: '接入协议', children: MODEL_PROTOCOL_LABELS[view.protocol] },
             { key: 'baseUrl', label: 'Base URL', children: <MonoValue value={view.baseUrl || '(未填写)'} /> },
             { key: 'model', label: '模型名', children: <MonoValue value={view.model || '(未填写)'} /> },
+            ...(supportsMaxTokens
+              ? [
+                  {
+                    key: 'maxTokens',
+                    label: '最大输出 tokens',
+                    children: view.maxTokens ?? `内置默认 ${defaultMaxTokens}`,
+                  },
+                ]
+              : []),
             { key: 'apiKey', label: 'API Key', children: <MonoValue value={view.apiKeyConfigured ? view.apiKeyMasked : '未配置'} /> },
             {
               key: 'lastTest',
