@@ -101,8 +101,11 @@ react 产出的 Intent 走意图执行层(stale 重验+全量校验链),回执�
 
 ### 4.5 固化(consolidation)
 
-- **反思(reflection)**: 记忆流 importance 累计 ≥ 阈值(150)→ 慢思考对近期高重要度记忆归纳,产出 insight 条目写回记忆流(importance 由慢思考给定,通常高于原始事件)
-- **梦境(dream,M5)**: 睡眠时段把当日事件重放/变形为 dream 条目
+> v2(2026-10-08,随 10-cognition-design C1 落地): 固化升级为**统一管线**——夜间睡眠结算与白天反思共用一次慢思考调用,产出结构化草稿(dreams/insights/relations 三段),详见 10-cognition-design §5。
+
+- **反思(reflection,固化主产物)**: 触发源两条——睡眠结算(sleep.settled,睡饱 ≥240 分钟)或 importance 累计 ≥ 阈值(150)。慢思考对源记忆池归纳,产 insight(**必须带 sources 原文引用**,无引用丢弃)与 relations(对互动者的关系印象,upsert 到 character_impressions);insight 是认知爬梯 L1→L2 的主通道
+- **梦境(dream,M5,氛围副产品)**: 同一次慢思考的 dreams 段(≤3 条),把当日事件变形为梦;定位是氛围/直播效果,不再承担认知产出
+- **单向爬梯**: 固化产物写入即打 consolidatedAt,不再进后续源记忆池——认知只能从下层(情景记忆)提炼,防 insight 喂 insight 漂移
 - **方针缓存(Talker-Reasoner 式)**: 生活方针(托管模式)由慢思考编译为快层可校验的缓存规则,方针文本变更才重编译
 
 ### 4.6 认知周期触发模型
@@ -127,6 +130,10 @@ react 产出的 Intent 走意图执行层(stale 重验+全量校验链),回执�
 | importance | int | 1~10,Jev 打分 |
 | embedding | vector(pgvector) | content 的向量化,**派生检索索引,非记忆本体** |
 | game_time | timestamptz | 记忆发生时的游戏时间 |
+| source_ids | jsonb(C1,0013) | insight 的**溯源链**——引用的情景记忆 id 数组,记忆面板可点开原文 |
+| consolidated_at | timestamptz(M5 起) | 非空=已固化,不再进源记忆池(单向爬梯) |
+
+另有 **character_impressions 表**(C1,0013 迁移): 角色对角色的关系印象(唯一约束 character_id+about_id,upsert 定点覆盖),是认知爬梯 L3 关系模型的落点。
 
 ### 5.2 写入
 
@@ -146,7 +153,7 @@ top-N(默认 8~12)作为 prompt 证据与 trace 记录。
 
 ### 5.4 固化
 
-见 §4.5: 反思产 insight,M5 睡眠产 dream。固化条目重要性由慢思考给定。
+见 §4.5(v2 统一管线): 一次慢思考产 dreams+insights+relations 三段——insight 带溯源链(source_ids 指回情景记忆),relations upsert 印象表,dream 仍写记忆流。全部成功才把源记忆打 consolidatedAt,失败静默次轮重试。固化条目重要性由慢思考给定。
 
 ### 5.5 遗忘 = 衰减,不删除
 
@@ -249,3 +256,4 @@ trace 只存元数据 + 输出摘要 + prompt 截断预览(各 ≤200 字符),�
 | 日期 | 内容 |
 |---|---|
 | 2026-10-05 | 初稿定稿: 世界运行(tick/11 意图/双来源同构/EventBus)+ 异步认知泵(不进 tick)+ 脑状态外置 + 15 分钟块 + 五模块认知周期(感知/检索/快层/执行/固化)+ 成本四级(rule 零模型/jev/light/slow)+ 记忆系统(主观经验流/三因子检索/反思固化/衰减遗忘)+ 人可见性澄清(向量≠记忆本体,content 为真相源)+ Agent 间对话 v1(一轮一对一答/封顶回落模板池)+ 可观测性(cognition_trace 全周期 trace/token_usage 关联/lab 观测面板/采样与体积控制);吸收 M4a 后架构讨论三连与用户两条补充需求 |
+| 2026-10-08 | C1 固化管线 v2 落地随更: §4.5 重写(反思升格固化主产物,夜间+白天双触发统一管线,单向爬梯红线;梦境改氛围副产品)+ §5.1 数据模型增 source_ids 溯源链与 character_impressions 印象表(0013)+ §5.4 固化描述同步;细节见 10-cognition-design §5/§10 |
