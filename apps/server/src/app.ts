@@ -11,6 +11,8 @@ import { attachSocketGateway } from './socket/gateway.js';
 import { initTechLog, logTech, whenTechLogIdle } from './telemetry.js';
 import { attachWorldEventLog } from './world/event-log.js';
 import { attachWorldParamPersist } from './world/param-persist.js';
+import { ModelRouter } from './llm/router.js';
+import { attachMemoryWriter } from './agents/memory-writer.js';
 import { Simulation } from './world/simulation.js';
 
 declare module 'fastify' {
@@ -51,6 +53,8 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   // 世界事件落库+参数存档订阅(EventBus 零 I/O,宿主侧串行链写入)
   attachWorldEventLog(handle, app.simulation.events);
   attachWorldParamPersist(handle, app.simulation.events);
+  // 记忆写入(M4b/A2):订阅同一总线,管线异步走 Jev/embedding,不阻塞 tick
+  attachMemoryWriter(app.simulation, handle, new ModelRouter(handle));
   registerAdminApi(app, handle, app.simulation);
   registerWorldEventRoutes(app, handle);
   registerWorldSettingsRoutes(app, app.simulation);

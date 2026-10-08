@@ -290,10 +290,10 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
         (c) => c.id !== spawned.id && c.x === simChar!.x && c.y === simChar!.y,
       ),
     ).toHaveLength(0);
-    // 人物落库关联活跃世界
+    // 人物落库关联活跃世界(单一 id 贯穿:sim id 即表主键)
     const rows = await handle.db.select().from(characters).where(eq(characters.worldId, world.id));
     expect(rows).toHaveLength(4);
-    const dbRow = rows.find((r) => r.persona.simId === spawned.id);
+    const dbRow = rows.find((r) => r.id === spawned.id);
     expect(dbRow?.persona).toMatchObject({ bio: '爱钓鱼', traits: { sociability: 0.9 } });
     // GET worlds 活跃世界名单实时反映运行态(动态加人立即可见)
     const listed = (

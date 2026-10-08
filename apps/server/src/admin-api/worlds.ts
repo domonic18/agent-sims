@@ -241,10 +241,6 @@ function nearestWalkable(
   return null;
 }
 
-/** 简短角色 id(模拟层 Map key/前端配色哈希种子):8 位随机十六进制 */
-function shortId(): string {
-  return randomUUID().replace(/-/g, '').slice(0, 8);
-}
 
 /**
  * 启动恢复(C4):进程重启后按 active 世界的 config.map 复原地图现场
@@ -432,7 +428,8 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
     const simIds: string[] = [];
     for (const [index, character] of config.characters.entries()) {
       const spot = spots[index]!;
-      const simId = shortId();
+      // 单一 id 贯穿:sim 内存世界与 characters 表共用同一 uuid,事件流 id 即表主键
+      const simId = randomUUID();
       simIds.push(simId);
       const created = app.simulation.spawnCharacter(
         simId,
@@ -443,12 +440,12 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       );
       try {
         await handle.db.insert(characters).values({
+          id: simId,
           tier: 'core',
           name: character.name,
           worldId: row.id,
           gender: character.gender,
           persona: {
-            simId,
             ...(character.traits ? { traits: character.traits } : {}),
             ...(character.persona ? { bio: character.persona } : {}),
             ...(character.modelSlot ? { modelSlot: character.modelSlot } : {}),
@@ -507,7 +504,7 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
     if (spot === undefined) {
       return await reply.code(500).send({ error: '无可用的出生点' });
     }
-    const simId = shortId();
+    const simId = randomUUID(); // 与表行同 id(单一 id 贯穿)
     const created = app.simulation.spawnCharacter(
       simId,
       spot.x,
@@ -517,12 +514,12 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
     );
     try {
       await handle.db.insert(characters).values({
+        id: simId,
         tier: 'core',
         name: parsed.data.name,
         worldId: row.id,
         gender: parsed.data.gender,
         persona: {
-          simId,
           ...(parsed.data.traits ? { traits: parsed.data.traits } : {}),
           ...(parsed.data.persona ? { bio: parsed.data.persona } : {}),
           ...(parsed.data.modelSlot ? { modelSlot: parsed.data.modelSlot } : {}),
