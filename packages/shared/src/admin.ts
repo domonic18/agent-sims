@@ -189,6 +189,36 @@ export interface HostingStateView {
   policyText: string | null;
 }
 
+// ============ 预置人设(后台查看/保存/LLM 随机草稿) ============
+
+/** 人设卡五字段(后台预置编辑/LLM 随机草稿/日计划注入共用,characters.persona.card 同构落库) */
+export interface PersonaCard {
+  性格: string;
+  兴趣: string;
+  目标: string;
+  说话风格: string;
+  bio: string;
+}
+
+/** GET/PUT /api/admin/characters/:id/persona——预置人设查看与保存(未编辑过时 card=null) */
+export interface PersonaView {
+  characterId: string;
+  bio: string;
+  card: PersonaCard | null;
+}
+
+/** PUT persona 请求:提供哪段写哪段(bio 直写可清空,card 整体覆盖),traits/modelSlot 不受影响 */
+export interface PersonaSaveRequest {
+  bio?: string;
+  card?: PersonaCard;
+}
+
+/** POST /api/admin/characters/:id/persona/random——LLM 随机人设草稿(仅返回不落库) */
+export interface PersonaDraft {
+  bio: string;
+  card: PersonaCard;
+}
+
 // ============ 人设访谈(M4e: LLM 动态追问 5~8 问,生成人设卡落库) ============
 
 export interface InterviewMessage {
@@ -256,6 +286,8 @@ export const ADMIN_API = {
   characterSchedule: (id: string) => `/api/admin/characters/${id}/schedule`,
   characterReplan: (id: string) => `/api/admin/characters/${id}/replan`,
   characterHosting: (id: string) => `/api/admin/characters/${id}/hosting`,
+  characterPersona: (id: string) => `/api/admin/characters/${id}/persona`,
+  characterPersonaRandom: (id: string) => `/api/admin/characters/${id}/persona/random`,
   characterInterview: (id: string) => `/api/admin/characters/${id}/interview`,
   characterInterviewAnswer: (id: string) => `/api/admin/characters/${id}/interview/answer`,
 } as const;
