@@ -1,4 +1,6 @@
 import { getActivityDefinition, RECIPES, type WorldEvent } from '@sims/shared';
+import { autonomy } from './cognition.js';
+import { perceiveTasks } from './perception.js';
 import type { DbHandle } from '../db/client.js';
 import { memories } from '../db/schema/memory.js';
 import type { ModelRouter } from '../llm/router.js';
@@ -12,7 +14,7 @@ export interface MemoryLlm {
 }
 
 /** 工作任务中文标签(events.ts workTaskIdSchema 同源,新增任务须同步) */
-const WORK_TASK_LABEL: Record<string, string> = {
+export const WORK_TASK_LABEL: Record<string, string> = {
   clean: '清扫',
   repair: '修补',
   rescue: '救援',
@@ -86,16 +88,20 @@ export class MemoryWriter {
   }
 
   private onEvent(event: WorldEvent): void {
-    const task = this.toTask(event);
-    if (task === null) return;
-    if (this.inFlight >= MAX_INFLIGHT) {
-      logTech('warn', 'memory', '记忆管线已满,丢弃新事件', { characterId: task.characterId });
-      return;
+    // 当事人经历(M4b 主线)+ 附近自治角色的旁观感知(M4c §4.1)进同一条并发管线
+    const main = this.toTask(event);
+    const perceived = perceiveTasks(event, this.sim.characters, autonomy.list());
+    const tasks: MemoryTask[] = main === null ? perceived : [main, ...perceived];
+    for (const task of tasks) {
+      if (this.inFlight >= MAX_INFLIGHT) {
+        logTech('warn', 'memory', '记忆管线已满,丢弃新事件', { characterId: task.characterId });
+        continue;
+      }
+      this.inFlight += 1;
+      void this.run(task).finally(() => {
+        this.inFlight -= 1;
+      });
     }
-    this.inFlight += 1;
-    void this.run(task).finally(() => {
-      this.inFlight -= 1;
-    });
   }
 
   private async run(task: MemoryTask): Promise<void> {
