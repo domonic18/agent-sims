@@ -219,41 +219,17 @@ export interface PersonaDraft {
   card: PersonaCard;
 }
 
-// ============ 人设访谈(M4e: LLM 动态追问 5~8 问,生成人设卡落库) ============
+// ============ 意识访谈(观察者与 agent 对话,TA 基于自身记忆/经历第一人称回答) ============
 
-export interface InterviewMessage {
+export interface MindTalkMessage {
   role: 'agent' | 'player';
   text: string;
 }
 
-/** 人设卡五字段(interview 慢槽编译产物,characters.persona.card 同构落库) */
-export interface InterviewCard {
-  性格: string;
-  兴趣: string;
-  目标: string;
-  说话风格: string;
-  bio: string;
-}
-
-export const INTERVIEW_STATUSES = ['idle', 'asking', 'compiling', 'done'] as const;
-
-export type InterviewStatus = (typeof INTERVIEW_STATUSES)[number];
-
-/** GET /api/admin/characters/:id/interview 与 POST .../answer 共用响应;
- * asking 时 question=待回答的当前问;error 非空=上轮生成失败(可重试) */
-export interface InterviewView {
+/** GET /api/admin/characters/:id/mindtalk 与 POST 共用响应(POST body={text}) */
+export interface MindTalkView {
   characterId: string;
-  status: InterviewStatus;
-  questionCount: number;
-  question: string | null;
-  messages: InterviewMessage[];
-  card: InterviewCard | null;
-  error: string | null;
-}
-
-/** POST /api/admin/characters/:id/interview/answer 请求(空/缺省=重开当前问/拉取状态) */
-export interface InterviewAnswerRequest {
-  answer?: string;
+  messages: MindTalkMessage[];
 }
 
 export const ADMIN_API = {
@@ -288,8 +264,7 @@ export const ADMIN_API = {
   characterHosting: (id: string) => `/api/admin/characters/${id}/hosting`,
   characterPersona: (id: string) => `/api/admin/characters/${id}/persona`,
   characterPersonaRandom: (id: string) => `/api/admin/characters/${id}/persona/random`,
-  characterInterview: (id: string) => `/api/admin/characters/${id}/interview`,
-  characterInterviewAnswer: (id: string) => `/api/admin/characters/${id}/interview/answer`,
+  characterMindTalk: (id: string) => `/api/admin/characters/${id}/mindtalk`,
 } as const;
 
 /** token 用量统计窗口 */

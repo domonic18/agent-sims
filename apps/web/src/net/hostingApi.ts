@@ -1,8 +1,8 @@
 /**
- * 托管/人设访谈(游戏侧,M4e):独立轻客户端直连 admin API;
+ * 托管/意识访谈(游戏侧,M4e):独立轻客户端直连 admin API;
  * 游客态未登录直接抛错(入口引导登录弹窗)。token 与后台共用 sims.admin.token。
  */
-import type { HostingStateView, InterviewView } from '@sims/shared';
+import type { HostingStateView, MindTalkView } from '@sims/shared';
 import { ADMIN_API } from '@sims/shared';
 import { getToken } from '../admin/api';
 
@@ -37,21 +37,18 @@ export async function setHosting(
   );
 }
 
-export async function getInterview(characterId: string): Promise<InterviewView> {
-  return await call<InterviewView>(
-    ADMIN_API.characterInterview(characterId),
+export async function getMindTalk(characterId: string): Promise<MindTalkView> {
+  return await call<MindTalkView>(
+    ADMIN_API.characterMindTalk(characterId),
     { method: 'GET' },
-    '访谈状态查询失败',
+    '访谈会话查询失败',
   );
 }
 
-export async function postInterviewAnswer(
-  characterId: string,
-  answer?: string,
-): Promise<InterviewView> {
-  return await call<InterviewView>(
-    ADMIN_API.characterInterviewAnswer(characterId),
-    { method: 'POST', body: JSON.stringify(answer === undefined ? {} : { answer }) },
-    '访谈请求失败',
+export async function sendMindTalk(characterId: string, text: string): Promise<MindTalkView> {
+  return await call<MindTalkView>(
+    ADMIN_API.characterMindTalk(characterId),
+    { method: 'POST', body: JSON.stringify({ text }) },
+    '访谈发送失败',
   );
 }

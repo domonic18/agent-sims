@@ -716,7 +716,7 @@
 }
 
 .hosting-policy textarea,
-.interview-input input {
+.mindtalk-input input {
   width: 100%;
   font-family: inherit;
   font-size: 12px;
@@ -728,17 +728,12 @@
   box-sizing: border-box;
 }
 
-.interview-modal {
+.mindtalk-modal {
   width: min(460px, 92vw);
 }
 
-.interview-count {
-  color: var(--px-gold, #f5c542);
-  margin-left: 6px;
-}
-
-.interview-log {
-  max-height: 260px;
+.mindtalk-log {
+  max-height: 300px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -746,7 +741,7 @@
   padding: 4px 0 8px;
 }
 
-.interview-msg {
+.mindtalk-msg {
   display: flex;
   gap: 6px;
   margin: 0;
@@ -754,20 +749,16 @@
   line-height: 1.5;
 }
 
-.interview-msg.player {
+.mindtalk-msg.player {
   padding-left: 22px;
   color: var(--px-dim, #9aa3b2);
 }
 
-.interview-msg b {
+.mindtalk-msg b {
   font-weight: normal;
 }
 
-.interview-card p {
-  margin: 3px 0;
-}
-
-.interview-input {
+.mindtalk-input {
   display: flex;
   gap: 6px;
   margin-top: 6px;

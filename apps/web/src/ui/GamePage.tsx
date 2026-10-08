@@ -10,7 +10,7 @@ import { Toasts } from './Toasts';
 import { LoginModal } from './LoginModal';
 import { CharacterHud } from './hud/CharacterHud';
 import { HostingModal } from './hud/HostingModal';
-import { InterviewModal } from './hud/InterviewModal';
+import { MindTalkModal } from './hud/MindTalkModal';
 import { ActionBar } from './hud/ActionBar';
 import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
@@ -46,7 +46,7 @@ export default function GamePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [hostingOpenId, setHostingOpenId] = useState<string | null>(null);
-  const [interviewOpenId, setInterviewOpenId] = useState<string | null>(null);
+  const [mindTalkOpenId, setMindTalkOpenId] = useState<string | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
   // 弹窗打开前世界在运行则自动暂停,关闭时恢复(若期间被他人恢复则不双写)
   const resumeOnCloseRef = useRef(false);
@@ -153,16 +153,16 @@ export default function GamePage() {
             setLoginOpen(true);
             return;
           }
-          setInterviewOpenId(null);
+          setMindTalkOpenId(null);
           setHostingOpenId(id);
         }}
-        onInterview={(id) => {
+        onMindTalk={(id) => {
           if (!isAdmin) {
             setLoginOpen(true);
             return;
           }
           setHostingOpenId(null);
-          setInterviewOpenId(id);
+          setMindTalkOpenId(id);
         }}
       />
 
@@ -269,11 +269,11 @@ export default function GamePage() {
           onClose={() => setHostingOpenId(null)}
         />
       )}
-      {interviewOpenId !== null && (
-        <InterviewModal
-          characterId={interviewOpenId}
-          characterName={snapshot?.characters.find((item) => item.id === interviewOpenId)?.name ?? '居民'}
-          onClose={() => setInterviewOpenId(null)}
+      {mindTalkOpenId !== null && (
+        <MindTalkModal
+          characterId={mindTalkOpenId}
+          characterName={snapshot?.characters.find((item) => item.id === mindTalkOpenId)?.name ?? '居民'}
+          onClose={() => setMindTalkOpenId(null)}
         />
       )}
 

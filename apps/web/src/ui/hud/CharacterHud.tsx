@@ -33,10 +33,10 @@ function VitalBar({
 /** 左上角色面板(UI-1): ‹›切换角色,选中谁显示谁;体力/健康/得分/徽标/行动/住房;可收起为头行免遮挡 */
 export function CharacterHud({
   onHosting,
-  onInterview,
+  onMindTalk,
 }: {
   onHosting?: (characterId: string) => void;
-  onInterview?: (characterId: string) => void;
+  onMindTalk?: (characterId: string) => void;
 }) {
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
@@ -181,10 +181,10 @@ export function CharacterHud({
           <button
             type="button"
             className="px-btn"
-            title="对话式访谈,生成人设卡影响 TA 的生活方式"
-            onClick={() => onInterview?.(character.id)}
+            title="和 TA 聊聊——TA 基于自己的记忆与经历第一人称回答"
+            onClick={() => onMindTalk?.(character.id)}
           >
-            🗣 人设访谈
+            🗣 意识访谈
           </button>
         </div>
           </>
