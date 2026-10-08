@@ -24,6 +24,9 @@ import {
   type ModelConfigView,
   type ModelSlot,
   type MemoryPanelResponse,
+  type PersonaDraft,
+  type PersonaSaveRequest,
+  type PersonaView,
   type TechLogEntriesResponse,
   type TokenUsageEntriesResponse,
   type TokenUsageSummary,
@@ -307,6 +310,28 @@ export async function fetchCharacterSchedule(characterId: string): Promise<Chara
 
 export async function replanCharacter(characterId: string): Promise<void> {
   await adminFetch(ADMIN_API.characterReplan(characterId), { method: 'POST' });
+}
+
+// ============ 预置人设(M4e 观察者版:lab 查看/编辑/LLM 随机草稿) ============
+
+export async function fetchPersona(characterId: string): Promise<PersonaView> {
+  return await adminFetch<PersonaView>(ADMIN_API.characterPersona(characterId));
+}
+
+export async function putPersona(
+  characterId: string,
+  payload: PersonaSaveRequest,
+): Promise<PersonaView> {
+  return await adminFetch<PersonaView>(ADMIN_API.characterPersona(characterId), {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function randomPersonaDraft(characterId: string): Promise<PersonaDraft> {
+  return await adminFetch<PersonaDraft>(ADMIN_API.characterPersonaRandom(characterId), {
+    method: 'POST',
+  });
 }
 
 // ============ 素材管理(M-L.2) ============

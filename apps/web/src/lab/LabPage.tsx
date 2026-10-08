@@ -10,6 +10,7 @@ import {
   type CharacterScheduleView,
   type Gender,
   type MemoryPanelResponse,
+  type PersonaCard,
   type WorldArchiveView,
 } from '@sims/shared';
 import {
@@ -18,14 +19,18 @@ import {
   fetchCharacterAutonomy,
   fetchCharacterMemories,
   fetchCharacterSchedule,
+  fetchPersona,
   fetchWorldArchives,
   fetchWorlds,
   getToken,
   loadWorldArchive,
+  putPersona,
+  randomPersonaDraft,
   replanCharacter,
   saveWorldArchive,
   setCharacterAutonomy,
 } from '../admin/api';
+import { getHosting } from '../net/hostingApi';
 import {
   debugSpawn,
   debugTick,
@@ -55,6 +60,14 @@ const SCHEDULE_STATUS_LABELS: Record<CharacterScheduleBlockStatus, string> = {
 };
 
 type CharacterScheduleBlockStatus = CharacterScheduleView['blocks'][number]['status'];
+
+const EMPTY_PERSONA_CARD: PersonaCard = {
+  性格: '',
+  兴趣: '',
+  目标: '',
+  说话风格: '',
+  bio: '',
+};
 
 function blockRange(startMin: number, endMin: number): string {
   const hhmm = (m: number): string =>
@@ -106,6 +119,11 @@ export default function LabPage() {
   const [autonomyOn, setAutonomyOn] = useState<boolean | null>(null);
   // 日程面板(M4d):与记忆面板共享角色选择;5s 轮询看块状态翻转
   const [scheduleData, setScheduleData] = useState<CharacterScheduleView | null>(null);
+  // 人设面板(M4e 观察者版):bio+card 编辑/随机草稿;共享记忆面板角色选择
+  const [personaBio, setPersonaBio] = useState('');
+  const [personaCard, setPersonaCard] = useState<PersonaCard>(EMPTY_PERSONA_CARD);
+  const [personaReady, setPersonaReady] = useState(false);
+  const [personaBusy, setPersonaBusy] = useState<'save' | 'random' | null>(null);
   const nextLogIdRef = useRef(1);
   const spawnCountRef = useRef(0);
 
@@ -369,6 +387,61 @@ export default function LabPage() {
       setScheduleData(null);
     } catch (error) {
       setAdminMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  // 人设面板:随角色切换拉取回填表单(404 等错误保持空白,保存时透出)
+  useEffect(() => {
+    if (!adminAvailable || memCharId === '') return;
+    let alive = true;
+    setPersonaReady(false);
+    fetchPersona(memCharId)
+      .then((view) => {
+        if (!alive) return;
+        setPersonaBio(view.bio);
+        setPersonaCard(view.card ?? EMPTY_PERSONA_CARD);
+        setPersonaReady(true);
+      })
+      .catch(() => {
+        if (alive) setPersonaReady(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [adminAvailable, memCharId]);
+
+  const randomizePersona = async (): Promise<void> => {
+    if (memCharId === '' || personaBusy !== null) return;
+    setPersonaBusy('random');
+    try {
+      const draft = await randomPersonaDraft(memCharId);
+      setPersonaBio(draft.bio);
+      setPersonaCard(draft.card);
+      setAdminMsg('已生成随机人设草稿(未落库),确认后点保存');
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPersonaBusy(null);
+    }
+  };
+
+  const savePersonaForm = async (): Promise<void> => {
+    if (memCharId === '' || personaBusy !== null) return;
+    setPersonaBusy('save');
+    try {
+      const view = await putPersona(memCharId, { bio: personaBio, card: personaCard });
+      setPersonaBio(view.bio);
+      setPersonaCard(view.card ?? EMPTY_PERSONA_CARD);
+      const name = snapshot?.characters.find((c) => c.id === memCharId)?.name ?? '角色';
+      // 托管中的角色保存即清日程,泵按新人设重规划(服务端行为,这里只做提示)
+      const hosted = await getHosting(memCharId)
+        .then((h) => h.hosted)
+        .catch(() => false);
+      setAdminMsg(`${name} 人设已保存${hosted ? '(托管中:日程已清,泵将按新人设重规划)' : ''}`);
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPersonaBusy(null);
     }
   };
 
@@ -724,6 +797,66 @@ export default function LabPage() {
                       </li>
                     ))}
                   </ul>
+                )}
+
+                <h3 style={{ marginTop: 14 }}>管理员 · 预置人设</h3>
+                {!personaReady ? (
+                  <p className="hint">人设加载中…</p>
+                ) : (
+                  <>
+                    <textarea
+                      className="lab-input lab-persona-bio"
+                      placeholder="bio · 人物小传(2~3 句)"
+                      maxLength={500}
+                      value={personaBio}
+                      onChange={(e) => setPersonaBio(e.target.value)}
+                    />
+                    <div className="lab-persona-grid">
+                      {(['性格', '兴趣', '目标', '说话风格'] as const).map((field) => (
+                        <label key={field} className="lab-persona-field">
+                          <span>{field}</span>
+                          <input
+                            className="lab-input"
+                            maxLength={200}
+                            value={personaCard[field]}
+                            onChange={(e) =>
+                              setPersonaCard((prev) => ({ ...prev, [field]: e.target.value }))
+                            }
+                          />
+                        </label>
+                      ))}
+                      <label className="lab-persona-field lab-persona-wide">
+                        <span>小传</span>
+                        <input
+                          className="lab-input"
+                          maxLength={500}
+                          value={personaCard.bio}
+                          onChange={(e) =>
+                            setPersonaCard((prev) => ({ ...prev, bio: e.target.value }))
+                          }
+                        />
+                      </label>
+                    </div>
+                    <div className="lab-btn-row" style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="px-btn"
+                        disabled={memCharId === '' || personaBusy !== null}
+                        onClick={() => void randomizePersona()}
+                      >
+                        {personaBusy === 'random' ? '生成中…' : '🎲 随机生成'}
+                      </button>
+                      <button
+                        type="button"
+                        className="px-btn"
+                        disabled={memCharId === '' || personaBusy !== null}
+                        onClick={() => void savePersonaForm()}
+                      >
+                        {personaBusy === 'save' ? '保存中…' : '💾 保存人设'}
+                      </button>
+                    </div>
+                    <p className="hint">随机草稿只填表不落库;保存后影响 TA 的日程规划、决策与访谈口吻。</p>
+                  </>
                 )}
               </div>
             </div>

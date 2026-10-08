@@ -433,3 +433,36 @@
   margin: 4px 0 0;
   font-size: 12px;
 }
+
+/* ---- 管理员 · 预置人设(M4e 观察者版) ---- */
+.lab-persona-bio {
+  width: 100%;
+  min-height: 44px;
+  resize: vertical;
+  margin-top: 6px;
+  box-sizing: border-box;
+  flex: none;
+}
+
+.lab-persona-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.lab-persona-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--px-dim);
+}
+
+.lab-persona-field .lab-input {
+  flex: 1;
+}
+
+.lab-persona-wide {
+  grid-column: 1 / -1;
+}
