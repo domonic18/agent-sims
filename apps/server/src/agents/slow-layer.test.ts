@@ -3,6 +3,7 @@ import type { DbHandle } from '../db/client.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { MemoryLlm } from './memory-writer.js';
 import {
+  compilePersonaPolicy,
   DEFAULT_PLAN_TEMPLATE,
   parseDayPlan,
   parsePolicy,
@@ -263,5 +264,82 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     const plain = llmStub({ chatReject: true });
     const noCtx = await planDay(plain.llm, plain.handle, char({}), { day: DAY, gameMinutes: 500 });
     expect(noCtx.blocks).toEqual([...DEFAULT_PLAN_TEMPLATE]);
+  });
+
+  it('full 托管(无方针)有人设→自动编译人格偏好进 prompt;persona 未变走缓存,变了重编', async () => {
+    const chats: string[] = [];
+    let personaPolicyCalls = 0;
+    const llm: MemoryLlm = {
+      systemOne: () => Promise.reject(new Error('unused')) as never,
+      embed: () => Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 }),
+      chat: (_slot, messages, task) => {
+        const isPolicy = task?.taskType === 'agent.persona_policy';
+        if (isPolicy) personaPolicyCalls += 1;
+        chats.push(messages[messages.length - 1]!.content);
+        return Promise.resolve({
+          content: isPolicy
+            ? '{"focus":["study","sleep"],"avoid":["stroll"]}'
+            : '[{"start":8,"end":12,"activity":"study"}]',
+          promptTokens: 10,
+          completionTokens: 10,
+        });
+      },
+    };
+    const handle = {
+      db: { select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }) },
+    } as unknown as DbHandle;
+    const persona = '性格: 内向勤奋;目标: 攒钱买房';
+    const plan = await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona });
+    expect(plan.source).toBe('llm');
+    expect(personaPolicyCalls).toBe(1);
+    expect(chats[chats.length - 1]).toContain('以下活动是人设重点: study,请优先安排');
+    expect(chats[chats.length - 1]).toContain('禁止安排: stroll');
+    // persona 文本未变→第二次计划直接命中缓存,不再调编译
+    await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona });
+    expect(personaPolicyCalls).toBe(1);
+    // persona 变了(C5 叙事更新场景)→重编译
+    await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona: '性格: 外向爱热闹' });
+    expect(personaPolicyCalls).toBe(2);
+  });
+
+  it('有玩家方针时不做人格编译(方针优先,不混入人设偏好)', async () => {
+    let personaPolicyCalls = 0;
+    const llm: MemoryLlm = {
+      systemOne: () => Promise.reject(new Error('unused')) as never,
+      embed: () => Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 }),
+      chat: (_slot, _messages, task) => {
+        if (task?.taskType === 'agent.persona_policy') personaPolicyCalls += 1;
+        return Promise.resolve({
+          content: '[{"start":8,"end":12,"activity":"study"}]',
+          promptTokens: 10,
+          completionTokens: 10,
+        });
+      },
+    };
+    const handle = {
+      db: { select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }) },
+    } as unknown as DbHandle;
+    const plan = await planDay(
+      llm,
+      handle,
+      char({}),
+      { day: DAY, gameMinutes: 500 },
+      { policyText: '专心打工攒钱', persona: '性格: 内向勤奋' },
+    );
+    expect(plan.source).toBe('llm');
+    expect(personaPolicyCalls).toBe(0);
+  });
+});
+
+describe('compilePersonaPolicy(人设→偏好编译)', () => {
+  it('正常输出→过白名单逐个过滤;slow 槽不可用→null 不外抛', async () => {
+    const s = llmStub({ chatContent: '{"focus":["study","sleep","bogus"],"avoid":["stroll"]}' });
+    expect(await compilePersonaPolicy(s.llm, '性格: 内向,喜欢读书')).toEqual({
+      focus: ['study'],
+      avoid: ['stroll'],
+    });
+    expect(s.chatMessages[1]!.content).toContain('人设: 性格: 内向,喜欢读书');
+    const bad = llmStub({ chatReject: true });
+    expect(await compilePersonaPolicy(bad.llm, '性格: 内向')).toBeNull();
   });
 });

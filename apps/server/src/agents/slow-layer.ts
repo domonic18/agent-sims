@@ -53,7 +53,8 @@ function pickFlavor(): string {
   return PLAN_FLAVORS[Math.floor(Math.random() * PLAN_FLAVORS.length)]!;
 }
 
-/** 计划生成上下文(M4e):生活方针(原文+编译缓存)与人设卡,均可缺省 */
+/** 计划生成上下文(M4e):生活方针(原文+编译缓存)与人设卡,均可缺省
+ * (full 托管无玩家方针时,planDay 会从人设自动编译 focus/avoid 偏好并缓存) */
 export interface PlanContext {
   policyText?: string;
   compiled?: CompiledPolicy | null;
@@ -87,6 +88,42 @@ export async function compilePolicy(
         },
       ],
       { taskType: 'agent.policy_compile' },
+    );
+    return parsePolicy(result.content);
+  } catch {
+    return null;
+  }
+}
+
+/** 人设偏好缓存(full 托管):persona 文本为键,文本未变不重编;编译失败不缓存(次日计划再试) */
+const personaPolicies = new Map<string, { key: string; compiled: CompiledPolicy }>();
+
+/** 人设偏好编译(slow 槽):人格卡→活动偏好集,full 托管(无玩家方针)时提供差异化计划倾向。
+ * 解析失败/调用失败返回 null(当天只用原文人设,不缓存) */
+export async function compilePersonaPolicy(
+  llm: MemoryLlm,
+  persona: string,
+  characterId?: string,
+): Promise<CompiledPolicy | null> {
+  try {
+    const result = await llm.chat(
+      'slow',
+      [
+        {
+          role: 'system',
+          content: '你把角色的人设编译为结构化活动偏好。只输出 JSON,不要解释。',
+        },
+        {
+          role: 'user',
+          content: [
+            `人设: ${persona}`,
+            `可选活动: ${ACTIVITY_MENU}。`,
+            '只输出 JSON 对象: {"focus":["activityId",...],"avoid":["activityId",...]}。',
+            'focus=这个人设会喜欢/常做的活动,avoid=这个人设不爱做/会回避的活动;都可为空数组,只准用可选活动里的 id,没有把握就留空。',
+          ].join('\n'),
+        },
+      ],
+      { taskType: 'agent.persona_policy', characterId },
     );
     return parsePolicy(result.content);
   } catch {
@@ -244,13 +281,15 @@ function buildPlanMessages(
   contextLines.push(`今日风味提示: ${pickFlavor()}。`);
   if (typeof ctx?.policyText === 'string' && ctx.policyText.trim() !== '') {
     contextLines.push(`玩家给你的生活方针: ${ctx.policyText.trim()}`);
-    if (ctx.compiled !== null && ctx.compiled !== undefined) {
-      if (ctx.compiled.avoid.length > 0) {
-        contextLines.push(`以下活动被方针明确排斥,禁止安排: ${ctx.compiled.avoid.join('、')}。`);
-      }
-      if (ctx.compiled.focus.length > 0) {
-        contextLines.push(`以下活动是方针重点: ${ctx.compiled.focus.join('、')},请优先安排。`);
-      }
+  }
+  if (ctx?.compiled !== null && ctx?.compiled !== undefined) {
+    // compiled 来源两途:玩家方针编译,或 full 托管下的人设偏好
+    const basis = typeof ctx.policyText === 'string' && ctx.policyText.trim() !== '' ? '方针' : '人设';
+    if (ctx.compiled.avoid.length > 0) {
+      contextLines.push(`以下活动被${basis}明确排斥,禁止安排: ${ctx.compiled.avoid.join('、')}。`);
+    }
+    if (ctx.compiled.focus.length > 0) {
+      contextLines.push(`以下活动是${basis}重点: ${ctx.compiled.focus.join('、')},请优先安排。`);
     }
   }
   return [
@@ -308,6 +347,7 @@ function applyAvoid(blocks: PlanBlock[], avoid: readonly string[]): PlanBlock[] 
  * 慢层日计划(agent-design §4.3 slow):检索记忆证据(top-6)→ slow 槽 chat
  * 生成当日作息(JSON,白名单活动)→解析失败/调用失败回落通用模板。
  * M4e: ctx 注入方针(原文+编译缓存)与人设;avoid 对 LLM 输出与回落模板都硬过滤。
+ * full 托管(无玩家方针)有人设时,先经慢槽编译人格偏好(按 persona 文本缓存)注入。
  * 纯生成器,不写脑状态不落库——装配与时序归调度泵(M4d-C2)。
  */
 export async function planDay(
@@ -318,11 +358,22 @@ export async function planDay(
   ctx?: PlanContext,
 ): Promise<DayPlan> {
   const evidence = await loadEvidence(llm, handle, char, clock.gameMinutes);
-  const avoid = ctx?.compiled?.avoid ?? [];
+  let compiled = ctx?.compiled ?? null;
+  if (compiled === null && (ctx?.policyText === undefined || ctx.policyText.trim() === '')) {
+    const persona = ctx?.persona;
+    if (typeof persona === 'string' && persona.trim() !== '') {
+      const cached = personaPolicies.get(char.id);
+      compiled = cached !== undefined && cached.key === persona
+        ? cached.compiled
+        : await compilePersonaPolicy(llm, persona, char.id);
+      if (compiled !== null) personaPolicies.set(char.id, { key: persona, compiled });
+    }
+  }
+  const avoid = compiled?.avoid ?? [];
   try {
     const result = await llm.chat(
       'slow',
-      buildPlanMessages(char, evidence, clock.day, ctx),
+      buildPlanMessages(char, evidence, clock.day, { ...ctx, compiled }),
       { taskType: 'agent.day_plan', characterId: char.id, temperature: 0.9 },
     );
     const blocks = parseDayPlan(result.content);

@@ -621,6 +621,7 @@ export class AgentScheduler {
           policyText: state?.policyText ?? undefined,
           compiled: state?.compiled ?? null,
           persona,
+          previous: schedule.get(char.id) ?? null,
         }),
       )
       .then((plan) => {
