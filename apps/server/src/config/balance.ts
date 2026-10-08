@@ -68,6 +68,14 @@ export interface BalanceConfig {
   REFLECTION_IMPORTANCE_THRESHOLD: number;
   /** 情绪半衰期(10-cognition §4.4): valence 冲量按 0.5^(经历游戏分钟/该值) 衰减,4 游戏时减半 */
   MOOD_HALF_LIFE_MINUTES: number;
+  /** 事件强度门(10-cognition §7.1 ②③): importance≥STRONG 才可能打断忙碌角色
+   * (空闲低强度走既有 rule→plan 管线);low 容忍度活动仅 importance≥DECISIVE 才评估 */
+  EVENT_RESPONSE_STRONG: number;
+  EVENT_RESPONSE_DECISIVE: number;
+  /** 事件响应预算(10-cognition §7.1): 每角色每日中断评估(⑤ systemOne)次数上限+评估冷却+defer 队列保鲜期 */
+  EVENT_RESPONSE_DAILY_BUDGET: number;
+  EVENT_RESPONSE_COOLDOWN_MINUTES: number;
+  EVENT_RESPONSE_DEFER_FRESH_MINUTES: number;
   SLEEP_DEBT_MULTIPLIER: number;
   /** 累倒苏醒扣分(numerical §2.3/§2.5): growth 送医窗口超时苏醒 score ×= (1 - 该值);救治免扣 */
   SCORE_WAKE_DEDUCTION: number;
@@ -129,6 +137,11 @@ export const BALANCE: BalanceConfig = {
   SLEEP_MIN_MINUTES: 240,
   REFLECTION_IMPORTANCE_THRESHOLD: 150,
   MOOD_HALF_LIFE_MINUTES: 240,
+  EVENT_RESPONSE_STRONG: 6,
+  EVENT_RESPONSE_DECISIVE: 8,
+  EVENT_RESPONSE_DAILY_BUDGET: 4,
+  EVENT_RESPONSE_COOLDOWN_MINUTES: 30,
+  EVENT_RESPONSE_DEFER_FRESH_MINUTES: 60,
   SLEEP_DEBT_MULTIPLIER: 0.7,
   SCORE_WAKE_DEDUCTION: 0.2,
   SURVIVAL_HUNGER_ENERGY_LINE: 20,

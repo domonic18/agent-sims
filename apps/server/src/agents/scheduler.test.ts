@@ -5,7 +5,7 @@ import { autonomy, schedule } from './cognition.js';
 import type { DbHandle } from '../db/client.js';
 import type { runIntent } from '../intents/execute.js';
 import type { Simulation } from '../world/simulation.js';
-import type { WorldCharacter } from '../world/character.js';
+import type { CharacterActivity, WorldCharacter } from '../world/character.js';
 import type { AgentDecisionMessage } from '@sims/shared';
 import type { MemoryLlm } from './memory-writer.js';
 import { AgentScheduler, AUTONOMY_CHECK_INTERVAL_MINUTES, JEV_COOLDOWN_MINUTES } from './scheduler.js';
@@ -47,9 +47,27 @@ interface Harness {
   jevCalls: number;
 }
 
+/** 相关叙事事件(self 视角强度 4,空闲即放行既有管线)——C3 起 world.reset 等管理面事件不进分级 */
+function chatEvent(tick: number): WorldEvent {
+  return {
+    type: 'social.chat',
+    fromId: CHAR_ID,
+    toId: 'npc-1',
+    tick,
+    content: '你好',
+    affinityDelta: 0,
+  } as WorldEvent;
+}
+
+function activity(activityId: string): CharacterActivity {
+  return { activityId, elapsed: 0, anchorKind: null, targetId: null };
+}
+
 interface HarnessOpts {
   memoryWriter?: { writeManual: (characterId: string, content: string, importance: number) => Promise<void> };
   runIntent?: typeof runIntent;
+  /** 额外世界角色(died/revived 事件的主体、救援者等,供 positionOf/距离判定) */
+  extraCharacters?: WorldCharacter[];
 }
 
 function harness(
@@ -72,7 +90,11 @@ function harness(
   const sim = {
     clock,
     map: { definition: TOWN_MAP, activityAnchors: () => [] as Array<never> },
-    characters: new Map([[worldChar.id, worldChar]]),
+    characters: new Map([
+      [worldChar.id, worldChar] as const,
+      ...(opts?.extraCharacters ?? []).map((c) => [c.id, c] as const),
+    ]),
+    socials: new Map(),
     events: {
       subscribe: (fn: (event: WorldEvent) => void) => {
         eventHandler = fn;
@@ -173,9 +195,9 @@ describe('AgentScheduler(M4c 认知泵)', () => {
     h.scheduler.dispose();
   });
 
-  it('事件驱动: rule react 直接落地不进 jev', () => {
+  it('事件驱动: 相关叙事事件放行管线,rule react 直接落地不进 jev', () => {
     const h = harness(0, char({ energy: 20, backpack: { apple: 1 } }));
-    h.onEvent({ type: 'world.reset', tick: 1 } as WorldEvent);
+    h.onEvent({ type: 'work_task.cancelled', characterId: CHAR_ID, targetId: 'spot-1', tick: 1 } as WorldEvent);
     expect(h.intents).toEqual([{ type: 'eat_item', characterId: CHAR_ID, itemId: 'apple' }]);
     expect(h.jevCalls).toBe(0);
     const react = h.traceRows.find((r) => (r.decision as { conclusion?: string }).conclusion === 'react');
@@ -193,7 +215,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
         }) as never,
     };
     const h = harness(0, char({}), llm);
-    h.onEvent({ type: 'world.reset', tick: 1 } as WorldEvent);
+    h.onEvent(chatEvent(1));
     await vi.advanceTimersByTimeAsync(0);
     expect(h.jevCalls).toBe(1);
     expect(h.intents).toEqual([
@@ -202,7 +224,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
     expect(h.bubbles[0]!.text).toContain('公园');
     // 冷却内再来事件:静默(不再调 jev、不再产意图)
     h.clock.gameMinutes += JEV_COOLDOWN_MINUTES - 1;
-    h.onEvent({ type: 'world.reset', tick: 2 } as WorldEvent);
+    h.onEvent(chatEvent(2));
     await vi.advanceTimersByTimeAsync(0);
     expect(h.jevCalls).toBe(1);
     expect(h.intents).toHaveLength(1);
@@ -211,7 +233,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
 
   it('jev 槽不可用: 回落 continue 并记一条 jev trace,不产意图不阻塞', async () => {
     const h = harness(0, char({}));
-    h.onEvent({ type: 'world.reset', tick: 1 } as WorldEvent);
+    h.onEvent(chatEvent(1));
     await vi.advanceTimersByTimeAsync(0);
     expect(h.intents).toHaveLength(0);
     expect(h.jevCalls).toBe(1);
@@ -225,11 +247,11 @@ describe('AgentScheduler(M4c 认知泵)', () => {
     autonomy.disable(CHAR_ID);
     const h = harness(0, char({ energy: 20, backpack: { apple: 1 } }));
     vi.advanceTimersByTime(4_000);
-    h.onEvent({ type: 'world.reset', tick: 1 } as WorldEvent);
+    h.onEvent(chatEvent(1));
     expect(h.intents).toHaveLength(0);
     autonomy.enable(CHAR_ID);
     h.scheduler.dispose();
-    h.onEvent({ type: 'world.reset', tick: 2 } as WorldEvent);
+    h.onEvent(chatEvent(2));
     vi.advanceTimersByTime(4_000);
     expect(h.intents).toHaveLength(0);
   });
@@ -312,6 +334,137 @@ describe('AgentScheduler(M4d 日程执行)', () => {
     expect(planReacts.length).toBe(3); // 退避吞掉 510/540 两块
     expect(h.traceRows.some((r) => (r.perception as { replan?: boolean }).replan === true)).toBe(true);
     expect(schedule.get(CHAR_ID)).toBeUndefined(); // 第 3 拒后已清,待重生成
+    h.scheduler.dispose();
+  });
+});
+
+describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    autonomy.enable(CHAR_ID);
+  });
+  afterEach(() => {
+    autonomy.disable(CHAR_ID);
+    schedule.clear(CHAR_ID);
+    vi.useRealTimers();
+  });
+
+  const respondLlm: Partial<MemoryLlm> = {
+    systemOne: () =>
+      Promise.resolve({
+        model: 'stub',
+        answers: { next: { type: 'choice', choice: 'respond', probabilities: {}, confidence: 1 } },
+      }) as never,
+  };
+  const continueLlm: Partial<MemoryLlm> = {
+    systemOne: () =>
+      Promise.resolve({
+        model: 'stub',
+        answers: { next: { type: 'choice', choice: 'continue', probabilities: {}, confidence: 1 } },
+      }) as never,
+  };
+  const diedEvent = (tick: number): WorldEvent =>
+    ({ type: 'character.died', characterId: 'other-1', tick, revivable: true }) as WorldEvent;
+
+  it('忙碌漫步中有人倒下: ⑤评估 respond→move_to 打断,被中断块退避至块末回计划', async () => {
+    const worldChar = char({ activity: activity('stroll') });
+    const h = harness(480, worldChar, respondLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
+    });
+    schedule.set(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      blocks: [
+        { startMin: 480, endMin: 720, activityId: 'stroll' },
+        { startMin: 720, endMin: 900, activityId: 'stroll' },
+      ],
+    });
+    h.onEvent(diedEvent(480));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.jevCalls).toBe(1); // ⑤ 中断评估恰好一次
+    expect(h.intents[0]).toEqual({ type: 'move_to', characterId: CHAR_ID, x: 32, y: 30 });
+    expect(h.bubbles[0]?.text).toContain('看看');
+    const react = h.traceRows.find(
+      (r) =>
+        (r.decision as { layer?: string }).layer === 'triage' &&
+        (r.decision as { conclusion?: string }).conclusion === 'react',
+    );
+    expect((react!.perception as { gate?: string }).gate).toBe('pass_assess');
+    // 回计划:块末 720 前日程静默,块末起下一块自然衔接
+    worldChar.activity = null;
+    h.clock.gameMinutes = 705;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(1);
+    h.clock.gameMinutes = 720;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(2);
+    h.scheduler.dispose();
+  });
+
+  it('评估 continue: 不产意图,trace 记一行 assess=continue', async () => {
+    const h = harness(480, char({ activity: activity('stroll') }), continueLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
+    });
+    h.onEvent(diedEvent(480));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.intents).toHaveLength(0);
+    const row = h.traceRows.find((r) => (r.perception as { assess?: string }).assess === 'continue');
+    expect(row).toBeDefined();
+    expect((row!.decision as { conclusion: string }).conclusion).toBe('continue');
+    h.scheduler.dispose();
+  });
+
+  it('预算护栏: 同事件去重+30 分冷却+日 4 次上限,超限不再烧模型', async () => {
+    const h = harness(480, char({ activity: activity('stroll') }), respondLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
+    });
+    for (let i = 0; i < 4; i += 1) {
+      h.onEvent(diedEvent(480 + i));
+      await vi.advanceTimersByTimeAsync(0);
+      h.clock.gameMinutes += 30; // 跨出冷却窗口
+    }
+    expect(h.jevCalls).toBe(4);
+    h.onEvent(diedEvent(480)); // 同事件键:去重
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.jevCalls).toBe(4);
+    h.onEvent(diedEvent(600)); // 新事件:日预算已耗尽
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.jevCalls).toBe(4);
+    h.scheduler.dispose();
+  });
+
+  it('睡眠不可打断: died 排事后处理,空闲后巡检补执行 move_to', async () => {
+    const worldChar = char({ activity: activity('sleep') });
+    const h = harness(480, worldChar, respondLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 33, y: 30 })],
+    });
+    h.onEvent(diedEvent(480));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.jevCalls).toBe(0); // 容忍度 none:不评估不打断
+    expect(h.intents).toHaveLength(0);
+    worldChar.activity = null;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 33, y: 30 }]);
+    expect(h.bubbles[0]?.text).toContain('看看');
+    h.scheduler.dispose();
+  });
+
+  it('获救道谢: 台账由 accepted 喂,复活即当面对救者说固定台词(零模型不打断)', () => {
+    const h = harness(480, char({}), undefined, {
+      extraCharacters: [char({ id: 'rescuer-1', name: '阿泽', x: 31, y: 30 })],
+    });
+    h.onEvent({
+      type: 'work_task.accepted',
+      characterId: 'rescuer-1',
+      targetId: CHAR_ID,
+      task: 'rescue',
+      tick: 479,
+    } as WorldEvent);
+    h.onEvent({ type: 'character.revived', characterId: CHAR_ID, tick: 480 } as WorldEvent);
+    expect(h.jevCalls).toBe(0);
+    expect(h.intents).toEqual([
+      { type: 'chat', characterId: CHAR_ID, targetId: 'rescuer-1', line: '多谢相救！' },
+    ]);
     h.scheduler.dispose();
   });
 });

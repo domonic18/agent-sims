@@ -20,8 +20,8 @@ export interface TraceCall {
 }
 
 export interface TraceDecision {
-  /** 判定层级: rule=数值压力 | plan=日程执行 | jev=微决策 | light/slow=慢思考 */
-  layer: 'rule' | 'plan' | 'jev' | 'light' | 'slow';
+  /** 判定层级: rule=数值压力 | plan=日程执行 | jev=微决策 | triage=事件分级门 | light/slow=慢思考 */
+  layer: 'rule' | 'plan' | 'jev' | 'triage' | 'light' | 'slow';
   /** continue | react */
   conclusion: 'continue' | 'react';
   /** react 时的意图摘要(如 "move_to 23,25") */

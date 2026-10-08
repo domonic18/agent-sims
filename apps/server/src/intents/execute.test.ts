@@ -135,6 +135,21 @@ describe('executeIntent 意图执行', () => {
     ).toThrow(/距离太远/);
   });
 
+  it('chat 自定义台词(C3): line 透传回执,超 80 字协议拒绝', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('jev', 8, 12);
+    sim.spawnCharacter('mia', 9, 12);
+    const chatted = executeIntent(
+      sim,
+      chatIntentSchema.parse({ type: 'chat', characterId: 'jev', targetId: 'mia', line: '多谢相救！' }),
+    );
+    expect(chatted.ok).toBe(true);
+    expect(chatted.message).toContain('多谢相救！');
+    expect(() =>
+      chatIntentSchema.parse({ type: 'chat', characterId: 'jev', targetId: 'mia', line: '啊'.repeat(81) }),
+    ).toThrow();
+  });
+
   it('世界规则关闭聊天(M5): chat 返回 ok=false 且不产生社交关系', () => {
     const sim = new Simulation();
     sim.spawnCharacter('jev', 8, 12);

@@ -44,8 +44,8 @@ export function perceiveTasks(
   return tasks;
 }
 
-/** 事件当事人 id 列表(感知位置基准,取首个在世界的当事人) */
-function eventSubjects(event: WorldEvent): string[] {
+/** 事件当事人 id 列表(triage 相关性门与感知位置共用;取首个在世界的当事人) */
+export function eventSubjects(event: WorldEvent): string[] {
   switch (event.type) {
     case 'activity.started':
     case 'activity.finished':
@@ -53,6 +53,7 @@ function eventSubjects(event: WorldEvent): string[] {
     case 'character.revived':
     case 'character.auto_revived':
     case 'work_task.accepted':
+    case 'work_task.cancelled':
     case 'work_task.completed':
     case 'craft.completed':
       return [event.characterId];

@@ -94,7 +94,7 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       if (!sim.rules.allowChat) {
         return { ok: false, message: '世界规则:角色聊天已关闭' };
       }
-      const content = sim.requestChat(intent.characterId, intent.targetId);
+      const content = sim.requestChat(intent.characterId, intent.targetId, intent.line);
       const from = sim.character(intent.characterId);
       const to = sim.character(intent.targetId);
       return { ok: true, message: `${from.name} 对 ${to.name} 说:「${content}」` };

@@ -65,9 +65,10 @@ export function randomTraits(): TraitVector {
  * 闲聊(social-design §3.1):双方须存活、非同一人、同处一地
  * (曼哈顿 ≤ SOCIAL_CHAT_DISTANCE);收益=基础×当日递减×相性系数,
  * 每游戏日超过 CHAT_DAILY_GAINED 次后不拒绝但收益为 0(对话照常)。
+ * line 缺省走模板池;调用方可指定具体台词(事件响应道谢等)。
  * 返回聊天语(回执展示用)。
  */
-export function chat(sim: Simulation, fromId: string, toId: string): string {
+export function chat(sim: Simulation, fromId: string, toId: string, line?: string): string {
   const from = sim.character(fromId);
   const to = sim.character(toId);
   if (fromId === toId) {
@@ -99,7 +100,7 @@ export function chat(sim: Simulation, fromId: string, toId: string): string {
   from.score += scoreGain;
   to.score += scoreGain;
 
-  const content = pickChatLine(forward.familiarity);
+  const content = line ?? pickChatLine(forward.familiarity);
   const event: SocialChatEvent = {
     type: 'social.chat',
     fromId,

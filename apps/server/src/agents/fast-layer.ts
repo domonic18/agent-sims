@@ -17,7 +17,7 @@ import type { MemoryLlm } from './memory-writer.js';
 
 /** 快层判定输出(agent-design §4.3):continue=当前行为仍有效零模型;react=产出一个意图交执行 */
 export interface Decision {
-  layer: 'rule' | 'plan' | 'jev';
+  layer: 'rule' | 'plan' | 'jev' | 'triage';
   action: 'continue' | 'react';
   intent?: Intent;
   /** react 时的决策气泡文案(意图+理由模板) */
