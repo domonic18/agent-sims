@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm';
-import type { ModelSlot } from '@sims/shared';
+import { MODEL_SLOT_MAX_TOKENS, type ModelSlot } from '@sims/shared';
 import type { DbHandle } from '../db/client.js';
 import { modelConfigs } from '../db/schema/index.js';
 import { decryptSecret } from '../utils/crypto.js';
@@ -110,28 +110,49 @@ export class ModelRouter {
   async chat(slot: ModelSlot, messages: LlmMessage[], task: ChatTask): Promise<LlmChatResult> {
     return this.runLogged(slot, task.taskType, 'chat', async () => {
       const cfg = await this.loadConfig(slot);
-      const opts = {
-        // 槽位设置值覆盖任务值(后台可调,救思考型模型 thinking 吃光小上限);
+      const baseMax =
+        // 槽位设置值覆盖任务值覆盖内置默认(后台可调,救思考型模型 thinking 吃光小上限);
         // 连通探测不经 router,恒 maxTokens=1 不受影响
-        maxTokens: cfg.maxTokens ?? task.maxTokens,
-        temperature: task.temperature,
-        timeoutMs: env.LLM_TIMEOUT_MS,
+        cfg.maxTokens ?? task.maxTokens ?? MODEL_SLOT_MAX_TOKENS[slot] ?? null;
+      const call = async (maxTokens: number | null): Promise<LlmChatResult> => {
+        const result =
+          cfg.protocol === 'anthropic'
+            ? await chatViaAnthropic(
+                cfg,
+                messages,
+                { maxTokens: maxTokens ?? undefined, temperature: task.temperature, timeoutMs: env.LLM_TIMEOUT_MS },
+                this.fetchImpl,
+              )
+            : cfg.protocol === 'openai'
+              ? await chatViaOpenAi(
+                  cfg,
+                  messages,
+                  { maxTokens: maxTokens ?? undefined, temperature: task.temperature, timeoutMs: env.LLM_TIMEOUT_MS },
+                  this.fetchImpl,
+                )
+              : (() => {
+                  throw new LlmError(slot, `槽位 ${slot} 协议为 systemone(类型化问答),不支持对话;请用 systemOne()`);
+                })();
+        await this.persistUsage({
+          slot,
+          characterId: task.characterId ?? null,
+          taskType: task.taskType,
+          promptTokens: result.promptTokens,
+          completionTokens: result.completionTokens,
+        });
+        return result;
       };
-      const result =
-        cfg.protocol === 'anthropic'
-          ? await chatViaAnthropic(cfg, messages, opts, this.fetchImpl)
-          : cfg.protocol === 'openai'
-            ? await chatViaOpenAi(cfg, messages, opts, this.fetchImpl)
-            : (() => {
-                throw new LlmError(slot, `槽位 ${slot} 协议为 systemone(类型化问答),不支持对话;请用 systemOne()`);
-              })();
-      await this.persistUsage({
-        slot,
-        characterId: task.characterId ?? null,
-        taskType: task.taskType,
-        promptTokens: result.promptTokens,
-        completionTokens: result.completionTokens,
-      });
+      let result = await call(baseMax);
+      // 思考型模型饥饿兜底:输出撞上限且正文为空=thinking 吃光预算,加倍重试一次
+      if (baseMax !== null && result.content.trim() === '' && result.completionTokens >= baseMax) {
+        logTech('warn', 'llm', '正文为空疑似 thinking 耗尽 max_tokens,加倍上限重试一次', {
+          slot,
+          taskType: task.taskType,
+          maxTokens: baseMax,
+          completionTokens: result.completionTokens,
+        });
+        result = await call(baseMax * 2);
+      }
       return result;
     });
   }

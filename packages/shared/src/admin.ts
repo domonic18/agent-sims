@@ -88,8 +88,8 @@ export const MODEL_PROVIDER_PRESETS: readonly ModelProviderPreset[] = [
  * 仅 chat 形态槽位可设(jev systemone/embedding 协议不涉及)。
  */
 export const MODEL_SLOT_MAX_TOKENS: Partial<Record<ModelSlot, number>> = {
-  slow: 2048,
-  light: 1024,
+  slow: 8192,
+  light: 4096,
   vision: 1024,
 };
 

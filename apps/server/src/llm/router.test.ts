@@ -126,6 +126,77 @@ describe('ModelRouter.chat', () => {
     await fallback.chat('light', [{ role: 'user', content: 'q' }], { taskType: 'unit_test', maxTokens: 512 });
     expect(bodies.map((b) => b.max_tokens)).toEqual([2048, 512]);
   });
+
+  it('槽位与任务都没设时落 MODEL_SLOT_MAX_TOKENS 内置默认', async () => {
+    const bodies: Array<{ max_tokens?: number }> = [];
+    const echoFetch = (async (_url: unknown, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: '答' }],
+          usage: { input_tokens: 1, output_tokens: 1 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as FetchImpl;
+    const mk = (slot: ModelSlot) =>
+      new ModelRouter({} as never, {
+        fetchImpl: echoFetch,
+        loadConfig: async () => cfg('anthropic', slot),
+        persistUsage: async () => {},
+      });
+    await mk('slow').chat('slow', [{ role: 'user', content: 'q' }], { taskType: 'unit_test' });
+    await mk('light').chat('light', [{ role: 'user', content: 'q' }], { taskType: 'unit_test' });
+    expect(bodies.map((b) => b.max_tokens)).toEqual([8192, 4096]);
+  });
+
+  it('正文为空且输出撞上限:加倍上限重试一次,两次均记账', async () => {
+    const bodies: Array<{ max_tokens?: number }> = [];
+    const responses = [
+      { content: [{ type: 'text', text: '' }], usage: { input_tokens: 10, output_tokens: 8192 } },
+      { content: [{ type: 'text', text: '重试后出正文' }], usage: { input_tokens: 10, output_tokens: 100 } },
+    ];
+    let i = 0;
+    const seqFetch = (async (_url: unknown, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify(responses[Math.min(i++, responses.length - 1)]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as FetchImpl;
+    const persisted: TokenUsageEntry[] = [];
+    const router = new ModelRouter({} as never, {
+      fetchImpl: seqFetch,
+      loadConfig: async () => cfg('anthropic', 'slow'),
+      persistUsage: async (entry) => {
+        persisted.push(entry);
+      },
+    });
+    const result = await router.chat('slow', [{ role: 'user', content: 'q' }], { taskType: 'unit_test' });
+    expect(bodies.map((b) => b.max_tokens)).toEqual([8192, 16384]);
+    expect(result.content).toBe('重试后出正文');
+    expect(persisted).toHaveLength(2);
+    expect(persisted[1]).toMatchObject({ completionTokens: 100 });
+  });
+
+  it('正文为空但未撞上限:不重试', async () => {
+    let calls = 0;
+    const seqFetch = (async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({ content: [{ type: 'text', text: '' }], usage: { input_tokens: 5, output_tokens: 50 } }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }) as unknown as FetchImpl;
+    const router = new ModelRouter({} as never, {
+      fetchImpl: seqFetch,
+      loadConfig: async () => cfg('anthropic', 'slow'),
+      persistUsage: async () => {},
+    });
+    const result = await router.chat('slow', [{ role: 'user', content: 'q' }], { taskType: 'unit_test' });
+    expect(calls).toBe(1);
+    expect(result.content).toBe('');
+  });
 });
 
 describe('ModelRouter.systemOne', () => {
