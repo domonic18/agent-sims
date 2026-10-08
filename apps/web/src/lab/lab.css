@@ -204,6 +204,11 @@
 .lab-mem-badge.insight { background: #7ec8ff; }
 .lab-mem-badge.dream { background: #c9a6ff; }
 .lab-mem-badge.dialogue { background: #ffd27a; }
+.lab-mem-badge.impression { background: #f4a4c0; }
+
+.lab-mem-sources {
+  color: var(--px-blue);
+}
 
 .lab-memory-body {
   min-width: 0;

@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { MemoryPanelResponse } from '@sims/shared';
-import { MEMORY_TYPE_LABELS } from '@sims/shared';
-import { fetchCharacterMemories } from '../../admin/api';
+import type {
+  MemoryImpressionsResponse,
+  MemoryPanelResponse,
+  MemoryType,
+} from '@sims/shared';
+import { MEMORY_TYPES, MEMORY_TYPE_LABELS } from '@sims/shared';
+import { fetchCharacterImpressions, fetchCharacterMemories } from '../../admin/api';
 import { formatGameMinutes } from '../../format';
 
 /** 记忆查看弹窗(只读): 管理员在游戏页直接翻看 TA 的记忆流;
- * 缺省按时间倒序最近 50 条,输入检索词走三因子语义检索(命中带综合分/相关度)。 */
+ * 缺省按时间倒序最近 50 条,输入检索词走三因子语义检索(命中带综合分/相关度);
+ * 层过滤(事件/洞察/梦境/对话)+洞察溯源+关系印象区(10-cognition §3 全员人可见)。 */
 export function MemoryModal({
   characterId,
   characterName,
@@ -16,15 +21,29 @@ export function MemoryModal({
   onClose: () => void;
 }) {
   const [data, setData] = useState<MemoryPanelResponse | null>(null);
+  const [impressions, setImpressions] = useState<MemoryImpressionsResponse | null>(null);
   const [query, setQuery] = useState('');
+  const [type, setType] = useState<MemoryType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(
-    async (q: string): Promise<void> => {
+    async (q: string, t: MemoryType | null): Promise<void> => {
       setLoading(true);
       try {
-        setData(await fetchCharacterMemories(characterId, q === '' ? { limit: 50 } : { q, limit: 50 }));
+        const [panel, imp] = await Promise.all([
+          fetchCharacterMemories(
+            characterId,
+            {
+              limit: 50,
+              ...(q === '' ? {} : { q }),
+              ...(t === null ? {} : { type: t }),
+            },
+          ),
+          fetchCharacterImpressions(characterId).catch(() => null),
+        ]);
+        setData(panel);
+        if (imp !== null) setImpressions(imp);
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -36,16 +55,20 @@ export function MemoryModal({
   );
 
   useEffect(() => {
-    void load('');
+    void load('', null);
   }, [load]);
 
   const search = (): void => {
-    const q = query.trim();
-    void load(q);
+    void load(query.trim(), type);
   };
   const backToRecent = (): void => {
     setQuery('');
-    void load('');
+    setType(null);
+    void load('', null);
+  };
+  const switchType = (next: MemoryType | null): void => {
+    setType(next);
+    void load(query.trim(), next);
   };
 
   return (
@@ -57,7 +80,7 @@ export function MemoryModal({
             ✕
           </button>
         </div>
-        <p className="hint">TA 经历过的事都会记在这里;梦境是 TA 睡饱后对当天经历的回忆变形(只读)。</p>
+        <p className="hint">TA 经历过的事都会记在这里;洞察是 TA 从经历中沉淀的认知(带溯源),梦境是睡饱后的回忆变形(只读)。</p>
 
         <div className="memory-search">
           <input
@@ -76,6 +99,28 @@ export function MemoryModal({
           <button type="button" className="px-btn" disabled={loading} onClick={backToRecent}>
             ↺ 最近
           </button>
+        </div>
+
+        <div className="mem-filters">
+          <button
+            type="button"
+            className={`px-btn${type === null ? ' on' : ''}`}
+            disabled={loading}
+            onClick={() => switchType(null)}
+          >
+            全部
+          </button>
+          {MEMORY_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`px-btn${type === t ? ' on' : ''}`}
+              disabled={loading}
+              onClick={() => switchType(t)}
+            >
+              {MEMORY_TYPE_LABELS[t]}
+            </button>
+          ))}
         </div>
 
         {loading && <p className="hint">加载中…</p>}
@@ -107,10 +152,36 @@ export function MemoryModal({
                             })`
                           : ''}
                       </small>
+                      {item.sources !== undefined && item.sources.length > 0 && (
+                        <small className="mem-sources">
+                          溯源: {item.sources.join(' / ')}
+                        </small>
+                      )}
                     </div>
                   </li>
                 ))
               )}
+            </ul>
+          </>
+        )}
+
+        {impressions !== null && impressions.items.length > 0 && (
+          <>
+            <p className="hint" style={{ marginTop: 8 }}>
+              对其他人的印象({impressions.items.length} 人)
+            </p>
+            <ul className="memory-list">
+              {impressions.items.map((item) => (
+                <li key={item.aboutId} className="memory-item">
+                  <span className="mem-badge impression">印象</span>
+                  <div className="memory-body">
+                    <div>
+                      <b>{item.aboutName}</b>: {item.content}
+                    </div>
+                    <small>{formatGameMinutes(item.gameMinutes)}更新</small>
+                  </div>
+                </li>
+              ))}
             </ul>
           </>
         )}

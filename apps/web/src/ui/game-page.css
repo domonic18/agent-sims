@@ -811,6 +811,31 @@
 .mem-badge.insight { background: #7ec8ff; }
 .mem-badge.dream { background: #c9a6ff; }
 .mem-badge.dialogue { background: #ffd27a; }
+.mem-badge.impression { background: #f4a4c0; }
+
+/* 层过滤行(C1): 全部/事件/洞察/梦境/对话 */
+.mem-filters {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 6px;
+  flex-wrap: wrap;
+}
+
+.mem-filters .px-btn {
+  width: auto;
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.mem-filters .px-btn.on {
+  box-shadow: inset 0 0 0 2px var(--px-gold);
+  color: var(--px-gold);
+}
+
+/* 洞察溯源链: 引用的情景记忆原文 */
+.mem-sources {
+  color: var(--px-cyan, #7ec8ff);
+}
 
 .memory-body {
   min-width: 0;

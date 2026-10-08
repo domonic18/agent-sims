@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import {
   GENDERS,
   GENDER_LABELS,
+  MEMORY_TYPES,
   MEMORY_TYPE_LABELS,
   SYS_CONFIG_FIELDS,
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
   type CharacterScheduleView,
   type Gender,
+  type MemoryImpressionsResponse,
   type MemoryPanelResponse,
+  type MemoryType,
   type PersonaCard,
   type WorldArchiveView,
 } from '@sims/shared';
@@ -17,6 +20,7 @@ import {
   addWorldCharacter,
   deleteWorldArchive,
   fetchCharacterAutonomy,
+  fetchCharacterImpressions,
   fetchCharacterMemories,
   fetchCharacterSchedule,
   fetchPersona,
@@ -105,7 +109,9 @@ export default function LabPage() {
   // 记忆面板(M4b/A3):角色选择/检索词/响应(只读)
   const [memCharId, setMemCharId] = useState('');
   const [memQuery, setMemQuery] = useState('');
+  const [memType, setMemType] = useState<MemoryType | null>(null);
   const [memData, setMemData] = useState<MemoryPanelResponse | null>(null);
+  const [memImpressions, setMemImpressions] = useState<MemoryImpressionsResponse | null>(null);
   const [memLoading, setMemLoading] = useState(false);
   // 自治开关(M4c):null=未查询;共享记忆面板的角色选择
   const [autonomyOn, setAutonomyOn] = useState<boolean | null>(null);
@@ -295,16 +301,20 @@ export default function LabPage() {
     }
   };
 
-  const loadMemories = async (characterId: string, q: string): Promise<void> => {
+  const loadMemories = async (characterId: string, q: string, t: MemoryType | null): Promise<void> => {
     if (characterId === '') return;
     setMemLoading(true);
     try {
-      setMemData(
-        await fetchCharacterMemories(characterId, {
+      const [panel, imp] = await Promise.all([
+        fetchCharacterMemories(characterId, {
           ...(q.trim() !== '' ? { q: q.trim() } : {}),
+          ...(t === null ? {} : { type: t }),
           limit: 50,
         }),
-      );
+        fetchCharacterImpressions(characterId).catch(() => null),
+      ]);
+      setMemData(panel);
+      if (imp !== null) setMemImpressions(imp);
     } catch (error) {
       setAdminMsg(error instanceof Error ? error.message : String(error));
     } finally {
@@ -313,7 +323,12 @@ export default function LabPage() {
   };
 
   const searchMemories = async (): Promise<void> => {
-    await loadMemories(memCharId, memQuery);
+    await loadMemories(memCharId, memQuery, memType);
+  };
+
+  const switchMemType = (next: MemoryType | null): void => {
+    setMemType(next);
+    void loadMemories(memCharId, memQuery, next);
   };
 
   // 快照就绪后默认选中第一位居民;admin 通道就绪或切换角色时回退时间浏览
@@ -323,7 +338,7 @@ export default function LabPage() {
   }, [snapshot, memCharId]);
 
   useEffect(() => {
-    if (adminAvailable && memCharId !== '') void loadMemories(memCharId, '');
+    if (adminAvailable && memCharId !== '') void loadMemories(memCharId, '', null);
   }, [adminAvailable, memCharId]);
 
   // 自治状态随角色切换拉取;角色不在世界(404)按未开启处理
@@ -718,6 +733,27 @@ export default function LabPage() {
                   </button>
                 </div>
                 {memLoading && <p className="hint">加载中…</p>}
+                <div className="lab-btn-row">
+                  <button
+                    type="button"
+                    className={`px-btn${memType === null ? ' on' : ''}`}
+                    disabled={memCharId === ''}
+                    onClick={() => switchMemType(null)}
+                  >
+                    全部
+                  </button>
+                  {MEMORY_TYPES.map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      className={`px-btn${memType === t ? ' on' : ''}`}
+                      disabled={memCharId === ''}
+                      onClick={() => switchMemType(t)}
+                    >
+                      {MEMORY_TYPE_LABELS[t]}
+                    </button>
+                  ))}
+                </div>
                 {memData !== null && !memLoading && (
                   <>
                     {memData.notice !== null && <p className="lab-err">{memData.notice}</p>}
@@ -747,10 +783,35 @@ export default function LabPage() {
                                     })`
                                   : ''}
                               </small>
+                              {item.sources !== undefined && item.sources.length > 0 && (
+                                <small className="lab-mem-sources">
+                                  溯源: {item.sources.join(' / ')}
+                                </small>
+                              )}
                             </div>
                           </li>
                         ))
                       )}
+                    </ul>
+                  </>
+                )}
+                {memImpressions !== null && memImpressions.items.length > 0 && (
+                  <>
+                    <p className="hint" style={{ marginTop: 10 }}>
+                      对其他人的印象({memImpressions.items.length} 人)
+                    </p>
+                    <ul className="lab-memory-list">
+                      {memImpressions.items.map((item) => (
+                        <li key={item.aboutId} className="lab-memory-item">
+                          <span className="lab-mem-badge impression">印象</span>
+                          <div className="lab-memory-body">
+                            <div>
+                              <b>{item.aboutName}</b>: {item.content}
+                            </div>
+                            <small>{formatGameMinutes(item.gameMinutes)}更新</small>
+                          </div>
+                        </li>
+                      ))}
                     </ul>
                   </>
                 )}

@@ -24,6 +24,8 @@ import {
   type ModelConfigView,
   type ModelSlot,
   type MemoryPanelResponse,
+  type MemoryImpressionsResponse,
+  type MemoryType,
   type PersonaDraft,
   type PersonaSaveRequest,
   type PersonaView,
@@ -276,6 +278,8 @@ export interface CharacterMemoriesQuery {
   /** 检索词(缺省=按时间倒序浏览) */
   q?: string;
   limit?: number;
+  /** 层过滤(C1): 事件/洞察/梦境/对话;缺省=全部 */
+  type?: MemoryType;
 }
 
 export async function fetchCharacterMemories(
@@ -285,9 +289,19 @@ export async function fetchCharacterMemories(
   const params = new URLSearchParams();
   if (query.q !== undefined && query.q.trim() !== '') params.set('q', query.q.trim());
   if (query.limit !== undefined) params.set('limit', String(query.limit));
+  if (query.type !== undefined) params.set('type', query.type);
   const qs = params.toString();
   return await adminFetch<MemoryPanelResponse>(
     `${ADMIN_API.characterMemories(characterId)}${qs !== '' ? `?${qs}` : ''}`,
+  );
+}
+
+/** 关系印象(C1): TA 对各熟人的第一人称叙事印象(10-cognition §4.2) */
+export async function fetchCharacterImpressions(
+  characterId: string,
+): Promise<MemoryImpressionsResponse> {
+  return await adminFetch<MemoryImpressionsResponse>(
+    ADMIN_API.characterImpressions(characterId),
   );
 }
 
