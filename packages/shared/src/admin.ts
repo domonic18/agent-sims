@@ -189,6 +189,43 @@ export interface HostingStateView {
   policyText: string | null;
 }
 
+// ============ 人设访谈(M4e: LLM 动态追问 5~8 问,生成人设卡落库) ============
+
+export interface InterviewMessage {
+  role: 'agent' | 'player';
+  text: string;
+}
+
+/** 人设卡五字段(interview 慢槽编译产物,characters.persona.card 同构落库) */
+export interface InterviewCard {
+  性格: string;
+  兴趣: string;
+  目标: string;
+  说话风格: string;
+  bio: string;
+}
+
+export const INTERVIEW_STATUSES = ['idle', 'asking', 'compiling', 'done'] as const;
+
+export type InterviewStatus = (typeof INTERVIEW_STATUSES)[number];
+
+/** GET /api/admin/characters/:id/interview 与 POST .../answer 共用响应;
+ * asking 时 question=待回答的当前问;error 非空=上轮生成失败(可重试) */
+export interface InterviewView {
+  characterId: string;
+  status: InterviewStatus;
+  questionCount: number;
+  question: string | null;
+  messages: InterviewMessage[];
+  card: InterviewCard | null;
+  error: string | null;
+}
+
+/** POST /api/admin/characters/:id/interview/answer 请求(空/缺省=重开当前问/拉取状态) */
+export interface InterviewAnswerRequest {
+  answer?: string;
+}
+
 export const ADMIN_API = {
   login: '/api/admin/auth/login',
   me: '/api/admin/auth/me',
@@ -219,6 +256,8 @@ export const ADMIN_API = {
   characterSchedule: (id: string) => `/api/admin/characters/${id}/schedule`,
   characterReplan: (id: string) => `/api/admin/characters/${id}/replan`,
   characterHosting: (id: string) => `/api/admin/characters/${id}/hosting`,
+  characterInterview: (id: string) => `/api/admin/characters/${id}/interview`,
+  characterInterviewAnswer: (id: string) => `/api/admin/characters/${id}/interview/answer`,
 } as const;
 
 /** token 用量统计窗口 */
