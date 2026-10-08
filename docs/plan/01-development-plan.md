@@ -201,12 +201,30 @@
 - 验收标准: requirement §11——角色入睡体力恢复;次日记忆面板出现与当天经历对应的 dream 条目
 - 状态: **已完成**(2026-10-08)——LLM 侧落地: 睡饱(≥240 分)结算发 `sleep.settled`(与缺觉 debt 互斥,每晨恰一条),MemoryConsolidator 订阅后以慢槽把上一清醒日([结算点-1440, 结算点)未固化,importance 降序截 16 条)记忆压缩变形为 1~3 条 dream 写回记忆流,源记忆打 `consolidatedAt`(先落 dream 后标记,失败次夜重试);同角色单飞去重;记忆面板「梦境」badge 零改动上屏(shared MEMORY_TYPE_LABELS 预埋);事件日志「🌅 从梦中醒来(昨夜睡 N 分)」;容器实测: 372 分睡饱→3 条梦境(内容全部由当日睡觉经历变形,无编造)→面板上屏→agent.dream 记账 404 tokens
 
+### M-C: 认知与人格演化(C 系列,2026-10-08 新立)
+
+> **排期定稿(用户 2026-10-08)**: NPC 体系(M6)延后,C 系列优先——先把 agent 的自主运行机制搭起来。设计依据 design/10-cognition-design.md v2(认知分层梯子 L0~L5+单向爬梯原则+C1~C5 路线)。
+
+- 规模: L(五子阶段合计)
+- 子阶段(串行小步提交):
+
+| 子阶段 | 规模 | 内容 | 验收抓手 |
+|---|---|---|---|
+| C1 固化管线 v2+数据地基 | M~L | 0013 迁移(source_ids+impressions 表);memory-consolidation.ts 改造(结构化产出 dreams+insights+relations);白天反思补线;记忆面板增「洞察/印象」查看 | 次晨面板见 insight(溯源可点)+关系印象更新;dream 仍产出 |
+| C2 情绪主观化 | S~M | brain state mood(事件打标规则+衰减+落库);访谈 prompt 注入;面板 mood 历史 | 大起大落事件后访谈语气可感变化 |
+| C3 事件响应层 | L | 活动容忍度声明+事件分级门+响应动作注册表+中断评估(systemOne)+预算护栏;trace 增分级记录 | 忙碌角色对显著事件受控反应;trace 可答「为何理会/不理会」;预算生效(日≤4 次) |
+| C4 社交行为闭环 | L | 四段通路: 动机规则引擎+jev 社交候选+chat 意图接线+PLAN 增 socialize+固化回路;对话 prompt 双段注入 | 自治角色间出现自主对话;台词引用共同经历;关系印象越聊越具体 |
+| C5 自我叙事演化 | M | persona.selfNarrative+版本链+周级/里程碑修订;面板演化史;访谈初始叙事 | 演化性实验通过;修订全程可审计 |
+
+- 风险与护栏(详见 10-cognition §9): 中断风暴四重护栏/社交冷却与预算/insight 必须带 sources 防编造/人格漂移双闸/token 预算内增量/老角色兼容回落
+- 状态: **C1 已完成**(2026-10-08);C2~C5 未开始
+
 ### M6: NPC 体系
 
 - 规模: M
 - 任务: 三层 NPC 框架(核心 5~8 轻量 LLM / 背景 10~20 规则驱动+被交互唤醒升级留记忆);NPC 对话(轻量 LLM,人设约束+记忆引用);后台新增 NPC 人设卡 CRUD 资源
 - 验收标准: requirement §11——NPC 回复符合人设且引用交互记忆/背景NPC 唤醒后记得上次/后台增删改查生效
-- 状态: 未开始
+- 状态: **延后**(2026-10-08 用户定稿: C 系列优先,NPC 体系后置)
 
 ### M7: 离线生活与飞书推送
 
@@ -234,6 +252,7 @@
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-10-08 | **M-C 新立+C1 固化管线 v2 落地(用户定稿: NPC 延后,C 系列优先)**: ①plan 新立 M-C 里程碑(C1 固化 v2+数据地基/C2 情绪主观化/C3 事件响应层/C4 社交行为闭环/C5 自我叙事演化,依据 10-cognition-design v2 §9),M6 标注延后;②**数据地基 0013 迁移**——memories 增 `source_ids` jsonb 溯源链,新 `character_impressions` 表(character_id+about_id 唯一,关系印象 L3 落点);③**固化管线 v2**——memory-consolidation 重写: 慢思考单次调用产结构化草稿 `{dreams≤3, insights≤3 带 sources, relations≤3 限互动者白名单}`,insight 无 sources 原文引用即丢弃(防编造红线),relations upsert 印象表,全部成功才把源记忆打 consolidatedAt(单向爬梯: 产物写入即标记,不再进源池),失败静默次轮重试;夜间 sleep.settled(窗口 [结算点-1440,结算点))与白天反思(ReflectImportanceThreshold=150 累计越阈,MemoryWriter 钩子回调)共用同一管线,taskType 夜='agent.dream'/昼='agent.reflect';④**白天反思补线**——MemoryWriter.persist 累计未固化条目 importance,越阈清零并触发 consolidator.reflect(top16 全部未固化,不限当日);⑤**面板增层查看**——API 增 type 过滤(SQL 级 recent/后过滤 search)+GET /characters/:id/impressions(含 aboutName),lab 面板与 HUD 记忆弹窗同步增过滤 chips(全部/事件/洞察/梦境/对话)+洞察溯源行+印象列表;测试: 纯函数 10 例(解析钳值截断/溯源双向包含匹配/白名单提取)+集成 9 例(闭环/没睡饱/无记忆/慢槽失败/垃圾输出/条目上限/非法剔除/并发去重/白天反思),全量 494 绿;容器走查: 镜像重建+0013 迁移,lab 与 HUD 双端验证过滤/溯源/印象链路一致 | 10-cognition-design v2 定稿后第一个迭代;固化从「梦境单产物」升级为「认知爬梯主通道(insight 溯源+关系印象)」,为 C2~C5 打数据与管线地基 |
 | 2026-10-08 | **游戏页 HUD 只读记忆查看器(用户需求,提交 ace2244+本条 docs)**: CharacterHud 按钮区(托管/意识访谈旁)新「🧠 记忆」px-btn,经 `onMemories` 回调上抛 GamePage(与既有两弹窗同款 gating: 非 admin 弹 LoginModal 引导,admin 三弹窗互斥开启);新 `ui/hud/MemoryModal.tsx`(照抄 MindTalkModal 自绘骨架,游戏界面零依赖)——打开即拉 `fetchCharacterMemories(id,{limit:50})`(既有 admin API 零 server 改动),最近浏览(时间倒序)+语义检索(Enter/🔍 带 q 走三因子,命中带综合分/相关度,notice 降级提示)+「↺ 最近」回浏览;条目渲染=四类彩色徽标(shared MEMORY_TYPE_LABELS)+内容+`formatGameMinutes · 重要度 N`;`formatGameMinutes` 从 LabPage 本地函数迁 `web/src/format.ts` 单一来源(LabPage 改 import);badge 四色样式入 game-page.css(lab 域样式不跨域引用);测试 519 基线不增不减(纯 UI);容器走查全绿: 按钮上屏/弹窗列阿泽 50 条含三条梦境/检索「睡觉」相关条目相关度 1.00 登顶/回浏览/✕ 关闭/游客态弹登录引导 | 用户需求「首页游戏人物操作面板增加只读查看,管理员可看人物记忆」——直播/观察场景免切 /lab 页 |
 | 2026-10-08 | **M5 睡眠与梦境记忆落地+M4f 取消(三提交 94ff140/7f20f87+本条 docs)**: ①shared 新 `SleepSettledEvent{characterId,sleptMinutes,gameMinutes,tick}`——settleSleep 每晨结算睡饱(≥SLEEP_MIN_MINUTES)者发 settled、缺觉者发 debt,互斥且每角色恰一条(gameMinutes 入载荷定格窗口端点,异步固化不读实时钟);②MemoryWriter.writeManual 增 type 参数(默认 'event',scheduler 既有调用不变),dream 类型透传落库走同一 persist 管线(含 embedding/gameMinutes 盖戳);③新 `agents/memory-consolidation.ts`——订阅 sleep.settled(防御性再核睡饱+同角色 in-flight 去重),查上一清醒日 [结算点-1440, 结算点) 且 consolidatedAt IS NULL 的记忆(importance 降序截 16 条,空则无梦直接返回),slow 槽 chat(taskType 'agent.dream')产 1~3 条梦境,parseDreams 截 JSON 数组+逐条校验(文本非空/importance 钳 1~10/上限 3),垃圾输出静默跳过源记忆不标记(次夜重试),先落 dream 再 UPDATE consolidatedAt(标记失败最坏=次夜重复变形,非关键路径可接受);④app.ts 装配 attachMemoryConsolidator(与 MemoryWriter 同挂 app 进程,离线照常);⑤web eventLog 两 switch 补 case(life 类「🌅 {name} 从梦中醒来(昨夜睡 N 分)」);⑥**前端记忆面板零改动**——shared MEMORY_TYPE_LABELS 预埋 'dream: 梦境',lab 面板按 type 渲染 badge 天然上屏;测试净增 9(consolidation 8+writeManual type 1,总 519);容器走查全绿: 阿泽第 235 天 23:47 入睡跨 06:00 结算(账面 372 分≥240)→settled 唯一触发(与苏晚 debt 同晨对照)→kimi 慢槽产 3 条梦境(「折叠的茧/480 分钟走廊/潮汐」,内容全部由当日「睡觉 480 分钟」经历变形,无编造,重要度 4/4/5 由慢思考给定)→lab 记忆面板「梦境」badge 上屏+源记忆 consolidatedAt 已置→token_usage agent.dream 一计 404 tokens→游戏页事件日志条目显示正常;**M4f 正式取消**(用户决策: 价格表接入与 §11 六项走查不再做,成本面板余项随 M8 统筹) | 用户指令「完成 M5,M4f 可以取消」;M5 收官=记忆系统「写入→固化→检索」闭环(梦境界首消费 consolidatedAt),次晨睡觉经历自动变形为梦境记忆 |
 | 2026-10-08 | **观察者定位重构+居民重名防护(用户反馈修复)**: ①**重名防护**——POST /api/admin/characters 加居民 DB 世界内+模拟层双侧查重(trim 后比对,命中 400「居民名与现有居民重复」),建世界表单内两两查重;数据修复: 「修复走查镇」4 位重名居民(2 苏晚+2 阿泽)连同记忆/认知数据删除,world_archives 档 jsonb characters 过滤(防重启复活),6→2;②**意识访谈替换人设访谈**——删 `admin-api/interview.ts`(答题生成人设卡模式),新 `admin-api/mindtalk.ts`: 观察者与 agent 自由对话,TA 基于自身记忆(retrieveMemories 三因子 top6,embed 失败退化双因子)+最近念头(cognition_trace 按 seq 取 decision.bubble/conclusion top3)+人设(loadPersonaContext)第一人称回答,light 槽 agent.mind_talk,15 分钟内存会话惰性过期,失败撤回提问可重试;**每轮问答写回一条 dialogue 记忆**(「观察者问我:…我回答:…」importance 4 无向量)——访谈本身成为 TA 的经历,后续记忆面板/决策可检索;shared 删 interview schema 增 MindTalkMessage/MindTalkView,web 重写 MindTalkModal(自由输入+自动滚底+GET 恢复会话),CharacterHud 按钮「🗣 意识访谈」;③**lab 预置人设面板**——persona API(C2,96cf2bc)GET/PUT(浅合并保留 traits/modelSlot,托管中保存 schedule.clear 交泵重规划)+POST random(light 槽 agent.persona_random,SEEDS 种子池随机方向,草稿仅返回不落库);lab 记忆/自治/日程同列新「预置人设」面板(共享角色下拉): bio textarea+人设卡五字段+🎲 随机生成填表+💾 保存(托管中提示已触发重规划);测试 474(admin-mindtalk 5: 注入断言/写回落库/多轮/过期/失败回滚;admin-persona 5;worlds 重名 2 例,替代已删 interview 6 例);容器走查: 同名/带空格 400/不重名 201、游戏页 2 人在镇、阿泽两轮真实 LLM 对话(回答引用累倒等人救经历,上下文延续,记忆面板现两条访谈 dialogue 记忆)、随机草稿→保存落库、苏晚空表单回填正确;门禁全绿 | 用户反馈: ①游戏内不应存在多个同名 agent(排查确认非 save/load——加居民接口无查重+48 名池随机撞名);②访谈理解纠偏: 应是与 agent 对话看 TA 形成的意识与想法,预置人设应放后台可 LLM 随机生成,用户总体定位为观察者(看行为、记忆、由行为记忆产生的想法) |
