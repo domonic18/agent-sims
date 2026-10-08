@@ -27,6 +27,7 @@ import {
   type MemoryImpressionsResponse,
   type MemoryType,
   type CharacterMoodResponse,
+  type NarrativeDraft,
   type PersonaDraft,
   type PersonaSaveRequest,
   type PersonaView,
@@ -352,6 +353,13 @@ export async function randomPersonaDraft(characterId: string): Promise<PersonaDr
   return await adminFetch<PersonaDraft>(ADMIN_API.characterPersonaRandom(characterId), {
     method: 'POST',
   });
+}
+
+export async function generateNarrativeDraft(characterId: string): Promise<NarrativeDraft> {
+  return await adminFetch<NarrativeDraft>(
+    ADMIN_API.characterPersonaNarrativeGenerate(characterId),
+    { method: 'POST' },
+  );
 }
 
 // ============ 素材管理(M-L.2) ============

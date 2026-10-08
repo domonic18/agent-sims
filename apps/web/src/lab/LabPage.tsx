@@ -14,7 +14,9 @@ import {
   type MemoryImpressionsResponse,
   type MemoryPanelResponse,
   type MemoryType,
+  type NarrativeHistoryEntry,
   type PersonaCard,
+  type SelfNarrative,
   type WorldArchiveView,
 } from '@sims/shared';
 import {
@@ -28,6 +30,7 @@ import {
   fetchPersona,
   fetchWorldArchives,
   fetchWorlds,
+  generateNarrativeDraft,
   getToken,
   loadWorldArchive,
   putPersona,
@@ -133,8 +136,11 @@ export default function LabPage() {
   // 人设面板(M4e 观察者版):bio+card 编辑/随机草稿;共享记忆面板角色选择
   const [personaBio, setPersonaBio] = useState('');
   const [personaCard, setPersonaCard] = useState<PersonaCard>(EMPTY_PERSONA_CARD);
+  const [personaNarrative, setPersonaNarrative] = useState<SelfNarrative | null>(null);
+  const [personaTraitsText, setPersonaTraitsText] = useState('');
+  const [narrativeHistory, setNarrativeHistory] = useState<NarrativeHistoryEntry[]>([]);
   const [personaReady, setPersonaReady] = useState(false);
-  const [personaBusy, setPersonaBusy] = useState<'save' | 'random' | null>(null);
+  const [personaBusy, setPersonaBusy] = useState<'save' | 'random' | 'narr' | 'nsave' | null>(null);
   const nextLogIdRef = useRef(1);
   const spawnCountRef = useRef(0);
 
@@ -434,6 +440,9 @@ export default function LabPage() {
         if (!alive) return;
         setPersonaBio(view.bio);
         setPersonaCard(view.card ?? EMPTY_PERSONA_CARD);
+        setPersonaNarrative(view.selfNarrative);
+        setPersonaTraitsText(view.selfNarrative?.traits.join('、') ?? '');
+        setNarrativeHistory(view.narrativeHistory);
         setPersonaReady(true);
       })
       .catch(() => {
@@ -466,12 +475,65 @@ export default function LabPage() {
       const view = await putPersona(memCharId, { bio: personaBio, card: personaCard });
       setPersonaBio(view.bio);
       setPersonaCard(view.card ?? EMPTY_PERSONA_CARD);
+      setPersonaNarrative(view.selfNarrative);
+      setPersonaTraitsText(view.selfNarrative?.traits.join('、') ?? '');
+      setNarrativeHistory(view.narrativeHistory);
       const name = snapshot?.characters.find((c) => c.id === memCharId)?.name ?? '角色';
       // 托管中的角色保存即清日程,泵按新人设重规划(服务端行为,这里只做提示)
       const hosted = await getHosting(memCharId)
         .then((h) => h.hosted)
         .catch(() => false);
       setAdminMsg(`${name} 人设已保存${hosted ? '(托管中:日程已清,泵将按新人设重规划)' : ''}`);
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPersonaBusy(null);
+    }
+  };
+
+  const parseTraits = (raw: string): string[] =>
+    raw
+      .split(/[、,，\s]+/)
+      .map((t) => t.trim())
+      .filter((t) => t !== '')
+      .slice(0, 6);
+
+  const generateNarrative = async (): Promise<void> => {
+    if (memCharId === '' || personaBusy !== null) return;
+    setPersonaBusy('narr');
+    try {
+      const draft = await generateNarrativeDraft(memCharId);
+      setPersonaNarrative((prev) => ({
+        text: draft.text,
+        traits: draft.traits,
+        version: prev?.version ?? 0,
+        updatedAtGameMinutes: prev?.updatedAtGameMinutes ?? 0,
+      }));
+      setPersonaTraitsText(draft.traits.join('、'));
+      setAdminMsg('已生成自我叙事草稿(未落库),确认后点保存叙事');
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPersonaBusy(null);
+    }
+  };
+
+  const saveNarrative = async (): Promise<void> => {
+    if (memCharId === '' || personaBusy !== null) return;
+    const text = personaNarrative?.text.trim() ?? '';
+    if (text === '') {
+      setAdminMsg('自我叙事不能为空');
+      return;
+    }
+    setPersonaBusy('nsave');
+    try {
+      const view = await putPersona(memCharId, {
+        selfNarrative: { text, traits: parseTraits(personaTraitsText) },
+      });
+      setPersonaNarrative(view.selfNarrative);
+      setPersonaTraitsText(view.selfNarrative?.traits.join('、') ?? '');
+      setNarrativeHistory(view.narrativeHistory);
+      setAdminMsg(`自我叙事已保存(v${view.selfNarrative?.version ?? '?'}),旧版已入演化史`);
     } catch (error) {
       setAdminMsg(error instanceof Error ? error.message : String(error));
     } finally {
@@ -986,6 +1048,74 @@ export default function LabPage() {
                       </button>
                     </div>
                     <p className="hint">随机草稿只填表不落库;保存后影响 TA 的日程规划、决策与访谈口吻。</p>
+                    <h4 style={{ margin: '12px 0 0' }}>
+                      自我叙事(L4)
+                      {personaNarrative === null
+                        ? '(未初始化,决策回落 bio)'
+                        : ` · v${personaNarrative.version}`}
+                    </h4>
+                    <textarea
+                      className="lab-input lab-persona-bio"
+                      placeholder="第一人称「我是谁」(≤200 字,系统周级/里程碑自动修订)"
+                      maxLength={200}
+                      value={personaNarrative?.text ?? ''}
+                      onChange={(e) =>
+                        setPersonaNarrative((prev) => ({
+                          text: e.target.value,
+                          traits: prev?.traits ?? [],
+                          version: prev?.version ?? 0,
+                          updatedAtGameMinutes: prev?.updatedAtGameMinutes ?? 0,
+                        }))
+                      }
+                    />
+                    <input
+                      className="lab-input"
+                      style={{ marginTop: 6 }}
+                      placeholder="特质词(顿号分隔,3~6 个)"
+                      maxLength={140}
+                      value={personaTraitsText}
+                      onChange={(e) => setPersonaTraitsText(e.target.value)}
+                    />
+                    <div className="lab-btn-row" style={{ marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="px-btn"
+                        disabled={memCharId === '' || personaBusy !== null}
+                        onClick={() => void generateNarrative()}
+                      >
+                        {personaBusy === 'narr' ? '生成中…' : '✨ 生成叙事草稿'}
+                      </button>
+                      <button
+                        type="button"
+                        className="px-btn"
+                        disabled={
+                          memCharId === '' ||
+                          personaBusy !== null ||
+                          (personaNarrative?.text ?? '').trim() === ''
+                        }
+                        onClick={() => void saveNarrative()}
+                      >
+                        {personaBusy === 'nsave' ? '保存中…' : '💾 保存叙事'}
+                      </button>
+                    </div>
+                    {narrativeHistory.length > 0 && (
+                      <details className="lab-narrative-history">
+                        <summary>演化史({narrativeHistory.length} 版,新→旧)</summary>
+                        <ul>
+                          {narrativeHistory.map((entry, i) => (
+                            <li key={`${entry.version}-${i}`}>
+                              <small>
+                                v{entry.version} · {formatGameMinutes(entry.archivedAtGameMinutes)}归档
+                              </small>
+                              <p>{entry.text}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                    <p className="hint">
+                      此处修改视为一次人工修订(旧版入演化史);周级复盘与里程碑由系统自动修订并写「我对自己的看法变了」记忆。
+                    </p>
                   </>
                 )}
               </div>

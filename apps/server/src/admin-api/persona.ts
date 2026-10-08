@@ -1,8 +1,15 @@
 import { randomInt } from 'node:crypto';
-import type { PersonaCard, PersonaDraft, PersonaView } from '@sims/shared';
+import type {
+  NarrativeHistoryEntry,
+  PersonaCard,
+  PersonaDraft,
+  PersonaView,
+  SelfNarrative,
+} from '@sims/shared';
 import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { applyRevision, buildInitMessages, parseNarrativeDraft } from '../agents/narrator.js';
 import { hosting, schedule } from '../agents/cognition.js';
 import type { MemoryLlm } from '../agents/memory-writer.js';
 import type { DbHandle } from '../db/client.js';
@@ -18,9 +25,15 @@ const cardSchema = z.object({
   bio: z.string().trim().max(500),
 });
 
+const narrativeSchema = z.object({
+  text: z.string().trim().min(1).max(200),
+  traits: z.array(z.string().trim().min(1).max(20)).max(6).default([]),
+});
+
 const saveSchema = z.object({
   bio: z.string().max(500).optional(),
   card: cardSchema.optional(),
+  selfNarrative: narrativeSchema.optional(),
 });
 
 /** 随机种子池:每次抽向组合,让 LLM 生成有差异、有具体感的人设草稿 */
@@ -33,10 +46,29 @@ const SEEDS = {
 
 function view(id: string, persona: Record<string, unknown>): PersonaView {
   const card = persona.card;
+  const self = persona.selfNarrative;
+  const selfNarrative =
+    self !== null &&
+    typeof self === 'object' &&
+    typeof (self as Record<string, unknown>).text === 'string'
+      ? (self as unknown as SelfNarrative)
+      : null;
+  const history = Array.isArray(persona.narrativeHistory)
+    ? (persona.narrativeHistory as unknown[])
+        .filter(
+          (entry): entry is NarrativeHistoryEntry =>
+            entry !== null &&
+            typeof entry === 'object' &&
+            typeof (entry as Record<string, unknown>).text === 'string',
+        )
+        .reverse()
+    : [];
   return {
     characterId: id,
     bio: typeof persona.bio === 'string' ? persona.bio : '',
     card: card !== null && typeof card === 'object' ? (card as PersonaCard) : null,
+    selfNarrative,
+    narrativeHistory: history,
   };
 }
 
@@ -79,7 +111,8 @@ export function buildRandomPrompt(): string {
 async function writePersona(
   handle: DbHandle,
   id: string,
-  patch: { bio?: string; card?: PersonaCard },
+  patch: { bio?: string; card?: PersonaCard; selfNarrative?: { text: string; traits: string[] } },
+  now: number,
 ): Promise<void> {
   const rows = await handle.db
     .select({ persona: characters.persona })
@@ -87,15 +120,21 @@ async function writePersona(
     .where(eq(characters.id, id))
     .limit(1);
   const current = (rows[0]?.persona ?? {}) as Record<string, unknown>;
-  const merged: Record<string, unknown> = { ...current };
+  let merged: Record<string, unknown> = { ...current };
   if (patch.bio !== undefined) merged.bio = patch.bio;
   if (patch.card !== undefined) merged.card = { ...patch.card };
+  // selfNarrative 提供即一次人工修订: 旧版入演化史,version+1(与 LLM 修订同款入链)
+  if (patch.selfNarrative !== undefined) {
+    merged = applyRevision(merged, patch.selfNarrative, now);
+  }
   await handle.db.update(characters).set({ persona: merged }).where(eq(characters.id, id));
 }
 
 /**
  * 预置人设(观察者定位): 后台查看/编辑角色人设,可 LLM 随机生成草稿(仅返回不落库)。
  * 保存即写 persona jsonb(浅合并保留 traits/modelSlot);托管中的角色清日程交泵按新人设重规划。
+ * selfNarrative 提供即一次人工修订(旧版入演化史);narrative/generate 用 light 槽
+ * 从人设卡提炼自我叙事草稿(仅返回不落库,C5)。
  */
 export function registerPersonaRoutes(
   app: FastifyInstance,
@@ -121,15 +160,21 @@ export function registerPersonaRoutes(
     const { id } = request.params as { id: string };
     const parsed = saveSchema.safeParse(request.body);
     if (!parsed.success) {
-      return await reply.code(400).send({ error: 'body 须为 { bio?, card? }(card 五字段齐备)' });
+      return await reply
+        .code(400)
+        .send({ error: 'body 须为 { bio?, card?, selfNarrative? }(card 五字段齐备)' });
     }
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
     }
-    if (parsed.data.bio === undefined && parsed.data.card === undefined) {
-      return await reply.code(400).send({ error: 'bio 与 card 至少提供一项' });
+    if (
+      parsed.data.bio === undefined &&
+      parsed.data.card === undefined &&
+      parsed.data.selfNarrative === undefined
+    ) {
+      return await reply.code(400).send({ error: 'bio/card/selfNarrative 至少提供一项' });
     }
-    await writePersona(handle, id, parsed.data);
+    await writePersona(handle, id, parsed.data, sim.clock.gameMinutes);
     if (hosting.has(id)) schedule.clear(id); // 托管中: 清日程交泵按新人设重规划
     const rows = await handle.db
       .select({ persona: characters.persona })
@@ -160,6 +205,43 @@ export function registerPersonaRoutes(
         return await reply.code(502).send({ error: '人设草稿生成失败,请重试' });
       }
       return await reply.send(draft);
+    } catch (error) {
+      return await reply
+        .code(502)
+        .send({ error: error instanceof Error ? error.message : '模型调用失败,请重试' });
+    }
+  });
+
+  // 自我叙事草稿(C5): light 槽从人设卡提炼第一人称「我是谁」,仅返回不落库
+  app.post('/api/admin/characters/:id/persona/narrative/generate', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const { id } = request.params as { id: string };
+    if (!sim.characters.has(id)) {
+      return await reply.code(404).send({ error: '角色不在当前活跃世界' });
+    }
+    const rows = await handle.db
+      .select({ persona: characters.persona })
+      .from(characters)
+      .where(eq(characters.id, id))
+      .limit(1);
+    const blob = (rows[0]?.persona ?? {}) as Record<string, unknown>;
+    const bio = typeof blob.bio === 'string' ? blob.bio : '';
+    const card =
+      blob.card !== null && typeof blob.card === 'object'
+        ? (blob.card as Record<string, unknown>)
+        : {};
+    const name = sim.characters.get(id)?.name ?? '无名居民';
+    const llm = app.llm as MemoryLlm;
+    try {
+      const result = await llm.chat('light', buildInitMessages(name, bio, card), {
+        taskType: 'agent.narrative_init',
+        characterId: id,
+      });
+      const draft = parseNarrativeDraft(result.content);
+      if (draft === null) {
+        return await reply.code(502).send({ error: '叙事草稿生成失败,请重试' });
+      }
+      return await reply.send({ text: draft.text, traits: draft.traits });
     } catch (error) {
       return await reply
         .code(502)

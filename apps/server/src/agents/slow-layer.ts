@@ -116,7 +116,17 @@ export async function loadPersonaContext(
       ? (record.card as Record<string, unknown>)
       : null;
     const parts: string[] = [];
-    if (typeof record.bio === 'string' && record.bio.trim() !== '') parts.push(record.bio.trim());
+    // L4 自我叙事(C5)已初始化时顶替 bio 位置;未初始化维持 bio 回落
+    const narrative = record.selfNarrative;
+    const narrativeText =
+      narrative !== null && typeof narrative === 'object'
+        ? (narrative as Record<string, unknown>).text
+        : undefined;
+    if (typeof narrativeText === 'string' && narrativeText.trim() !== '') {
+      parts.push(narrativeText.trim());
+    } else if (typeof record.bio === 'string' && record.bio.trim() !== '') {
+      parts.push(record.bio.trim());
+    }
     if (card !== null) {
       const fields = ['性格', '兴趣', '目标', '说话风格'] as const;
       for (const field of fields) {

@@ -214,23 +214,55 @@ export interface PersonaCard {
   bio: string;
 }
 
+/**
+ * L4 自我叙事(10-cognition §4.3/§6,C5): 「我是谁」的第一人称陈述,人格本体。
+ * characters.persona.selfNarrative 同构落库;未初始化时消费端回落人设卡 bio。
+ */
+export interface SelfNarrative {
+  /** 第一人称自我陈述,≤200 字 */
+  text: string;
+  /** 核心特质词 3~6 个(修订时只许微调) */
+  traits: string[];
+  /** 从 1 起,每次修订 +1(修订全程可审计) */
+  version: number;
+  /** 上次修订的游戏分钟 */
+  updatedAtGameMinutes: number;
+}
+
+/** 演化史条目: 修订时旧版整体入档,环形保留最近 10 版(面板可回看,直播可观测) */
+export interface NarrativeHistoryEntry extends SelfNarrative {
+  archivedAtGameMinutes: number;
+}
+
 /** GET/PUT /api/admin/characters/:id/persona——预置人设查看与保存(未编辑过时 card=null) */
 export interface PersonaView {
   characterId: string;
   bio: string;
   card: PersonaCard | null;
+  /** L4 自我叙事(null=尚未初始化) */
+  selfNarrative: SelfNarrative | null;
+  /** 演化史,新→旧 */
+  narrativeHistory: NarrativeHistoryEntry[];
 }
 
-/** PUT persona 请求:提供哪段写哪段(bio 直写可清空,card 整体覆盖),traits/modelSlot 不受影响 */
+/** PUT persona 请求:提供哪段写哪段(bio 直写可清空,card 整体覆盖),traits/modelSlot 不受影响;
+ * selfNarrative 提供即视为一次人工修订(旧版入演化史,version+1) */
 export interface PersonaSaveRequest {
   bio?: string;
   card?: PersonaCard;
+  selfNarrative?: { text: string; traits: string[] };
 }
 
 /** POST /api/admin/characters/:id/persona/random——LLM 随机人设草稿(仅返回不落库) */
 export interface PersonaDraft {
   bio: string;
   card: PersonaCard;
+}
+
+/** POST /api/admin/characters/:id/persona/narrative/generate——LLM 生成自我叙事草稿(仅返回不落库) */
+export interface NarrativeDraft {
+  text: string;
+  traits: string[];
 }
 
 // ============ 意识访谈(观察者与 agent 对话,TA 基于自身记忆/经历第一人称回答) ============
@@ -280,6 +312,7 @@ export const ADMIN_API = {
   characterHosting: (id: string) => `/api/admin/characters/${id}/hosting`,
   characterPersona: (id: string) => `/api/admin/characters/${id}/persona`,
   characterPersonaRandom: (id: string) => `/api/admin/characters/${id}/persona/random`,
+  characterPersonaNarrativeGenerate: (id: string) => `/api/admin/characters/${id}/persona/narrative/generate`,
   characterMindTalk: (id: string) => `/api/admin/characters/${id}/mindtalk`,
 } as const;
 

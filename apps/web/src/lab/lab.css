@@ -489,3 +489,34 @@
 .lab-persona-wide {
   grid-column: 1 / -1;
 }
+
+/* ---- 自我叙事(C5) ---- */
+.lab-narrative-history {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--px-dim);
+}
+
+.lab-narrative-history summary {
+  cursor: pointer;
+}
+
+.lab-narrative-history ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lab-narrative-history li {
+  border: 2px solid var(--px-slate);
+  padding: 4px 6px;
+}
+
+.lab-narrative-history li p {
+  margin: 2px 0 0;
+  color: inherit;
+  line-height: 1.5;
+}
