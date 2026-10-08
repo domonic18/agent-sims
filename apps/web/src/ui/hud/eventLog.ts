@@ -41,6 +41,7 @@ export function eventLogCategory(type: WorldEvent['type']): EventLogCategory {
     case 'character.revived':
     case 'character.auto_revived':
     case 'sleep.debt_applied':
+    case 'sleep.settled':
     case 'character.hosting_changed':
       return 'life';
     case 'maintenance.spawned':
@@ -208,6 +209,13 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
         icon: '😪',
         text: `${nameOf(event.characterId)} 缺觉:今日收益 ×0.7(昨夜睡 ${event.sleptMinutes}分)`,
         tone: 'bad',
+        characterId: event.characterId,
+      };
+    case 'sleep.settled':
+      return {
+        icon: '🌅',
+        text: `${nameOf(event.characterId)} 从梦中醒来(昨夜睡 ${event.sleptMinutes}分)`,
+        tone: 'info',
         characterId: event.characterId,
       };
     case 'character.hosting_changed':

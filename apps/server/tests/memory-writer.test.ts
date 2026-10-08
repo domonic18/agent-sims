@@ -243,4 +243,16 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     expect((await memoryRows(CHAR_A)).length).toBe(6);
     writer.dispose();
   });
+
+  it('直写 type 参数(M5): dream 类型透传落库,importance 调用方给定', async () => {
+    const sim = buildSimWithCharacters();
+    const { llm } = stubLlm({});
+    const writer = new MemoryWriter(sim, handle, llm);
+    await writer.writeManual(CHAR_A, '我梦见河边结了冰,鱼在冰下游', 7, 'dream');
+    const [row] = await memoryRows(CHAR_A);
+    expect(row.type).toBe('dream');
+    expect(row.importance).toBe(7);
+    expect(row.embedding).toHaveLength(2048); // 走同一条 persist 管线
+    writer.dispose();
+  });
 });

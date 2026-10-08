@@ -237,6 +237,18 @@ export const sleepDebtAppliedEventSchema = z.object({
 
 export type SleepDebtAppliedEvent = z.infer<typeof sleepDebtAppliedEventSchema>;
 
+/** 睡眠结算-睡饱(M5):昨夜窗口累计 ≥ SLEEP_MIN_MINUTES 的互斥通知(debt 的补集),
+ * 梦境固化器据此触发当日记忆整理;gameMinutes 定格结算时刻,异步消费不读实时钟 */
+export const sleepSettledEventSchema = z.object({
+  type: z.literal('sleep.settled'),
+  characterId: z.string().min(1),
+  sleptMinutes: z.number().int(),
+  gameMinutes: z.number().int(),
+  tick: z.number().int(),
+});
+
+export type SleepSettledEvent = z.infer<typeof sleepSettledEventSchema>;
+
 /** 托管状态切换(M4e):玩家⇄Agent 指令来源原子切换的广播,world 域零感知仅转发;
  * hosted=false 时 mode=null */
 export const hostingChangedEventSchema = z.object({
@@ -269,6 +281,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   workTaskCompletedEventSchema,
   craftCompletedEventSchema,
   sleepDebtAppliedEventSchema,
+  sleepSettledEventSchema,
   hostingChangedEventSchema,
 ]);
 

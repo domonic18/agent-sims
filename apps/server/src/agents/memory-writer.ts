@@ -1,4 +1,4 @@
-import { getActivityDefinition, RECIPES, type WorldEvent } from '@sims/shared';
+import { getActivityDefinition, RECIPES, type MemoryType, type WorldEvent } from '@sims/shared';
 import { autonomy } from './cognition.js';
 import { perceiveTasks } from './perception.js';
 import type { DbHandle } from '../db/client.js';
@@ -54,7 +54,7 @@ const MAX_INFLIGHT = 6; // 全局并发管线(LLM 双调用/条)上限,超出丢
 
 interface MemoryTask {
   characterId: string;
-  type: 'event' | 'dialogue';
+  type: MemoryType;
   content: string;
 }
 
@@ -168,16 +168,22 @@ export class MemoryWriter {
 
   /**
    * 直写记忆(M4d 慢层):跳过 Jev 打分,importance 由调用方给定(如计划=6)。
-   * 走同一条并发管线护栏(满载丢弃+技术日志),供日程生成等非事件时刻写入。
+   * 走同一条并发管线护栏(满载丢弃+技术日志),供日程生成等非事件时刻写入;
+   * M5 梦境固化走 type='dream',默认仍为 'event'(日程=计划性经历)。
    */
-  async writeManual(characterId: string, content: string, importance: number): Promise<void> {
+  async writeManual(
+    characterId: string,
+    content: string,
+    importance: number,
+    type: MemoryType = 'event',
+  ): Promise<void> {
     if (this.inFlight >= MAX_INFLIGHT) {
       logTech('warn', 'memory', '记忆管线已满,丢弃直写', { characterId });
       return;
     }
     this.inFlight += 1;
     try {
-      await this.persist({ characterId, type: 'event', content }, clampImportance(importance));
+      await this.persist({ characterId, type, content }, clampImportance(importance));
     } catch (err) {
       logTech('error', 'memory', '直写记忆落库失败', {
         characterId,

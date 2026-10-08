@@ -104,6 +104,8 @@ describe('睡眠账本与缺觉结算(M-G.2,数值文档 §2.7)', () => {
     sim.advanceTicks(480); // 22:00 → 次日 06:00
     const mow = sim.character('mow');
     expect(events.some((e) => e.type === 'sleep.debt_applied')).toBe(false);
+    // 结算先于本 tick 的睡眠分钟累计(L503 vs L541):账面为 22:00~05:59 的 479 分
+    expect(events.some((e) => e.type === 'sleep.settled' && e.sleptMinutes === 479)).toBe(true); // M5: 睡饱发 settled
     expect(mow.sleepWindowMinutes).toBe(0); // 结算后无条件清零
     expect(mow.activity).toBeNull(); // 同刻睡满 480 自然醒
     expect(events.some((e) => e.type === 'activity.finished' && e.reason === 'completed')).toBe(
@@ -120,6 +122,7 @@ describe('睡眠账本与缺觉结算(M-G.2,数值文档 §2.7)', () => {
     sim.requestStopActivity('mow');
     sim.advanceTicks(TO_0600_D2 - TO_2200_D1 - 239); // 空转到 06:00
     expect(events.some((e) => e.type === 'sleep.debt_applied')).toBe(true);
+    expect(events.some((e) => e.type === 'sleep.settled')).toBe(false); // 与 debt 互斥
     expect(sim.character('mow').sleepWindowMinutes).toBe(0);
     expect(sim.snapshot().characters[0]!.sleepDebt).toBe(true);
     // 次日杂工: 0.8 币/分 ×0.7=0.56,120 分 = 67.2
@@ -180,6 +183,7 @@ describe('睡眠账本与缺觉结算(M-G.2,数值文档 §2.7)', () => {
     sim.requestStopActivity('mow');
     sim.advanceTicks(TO_0600_D2 - TO_2200_D1 - 241); // 空转到 06:00
     expect(events.some((e) => e.type === 'sleep.debt_applied')).toBe(false);
+    expect(events.some((e) => e.type === 'sleep.settled')).toBe(true); // 恰 240 分达阈值
     expect(sim.character('mow').sleepWindowMinutes).toBe(0);
   });
 
@@ -232,6 +236,8 @@ describe('睡眠账本与缺觉结算(M-G.2,数值文档 §2.7)', () => {
       sim.requestStopActivity('mow');
       sim.advanceTicks(TO_0600_D2 - TO_2200_D1 - 10);
       expect(events.some((e) => e.type === 'sleep.debt_applied')).toBe(false);
+      // 阈值读热调参数: 0 → 睡 10 分也算睡饱,发 settled
+      expect(events.some((e) => e.type === 'sleep.settled' && e.sleptMinutes === 10)).toBe(true);
     } finally {
       applyWorldParams(); // 复位出厂默认,防跨用例污染
     }
