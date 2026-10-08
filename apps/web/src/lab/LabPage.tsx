@@ -9,6 +9,7 @@ import {
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
   type CharacterScheduleView,
+  type CharacterMoodResponse,
   type Gender,
   type MemoryImpressionsResponse,
   type MemoryPanelResponse,
@@ -22,6 +23,7 @@ import {
   fetchCharacterAutonomy,
   fetchCharacterImpressions,
   fetchCharacterMemories,
+  fetchCharacterMood,
   fetchCharacterSchedule,
   fetchPersona,
   fetchWorldArchives,
@@ -74,6 +76,15 @@ const EMPTY_PERSONA_CARD: PersonaCard = {
   bio: '',
 };
 
+/** 情绪倾向文案(C2,阈值与 server describeMood 同步) */
+function moodTone(valence: number): string {
+  if (valence >= 0.45) return '很高兴';
+  if (valence >= 0.15) return '心情不错';
+  if (valence <= -0.45) return '很沮丧';
+  if (valence <= -0.15) return '有点低落';
+  return '心情平静';
+}
+
 function blockRange(startMin: number, endMin: number): string {
   const hhmm = (m: number): string =>
     `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -113,6 +124,8 @@ export default function LabPage() {
   const [memData, setMemData] = useState<MemoryPanelResponse | null>(null);
   const [memImpressions, setMemImpressions] = useState<MemoryImpressionsResponse | null>(null);
   const [memLoading, setMemLoading] = useState(false);
+  // 情绪面板(C2):与记忆面板共享角色选择;当前态+冲量历史
+  const [moodData, setMoodData] = useState<CharacterMoodResponse | null>(null);
   // 自治开关(M4c):null=未查询;共享记忆面板的角色选择
   const [autonomyOn, setAutonomyOn] = useState<boolean | null>(null);
   // 日程面板(M4d):与记忆面板共享角色选择;5s 轮询看块状态翻转
@@ -339,6 +352,20 @@ export default function LabPage() {
 
   useEffect(() => {
     if (adminAvailable && memCharId !== '') void loadMemories(memCharId, '', null);
+  }, [adminAvailable, memCharId]);
+
+  const loadMood = async (characterId: string): Promise<void> => {
+    if (characterId === '') return;
+    try {
+      setMoodData(await fetchCharacterMood(characterId));
+    } catch {
+      setMoodData(null);
+    }
+  };
+
+  useEffect(() => {
+    setMoodData(null);
+    if (adminAvailable && memCharId !== '') void loadMood(memCharId);
   }, [adminAvailable, memCharId]);
 
   // 自治状态随角色切换拉取;角色不在世界(404)按未开启处理
@@ -815,6 +842,56 @@ export default function LabPage() {
                     </ul>
                   </>
                 )}
+                <h3 style={{ marginTop: 14 }}>管理员 · 情绪</h3>
+                <div className="lab-btn-row">
+                  <button
+                    type="button"
+                    className="px-btn"
+                    disabled={memCharId === ''}
+                    onClick={() => void loadMood(memCharId)}
+                  >
+                    ↻ 刷新
+                  </button>
+                  {moodData !== null && (
+                    <span className="hint">
+                      {moodTone(moodData.current.valence)}
+                      {moodData.current.labels.length > 0
+                        ? `(${moodData.current.labels.join('、')})`
+                        : ''}
+                      {` · 倾向 ${moodData.current.valence >= 0 ? '+' : ''}${moodData.current.valence.toFixed(2)}`}
+                    </span>
+                  )}
+                </div>
+                {moodData !== null && (
+                  <div className="lab-mood-bar" aria-hidden>
+                    <span
+                      className={`lab-mood-fill ${moodData.current.valence >= 0 ? 'up' : 'down'}`}
+                      style={{ width: `${((moodData.current.valence + 1) / 2) * 100}%` }}
+                    />
+                  </div>
+                )}
+                {moodData !== null && moodData.history.length > 0 && (
+                  <ul className="lab-memory-list">
+                    {moodData.history.map((point, index) => (
+                      <li key={index} className="lab-memory-item">
+                        <span
+                          className={`lab-mem-badge ${point.delta >= 0 ? 'mood-up' : 'mood-down'}`}
+                        >
+                          {point.delta >= 0 ? '振奋' : '受挫'}
+                        </span>
+                        <div className="lab-memory-body">
+                          <div>{point.labels.join('、')}</div>
+                          <small>
+                            {formatGameMinutes(point.gameMinutes)} ·{' '}
+                            {point.delta >= 0 ? '+' : ''}
+                            {point.delta.toFixed(2)}
+                          </small>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
                 <h3 style={{ marginTop: 14 }}>管理员 · 今日日程</h3>
                 <div className="lab-btn-row">
                   <button

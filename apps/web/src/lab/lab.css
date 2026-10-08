@@ -205,6 +205,24 @@
 .lab-mem-badge.dream { background: #c9a6ff; }
 .lab-mem-badge.dialogue { background: #ffd27a; }
 .lab-mem-badge.impression { background: #f4a4c0; }
+.lab-mem-badge.mood-up { background: #9ade8a; }
+.lab-mem-badge.mood-down { background: #ff9d9d; }
+
+/* 情绪倾向条(C2): 左端 -1 右端 +1,填充宽度=(valence+1)/2 */
+.lab-mood-bar {
+  height: 10px;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+}
+
+.lab-mood-fill {
+  display: block;
+  height: 100%;
+}
+
+.lab-mood-fill.up { background: #9ade8a; }
+
+.lab-mood-fill.down { background: #ff9d9d; }
 
 .lab-mem-sources {
   color: var(--px-blue);

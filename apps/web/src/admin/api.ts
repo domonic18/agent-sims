@@ -26,6 +26,7 @@ import {
   type MemoryPanelResponse,
   type MemoryImpressionsResponse,
   type MemoryType,
+  type CharacterMoodResponse,
   type PersonaDraft,
   type PersonaSaveRequest,
   type PersonaView,
@@ -303,6 +304,11 @@ export async function fetchCharacterImpressions(
   return await adminFetch<MemoryImpressionsResponse>(
     ADMIN_API.characterImpressions(characterId),
   );
+}
+
+/** 情绪(C2): 当前态(衰减聚合)+冲量历史 */
+export async function fetchCharacterMood(characterId: string): Promise<CharacterMoodResponse> {
+  return await adminFetch<CharacterMoodResponse>(ADMIN_API.characterMood(characterId));
 }
 
 /** 自治开关(M4c):开启后该角色进 AgentScheduler 泵(rule 阈值巡检+jev 事件微决策) */
