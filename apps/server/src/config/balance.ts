@@ -64,6 +64,8 @@ export interface BalanceConfig {
   /** 睡眠(M-G.2,数值文档 §2.7): 缺觉阈值(昨夜窗口累计分钟,低于即于 06:00 结算惩罚)
    * 与缺觉日正收益系数(金币/得分/产出乘该值) */
   SLEEP_MIN_MINUTES: number;
+  /** 白天反思触发阈值(10-cognition §5): 未固化记忆 importance 累计达到即触发一次反思(去 dream 段) */
+  REFLECTION_IMPORTANCE_THRESHOLD: number;
   SLEEP_DEBT_MULTIPLIER: number;
   /** 累倒苏醒扣分(numerical §2.3/§2.5): growth 送医窗口超时苏醒 score ×= (1 - 该值);救治免扣 */
   SCORE_WAKE_DEDUCTION: number;
@@ -123,6 +125,7 @@ export const BALANCE: BalanceConfig = {
   LOW_ENERGY_THRESHOLD,
   REVIVE_ENERGY: 100,
   SLEEP_MIN_MINUTES: 240,
+  REFLECTION_IMPORTANCE_THRESHOLD: 150,
   SLEEP_DEBT_MULTIPLIER: 0.7,
   SCORE_WAKE_DEDUCTION: 0.2,
   SURVIVAL_HUNGER_ENERGY_LINE: 20,

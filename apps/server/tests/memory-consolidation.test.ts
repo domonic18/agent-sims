@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
 import { env } from '../src/config/env.js';
 import { createDb, type DbHandle } from '../src/db/client.js';
-import { characters, memories, worlds } from '../src/db/schema/index.js';
+import { characterImpressions, characters, memories, worlds } from '../src/db/schema/index.js';
 import { MemoryConsolidator } from '../src/agents/memory-consolidation.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { MemoryWriter } from '../src/agents/memory-writer.js';
@@ -26,6 +26,8 @@ const dbUp = await (async () => {
 const WORLD_ID = '00000000-0000-4000-8000-00000000a301';
 // 单一 id 贯穿:sim 角色 key 与 characters 表主键共用同一 uuid
 const CHAR_A = '00000000-0000-4000-8000-00000000a302';
+/** 互动对象(关系印象 upsert 需真实外键行) */
+const PARTNER_B = '00000000-0000-4000-8000-00000000a303';
 
 /** 结算推进量:第 2 日 06:00(gameMinutes=纪元 480+1320=1800),清醒日窗口 [-1440, 0) 相对结算点 */
 const SETTLED_ADVANCE = 1320;
@@ -136,31 +138,53 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
         stats: {},
       })
       .onConflictDoNothing();
+    await handle.db
+      .insert(characters)
+      .values({
+        id: PARTNER_B,
+        worldId: WORLD_ID,
+        tier: 'resident',
+        name: '苏晚',
+        gender: 'female',
+        persona: {},
+        position: { x: 1, y: 1 },
+        stats: {},
+      })
+      .onConflictDoNothing();
   });
 
   beforeEach(async () => {
     await handle.db.delete(memories).where(eq(memories.characterId, CHAR_A));
+    await handle.db.delete(characterImpressions).where(eq(characterImpressions.characterId, CHAR_A));
   });
 
   afterAll(async () => {
     if (!dbUp) return;
     await handle.db.delete(worlds).where(eq(worlds.id, WORLD_ID));
+    await handle.db.delete(characters).where(eq(characters.id, PARTNER_B));
     await handle.db.delete(characters).where(eq(characters.id, CHAR_A));
     await handle.client.end();
   });
 
-  it('闭环: 睡饱→慢槽产 dream 落库,源记忆打 consolidatedAt,窗口外/已固化不入 prompt', async () => {
+  it('闭环: 睡饱→慢槽产 dream+insight+relation 落库,源记忆打 consolidatedAt,产物即标记(单向爬梯)', async () => {
     const { sim, settledAt } = buildSim();
+    sim.characters.set(PARTNER_B, { name: '苏晚' } as never); // 互动对象入世界角色表(白名单前提)
     await insertMemory('我在河边钓到一条大鲤鱼', settledAt - 900, { importance: 8 });
     await insertMemory('我在市场买了种子', settledAt - 800);
     await insertMemory('我和苏晚聊了菜价', settledAt - 600, { importance: 6 });
     await insertMemory('远古记忆不入梦', settledAt - 1700); // 窗口外
     await insertMemory('已固化记忆不再入梦', settledAt - 700, { consolidated: true });
     const { llm, chats } = dreamLlm([
-      JSON.stringify([
-        { content: '我梦见鲤鱼跃出结冰的河面', importance: 9 },
-        { content: '梦里市场空无一人', importance: 4 },
-      ]),
+      JSON.stringify({
+        dreams: [
+          { content: '我梦见鲤鱼跃出结冰的河面', importance: 9 },
+          { content: '梦里市场空无一人', importance: 4 },
+        ],
+        insights: [
+          { content: '耐心等待就有收获', importance: 7, sources: ['我在河边钓到一条大鲤鱼'] },
+        ],
+        relations: [{ about: '苏晚', content: '聊得来的邻居,可以亲近' }],
+      }),
     ]);
     const writer = new MemoryWriter(sim, handle, llm);
     const consolidator = new MemoryConsolidator(sim, handle, llm, writer);
@@ -174,7 +198,7 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
     ]);
     expect(dreams.every((d) => d.gameMinutes === settledAt)).toBe(true); // persist 盖戳=结算时刻
     expect(dreams.map((d) => d.importance).sort()).toEqual([4, 9]); // importance 由慢思考给定
-    expect(dreams.every((d) => d.consolidatedAt === null)).toBe(true);
+    expect(dreams.every((d) => d.consolidatedAt !== null)).toBe(true); // 产物即标记,不进次夜源池
 
     expect(chats).toHaveLength(1);
     expect(chats[0]!.slot).toBe('slow');
@@ -184,20 +208,34 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
     const user = chats[0]!.messages.find((m) => m.role === 'user')!.content;
     expect(user).toContain('我在河边钓到一条大鲤鱼');
     expect(user).toContain('[重要度 8]');
+    expect(user).toContain('苏晚'); // 互动者白名单入 prompt
     expect(user).not.toContain('远古记忆不入梦'); // 窗口外排除
     expect(user).not.toContain('已固化记忆不再入梦'); // 已固化排除
 
-    // 3 条当日源全部标记固化;未固化的只剩:窗口外 1 条(不属任何「当日」)+ 2 条 dream 产物本身
-    await until(async () => (await unconsolidatedCount()) === 3);
+    // insight 落库带溯源链(指向鲤鱼记忆 id)且即标记
+    const rows = await allRows();
+    const insight = rows.find((r) => r.type === 'insight');
+    expect(insight?.content).toBe('耐心等待就有收获');
+    expect(insight?.consolidatedAt).not.toBeNull();
+    const sourceRow = rows.find((r) => r.id === (insight?.sourceIds ?? [])[0]);
+    expect(sourceRow?.content).toBe('我在河边钓到一条大鲤鱼');
+
+    // relation 定点写入 impressions(外键真实存在)
+    const impressions = await handle.db
+      .select()
+      .from(characterImpressions)
+      .where(eq(characterImpressions.characterId, CHAR_A));
+    expect(impressions).toHaveLength(1);
+    expect(impressions[0]!.aboutId).toBe(PARTNER_B);
+    expect(impressions[0]!.content).toBe('聊得来的邻居,可以亲近');
+
+    // 3 条当日源全部标记固化,产物亦标记;未固化的只剩窗口外 1 条
+    await until(async () => (await unconsolidatedCount()) === 1);
     const leftover = await handle.db
       .select({ content: memories.content })
       .from(memories)
       .where(and(eq(memories.characterId, CHAR_A), isNull(memories.consolidatedAt)));
-    expect(leftover.map((r) => r.content).sort()).toEqual([
-      '我梦见鲤鱼跃出结冰的河面',
-      '梦里市场空无一人',
-      '远古记忆不入梦',
-    ]);
+    expect(leftover.map((r) => r.content)).toEqual(['远古记忆不入梦']);
     consolidator.dispose();
     writer.dispose();
   });
@@ -264,12 +302,14 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
     const { sim, settledAt } = buildSim();
     await insertMemory('素材一', settledAt - 900);
     const { llm } = dreamLlm([
-      JSON.stringify([
-        { content: '梦一', importance: 5 },
-        { content: '梦二', importance: 6 },
-        { content: '梦三', importance: 7 },
-        { content: '梦四', importance: 8 },
-      ]),
+      JSON.stringify({
+        dreams: [
+          { content: '梦一', importance: 5 },
+          { content: '梦二', importance: 6 },
+          { content: '梦三', importance: 7 },
+          { content: '梦四', importance: 8 },
+        ],
+      }),
     ]);
     const writer = new MemoryWriter(sim, handle, llm);
     const consolidator = new MemoryConsolidator(sim, handle, llm, writer);
@@ -285,11 +325,13 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
     const { sim, settledAt } = buildSim();
     await insertMemory('素材二', settledAt - 900);
     const { llm } = dreamLlm([
-      JSON.stringify([
-        { content: '   ', importance: 5 },
-        { importance: 3 },
-        { content: '合法的梦', importance: 99 }, // 钳到 10
-      ]),
+      JSON.stringify({
+        dreams: [
+          { content: '   ', importance: 5 },
+          { importance: 3 },
+          { content: '合法的梦', importance: 99 }, // 钳到 10
+        ],
+      }),
     ]);
     const writer = new MemoryWriter(sim, handle, llm);
     const consolidator = new MemoryConsolidator(sim, handle, llm, writer);
@@ -320,7 +362,11 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
           taskType: options?.taskType,
         });
         await gate;
-        return { content: JSON.stringify([{ content: '迟到的梦', importance: 5 }]), promptTokens: 1, completionTokens: 1 };
+        return {
+          content: JSON.stringify({ dreams: [{ content: '迟到的梦', importance: 5 }] }),
+          promptTokens: 1,
+          completionTokens: 1,
+        };
       },
     };
     const writer = new MemoryWriter(sim, handle, llm);
@@ -331,6 +377,35 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
     await until(async () => (await dreamRows()).length === 1);
     await sleep(100); // 确认第二个事件不再触发
     expect(chats).toHaveLength(1);
+    consolidator.dispose();
+    writer.dispose();
+  });
+
+  it('白天反思: importance 累计越阈触发反射管线(无 dream 段,taskType=agent.reflect)', async () => {
+    const { sim } = buildSim();
+    const { llm, chats } = dreamLlm([
+      JSON.stringify({
+        insights: [{ content: '杂事做多了也没什么大不了', importance: 6, sources: ['条目0'] }],
+      }),
+    ]);
+    const writer = new MemoryWriter(sim, handle, llm);
+    const consolidator = new MemoryConsolidator(sim, handle, llm, writer);
+    // 30 条 × importance 5 = 150,恰触阈值(默认 5 亦为 Jev 打分失败兜底,模拟真实事件流)
+    for (let i = 0; i < 30; i += 1) {
+      await writer.writeManual(CHAR_A, `条目${i}`, 5);
+    }
+    await until(async () => chats.length === 1);
+    expect(chats[0]!.taskType).toBe('agent.reflect');
+    const user = chats[0]!.messages.find((m) => m.role === 'user')!.content;
+    expect(user).toContain('条目'); // 窗口=全部未固化记忆(不限当日)
+
+    const rows = await allRows();
+    const insight = rows.find((r) => r.type === 'insight');
+    expect(insight?.content).toBe('杂事做多了也没什么大不了');
+    expect(insight?.consolidatedAt).not.toBeNull(); // 产物即标记,不进反思源池(单向爬梯)
+    expect(await dreamRows()).toHaveLength(0); // 反思不产梦
+
+    await until(async () => (await unconsolidatedCount()) === 14); // top16 源被标记,余 14 条
     consolidator.dispose();
     writer.dispose();
   });

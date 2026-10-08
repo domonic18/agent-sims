@@ -1,4 +1,5 @@
 import { getActivityDefinition, RECIPES, type MemoryType, type WorldEvent } from '@sims/shared';
+import { BALANCE } from '../config/balance.js';
 import { autonomy } from './cognition.js';
 import { perceiveTasks } from './perception.js';
 import type { DbHandle } from '../db/client.js';
@@ -75,6 +76,9 @@ function errMsg(err: unknown): string {
  */
 export class MemoryWriter {
   private inFlight = 0;
+  /** 白天反思累加器(10-cognition §5): 各角色自上次反思起的新增记忆 importance 累计 */
+  private readonly importanceSinceReflection = new Map<string, number>();
+  private reflectionHook: ((characterId: string) => void) | null = null;
   private readonly unsubscribe: () => void;
 
   constructor(
@@ -87,6 +91,11 @@ export class MemoryWriter {
 
   dispose(): void {
     this.unsubscribe();
+  }
+
+  /** 注册白天反思触发器(固化器装配时挂入): importance 累计越阈即回调一次并清零累加 */
+  setReflectionHook(hook: (characterId: string) => void): void {
+    this.reflectionHook = hook;
   }
 
   private onEvent(event: WorldEvent): void {
@@ -141,8 +150,12 @@ export class MemoryWriter {
     }
   }
 
-  /** 向量化+落库(Jev 打分之后/跳过时的公共尾段) */
-  private async persist(task: MemoryTask, importance: number): Promise<void> {
+  /** 向量化+落库(Jev 打分之后/跳过时的公共尾段);固化产物(consolidated)不进反思累加 */
+  private async persist(
+    task: MemoryTask,
+    importance: number,
+    opts: { sourceIds?: string[]; consolidated?: boolean } = {},
+  ): Promise<void> {
     let embedding: number[] | null = null;
     try {
       const emb = await this.llm.embed('embedding', [task.content], {
@@ -163,19 +176,34 @@ export class MemoryWriter {
       importance,
       embedding,
       gameMinutes: this.sim.clock.gameMinutes,
+      sourceIds: opts.sourceIds ?? null,
+      consolidatedAt: opts.consolidated === true ? new Date() : null,
     });
+    if (opts.consolidated !== true) {
+      const accumulated =
+        (this.importanceSinceReflection.get(task.characterId) ?? 0) + importance;
+      if (accumulated >= BALANCE.REFLECTION_IMPORTANCE_THRESHOLD) {
+        this.importanceSinceReflection.set(task.characterId, 0);
+        this.reflectionHook?.(task.characterId);
+      } else {
+        this.importanceSinceReflection.set(task.characterId, accumulated);
+      }
+    }
   }
 
   /**
    * 直写记忆(M4d 慢层):跳过 Jev 打分,importance 由调用方给定(如计划=6)。
    * 走同一条并发管线护栏(满载丢弃+技术日志),供日程生成等非事件时刻写入;
    * M5 梦境固化走 type='dream',默认仍为 'event'(日程=计划性经历)。
+   * C1 固化管线 v2: opts.sourceIds=insight 溯源链;opts.consolidated=固化产物
+   * (dream/insight)写入即标记,不再进次夜/反思的源记忆池(单向爬梯,10-cognition §3)。
    */
   async writeManual(
     characterId: string,
     content: string,
     importance: number,
     type: MemoryType = 'event',
+    opts: { sourceIds?: string[]; consolidated?: boolean } = {},
   ): Promise<void> {
     if (this.inFlight >= MAX_INFLIGHT) {
       logTech('warn', 'memory', '记忆管线已满,丢弃直写', { characterId });
@@ -183,7 +211,11 @@ export class MemoryWriter {
     }
     this.inFlight += 1;
     try {
-      await this.persist({ characterId, type, content }, clampImportance(importance));
+      await this.persist(
+        { characterId, type, content },
+        clampImportance(importance),
+        opts,
+      );
     } catch (err) {
       logTech('error', 'memory', '直写记忆落库失败', {
         characterId,

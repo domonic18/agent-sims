@@ -1,14 +1,17 @@
 import {
+  MEMORY_TYPES,
   type MemoryPanelItem,
   type MemoryPanelResponse,
+  type MemoryImpressionItem,
+  type MemoryImpressionsResponse,
   type MemoryType,
 } from '@sims/shared';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { retrieveMemories } from '../agents/memory-retrieval.js';
 import type { DbHandle } from '../db/client.js';
-import { characters, memories } from '../db/schema/index.js';
+import { characterImpressions, characters, memories } from '../db/schema/index.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
 import { requireAdmin } from './auth.js';
@@ -16,6 +19,7 @@ import { requireAdmin } from './auth.js';
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   q: z.string().trim().min(1).max(200).optional(),
+  type: z.enum(MEMORY_TYPES).optional(), // 层过滤(10-cognition §3: 全员人可见,面板可分层看)
 });
 
 function errMsg(err: unknown): string {
@@ -29,6 +33,7 @@ interface PanelRow {
   importance: number;
   gameMinutes: number | null;
   createdAt: Date;
+  sourceIds: string[] | null;
 }
 
 function toPanelItem(row: PanelRow): MemoryPanelItem {
@@ -39,7 +44,26 @@ function toPanelItem(row: PanelRow): MemoryPanelItem {
     importance: row.importance,
     gameMinutes: row.gameMinutes,
     createdAt: row.createdAt.toISOString(),
+    ...(row.sourceIds !== null && row.sourceIds.length > 0 ? { sourceIds: row.sourceIds } : {}),
   };
+}
+
+/** insight 溯源解析(C1): 批量取 source_ids 原文回填 sources;无命中不回填 */
+async function attachSources(handle: DbHandle, items: MemoryPanelItem[]): Promise<void> {
+  const ids = [...new Set(items.flatMap((item) => item.sourceIds ?? []))];
+  if (ids.length === 0) return;
+  const rows = await handle.db
+    .select({ id: memories.id, content: memories.content })
+    .from(memories)
+    .where(inArray(memories.id, ids));
+  const contentById = new Map(rows.map((row) => [row.id, row.content]));
+  for (const item of items) {
+    if (item.sourceIds === undefined) continue;
+    const sources = item.sourceIds
+      .map((id) => contentById.get(id))
+      .filter((content): content is string => content !== undefined);
+    if (sources.length > 0) item.sources = sources;
+  }
 }
 
 /** 角色不在活跃世界时(旧世界/离线)检索的 recency 基准:该角色记忆的最新游戏时刻 */
@@ -51,7 +75,9 @@ async function fallbackGameMinutes(handle: DbHandle, characterId: string): Promi
   return row?.max ?? 0;
 }
 
-/** M4b/A3 记忆面板 API:q 缺省按时间倒序浏览;q 存在走三因子检索(embed 失败降级双因子+notice) */
+/** M4b/A3 记忆面板 API:q 缺省按时间倒序浏览;q 存在走三因子检索(embed 失败降级双因子+notice);
+ * type=层过滤(事件/洞察/梦境/对话);洞察条目带 sourceIds/sources 溯源链。
+ * C1 另注册 GET /impressions: 关系印象列表(10-cognition §4.2)。 */
 export function registerMemoryRoutes(
   app: FastifyInstance,
   handle: DbHandle,
@@ -64,7 +90,7 @@ export function registerMemoryRoutes(
     if (!parsed.success) {
       return await reply.code(400).send({ error: '查询参数不合法' });
     }
-    const { limit, q } = parsed.data;
+    const { limit, q, type } = parsed.data;
     const [character] = await handle.db
       .select({ name: characters.name })
       .from(characters)
@@ -82,17 +108,24 @@ export function registerMemoryRoutes(
           importance: memories.importance,
           gameMinutes: memories.gameMinutes,
           createdAt: memories.createdAt,
+          sourceIds: memories.sourceIds,
         })
         .from(memories)
-        .where(eq(memories.characterId, id))
+        .where(
+          type === undefined
+            ? eq(memories.characterId, id)
+            : and(eq(memories.characterId, id), eq(memories.type, type)),
+        )
         .orderBy(desc(memories.createdAt))
         .limit(limit);
+      const items = rows.map(toPanelItem);
+      await attachSources(handle, items);
       const body: MemoryPanelResponse = {
         characterId: id,
         name: character.name,
         mode: 'recent',
         notice: null,
-        items: rows.map(toPanelItem),
+        items,
       };
       return await reply.send(body);
     }
@@ -118,19 +151,57 @@ export function registerMemoryRoutes(
       characterId: id,
       currentGameMinutes,
       queryVector,
-      limit,
     });
+    const items = scored
+      .filter((m) => type === undefined || m.type === type)
+      .slice(0, limit)
+      .map((m) => ({
+        ...toPanelItem(m),
+        score: m.score,
+        factors: m.factors,
+      }));
+    await attachSources(handle, items);
     const body: MemoryPanelResponse = {
       characterId: id,
       name: character.name,
       mode: 'search',
       notice,
-      items: scored.map((m) => ({
-        ...toPanelItem(m),
-        score: m.score,
-        factors: m.factors,
-      })),
+      items,
     };
+    return await reply.send(body);
+  });
+
+  app.get('/api/admin/characters/:id/impressions', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    const { id } = request.params as { id: string };
+    const [character] = await handle.db
+      .select({ name: characters.name })
+      .from(characters)
+      .where(eq(characters.id, id))
+      .limit(1);
+    if (!character) {
+      return await reply.code(404).send({ error: '角色不存在' });
+    }
+    const rows = await handle.db
+      .select({
+        aboutId: characterImpressions.aboutId,
+        aboutName: characters.name,
+        content: characterImpressions.content,
+        gameMinutes: characterImpressions.gameMinutes,
+        updatedAt: characterImpressions.updatedAt,
+      })
+      .from(characterImpressions)
+      .innerJoin(characters, eq(characters.id, characterImpressions.aboutId))
+      .where(eq(characterImpressions.characterId, id))
+      .orderBy(desc(characterImpressions.updatedAt));
+    const items: MemoryImpressionItem[] = rows.map((row) => ({
+      aboutId: row.aboutId,
+      aboutName: row.aboutName,
+      content: row.content,
+      gameMinutes: row.gameMinutes,
+      updatedAt: row.updatedAt.toISOString(),
+    }));
+    const body: MemoryImpressionsResponse = { characterId: id, name: character.name, items };
     return await reply.send(body);
   });
 }
