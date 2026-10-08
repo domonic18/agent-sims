@@ -16,6 +16,7 @@ export const ACTIVITY_IDS = [
   'sleep',
   'workout',
   'stroll',
+  'socialize',
   'meal',
   'waiter',
   'vendor',
@@ -127,6 +128,15 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '散步',
     placeIds: ['park'],
     durationMinutes: 20,
+    effects: { energy: -0.04, score: 0.15, coins: 0 },
+  },
+  // 社交(10-cognition §7.2 C4):闲聚类活动,动机引擎(idleSocialStep)负责找人聊天,
+  // 本活动只提供日程块锚点(慢层可排);聊天收益走 social.chat 结算,活动本身低耗微得分
+  {
+    id: 'socialize',
+    name: '社交',
+    placeIds: ['park', 'restaurant', 'gym', 'library'],
+    durationMinutes: 60,
     effects: { energy: -0.04, score: 0.15, coins: 0 },
   },
   {
