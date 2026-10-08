@@ -30,10 +30,17 @@ function VitalBar({
 }
 
 /** 左上角色面板(UI-1): ‹›切换角色,选中谁显示谁;体力/健康/得分/徽标/行动/住房;可收起为头行免遮挡 */
-export function CharacterHud() {
+export function CharacterHud({
+  onHosting,
+  onInterview,
+}: {
+  onHosting?: (characterId: string) => void;
+  onInterview?: (characterId: string) => void;
+}) {
   const snapshot = useWorldStore((state) => state.snapshot);
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
+  const hostingMap = useWorldStore((state) => state.hostingMap);
   const [collapsed, setCollapsed] = useState(false);
 
   const characters = snapshot?.characters ?? [];
@@ -50,6 +57,7 @@ export function CharacterHud() {
 
   const chip = activityChip(character);
   const housing = character.housing;
+  const hostingMode = hostingMap[character.id] ?? null;
 
   return (
     <aside className="px-box hud-character">
@@ -65,6 +73,14 @@ export function CharacterHud() {
               {!character.alive && ' 👻'}
             </b>
             <span>居民 · {characters.length} 人在镇</span>
+            {hostingMode !== null && (
+              <span
+                className="hud-tag bot"
+                title={hostingMode === 'policy' ? '托管中·生活方针:玩家操作被拒收' : '托管中·全托管:玩家操作被拒收'}
+              >
+                🤖 托管{hostingMode === 'policy' ? '·方针' : '·全'}
+              </span>
+            )}
           </div>
           <button type="button" className="px-btn sq" title="下一位居民" onClick={() => cycle(1)}>
             ›
@@ -135,6 +151,25 @@ export function CharacterHud() {
           {housing !== null
             ? `🏠 ${housing.propertyId} · ${housing.ownership === 'rent' ? '租住' : '自有'}`
             : '🚫 无住房(资产页可租房)'}
+        </div>
+
+        <div className="hud-char-agent">
+          <button
+            type="button"
+            className="px-btn"
+            title={hostingMode !== null ? '查看/修改托管状态或接管' : '把角色托管给 Agent 自主生活'}
+            onClick={() => onHosting?.(character.id)}
+          >
+            🤖 {hostingMode !== null ? '托管中' : '托管'}
+          </button>
+          <button
+            type="button"
+            className="px-btn"
+            title="对话式访谈,生成人设卡影响 TA 的生活方式"
+            onClick={() => onInterview?.(character.id)}
+          >
+            🗣 人设访谈
+          </button>
         </div>
           </>
         )}

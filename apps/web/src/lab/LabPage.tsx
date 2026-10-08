@@ -332,7 +332,7 @@ export default function LabPage() {
       await setCharacterAutonomy(memCharId, next);
       setAutonomyOn(next);
       const name = snapshot?.characters.find((c) => c.id === memCharId)?.name ?? '角色';
-      setAdminMsg(`${name} 自治已${next ? '开启' : '关闭'}`);
+      setAdminMsg(`${name} 托管(全)已${next ? '开启' : '关闭'}`);
     } catch (error) {
       setAdminMsg(error instanceof Error ? error.message : String(error));
     }
@@ -616,7 +616,11 @@ export default function LabPage() {
                     disabled={memCharId === '' || autonomyOn === null}
                     onClick={() => void toggleAutonomy()}
                   >
-                    {autonomyOn === null ? '自治:—' : autonomyOn ? '自治:开(点击关闭)' : '自治:关(点击开启)'}
+                    {autonomyOn === null
+                      ? '托管(全):—'
+                      : autonomyOn
+                        ? '托管(全):开(点击关闭)'
+                        : '托管(全):关(点击开启)'}
                   </button>
                   <select
                     className="lab-input lab-memory-char"

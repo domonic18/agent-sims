@@ -22,6 +22,7 @@ const {
   applyParams,
   applyRules,
   applyRecipes,
+  applyHosting,
   setViewers,
 } = useWorldStore.getState();
 
@@ -59,6 +60,8 @@ export function connectWorld(): Socket {
       applyRules(message.event.rules);
     } else if (message.event.type === 'world.recipes') {
       applyRecipes(message.event.recipes);
+    } else if (message.event.type === 'character.hosting_changed') {
+      applyHosting(message.event.characterId, message.event.hosted, message.event.mode);
     }
   });
   return socket;

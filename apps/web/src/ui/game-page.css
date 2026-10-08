@@ -166,12 +166,24 @@
   color: var(--px-gold);
 }
 
+.hud-tag.bot {
+  background: #3a2d10;
+  color: var(--px-gold);
+  margin-left: 6px;
+}
+
 .hud-char-home {
   margin-top: 10px;
   padding-top: 9px;
   border-top: 2px dashed var(--px-slate);
   color: var(--px-dim);
   font-size: 12px;
+}
+
+.hud-char-agent {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
 }
 
 /* ---- 顶中 时钟/倍率 ---- */
@@ -675,4 +687,88 @@
   border-top: 2px dashed var(--px-slate);
   font-size: 11px;
   color: var(--px-dim);
+}
+
+/* ---- M4e 托管/人设访谈弹窗 ---- */
+.hosting-mode-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  cursor: pointer;
+}
+
+.hosting-mode-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hosting-mode-row small {
+  color: var(--px-dim);
+}
+
+.hosting-policy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.hosting-policy textarea,
+.interview-input input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--px-white, #e8e8e8);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 5px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+}
+
+.interview-modal {
+  width: min(460px, 92vw);
+}
+
+.interview-count {
+  color: var(--px-gold, #f5c542);
+  margin-left: 6px;
+}
+
+.interview-log {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 4px 0 8px;
+}
+
+.interview-msg {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.interview-msg.player {
+  padding-left: 22px;
+  color: var(--px-dim, #9aa3b2);
+}
+
+.interview-msg b {
+  font-weight: normal;
+}
+
+.interview-card p {
+  margin: 3px 0;
+}
+
+.interview-input {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
 }

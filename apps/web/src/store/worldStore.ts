@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import {
   RECIPES,
   type CraftRecipeId,
+  type HostingMode,
   type RecipeDef,
   type TileMapDefinition,
   type WorkTaskId,
@@ -70,6 +71,9 @@ export interface WorldStore {
   /** 连续作业开关(M-G.5/M-G.6):key=characterId,开启后该角色空闲即自动接最近同岗单(含采集岗) */
   continuousWork: Record<string, WorkTaskId>;
   toggleContinuousWork: (characterId: string, task: WorkTaskId | null) => void;
+  /** 托管徽标视图(M4e):key=characterId→托管模式;hosting_changed 事件驱动 */
+  hostingMap: Record<string, HostingMode>;
+  applyHosting: (characterId: string, hosted: boolean, mode: HostingMode | null) => void;
   setStatus: (status: ConnectionStatus) => void;
   setMap: (map: TileMapDefinition) => void;
   applySnapshot: (snapshot: WorldSnapshotMessage) => void;
@@ -141,5 +145,16 @@ export const useWorldStore = create<WorldStore>((set) => ({
         continuousWork[characterId] = task;
       }
       return { continuousWork };
+    }),
+  hostingMap: {},
+  applyHosting: (characterId, hosted, mode) =>
+    set((state) => {
+      const hostingMap = { ...state.hostingMap };
+      if (!hosted || mode === null) {
+        delete hostingMap[characterId];
+      } else {
+        hostingMap[characterId] = mode;
+      }
+      return { hostingMap };
     }),
 }));

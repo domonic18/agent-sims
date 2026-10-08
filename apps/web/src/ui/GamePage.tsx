@@ -9,6 +9,8 @@ import { WorldSettingsModal } from './WorldSettingsModal';
 import { Toasts } from './Toasts';
 import { LoginModal } from './LoginModal';
 import { CharacterHud } from './hud/CharacterHud';
+import { HostingModal } from './hud/HostingModal';
+import { InterviewModal } from './hud/InterviewModal';
 import { ActionBar } from './hud/ActionBar';
 import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
@@ -43,6 +45,8 @@ export default function GamePage() {
   const isAdmin = token !== null;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [hostingOpenId, setHostingOpenId] = useState<string | null>(null);
+  const [interviewOpenId, setInterviewOpenId] = useState<string | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
   // 弹窗打开前世界在运行则自动暂停,关闭时恢复(若期间被他人恢复则不双写)
   const resumeOnCloseRef = useRef(false);
@@ -143,7 +147,24 @@ export default function GamePage() {
         />
       )}
 
-      <CharacterHud />
+      <CharacterHud
+        onHosting={(id) => {
+          if (!isAdmin) {
+            setLoginOpen(true);
+            return;
+          }
+          setInterviewOpenId(null);
+          setHostingOpenId(id);
+        }}
+        onInterview={(id) => {
+          if (!isAdmin) {
+            setLoginOpen(true);
+            return;
+          }
+          setHostingOpenId(null);
+          setInterviewOpenId(id);
+        }}
+      />
 
       {isAdmin && (
         <div className="px-box hud-clock">
@@ -241,6 +262,20 @@ export default function GamePage() {
 
       {isAdmin && settingsOpen && <WorldSettingsModal onClose={() => void closeSettings()} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
+      {hostingOpenId !== null && (
+        <HostingModal
+          characterId={hostingOpenId}
+          characterName={snapshot?.characters.find((item) => item.id === hostingOpenId)?.name ?? '居民'}
+          onClose={() => setHostingOpenId(null)}
+        />
+      )}
+      {interviewOpenId !== null && (
+        <InterviewModal
+          characterId={interviewOpenId}
+          characterName={snapshot?.characters.find((item) => item.id === interviewOpenId)?.name ?? '居民'}
+          onClose={() => setInterviewOpenId(null)}
+        />
+      )}
 
       <InspectCard
         isAdmin={isAdmin}
