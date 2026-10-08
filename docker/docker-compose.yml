@@ -6,14 +6,16 @@
 #   docker compose -f docker/docker-compose.yml -p agent-sims --env-file .env up -d
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     restart: unless-stopped
     environment:
       POSTGRES_USER: sims
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sims}
       POSTGRES_DB: agent_sims
     volumes:
-      - ../workspace/postgres:/var/lib/postgresql/data
+      # pg18 官方镜像起 PGDATA 改为版本相关路径(/var/lib/postgresql/18/docker),
+      # 挂上层目录才是版本无关写法;挂 /data 旧路径会因无数据目录直接退出
+      - ../workspace/postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sims -d agent_sims"]
       interval: 5s
@@ -54,7 +56,7 @@ services:
     # 每日全库备份 sidecar(与 postgres 同镜像复用 pg_dump):启动即备一份,之后每 24h 一轮,
     # 落 workspace/backups/agent_sims-*.sql.gz 保留 14 天。防数据卷被清后素材/世界丢失;
     # 恢复姿势见 docker/restore-db.sh(单事务灌回,dump 自含 setval 序列位)
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     restart: unless-stopped
     depends_on:
       postgres:

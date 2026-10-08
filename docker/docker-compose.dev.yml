@@ -3,7 +3,7 @@
 # 项目名固定用 -p agent-sims-dev:根 .env 的 COMPOSE_PROJECT_NAME=agent-sims 归生产栈,勿混用
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg18
     ports:
       - "5432:5432"
     environment:
@@ -11,4 +11,5 @@ services:
       POSTGRES_PASSWORD: sims
       POSTGRES_DB: agent_sims
     volumes:
-      - ../workspace/postgres-dev:/var/lib/postgresql/data
+      # pg18 PGDATA 版本相关(/var/lib/postgresql/18/docker),挂上层目录(同生产 compose 注释)
+      - ../workspace/postgres-dev:/var/lib/postgresql
