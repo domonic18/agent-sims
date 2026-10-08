@@ -1,7 +1,9 @@
+import type { DayPlan } from './slow-layer.js';
+
 /**
  * 脑状态(agent-design §3.2):角色"脑内"的东西存本模块内存结构,
  * 不进 WorldCharacter——世界侧角色只保留模拟必需的数值/位置/库存。
- * M4c 只有自治开关;计划块/方针缓存等随 M4d 扩展。
+ * M4c 自治开关;M4d 日程计划;方针缓存等随 M4e 扩展。
  */
 const autonomousIds = new Set<string>();
 
@@ -19,5 +21,20 @@ export const autonomy = {
   },
   list(): string[] {
     return [...autonomousIds];
+  },
+};
+
+/** 日程脑状态(M4d 慢层):characterId→当日计划;重规划/角色移除时清 */
+const plans = new Map<string, DayPlan>();
+
+export const schedule = {
+  set(characterId: string, plan: DayPlan): void {
+    plans.set(characterId, plan);
+  },
+  get(characterId: string): DayPlan | undefined {
+    return plans.get(characterId);
+  },
+  clear(characterId: string): void {
+    plans.delete(characterId);
   },
 };

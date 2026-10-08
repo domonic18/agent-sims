@@ -47,6 +47,7 @@ function stubLlm(choice: string): MemoryLlm {
         },
       }) as never,
     embed: () => Promise.reject(new Error('unused')),
+    chat: () => Promise.reject(new Error('unused')),
   };
 }
 
@@ -135,6 +136,7 @@ describe('jevDecide(systemone choice 候选选一)', () => {
         }) as never;
       },
       embed: () => Promise.reject(new Error('unused')),
+      chat: () => Promise.reject(new Error('unused')),
     };
     await jevDecide(llm, atShop, TOWN_MAP);
     expect(Object.keys(asked!)).not.toContain('商店');
@@ -145,6 +147,7 @@ describe('jevDecide(systemone choice 候选选一)', () => {
     const broken: MemoryLlm = {
       systemOne: () => Promise.reject(new Error('jev 槽未配置')),
       embed: () => Promise.reject(new Error('unused')),
+      chat: () => Promise.reject(new Error('unused')),
     };
     expect(await jevDecide(broken, char({}), TOWN_MAP)).toBeNull();
   });

@@ -89,6 +89,7 @@ function harness(startGameMinutes: number, worldChar: WorldCharacter, llm?: Part
       return llm.systemOne('jev', '', {}, { taskType: 'agent.jev_micro' });
     },
     embed: () => Promise.reject(new Error('unused')),
+    chat: () => Promise.reject(new Error('unused')),
   };
   const scheduler = new AgentScheduler({
     sim,
