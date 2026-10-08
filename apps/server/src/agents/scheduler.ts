@@ -71,6 +71,7 @@ export class AgentScheduler {
   private readonly continueCount = new Map<string, number>();
   private readonly triageIgnoreCount = new Map<string, number>();
   private readonly planRejects = new Map<string, number>();
+  /** 计划退避期(绝对 gameMinutes):被中断块跳至块末/计划意图被拒短退避 */
   private readonly planSkipUntil = new Map<string, number>();
   private readonly planning = new Set<string>();
   private readonly registry = new ResponseRegistry();
@@ -489,14 +490,17 @@ export class AgentScheduler {
     return '正闲着';
   }
 
-  /** 回计划:被中断块标记跳过至块末,下个块边界由既有日程执行自然衔接 */
+  /** 回计划:被中断块标记跳过至块末(绝对 gameMinutes),下个块边界由既有日程执行自然衔接 */
   private skipCurrentBlock(char: WorldCharacter): void {
     const { sim } = this.deps;
     const plan = schedule.get(char.id);
     if (plan === undefined || plan.day !== sim.clock.day) return;
     const block = planBlockAt(plan, sim.clock.minuteOfDay);
     if (block === null) return;
-    this.planSkipUntil.set(char.id, block.endMin);
+    this.planSkipUntil.set(
+      char.id,
+      sim.clock.gameMinutes + Math.max(block.endMin - sim.clock.minuteOfDay, 0),
+    );
   }
 
   /** defer 队列巡检(2s):空闲且保鲜期内补执行响应;过期记一行 trace 出队 */
@@ -646,8 +650,9 @@ export class AgentScheduler {
   /** 日程执行判定:退避期内静默;无计划/空档返回 null 交还后续层级 */
   private planDecision(char: WorldCharacter): Decision | null {
     const { sim } = this.deps;
+    // planSkipUntil 存绝对 gameMinutes:minuteOfDay 语义会被次日同一时刻误读成"仍在退避"
     const skipUntil = this.planSkipUntil.get(char.id) ?? Number.NEGATIVE_INFINITY;
-    if (sim.clock.minuteOfDay < skipUntil) return null;
+    if (sim.clock.gameMinutes < skipUntil) return null;
     return planDecide(
       char,
       schedule.get(char.id),
@@ -731,7 +736,7 @@ export class AgentScheduler {
       this.planRejects.set(char.id, rejects);
       this.planSkipUntil.set(
         char.id,
-        this.deps.sim.clock.minuteOfDay + PLAN_RETRY_BACKOFF_MINUTES,
+        this.deps.sim.clock.gameMinutes + PLAN_RETRY_BACKOFF_MINUTES,
       );
       if (rejects >= PLAN_MAX_CONSECUTIVE_REJECTS) {
         schedule.clear(char.id);

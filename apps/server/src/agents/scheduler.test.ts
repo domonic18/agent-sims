@@ -304,16 +304,21 @@ describe('AgentScheduler(M4d 日程执行)', () => {
     h.scheduler.dispose();
   });
 
-  it('块内两段式:不在场所先 move_to 图书馆入口,trace 记 plan 层 react', async () => {
-    const library = TOWN_MAP.places.find((p) => p.id === 'library')!;
+  it('块内两段式:不在场所先 move_to 合法场所随机入口,trace 记 plan 层 react', async () => {
+    const studyPlaces = ['library', 'home-a']
+      .map((id) => TOWN_MAP.places.find((p) => p.id === id)!)
+      .filter((p) => p !== undefined);
     const h = harness(480, char({}), studyPlanLlm);
     await vi.advanceTimersByTimeAsync(2_000); // 计划生成
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 495,块内
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toEqual([
-      { type: 'move_to', characterId: CHAR_ID, x: library.entrance.x, y: library.entrance.y },
-    ]);
-    expect(h.bubbles[0]!.text).toContain('图书馆');
+    expect(h.intents).toHaveLength(1);
+    expect(h.intents[0]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
+    const spot = h.intents[0] as { x: number; y: number };
+    // 执行器随机选点:命中学习合法场所(library/home-a)之一
+    const legal = new Set(studyPlaces.map((p) => `${p.entrance.x},${p.entrance.y}`));
+    expect(legal.has(`${spot.x},${spot.y}`)).toBe(true);
+    expect(h.bubbles[0]!.text).toMatch(/图书馆|公寓/);
     const react = h.traceRows.find((r) => (r.decision as { layer?: string }).layer === 'plan');
     expect(react).toBeDefined();
     h.scheduler.dispose();
@@ -407,6 +412,41 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     h.clock.gameMinutes = 720;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(2);
+    h.scheduler.dispose();
+  });
+
+  it('中断退避跨日不残留: 绝对 gameMinutes 语义,次日同刻照常回计划', async () => {
+    const planAndRespondLlm: Partial<MemoryLlm> = {
+      ...respondLlm,
+      chat: () =>
+        Promise.resolve({
+          content: '[{"start":8,"end":12,"activity":"study"}]',
+          promptTokens: 10,
+          completionTokens: 5,
+        }),
+    };
+    const worldChar = char({ activity: activity('stroll') });
+    const h = harness(480, worldChar, planAndRespondLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
+    });
+    schedule.set(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      blocks: [{ startMin: 480, endMin: 720, activityId: 'stroll' }],
+    });
+    h.onEvent(diedEvent(480));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.intents).toHaveLength(1); // respond 打断生效,退避至块末(绝对 720)
+    worldChar.activity = null;
+    h.clock.gameMinutes = 705;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(1); // 当日块末前仍静默
+    h.clock.gameMinutes = 1440 + 480; // 次日 08:00,与中断同 minuteOfDay——旧实现会误判仍在退避
+    await vi.advanceTimersByTimeAsync(2_000); // ensurePlan 生成次日计划
+    h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 跨出巡检块边界
+    await vi.advanceTimersByTimeAsync(2_000); // 巡检回计划
+    expect(h.intents.length).toBeGreaterThan(1);
+    expect(h.intents[1]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
     h.scheduler.dispose();
   });
 
