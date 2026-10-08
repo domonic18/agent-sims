@@ -115,6 +115,7 @@ export async function jevDecide(
   map: TileMapDefinition,
 ): Promise<Decision | null> {
   if (!char.alive || char.collapsed) return null; // 失能不越权(与 ruleDecide 同门槛)
+  if (char.activity !== null || char.path.length > 0) return null; // jev 只服务空闲角色,忙角色不白烧 LLM
   const here = findPlaceAt(map, char.x, char.y)?.id ?? null;
   const candidates = [
     { ref: 'shop', label: '商店', desc: '去商店看看,补充食物' },
@@ -196,11 +197,16 @@ export function planDecide(
   map: TileMapDefinition,
   anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
 ): Decision | null {
+  if (!char.alive || char.collapsed) return null;
+  if (char.activity !== null || char.path.length > 0) return null; // 忙碌不越权打断(rule/jev 同门槛)
   if (plan === undefined || plan.day !== day) return null;
   const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
   if (night) return planNight(char, map, anchorsOf);
   const block = planBlockAt(plan, minuteOfDay);
   if (block === null) return null;
+  if (block.activityId === 'rest' && char.housing === null) {
+    return null; // rest 锚点=住宅床(须本人租约),无居所角色走过去必被拒,直接跳过
+  }
   if (
     char.energy <= BALANCE.LOW_ENERGY_THRESHOLD &&
     !(BASIC_ACTIVITY_IDS as readonly string[]).includes(block.activityId)

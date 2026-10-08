@@ -38,6 +38,10 @@ function char(overrides: Partial<WorldCharacter>): WorldCharacter {
   } as WorldCharacter;
 }
 
+function sleeping(): WorldCharacter['activity'] {
+  return { activityId: 'sleep', elapsed: 0, anchorKind: 'bed', targetId: null };
+}
+
 function stubLlm(choice: string): MemoryLlm {
   return {
     systemOne: () =>
@@ -153,9 +157,13 @@ describe('jevDecide(systemone choice 候选选一)', () => {
     expect(await jevDecide(broken, char({}), TOWN_MAP)).toBeNull();
   });
 
-  it('失能(死亡/虚脱倒地)→ null,不给倒下角色派去处', async () => {
+  it('失能(死亡/虚脱倒地)与忙碌(活动/移动)→ null,不给非空闲角色派去处', async () => {
     expect(await jevDecide(stubLlm('公园'), char({ alive: false }), TOWN_MAP)).toBeNull();
     expect(await jevDecide(stubLlm('公园'), char({ collapsed: true }), TOWN_MAP)).toBeNull();
+    expect(
+      await jevDecide(stubLlm('公园'), char({ activity: sleeping() }), TOWN_MAP),
+    ).toBeNull();
+    expect(await jevDecide(stubLlm('公园'), char({ path: [{ x: 1, y: 1 }] }), TOWN_MAP)).toBeNull();
   });
 });
 
@@ -186,6 +194,22 @@ describe('planDecide(日程执行,慢层计划快层两段式)', () => {
       activityId: 'study',
     });
     expect(near!.bubble).toContain('学习');
+  });
+
+  it('忙(活动/移动)与失能 → null,日程不越权打断进行中行为', () => {
+    expect(planDecide(char({ activity: sleeping() }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(planDecide(char({ path: [{ x: 1, y: 1 }] }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(planDecide(char({ alive: false }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(planDecide(char({ collapsed: true }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
+  });
+
+  it('无居所角色的 rest 块 → null(住宅床须本人租约,走过去必被拒)', () => {
+    const restPlan: DayPlan = {
+      day: 1,
+      blocks: [{ startMin: 480, endMin: 720, activityId: 'rest' }],
+      source: 'fallback',
+    };
+    expect(planDecide(char({ housing: null }), restPlan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
   });
 
   it('空档(计划外时间)→ null,交还后续层级', () => {
