@@ -12,6 +12,7 @@ import {
 } from '@sims/shared';
 import { buildApp } from '../src/app.js';
 import { BALANCE } from '../src/config/balance.js';
+import { hosting } from '../src/agents/cognition.js';
 import { tickBroadcast } from '../src/socket/gateway.js';
 import { TickDriver } from '../src/world/driver.js';
 
@@ -207,5 +208,26 @@ describe('socket 同步层', () => {
     player.disconnect();
     spectator.disconnect();
     await until(() => app.clients.list().length === 0);
+  });
+
+  it('托管守卫(M4e): 托管中角色玩家意图拒收且世界零触碰,接管后放行', async () => {
+    app.simulation.spawnCharacter('cara', 8, 12, '卡拉');
+    hosting.set('cara', { mode: 'policy', policyText: '多学习', compiled: null });
+    const emitIntent = (payload: unknown): Promise<IntentAck> =>
+      new Promise((resolve) => {
+        socket.emit(CLIENT_EVENTS.intent, payload, (ack: IntentAck) => resolve(ack));
+      });
+    const socket = openSocket('player');
+    await connected(socket);
+
+    const rejected = await emitIntent({ type: 'move_to', characterId: 'cara', x: 9, y: 12 });
+    expect(rejected).toMatchObject({ ok: false, message: expect.stringContaining('托管') });
+    expect(app.simulation.character('cara').path).toHaveLength(0);
+
+    hosting.delete('cara');
+    const moved = await emitIntent({ type: 'move_to', characterId: 'cara', x: 9, y: 12 });
+    expect(moved.ok).toBe(true);
+    expect(app.simulation.character('cara').path).toHaveLength(1);
+    socket.disconnect();
   });
 });

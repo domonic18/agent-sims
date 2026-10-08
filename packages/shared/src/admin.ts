@@ -176,6 +176,19 @@ export interface CharacterScheduleView {
   blocks: CharacterScheduleBlockView[];
 }
 
+/** 托管模式(M4e):full=Agent 完全自主;policy=生活方针约束(主推) */
+export const HOSTING_MODES = ['full', 'policy'] as const;
+
+export type HostingMode = (typeof HOSTING_MODES)[number];
+
+/** GET/POST /api/admin/characters/:id/hosting(未托管时 hosted=false/mode=null/policyText=null) */
+export interface HostingStateView {
+  characterId: string;
+  hosted: boolean;
+  mode: HostingMode | null;
+  policyText: string | null;
+}
+
 export const ADMIN_API = {
   login: '/api/admin/auth/login',
   me: '/api/admin/auth/me',
@@ -205,6 +218,7 @@ export const ADMIN_API = {
   characterAutonomy: (id: string) => `/api/admin/characters/${id}/autonomy`,
   characterSchedule: (id: string) => `/api/admin/characters/${id}/schedule`,
   characterReplan: (id: string) => `/api/admin/characters/${id}/replan`,
+  characterHosting: (id: string) => `/api/admin/characters/${id}/hosting`,
 } as const;
 
 /** token 用量统计窗口 */

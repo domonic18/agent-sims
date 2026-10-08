@@ -237,6 +237,18 @@ export const sleepDebtAppliedEventSchema = z.object({
 
 export type SleepDebtAppliedEvent = z.infer<typeof sleepDebtAppliedEventSchema>;
 
+/** 托管状态切换(M4e):玩家⇄Agent 指令来源原子切换的广播,world 域零感知仅转发;
+ * hosted=false 时 mode=null */
+export const hostingChangedEventSchema = z.object({
+  type: z.literal('character.hosting_changed'),
+  characterId: z.string().min(1),
+  hosted: z.boolean(),
+  mode: z.enum(['full', 'policy']).nullable(),
+  tick: z.number().int(),
+});
+
+export type HostingChangedEvent = z.infer<typeof hostingChangedEventSchema>;
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -257,6 +269,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   workTaskCompletedEventSchema,
   craftCompletedEventSchema,
   sleepDebtAppliedEventSchema,
+  hostingChangedEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;

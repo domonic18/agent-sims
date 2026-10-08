@@ -41,6 +41,7 @@ export function eventLogCategory(type: WorldEvent['type']): EventLogCategory {
     case 'character.revived':
     case 'character.auto_revived':
     case 'sleep.debt_applied':
+    case 'character.hosting_changed':
       return 'life';
     case 'maintenance.spawned':
     case 'world.control':
@@ -209,5 +210,19 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
         tone: 'bad',
         characterId: event.characterId,
       };
+    case 'character.hosting_changed':
+      return event.hosted
+        ? {
+            icon: '🤖',
+            text: `${nameOf(event.characterId)} 进入托管(${event.mode === 'policy' ? '生活方针' : '全托管'})`,
+            tone: 'info',
+            characterId: event.characterId,
+          }
+        : {
+            icon: '🎮',
+            text: `${nameOf(event.characterId)} 解除托管,回到玩家操控`,
+            tone: 'info',
+            characterId: event.characterId,
+          };
   }
 }

@@ -3,9 +3,9 @@ import type { DbHandle } from '../db/client.js';
 import { runIntent } from '../intents/execute.js';
 import type { Simulation } from '../world/simulation.js';
 import type { WorldCharacter } from '../world/character.js';
-import { autonomy, schedule } from './cognition.js';
+import { autonomy, hosting, schedule } from './cognition.js';
 import { jevDecide, planDecide, ruleDecide, type Decision } from './fast-layer.js';
-import { planDay, describePlan } from './slow-layer.js';
+import { loadPersonaContext, planDay, describePlan } from './slow-layer.js';
 import type { MemoryLlm, MemoryWriter } from './memory-writer.js';
 import { logTech } from '../telemetry.js';
 import { TraceRecorder, type TraceEntry } from './trace.js';
@@ -131,7 +131,15 @@ export class AgentScheduler {
     if (this.planning.has(char.id)) return;
     if (schedule.get(char.id)?.day === this.deps.sim.clock.day) return;
     this.planning.add(char.id);
-    void planDay(this.deps.llm, this.deps.handle, char, this.deps.sim.clock)
+    const state = hosting.get(char.id);
+    void loadPersonaContext(this.deps.handle, char.id)
+      .then((persona) =>
+        planDay(this.deps.llm, this.deps.handle, char, this.deps.sim.clock, {
+          policyText: state?.policyText ?? undefined,
+          compiled: state?.compiled ?? null,
+          persona,
+        }),
+      )
       .then((plan) => {
         schedule.set(char.id, plan);
         this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {

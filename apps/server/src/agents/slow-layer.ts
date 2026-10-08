@@ -1,8 +1,11 @@
 import { getActivityDefinition, getPropertyDefinition } from '@sims/shared';
+import { eq } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
+import { characters } from '../db/schema/index.js';
 import type { LlmMessage } from '../llm/types.js';
 import type { WorldCharacter } from '../world/character.js';
 import { retrieveMemories } from './memory-retrieval.js';
+import type { CompiledPolicy } from './cognition.js';
 import type { MemoryLlm } from './memory-writer.js';
 
 /** 计划块(agent-design §3.3):当日分钟区间 + 意图活动,块内由快层 rule 执行 */
@@ -35,6 +38,96 @@ export const DEFAULT_PLAN_TEMPLATE: readonly PlanBlock[] = [
 ];
 
 const EVIDENCE_LIMIT = 6;
+
+/** 计划生成上下文(M4e):生活方针(原文+编译缓存)与人设卡,均可缺省 */
+export interface PlanContext {
+  policyText?: string;
+  compiled?: CompiledPolicy | null;
+  persona?: string;
+}
+
+/** 方针编译(slow 槽):文本→白名单活动偏好集;解析失败/调用失败返回 null,
+ * 调用方回落「只用原文」(方针缓存,文本变更才重编译,agent-design §4.5) */
+export async function compilePolicy(
+  llm: MemoryLlm,
+  text: string,
+): Promise<CompiledPolicy | null> {
+  try {
+    const result = await llm.chat(
+      'slow',
+      [
+        {
+          role: 'system',
+          content: '你把玩家的生活方针编译为结构化活动偏好。只输出 JSON,不要解释。',
+        },
+        {
+          role: 'user',
+          content: [
+            `生活方针: ${text}`,
+            `可选活动: ${ACTIVITY_MENU}。`,
+            '只输出 JSON 对象: {"focus":["activityId",...],"avoid":["activityId",...]}。',
+            'focus=方针鼓励的活动,avoid=方针排斥的活动;都可为空数组,只准用可选活动里的 id。',
+          ].join('\n'),
+        },
+      ],
+      { taskType: 'agent.policy_compile' },
+    );
+    return parsePolicy(result.content);
+  } catch {
+    return null;
+  }
+}
+
+/** 慢槽输出→方针偏好:截取首个 JSON 对象,活动逐个过白名单,非字符串丢弃 */
+export function parsePolicy(raw: string): CompiledPolicy | null {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const record = parsed as Record<string, unknown>;
+  const pick = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((id): id is string => typeof id === 'string' && (PLAN_ACTIVITY_IDS as readonly string[]).includes(id))
+      : [];
+  return { focus: pick(record.focus), avoid: pick(record.avoid) };
+}
+
+/** 人设卡上下文:读 characters.persona 拼人设段;无卡/查询失败返回 undefined(静默降级) */
+export async function loadPersonaContext(
+  handle: DbHandle,
+  characterId: string,
+): Promise<string | undefined> {
+  try {
+    const rows = await handle.db
+      .select({ persona: characters.persona })
+      .from(characters)
+      .where(eq(characters.id, characterId))
+      .limit(1);
+    const persona = rows[0]?.persona;
+    if (typeof persona !== 'object' || persona === null) return undefined;
+    const record = persona as Record<string, unknown>;
+    const card = typeof record.card === 'object' && record.card !== null
+      ? (record.card as Record<string, unknown>)
+      : null;
+    const parts: string[] = [];
+    if (typeof record.bio === 'string' && record.bio.trim() !== '') parts.push(record.bio.trim());
+    if (card !== null) {
+      const fields = ['性格', '兴趣', '目标', '说话风格'] as const;
+      for (const field of fields) {
+        const value = card[field];
+        if (typeof value === 'string' && value.trim() !== '') parts.push(`${field}: ${value.trim()}`);
+      }
+    }
+    return parts.length > 0 ? parts.join(';') : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const ACTIVITY_MENU = PLAN_ACTIVITY_IDS.map((id) => {
   const def = getActivityDefinition(id);
@@ -108,10 +201,26 @@ function buildPlanMessages(
   char: WorldCharacter,
   evidence: string[],
   day: number,
+  ctx?: PlanContext,
 ): LlmMessage[] {
   const memoryLines = evidence.length > 0
     ? evidence.map((c) => `- ${c}`).join('\n')
     : '- (暂无记忆)';
+  const contextLines: string[] = [];
+  if (typeof ctx?.persona === 'string' && ctx.persona.trim() !== '') {
+    contextLines.push(`你的人设: ${ctx.persona.trim()}——日程安排要符合这个人设。`);
+  }
+  if (typeof ctx?.policyText === 'string' && ctx.policyText.trim() !== '') {
+    contextLines.push(`玩家给你的生活方针: ${ctx.policyText.trim()}`);
+    if (ctx.compiled !== null && ctx.compiled !== undefined) {
+      if (ctx.compiled.avoid.length > 0) {
+        contextLines.push(`以下活动被方针明确排斥,禁止安排: ${ctx.compiled.avoid.join('、')}。`);
+      }
+      if (ctx.compiled.focus.length > 0) {
+        contextLines.push(`以下活动是方针重点: ${ctx.compiled.focus.join('、')},请优先安排。`);
+      }
+    }
+  }
   return [
     {
       role: 'system',
@@ -121,6 +230,7 @@ function buildPlanMessages(
       role: 'user',
       content: [
         `状态: 金币 ${char.coins},体力 ${char.energy},健康 ${char.health},知识 ${char.knowledge},${housingLine(char)}。`,
+        ...contextLines,
         '近期记忆:',
         memoryLines,
         `可选活动: ${ACTIVITY_MENU}。`,
@@ -156,9 +266,16 @@ async function loadEvidence(
   }
 }
 
+/** 方针硬过滤:剔除 avoid 块,首尾空档不回填(快层空档自然空闲);全滤空回落模板 */
+function applyAvoid(blocks: PlanBlock[], avoid: readonly string[]): PlanBlock[] {
+  if (avoid.length === 0) return blocks;
+  return blocks.filter((b) => !avoid.includes(b.activityId));
+}
+
 /**
  * 慢层日计划(agent-design §4.3 slow):检索记忆证据(top-6)→ slow 槽 chat
  * 生成当日作息(JSON,白名单活动)→解析失败/调用失败回落通用模板。
+ * M4e: ctx 注入方针(原文+编译缓存)与人设;avoid 对 LLM 输出与回落模板都硬过滤。
  * 纯生成器,不写脑状态不落库——装配与时序归调度泵(M4d-C2)。
  */
 export async function planDay(
@@ -166,17 +283,31 @@ export async function planDay(
   handle: DbHandle,
   char: WorldCharacter,
   clock: { day: number; gameMinutes: number },
+  ctx?: PlanContext,
 ): Promise<DayPlan> {
   const evidence = await loadEvidence(llm, handle, char, clock.gameMinutes);
+  const avoid = ctx?.compiled?.avoid ?? [];
   try {
     const result = await llm.chat(
       'slow',
-      buildPlanMessages(char, evidence, clock.day),
+      buildPlanMessages(char, evidence, clock.day, ctx),
       { taskType: 'agent.day_plan', characterId: char.id },
     );
     const blocks = parseDayPlan(result.content);
-    return blocks !== null ? { day: clock.day, blocks, source: 'llm' } : fallbackPlan(clock.day);
+    if (blocks !== null) {
+      const kept = applyAvoid(blocks, avoid);
+      return kept.length > 0
+        ? { day: clock.day, blocks: kept, source: 'llm' }
+        : applyAvoidFallback(clock.day, avoid);
+    }
+    return applyAvoidFallback(clock.day, avoid);
   } catch {
-    return fallbackPlan(clock.day);
+    return applyAvoidFallback(clock.day, avoid);
   }
+}
+
+/** 回落模板同样过滤 avoid;全滤空=空计划(方针硬保证优先,角色当日空闲) */
+function applyAvoidFallback(day: number, avoid: readonly string[]): DayPlan {
+  const plan = fallbackPlan(day);
+  return { day, blocks: applyAvoid(plan.blocks, avoid), source: 'fallback' };
 }

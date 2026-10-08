@@ -10,6 +10,7 @@ import {
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { env } from '../config/env.js';
+import { hosting } from '../agents/cognition.js';
 import { runIntent } from '../intents/execute.js';
 import { verifyAdminToken } from '../utils/token.js';
 import type { Simulation } from '../world/simulation.js';
@@ -59,6 +60,14 @@ export function attachSocketGateway(
       const reply = (response: IntentAck): boolean => (ack ? (ack(response), true) : false);
       if (role !== 'player') {
         return reply({ ok: false, message: '参观者只读,指令已忽略' });
+      }
+      // 托管守卫(M4e):角色托管中=指令来源 Agent,玩家意图拒收;取不到 characterId 放行兼容
+      const characterId =
+        typeof payload === 'object' && payload !== null
+          ? (payload as Record<string, unknown>).characterId
+          : undefined;
+      if (typeof characterId === 'string' && hosting.has(characterId)) {
+        return reply({ ok: false, message: '角色托管中,请先接管再操作' });
       }
       reply(runIntent(sim, payload));
     });

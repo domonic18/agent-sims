@@ -5,6 +5,7 @@ import type { MemoryLlm } from './memory-writer.js';
 import {
   DEFAULT_PLAN_TEMPLATE,
   parseDayPlan,
+  parsePolicy,
   planBlockAt,
   planDay,
   type DayPlan,
@@ -160,5 +161,89 @@ describe('planDay(慢层日计划生成)', () => {
       { day: DAY, gameMinutes: 500 },
     );
     expect(renter.chatMessages[1]!.content).toContain('租住公寓 A');
+  });
+});
+
+describe('parsePolicy(慢槽输出→方针偏好)', () => {
+  it('合法 JSON 解析 focus/avoid,非白名单活动逐个丢弃', () => {
+    expect(parsePolicy('{"focus":["study","sleep","work"],"avoid":["stroll"]}')).toEqual({
+      focus: ['study', 'work'],
+      avoid: ['stroll'],
+    });
+  });
+  it('不可解析/形状非法返回 null', () => {
+    expect(parsePolicy('我想想')).toBeNull();
+    expect(parsePolicy('[1,2]')).toBeNull();
+    expect(parsePolicy('{"focus":"study"}')).toEqual({ focus: [], avoid: [] });
+  });
+});
+
+describe('planDay ctx 注入(M4e 方针+人设)', () => {
+  it('方针原文+编译缓存+人设进 prompt;avoid 提示语带白名单活动', async () => {
+    const s = llmStub({ chatContent: '[{"start":8,"end":12,"activity":"study"}]' });
+    await planDay(
+      s.llm,
+      s.handle,
+      char({}),
+      { day: DAY, gameMinutes: 500 },
+      {
+        policyText: '专注学习攒钱,少到处闲逛',
+        compiled: { focus: ['study', 'work'], avoid: ['stroll'] },
+        persona: '性格: 内向勤奋;目标: 攒钱买房',
+      },
+    );
+    const prompt = s.chatMessages[1]!.content;
+    expect(prompt).toContain('生活方针: 专注学习攒钱,少到处闲逛');
+    expect(prompt).toContain('禁止安排: stroll');
+    expect(prompt).toContain('重点: study、work');
+    expect(prompt).toContain('人设: 性格: 内向勤奋');
+  });
+
+  it('LLM 输出含 avoid 活动→硬过滤剔除', async () => {
+    const s = llmStub({
+      chatContent:
+        '[{"start":8,"end":12,"activity":"study"},{"start":12,"end":14,"activity":"stroll"}]',
+    });
+    const plan = await planDay(
+      s.llm,
+      s.handle,
+      char({}),
+      { day: DAY, gameMinutes: 500 },
+      { policyText: '不散步', compiled: { focus: [], avoid: ['stroll'] } },
+    );
+    expect(plan.source).toBe('llm');
+    expect(plan.blocks).toEqual([{ startMin: 480, endMin: 720, activityId: 'study' }]);
+  });
+
+  it('LLM 输出全被滤空→回落模板且模板同样滤 avoid', async () => {
+    const s = llmStub({
+      chatContent: '[{"start":10,"end":12,"activity":"stroll"}]',
+    });
+    const plan = await planDay(
+      s.llm,
+      s.handle,
+      char({}),
+      { day: DAY, gameMinutes: 500 },
+      { policyText: '不散步', compiled: { focus: [], avoid: ['stroll'] } },
+    );
+    expect(plan.source).toBe('fallback');
+    expect(plan.blocks.some((b) => b.activityId === 'stroll')).toBe(false);
+    expect(plan.blocks.length).toBe(DEFAULT_PLAN_TEMPLATE.length - 1);
+  });
+
+  it('slow 槽挂且有方针→回落模板滤 avoid;无方针模板原样', async () => {
+    const rejected = llmStub({ chatReject: true });
+    const plan = await planDay(
+      rejected.llm,
+      rejected.handle,
+      char({}),
+      { day: DAY, gameMinutes: 500 },
+      { policyText: '不散步', compiled: { focus: [], avoid: ['stroll'] } },
+    );
+    expect(plan.source).toBe('fallback');
+    expect(plan.blocks.some((b) => b.activityId === 'stroll')).toBe(false);
+    const plain = llmStub({ chatReject: true });
+    const noCtx = await planDay(plain.llm, plain.handle, char({}), { day: DAY, gameMinutes: 500 });
+    expect(noCtx.blocks).toEqual([...DEFAULT_PLAN_TEMPLATE]);
   });
 });
