@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { randomInt } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -353,6 +353,12 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       }
       return await reply.code(400).send({ error: '请求参数不合法' });
     }
+    // 居民名世界内唯一:表单内两两查重(zod 已 trim)
+    const names = parsed.data.characters.map((c) => c.name);
+    const dupeName = names.find((name, index) => names.indexOf(name) !== index);
+    if (dupeName !== undefined) {
+      return await reply.code(400).send({ error: `居民名重复: ${dupeName}` });
+    }
     const rules = normalizeRules(parsed.data.rules);
     // 每世界配方冻结(v1 不收客户端配方,出厂默认深拷贝入档;admin 配方页后续可编辑)
     rules.recipes = defaultRecipes();
@@ -485,6 +491,18 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
       .limit(1);
     if (!row) {
       return await reply.code(400).send({ error: '当前没有运行中的世界' });
+    }
+    // 居民名世界内唯一:DB 与内存模拟层双侧查重(落库失败被吞时 sim 仍为权威)
+    const [dupe] = await handle.db
+      .select({ id: characters.id })
+      .from(characters)
+      .where(and(eq(characters.worldId, row.id), eq(characters.name, parsed.data.name)))
+      .limit(1);
+    if (
+      dupe !== undefined ||
+      [...app.simulation.characters.values()].some((c) => c.name === parsed.data.name)
+    ) {
+      return await reply.code(400).send({ error: '居民名与现有居民重复' });
     }
     if (app.simulation.characters.size + 1 > WORLD_CHARACTER_LIMITS.max) {
       return await reply.code(400).send({

@@ -244,6 +244,22 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
       payload: { name: ' ', characters: [{ name: '阿泽', gender: 'male' }] },
     });
     expect(blankName.statusCode).toBe(400);
+    // 表单内重名 400(世界内居民名唯一)
+    const dupeForm = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: {
+        name: `${WORLD_NAME_PREFIX}重名镇`,
+        characters: [
+          { name: '苏晚', gender: 'female' },
+          { name: '阿泽', gender: 'male' },
+          { name: ' 苏晚 ', gender: 'female' },
+        ],
+      },
+    });
+    expect(dupeForm.statusCode).toBe(400);
+    expect((dupeForm.json() as { error: string }).error).toContain('苏晚');
     await app.close();
   });
 
@@ -311,6 +327,24 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
       payload: { name: '  ', gender: 'male' },
     });
     expect(blank.statusCode).toBe(400);
+
+    // 与现有居民撞名 400(含 trim 后等值;模拟层与 DB 双侧防线)
+    const dupeNew = await app.inject({
+      method: 'POST',
+      url: '/api/admin/characters',
+      headers: auth,
+      payload: { name: '新居民', gender: 'female' },
+    });
+    expect(dupeNew.statusCode).toBe(400);
+    expect((dupeNew.json() as { error: string }).error).toContain('重复');
+    const dupeExisting = await app.inject({
+      method: 'POST',
+      url: '/api/admin/characters',
+      headers: auth,
+      payload: { name: ' 苏晚 ', gender: 'female' },
+    });
+    expect(dupeExisting.statusCode).toBe(400);
+    expect(app.simulation.characters.size).toBe(4); // 被拒请求未入场
 
     // 超限 400:补到 12 人后再加
     for (let i = app.simulation.characters.size; i < 12; i += 1) {
