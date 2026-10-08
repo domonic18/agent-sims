@@ -77,6 +77,13 @@ function parseEntries(value: unknown, max: number): Array<Record<string, unknown
   return rows;
 }
 
+/** 条目正文字段: 约定 content,模型实测会猜成 text(kimi-for-coding)——两者都收 */
+function pickText(row: Record<string, unknown>): string | null {
+  if (typeof row.content === 'string' && row.content.trim() !== '') return row.content.trim();
+  if (typeof row.text === 'string' && row.text.trim() !== '') return row.text.trim();
+  return null;
+}
+
 /**
  * 慢槽输出→固化草稿(10-cognition §5): 逐段校验(文本非空/重要度钳 1~10/条数上限)。
  * insight 无 sources 或 sources 全空则丢弃(设计红线: 无 source 支持的认知不落库);
@@ -92,27 +99,30 @@ export function parseConsolidation(
   const dreams: DreamDraft[] = [];
   if (opts.withDreams) {
     for (const row of parseEntries(parsed.dreams, DREAM_MAX)) {
-      if (typeof row.content !== 'string' || row.content.trim() === '') continue;
+      const text = pickText(row);
+      if (text === null) continue;
       if (typeof row.importance !== 'number' || !Number.isFinite(row.importance)) continue;
-      dreams.push({ content: row.content.trim(), importance: clampImportance(row.importance) });
+      dreams.push({ content: text, importance: clampImportance(row.importance) });
     }
   }
   const insights: InsightDraft[] = [];
   for (const row of parseEntries(parsed.insights, INSIGHT_MAX)) {
-    if (typeof row.content !== 'string' || row.content.trim() === '') continue;
+    const text = pickText(row);
+    if (text === null) continue;
     if (typeof row.importance !== 'number' || !Number.isFinite(row.importance)) continue;
     if (!Array.isArray(row.sources)) continue;
     const sources = row.sources
       .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
       .map((s) => s.trim());
     if (sources.length === 0) continue;
-    insights.push({ content: row.content.trim(), importance: clampImportance(row.importance), sources });
+    insights.push({ content: text, importance: clampImportance(row.importance), sources });
   }
   const relations: RelationDraft[] = [];
   for (const row of parseEntries(parsed.relations, RELATION_MAX)) {
-    if (typeof row.content !== 'string' || row.content.trim() === '') continue;
+    const text = pickText(row);
+    if (text === null) continue;
     if (typeof row.about !== 'string' || !opts.partners.has(row.about.trim())) continue;
-    relations.push({ about: row.about.trim(), content: row.content.trim() });
+    relations.push({ about: row.about.trim(), content: text });
   }
   return { dreams, insights, relations };
 }
@@ -154,7 +164,7 @@ function buildConsolidationMessages(
 ): LlmMessage[] {
   const mode = withDreams ? '沉睡' : '走神';
   const dreamReq = withDreams
-    ? `\n- "dreams": 1~${DREAM_MAX} 条梦境片段(把今天重放、变形,可怪诞但素材只来自上文)`
+    ? `\n- "dreams": 1~${DREAM_MAX} 条梦境片段(把今天重放、变形,可怪诞但素材只来自上文),每条形如 {"content":"…","importance":整数}`
     : '';
   return [
     {
@@ -167,10 +177,10 @@ function buildConsolidationMessages(
         '今天的经历(方括号内为重要度):',
         rows.map((r) => `- [重要度 ${r.importance}] ${r.content}`).join('\n'),
         `今天接触过的人(只能从这个名单里选): ${[...partners.keys()].join('、') || '无'}`,
-        '请输出一个 JSON 对象,字段:',
+        '请输出一个 JSON 对象,字段(条目字段名必须一字不差照写):',
         dreamReq,
-        `- "insights": 0~${INSIGHT_MAX} 条我总结出的认知(看法/教训/规律),每条给 "sources": 支持它的经历原文(从上文逐字截取,可截片段);没有足够支持的认知不要写`,
-        `- "relations": 0~${RELATION_MAX} 条对名单里的人的印象(是什么样的人、发生过什么、值不值得信任),about 填人名`,
+        `- "insights": 0~${INSIGHT_MAX} 条我总结出的认知(看法/教训/规律),每条形如 {"content":"…","importance":整数,"sources":["支持它的经历原文,从上文逐字截取,可截片段"]};没有足够支持的认知不要写`,
+        `- "relations": 0~${RELATION_MAX} 条对名单里的人的印象(是什么样的人、发生过什么、值不值得信任),每条形如 {"about":"人名","content":"…"}`,
         '只输出 JSON,不要解释。',
       ]
         .filter((line) => line !== '')

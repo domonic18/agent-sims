@@ -84,6 +84,19 @@ describe('parseConsolidation(慢槽输出→固化草稿)', () => {
       parseConsolidation('[1,2,3]', { withDreams: true, partners: PARTNERS }).insights,
     ).toHaveLength(0);
   });
+
+  it('正文字段兼容 text 别名(kimi-for-coding 实测把 content 猜成 text)', () => {
+    const raw = JSON.stringify({
+      dreams: [{ text: '钟面裂成两半', importance: 4 }],
+      insights: [{ text: '金币不足就餐会中止', importance: 6, sources: ['我就餐了 0 分钟(金币不足中止)'] }],
+      relations: [{ about: '阿泽', text: '完成过探索的人' }],
+    });
+    const draft = parseConsolidation(raw, { withDreams: true, partners: PARTNERS });
+    expect(draft.dreams).toEqual([{ content: '钟面裂成两半', importance: 4 }]);
+    expect(draft.insights).toHaveLength(1);
+    expect(draft.insights[0]!.content).toBe('金币不足就餐会中止');
+    expect(draft.relations).toEqual([{ about: '阿泽', content: '完成过探索的人' }]);
+  });
 });
 
 describe('resolveSourceIds(溯源引用→情景记忆 id)', () => {
