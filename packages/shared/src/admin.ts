@@ -158,6 +158,24 @@ export interface AdminLoginResponse {
   expiresIn: number;
 }
 
+/** 角色当日日程块视图(M4d 日程面板;status 由服务端按当前时刻派生) */
+export interface CharacterScheduleBlockView {
+  startMin: number;
+  endMin: number;
+  activityId: string;
+  label: string;
+  status: 'pending' | 'active' | 'done';
+}
+
+/** GET /api/admin/characters/:id/schedule 响应(无计划时 day=null/blocks=[]) */
+export interface CharacterScheduleView {
+  characterId: string;
+  day: number | null;
+  /** llm=慢槽生成;fallback=模板回落 */
+  source: 'llm' | 'fallback' | null;
+  blocks: CharacterScheduleBlockView[];
+}
+
 export const ADMIN_API = {
   login: '/api/admin/auth/login',
   me: '/api/admin/auth/me',
@@ -185,6 +203,8 @@ export const ADMIN_API = {
   logAuditLogs: '/api/admin/logs/audit-logs',
   characterMemories: (id: string) => `/api/admin/characters/${id}/memories`,
   characterAutonomy: (id: string) => `/api/admin/characters/${id}/autonomy`,
+  characterSchedule: (id: string) => `/api/admin/characters/${id}/schedule`,
+  characterReplan: (id: string) => `/api/admin/characters/${id}/replan`,
 } as const;
 
 /** token 用量统计窗口 */

@@ -7,6 +7,7 @@ import {
   SYS_CONFIG_FIELDS,
   SYS_CONFIG_GROUP_LABELS,
   SYS_CONFIG_GROUPS,
+  type CharacterScheduleView,
   type Gender,
   type MemoryPanelResponse,
   type WorldArchiveView,
@@ -16,10 +17,12 @@ import {
   deleteWorldArchive,
   fetchCharacterAutonomy,
   fetchCharacterMemories,
+  fetchCharacterSchedule,
   fetchWorldArchives,
   fetchWorlds,
   getToken,
   loadWorldArchive,
+  replanCharacter,
   saveWorldArchive,
   setCharacterAutonomy,
 } from '../admin/api';
@@ -43,6 +46,21 @@ import './lab.css';
 
 const LOG_MAX = 100;
 const TIME_SCALES = [1, 4, 16] as const;
+
+/** 日程块状态徽标文案(M4d) */
+const SCHEDULE_STATUS_LABELS: Record<CharacterScheduleBlockStatus, string> = {
+  pending: '待开始',
+  active: '进行中',
+  done: '已完成',
+};
+
+type CharacterScheduleBlockStatus = CharacterScheduleView['blocks'][number]['status'];
+
+function blockRange(startMin: number, endMin: number): string {
+  const hhmm = (m: number): string =>
+    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  return `${hhmm(startMin)}~${hhmm(endMin)}`;
+}
 
 /** 游戏分钟 → 第 X 天 HH:MM(记忆条目时间戳) */
 function formatGameMinutes(gameMinutes: number | null): string {
@@ -86,6 +104,8 @@ export default function LabPage() {
   const [memLoading, setMemLoading] = useState(false);
   // 自治开关(M4c):null=未查询;共享记忆面板的角色选择
   const [autonomyOn, setAutonomyOn] = useState<boolean | null>(null);
+  // 日程面板(M4d):与记忆面板共享角色选择;5s 轮询看块状态翻转
+  const [scheduleData, setScheduleData] = useState<CharacterScheduleView | null>(null);
   const nextLogIdRef = useRef(1);
   const spawnCountRef = useRef(0);
 
@@ -313,6 +333,40 @@ export default function LabPage() {
       setAutonomyOn(next);
       const name = snapshot?.characters.find((c) => c.id === memCharId)?.name ?? '角色';
       setAdminMsg(`${name} 自治已${next ? '开启' : '关闭'}`);
+    } catch (error) {
+      setAdminMsg(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  // 日程面板(M4d):随角色切换/管理通道就绪拉取,5s 轮询看块状态翻转
+  useEffect(() => {
+    setScheduleData(null);
+    if (!adminAvailable || memCharId === '') return;
+    let alive = true;
+    const load = (): void => {
+      fetchCharacterSchedule(memCharId)
+        .then((view) => {
+          if (alive) setScheduleData(view);
+        })
+        .catch(() => {
+          /* 角色刚移除等瞬时错误:保留上一帧 */
+        });
+    };
+    load();
+    const poll = setInterval(load, 5_000);
+    return () => {
+      alive = false;
+      clearInterval(poll);
+    };
+  }, [adminAvailable, memCharId]);
+
+  const doReplan = async (): Promise<void> => {
+    if (memCharId === '') return;
+    try {
+      await replanCharacter(memCharId);
+      const name = snapshot?.characters.find((c) => c.id === memCharId)?.name ?? '角色';
+      setAdminMsg(`${name} 日程已清空,泵将在 2 秒内重新规划`);
+      setScheduleData(null);
     } catch (error) {
       setAdminMsg(error instanceof Error ? error.message : String(error));
     }
@@ -630,6 +684,42 @@ export default function LabPage() {
                       )}
                     </ul>
                   </>
+                )}
+                <h3 style={{ marginTop: 14 }}>管理员 · 今日日程</h3>
+                <div className="lab-btn-row">
+                  <button
+                    type="button"
+                    className="px-btn"
+                    disabled={memCharId === ''}
+                    onClick={() => void doReplan()}
+                  >
+                    重新规划
+                  </button>
+                  <span className="hint">
+                    {scheduleData === null
+                      ? '选择居民后查看日程(自治开启后 2 秒内生成)'
+                      : scheduleData.day === null
+                        ? '暂无当日计划'
+                        : `第 ${scheduleData.day} 天 · ${
+                            scheduleData.source === 'llm' ? '慢思考生成' : '模板回落'
+                          }`}
+                  </span>
+                </div>
+                {scheduleData !== null && scheduleData.day !== null && (
+                  <ul className="lab-memory-list">
+                    {scheduleData.blocks.map((b) => (
+                      <li key={`${b.startMin}-${b.activityId}`} className="lab-memory-item">
+                        <span className={`lab-mem-badge ${b.status}`}>
+                          {SCHEDULE_STATUS_LABELS[b.status]}
+                        </span>
+                        <div className="lab-memory-body">
+                          <div>
+                            {blockRange(b.startMin, b.endMin)} · {b.label}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </div>

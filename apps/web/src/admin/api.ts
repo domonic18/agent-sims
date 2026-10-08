@@ -15,6 +15,7 @@ import {
   type AddWorldCharacterRequest,
   type AddWorldCharacterResponse,
   type AuditLogEntriesResponse,
+  type CharacterScheduleView,
   type CreateWorldRequest,
   type GameType,
   type ModelConfigInvokeResult,
@@ -297,6 +298,15 @@ export async function setCharacterAutonomy(characterId: string, enabled: boolean
     method: 'POST',
     body: JSON.stringify({ enabled }),
   });
+}
+
+/** M4d 日程面板:读当日计划(无计划 day=null);replan 清计划后泵 2s 内自动重生成 */
+export async function fetchCharacterSchedule(characterId: string): Promise<CharacterScheduleView> {
+  return await adminFetch<CharacterScheduleView>(ADMIN_API.characterSchedule(characterId));
+}
+
+export async function replanCharacter(characterId: string): Promise<void> {
+  await adminFetch(ADMIN_API.characterReplan(characterId), { method: 'POST' });
 }
 
 // ============ 素材管理(M-L.2) ============
