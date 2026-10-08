@@ -114,7 +114,7 @@ character_impressions: id, character_id(FK), about_id(FK characters),
 - **触发**(二选一先到): ①每 7 个游戏日例行;②里程碑事件(首次倒下被救/首次挚友/首次买断房产/缺觉惩罚满 3 次…)
 - **机制**: 慢思考读「当前 selfNarrative+近 7 日 insights+重要 relations」→ 产出修订版(第一人称 ≤200 字)+特质微调
 - **防漂移双闸**: ①单次修订幅度约束(prompt 明令: 只允许基于给定认知微调,不得推翻既有核心特质);②版本链留档+每次修订写一条 insight 记忆(「我对自己的看法变了: …」)——演化本身可审计
-- 新角色: 访谈生成初始叙事(替代现 bio 的部分职责),此后交给经历
+- 新角色: 未初始化时以人设卡 bio 自动兜底建 version 1(不烧模型);管理员可经面板 light 槽生成叙事草稿(原「访谈生成」方案随访谈退役调整为面板按钮,2026-10-09 C5 落地定稿;里程碑实际实现三键: first_rescued/first_friend/sleep_debt_3,买断房产无独立事件源暂缺)
 
 ## 7. 决策接线 v2: 事件响应与社交通路
 
@@ -226,5 +226,6 @@ character_impressions: id, character_id(FK), about_id(FK characters),
 
 | 日期 | 内容 |
 |---|---|
+| 2026-10-09 | C5 落地(§4.3/§6/§9 收官): narrator.ts 事件订阅——settled/debt 每日恰一互斥事件为周级锚(7 游戏日),里程碑三键 first_rescued/first_friend/sleep_debt_3(台账去重,不受周级闸),二选一先到修订;初始叙事双轨(bio 兜底 v1 不烧模型+面板 light 槽生成草稿,§6 访谈方案相应修订);防漂移三闸落全(prompt 明令微调+版本链环形 10+无素材不修订),每次修订写「我对自己的看法变了」insight(里程碑带起因);消费端 loadPersonaContext 叙事顶替 bio(日计划/对话自动受益);persona GET/PUT/narrative/generate 三端点+lab 面板叙事块与演化史;零 DB 迁移(persona jsonb 扩展 selfNarrative/narrativeHistory/milestones/sleepDebtCount) |
 | 2026-10-08 | 初稿: 用户定性 M5 梦境现行实现为营销手段,从「agent 逐步形成人格/有感受/过往影响行为」出发点系统性重评——现状六缺口盘点(无认知沉淀/人格静态/关系标量化/接线单一/情绪数值化)、认知分层梯子目标架构(L0~L4+L5 横切)、数据形态(insight 复用+溯源/impressions 表/selfNarrative 版本链/mood 脑状态)、固化管线 v2(睡眠=爬梯工厂,一次慢调用产 dreams+insights+relations)、决策接线(prompt 证据+规则调权,零新增调用)、验收换轨行为对照实验(分化/一致/演化/恢复/情绪可见)、C1~C4 串行路线 |
 | 2026-10-08 | v2: 消费侧两问评审——问题1「计划执行器木讷」坐实为忙守卫结构性缺陷(§2#7),新增事件响应层(§7.1: 相关性/强度/可打断性三级规则门+响应动作注册表+中断评估 systemOne+预算护栏,中断后回计划不整日重规划);问题2「社交行为缺失」坐实为三层皆缺(§2#8: 动作空间/动机模型/记忆消费),新增四段社交通路(§7.2: 动机规则引擎→jev 候选触发→chat 执行→固化回路,PLAN 增 socialize);§9 重排 C1~C5(C3 事件响应/C4 社交闭环前置,C5 自我叙事收口),NPC(M6) 延后定稿入档 |
