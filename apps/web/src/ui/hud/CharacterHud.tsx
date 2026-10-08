@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatCoins } from '../../format';
+import { getHosting } from '../../net/hostingApi';
 import { useWorldStore } from '../../store/worldStore';
 import type { CharacterView } from '../side-panel/place';
 import { PixelAvatar } from './PixelAvatar';
@@ -41,7 +42,22 @@ export function CharacterHud({
   const selectedCharacterId = useWorldStore((state) => state.selectedCharacterId);
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
   const hostingMap = useWorldStore((state) => state.hostingMap);
+  const applyHosting = useWorldStore((state) => state.applyHosting);
   const [collapsed, setCollapsed] = useState(false);
+
+  // 选中即拉托管状态兜底(hosting_changed 事件只保在线期间,首帧/重连/他人已托管时徽标不丢)
+  useEffect(() => {
+    if (selectedCharacterId === null) return;
+    let cancelled = false;
+    getHosting(selectedCharacterId)
+      .then((view) => {
+        if (!cancelled) applyHosting(view.characterId, view.hosted, view.mode);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCharacterId, applyHosting]);
 
   const characters = snapshot?.characters ?? [];
   const character: CharacterView | null =
