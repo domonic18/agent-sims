@@ -17,6 +17,7 @@ export const ACTIVITY_IDS = [
   'workout',
   'stroll',
   'socialize',
+  'explore',
   'meal',
   'waiter',
   'vendor',
@@ -138,6 +139,15 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     placeIds: ['park', 'restaurant', 'gym', 'library'],
     durationMinutes: 60,
     effects: { energy: -0.04, score: 0.15, coins: 0 },
+  },
+  // 探索(随机性迭代):多场所漫游块,慢层可排;目标场所按(角色,日,块)确定性随机——
+  // 块内粘性(到位即开始),跨块/跨日换地方,是行动多样性的主要来源
+  {
+    id: 'explore',
+    name: '探索',
+    placeIds: ['park', 'shop', 'restaurant', 'gym', 'library', 'office'],
+    durationMinutes: 30,
+    effects: { energy: -0.05, score: 0.2, coins: 0 },
   },
   {
     id: 'meal',

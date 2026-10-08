@@ -2,7 +2,7 @@ import { TOWN_MAP, SHOP_ITEMS } from '@sims/shared';
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
-import { jevDecide, planDecide, ruleDecide, type Decision } from './fast-layer.js';
+import { exploreTarget, jevDecide, planDecide, ruleDecide, type Decision } from './fast-layer.js';
 import type { DayPlan } from './slow-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 
@@ -235,5 +235,56 @@ describe('planDecide(日程执行,慢层计划快层两段式)', () => {
       activityId: 'sleep',
     });
     expect(planDecide(char({ housing: null }), plan, 1, 1320, TOWN_MAP, nightAnchors)).toBeNull();
+  });
+});
+
+describe('planDecide explore 块(散列目标,块内粘性)', () => {
+  const explorePlan: DayPlan = {
+    day: 3,
+    blocks: [{ startMin: 600, endMin: 630, activityId: 'explore' }],
+    source: 'llm',
+  };
+  const anchorsOf = (): Array<{ x: number; y: number }> => [];
+  const targetOf = (key: string) =>
+    exploreTarget(key, ['park', 'shop', 'restaurant', 'gym', 'library', 'office'], TOWN_MAP);
+
+  it('同键散列确定性:重复取目标命中同一场所', () => {
+    expect(targetOf('char-1|3|600')!.id).toBe(targetOf('char-1|3|600')!.id);
+    expect(targetOf('苏晚|3|600')!.id).toBe(targetOf('苏晚|3|600')!.id);
+  });
+
+  it('异地→move_to 散列目标入口(气泡带场所名);换块/换人可换目标', () => {
+    const first = planDecide(char({}), explorePlan, 3, 600, TOWN_MAP, anchorsOf);
+    expect(first).not.toBeNull();
+    expect(first!.layer).toBe('plan');
+    const target = targetOf('char-1|3|600')!;
+    expect(first!.intent).toEqual({
+      type: 'move_to',
+      characterId: 'char-1',
+      x: target.entrance.x,
+      y: target.entrance.y,
+    });
+    expect(first!.bubble).toContain(target.name);
+    // 不同(角色,日,块)键进池分布:六个键至少命中两种场所(纯粘性退化=全部同地)
+    const keys = ['char-1|3|600', 'char-1|4|600', 'char-1|5|600', 'char-2|3|600', 'char-2|4|600', 'char-2|5|600'];
+    expect(new Set(keys.map((k) => targetOf(k)!.id)).size).toBeGreaterThan(1);
+  });
+
+  it('已在目标场所→就地 start_activity explore', () => {
+    const target = targetOf('char-1|3|600')!;
+    const started = planDecide(
+      char({ x: target.entrance.x, y: target.entrance.y }),
+      explorePlan,
+      3,
+      600,
+      TOWN_MAP,
+      anchorsOf,
+    );
+    expect(started!.intent).toEqual({
+      type: 'start_activity',
+      characterId: 'char-1',
+      activityId: 'explore',
+    });
+    expect(started!.bubble).toContain('探索');
   });
 });

@@ -202,12 +202,59 @@ function activitySpot(
   placeIds: readonly string[],
   anchors: Array<{ x: number; y: number }>,
 ): { x: number; y: number; placeName: string } | null {
+  // 合法集合内随机选点:同类活动逐次换工位/入园口,行动不再天天钉死同一格
   if (anchors.length > 0) {
-    return { x: anchors[0]!.x, y: anchors[0]!.y, placeName: '' };
+    const a = anchors[Math.floor(Math.random() * anchors.length)]!;
+    return { x: a.x, y: a.y, placeName: '' };
   }
-  const place = placeIds.map((id) => findPlaceByRef(map, id)).find((p) => p !== null);
+  const places = placeIds.map((id) => findPlaceByRef(map, id)).filter((p) => p !== null);
+  const place = places[Math.floor(Math.random() * places.length)];
   if (place === undefined || place === null) return null;
   return { x: place.entrance.x, y: place.entrance.y, placeName: place.name };
+}
+
+/** 探索目标:FNV-1a 按(角色,日,块)散列在场所集合内确定性选点——同块重复决策
+ * 命中同一目标(粘性,到位即开始),跨块/跨日自然换地方,不引入额外随机状态 */
+export function exploreTarget(
+  key: string,
+  placeIds: readonly string[],
+  map: TileMapDefinition,
+): PlaceDefinition | null {
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const places = placeIds.map((ref) => findPlaceByRef(map, ref)).filter((p) => p !== null);
+  if (places.length === 0) return null;
+  return places[Math.abs(hash) % places.length]!;
+}
+
+/** 探索块执行:目标场所内即就地开始;不在则走向目标入口 */
+function exploreDecision(
+  char: WorldCharacter,
+  map: TileMapDefinition,
+  day: number,
+  blockStartMin: number,
+  placeIds: readonly string[],
+): Decision | null {
+  const target = exploreTarget(`${char.id}|${day}|${blockStartMin}`, placeIds, map);
+  if (target === null) return null;
+  const here = findPlaceAt(map, char.x, char.y);
+  if (here?.id === target.id) {
+    return {
+      layer: 'plan',
+      action: 'react',
+      intent: { type: 'start_activity', characterId: char.id, activityId: 'explore' },
+      bubble: `就在${target.name}逛逛,探索一下`,
+    };
+  }
+  return {
+    layer: 'plan',
+    action: 'react',
+    intent: { type: 'move_to', characterId: char.id, x: target.entrance.x, y: target.entrance.y },
+    bubble: `去${target.name}一带探索`,
+  };
 }
 
 function onSpot(char: WorldCharacter, spots: Array<{ x: number; y: number }>): boolean {
@@ -246,6 +293,9 @@ export function planDecide(
   }
   const definition = getActivityDefinition(block.activityId);
   if (definition === null) return null;
+  if (block.activityId === 'explore') {
+    return exploreDecision(char, map, day, block.startMin, definition.placeIds);
+  }
   const anchors = anchorsOf(block.activityId, null);
   const atTarget = anchors.length > 0 ? onSpot(char, anchors) : inAnyPlace(map, char, definition.placeIds);
   if (atTarget) {

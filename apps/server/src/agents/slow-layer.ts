@@ -26,7 +26,7 @@ export interface DayPlan {
 /** 计划白名单:免门槛/无条件可直接 start_activity 的活动
  * (sleep 由执行层按夜强制,不进计划;带 category 岗位与工单须接单,不排程;
  * socialize 为 C4 闲聚类块,聊天本身由动机引擎驱动) */
-export const PLAN_ACTIVITY_IDS = ['study', 'work', 'workout', 'stroll', 'socialize', 'meal', 'rest'] as const;
+export const PLAN_ACTIVITY_IDS = ['study', 'work', 'workout', 'stroll', 'socialize', 'explore', 'meal', 'rest'] as const;
 
 /** 回落模板:LLM 不可用时的通用作息(8~22 点,夜间由执行层强制回家睡) */
 export const DEFAULT_PLAN_TEMPLATE: readonly PlanBlock[] = [
@@ -40,11 +40,26 @@ export const DEFAULT_PLAN_TEMPLATE: readonly PlanBlock[] = [
 
 const EVIDENCE_LIMIT = 6;
 
+/** 每日随机抽一条的风味提示:给计划注入变化方向,避免逐日雷同(执行器与校验链兜底,提示只影响倾向) */
+const PLAN_FLAVORS: readonly string[] = [
+  '今天至少安排一段平时不常做的活动,给日子添点新意',
+  '今天可以去个平时少去的地方走走,公园/餐馆/商店/健身房都行',
+  '状态允许的话留一段轻松随性的时间,别把日程排太满',
+  '结合你的兴趣,今天安排一点你真正喜欢的小事',
+  '昨天怎么过的今天不必照搬,按今天的心情微调时段',
+];
+
+function pickFlavor(): string {
+  return PLAN_FLAVORS[Math.floor(Math.random() * PLAN_FLAVORS.length)]!;
+}
+
 /** 计划生成上下文(M4e):生活方针(原文+编译缓存)与人设卡,均可缺省 */
 export interface PlanContext {
   policyText?: string;
   compiled?: CompiledPolicy | null;
   persona?: string;
+  /** 昨日计划:注入 prompt 做对照,避免逐日复制粘贴(缺省=首日/无旧计划) */
+  previous?: DayPlan | null;
 }
 
 /** 方针编译(slow 槽):文本→白名单活动偏好集;解析失败/调用失败返回 null,
@@ -221,6 +236,12 @@ function buildPlanMessages(
   if (typeof ctx?.persona === 'string' && ctx.persona.trim() !== '') {
     contextLines.push(`你的人设: ${ctx.persona.trim()}——日程安排要符合这个人设。`);
   }
+  if (ctx?.previous !== null && ctx?.previous !== undefined) {
+    contextLines.push(
+      `你昨天的安排: ${describePlan(ctx.previous)}——今天别照搬,至少有 1~2 个时间段与昨天不同。`,
+    );
+  }
+  contextLines.push(`今日风味提示: ${pickFlavor()}。`);
   if (typeof ctx?.policyText === 'string' && ctx.policyText.trim() !== '') {
     contextLines.push(`玩家给你的生活方针: ${ctx.policyText.trim()}`);
     if (ctx.compiled !== null && ctx.compiled !== undefined) {
@@ -302,7 +323,7 @@ export async function planDay(
     const result = await llm.chat(
       'slow',
       buildPlanMessages(char, evidence, clock.day, ctx),
-      { taskType: 'agent.day_plan', characterId: char.id },
+      { taskType: 'agent.day_plan', characterId: char.id, temperature: 0.9 },
     );
     const blocks = parseDayPlan(result.content);
     if (blocks !== null) {

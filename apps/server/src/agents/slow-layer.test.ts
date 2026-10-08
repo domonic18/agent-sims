@@ -199,6 +199,24 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     expect(prompt).toContain('人设: 性格: 内向勤奋');
   });
 
+  it('昨日计划+风味提示进 prompt:对照引导不照搬', async () => {
+    const s = llmStub({ chatContent: '[{"start":8,"end":12,"activity":"study"}]' });
+    await planDay(s.llm, s.handle, char({}), { day: DAY, gameMinutes: 500 }, {
+      previous: {
+        day: DAY - 1,
+        blocks: [
+          { startMin: 480, endMin: 720, activityId: 'work' },
+          { startMin: 720, endMin: 780, activityId: 'meal' },
+        ],
+        source: 'llm',
+      },
+    });
+    const prompt = s.chatMessages[1]!.content;
+    expect(prompt).toContain('你昨天的安排');
+    expect(prompt).toContain('至少有 1~2 个时间段与昨天不同');
+    expect(prompt).toContain('今日风味提示');
+  });
+
   it('LLM 输出含 avoid 活动→硬过滤剔除', async () => {
     const s = llmStub({
       chatContent:
