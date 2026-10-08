@@ -94,10 +94,21 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       if (!sim.rules.allowChat) {
         return { ok: false, message: '世界规则:角色聊天已关闭' };
       }
-      const content = sim.requestChat(intent.characterId, intent.targetId, intent.line);
+      const content = sim.requestChat(
+        intent.characterId,
+        intent.targetId,
+        intent.line,
+        intent.reply,
+      );
       const from = sim.character(intent.characterId);
       const to = sim.character(intent.targetId);
-      return { ok: true, message: `${from.name} 对 ${to.name} 说:「${content}」` };
+      return {
+        ok: true,
+        message:
+          intent.reply !== undefined
+            ? `${from.name} 和 ${to.name} 聊了天:${content}`
+            : `${from.name} 对 ${to.name} 说:「${content}」`,
+      };
     }
     case 'work_task': {
       const character = sim.requestWorkTask(intent.characterId, intent.targetId);

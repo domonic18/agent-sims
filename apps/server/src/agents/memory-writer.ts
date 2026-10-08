@@ -256,10 +256,11 @@ export class MemoryWriter {
         };
       }
       case 'social.chat':
+        // C4 双句对话 content 已含「问」「答」单引号对,模板改为转述式容纳两种形态
         return {
           characterId: event.fromId,
           type: 'dialogue',
-          content: `我对${nameOf(event.toId)}说:"${event.content}"`,
+          content: `我和${nameOf(event.toId)}聊了聊:${event.content}`,
         };
       case 'friendship.formed':
         return {

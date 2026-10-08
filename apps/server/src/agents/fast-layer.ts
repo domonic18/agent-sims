@@ -107,17 +107,29 @@ function cheapestFood(): { id: string; name: string; price: number } | null {
   return best;
 }
 
+/** jev 社交候选(10-cognition §7.2):动机引擎产出、调度泵拼好位置的异地熟人 */
+export interface JevSocialCandidate {
+  characterId: string;
+  name: string;
+  affinity: number;
+  x: number;
+  y: number;
+}
+
 /** jev 微决策(agent-design §4.3):空闲角色在事件触发时用 systemone choice
- * 题「现在去哪」候选选一,产出去某处的 move_to。调用失败返回 null(回落 continue)。 */
+ * 题「现在去哪」候选选一,产出去某处的 move_to。C4 起社交候选与地点同池竞争
+ * (好感≥65 文案加权);选中熟人即走向 TA,到位后由动机引擎直执聊天。
+ * 调用失败返回 null(回落 continue)。 */
 export async function jevDecide(
   llm: MemoryLlm,
   char: WorldCharacter,
   map: TileMapDefinition,
+  socialCandidates: readonly JevSocialCandidate[] = [],
 ): Promise<Decision | null> {
   if (!char.alive || char.collapsed) return null; // 失能不越权(与 ruleDecide 同门槛)
   if (char.activity !== null || char.path.length > 0) return null; // jev 只服务空闲角色,忙角色不白烧 LLM
   const here = findPlaceAt(map, char.x, char.y)?.id ?? null;
-  const candidates = [
+  const placeCandidates = [
     { ref: 'shop', label: '商店', desc: '去商店看看,补充食物' },
     { ref: 'park', label: '公园', desc: '去公园走走散心' },
     ...(['home-a', 'home-b', 'home-c', 'home-d'] as const)
@@ -126,16 +138,25 @@ export async function jevDecide(
         return { ref, label: property?.name ?? ref, desc: '回家休息' };
       })
       .filter((c) => c.ref !== housingRef(char)),
-  ].filter((c) => c.ref !== here);
+  ]
+    .filter((c) => c.ref !== here)
+    .map((c) => ({ kind: 'place' as const, ...c }));
+  const social = socialCandidates.map((c) => ({
+    kind: 'social' as const,
+    characterId: c.characterId,
+    label: `找${c.name}聊天`,
+    desc: c.affinity >= 65 ? `去找${c.name}聊聊,你们很投缘` : `去找${c.name}聊聊天`,
+  }));
+  const candidates = [...placeCandidates, ...social];
   if (candidates.length === 0) return null;
   try {
     const result = await llm.systemOne(
       'jev',
-      `${char.name}现在空闲,凭直觉选一个此刻最想去的去处`,
+      `${char.name}现在空闲,凭直觉选一个此刻最想做的事`,
       {
         next: {
           type: 'choice',
-          instructions: '选出此刻最想去的去处',
+          instructions: '选出此刻最想做的选择',
           criteria: Object.fromEntries(candidates.map((c) => [c.label, c.desc])),
         },
       },
@@ -145,6 +166,16 @@ export async function jevDecide(
     const choice = answer?.type === 'choice' ? answer.choice : null;
     const picked = choice !== null ? candidates.find((c) => c.label === choice) : undefined;
     if (picked === undefined) return null;
+    if (picked.kind === 'social') {
+      const target = socialCandidates.find((c) => c.characterId === picked.characterId);
+      if (target === undefined) return null;
+      return {
+        layer: 'jev',
+        action: 'react',
+        intent: { type: 'move_to', characterId: char.id, x: target.x, y: target.y },
+        bubble: `去找${target.name}聊聊`,
+      };
+    }
     const place = findPlaceByRef(map, picked.ref);
     if (place === null) return null;
     return {

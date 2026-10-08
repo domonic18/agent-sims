@@ -24,8 +24,9 @@ export interface DayPlan {
 }
 
 /** 计划白名单:免门槛/无条件可直接 start_activity 的活动
- * (sleep 由执行层按夜强制,不进计划;带 category 岗位与工单须接单,不排程) */
-export const PLAN_ACTIVITY_IDS = ['study', 'work', 'workout', 'stroll', 'meal', 'rest'] as const;
+ * (sleep 由执行层按夜强制,不进计划;带 category 岗位与工单须接单,不排程;
+ * socialize 为 C4 闲聚类块,聊天本身由动机引擎驱动) */
+export const PLAN_ACTIVITY_IDS = ['study', 'work', 'workout', 'stroll', 'socialize', 'meal', 'rest'] as const;
 
 /** 回落模板:LLM 不可用时的通用作息(8~22 点,夜间由执行层强制回家睡) */
 export const DEFAULT_PLAN_TEMPLATE: readonly PlanBlock[] = [
@@ -234,7 +235,7 @@ function buildPlanMessages(
         '近期记忆:',
         memoryLines,
         `可选活动: ${ACTIVITY_MENU}。`,
-        '要求: 覆盖 8 点到 22 点,时间段首尾相接,每段 1~4 小时;22 点到次日 8 点是睡觉时间,无需安排;结合记忆与状态做选择(如缺钱多安排工作,知识低多学习)。',
+        '要求: 覆盖 8 点到 22 点,时间段首尾相接,每段 1~4 小时;22 点到次日 8 点是睡觉时间,无需安排;结合记忆与状态做选择(如缺钱多安排工作,知识低多学习,想见朋友可以安排社交,去公园或餐馆碰碰运气)。',
         '只输出 JSON 数组,格式: [{"start":8,"end":12,"activity":"study"}]。',
       ].join('\n'),
     },

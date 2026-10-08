@@ -47,7 +47,7 @@ describe('perceiveTasks(旁观感知,空间过滤+主观模板)', () => {
     } as const;
     const tasks = perceiveTasks(event, characters, ['b', 'c']);
     expect(tasks.map((t) => [t.characterId, t.content])).toEqual([
-      ['b', '我听到阿发起对我说:"今天天气不错"'],
+      ['b', '我听到阿发起对我说:今天天气不错'],
       ['c', '我看到阿发起和柏听者在聊天'],
     ]);
   });

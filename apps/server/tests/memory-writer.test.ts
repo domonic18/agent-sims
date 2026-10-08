@@ -212,7 +212,7 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     await until(async () => (await memoryRows(CHAR_B)).length === 2);
     const aRows = await memoryRows(CHAR_A);
     const chat = aRows.find((row) => row.type === 'dialogue');
-    expect(chat?.content).toBe('我对苏晚说:"今天菜价真贵"');
+    expect(chat?.content).toBe('我和苏晚聊了聊:今天菜价真贵');
     expect(aRows.find((row) => row.content === '我和苏晚结成了朋友')).toBeDefined();
     const bRows = await memoryRows(CHAR_B);
     expect(bRows.find((row) => row.content.includes('清扫') && row.content.includes('12 金币'))).toBeDefined();

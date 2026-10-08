@@ -111,8 +111,9 @@ function describeEvent(
       return `我看到${nameOf(event.characterId)}恢复了行动`;
     case 'social.chat': {
       const [a, b] = [event.fromId, event.toId];
-      // 双方对话:旁观者记第三方转述;听者补一句"对我说"(主线只记发起方)
-      if (watcherId === b) return `我听到${nameOf(a)}对我说:"${event.content}"`;
+      // 双方对话:旁观者记第三方转述;听者补一句"对我说"(主线只记发起方);
+      // C4 双句 content 自带「」单引号对,此处不再包裹
+      if (watcherId === b) return `我听到${nameOf(a)}对我说:${event.content}`;
       return `我看到${nameOf(a)}和${nameOf(b)}在聊天`;
     }
     case 'friendship.formed':

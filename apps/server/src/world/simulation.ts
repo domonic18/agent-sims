@@ -280,9 +280,10 @@ export class Simulation {
     return buyProperty(this, characterId, propertyId);
   }
 
-  /** 闲聊(社交 v1):返回本句话内容(回执/气泡显示);line 缺省走模板池 */
-  requestChat(characterId: string, targetId: string, line?: string): string {
-    return chat(this, characterId, targetId, line);
+  /** 闲聊(社交 v1):返回本句话内容(回执/气泡显示);line 缺省走模板池;
+   * reply(C4 对话)=听者台词,与 line 合并双句进事件 content */
+  requestChat(characterId: string, targetId: string, line?: string, reply?: string): string {
+    return chat(this, characterId, targetId, line, reply);
   }
 
   /** 维护工单(M-G.5):接单寻路,到位后由 _stepWorkTask 计时结算 */

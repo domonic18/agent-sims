@@ -122,6 +122,21 @@ describe('chat 闲聊全链', () => {
     expect(sim.character('p').score).toBe(0);
   });
 
+  it('C4 对话:line+reply 合并双句进 content,单 line(道谢)保持单句', () => {
+    const sim = socialSim();
+    const events: WorldEvent[] = [];
+    sim.events.subscribe((event) => events.push(event));
+    const both = chat(sim, 'a', 'b', '早啊', '早,吃了吗');
+    expect(both).toBe('「早啊」「早,吃了吗」');
+    expect(events.find((event) => event.type === 'social.chat')).toMatchObject({
+      fromId: 'a',
+      toId: 'b',
+      content: '「早啊」「早,吃了吗」',
+    });
+    const single = chat(sim, 'a', 'b', '多谢相救');
+    expect(single).toBe('多谢相救');
+  });
+
   it('距离太远拒绝(曼哈顿 > SOCIAL_CHAT_DISTANCE),不产生关系变化', () => {
     const sim = socialSim();
     sim.spawnCharacter('c', 13, 15, '丙', flat(0.5)); // 距甲 8 格

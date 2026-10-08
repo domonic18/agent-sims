@@ -99,6 +99,10 @@ export interface BalanceConfig {
   SOCIAL_CHAT_DISTANCE: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
   FAMILIARITY_DECAY_PER_DAY: number;
+  /** 自治社交动机(10-cognition §7.2 C4): 欲望分点火线/同对聊天冷却(游戏分钟)/每角色每日主动上限 */
+  SOCIAL_DESIRE_FIRE: number;
+  SOCIAL_PAIR_COOLDOWN_MINUTES: number;
+  SOCIAL_DAILY_INITIATE_CAP: number;
   /** 资源节点存量上限(04 §5.4 表值=出厂默认;junk -1=无限不枯竭) */
   NODE_MAX_CHARGES_BERRY: number;
   NODE_MAX_CHARGES_JUNK: number;
@@ -170,6 +174,9 @@ export const BALANCE: BalanceConfig = {
   CHAT_DECAY_STEPS: [1, 0.6, 0.4, 0.3, 0.2, 0.1],
   SOCIAL_CHAT_DISTANCE,
   FAMILIARITY_DECAY_PER_DAY: 1,
+  SOCIAL_DESIRE_FIRE: 0.7,
+  SOCIAL_PAIR_COOLDOWN_MINUTES: 60,
+  SOCIAL_DAILY_INITIATE_CAP: 6,
   NODE_MAX_CHARGES_BERRY: 3,
   NODE_MAX_CHARGES_JUNK: -1,
   NODE_MAX_CHARGES_TREE: 5,

@@ -122,6 +122,15 @@ function harness(
           return Promise.resolve();
         },
       }),
+      // 记忆/印象定点查询(dialogue 上下文等):空结果集
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([]),
+            orderBy: () => ({ limit: () => Promise.resolve([]) }),
+          }),
+        }),
+      }),
     },
   } as unknown as DbHandle;
   let jevCalls = 0;
@@ -465,6 +474,156 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     expect(h.intents).toEqual([
       { type: 'chat', characterId: CHAR_ID, targetId: 'rescuer-1', line: '多谢相救！' },
     ]);
+    h.scheduler.dispose();
+  });
+});
+
+describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    autonomy.enable(CHAR_ID);
+  });
+  afterEach(() => {
+    autonomy.disable(CHAR_ID);
+    schedule.clear(CHAR_ID);
+    vi.useRealTimers();
+  });
+
+  /** 已认识(familiarity 30)且互有好感(60)的关系,入 harness 的 sim.socials */
+  function withRelation(h: Harness, otherId = 'other-1'): void {
+    const sim = (h.scheduler as unknown as { deps: { sim: { socials: Map<string, unknown> } } })
+      .deps.sim;
+    sim.socials.set(`${CHAR_ID}|${otherId}`, {
+      fromId: CHAR_ID,
+      toId: otherId,
+      familiarity: 30,
+      affinity: 60,
+      chatDay: 0,
+      chatCount: 0,
+      formedNotified: false,
+    });
+  }
+
+  /** 空当日计划: 屏蔽 fallback 日程块抢占 plan 层,专注社交通路 */
+  function withEmptyPlan(): void {
+    schedule.set(CHAR_ID, { day: 0, source: 'llm', blocks: [] });
+  }
+
+  const dialogueLlm: Partial<MemoryLlm> = {
+    chat: () =>
+      Promise.resolve({ content: '今天天气真好呀', promptTokens: 10, completionTokens: 5 }),
+  };
+
+  it('动机点火: 同地熟人过线,light 双句生成→chat 直执,trace 记 motive=social', async () => {
+    const h = harness(480, char({}), dialogueLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
+    });
+    withRelation(h);
+    withEmptyPlan();
+    await vi.advanceTimersByTimeAsync(2_000); // 阈值巡检块 0
+    expect(h.intents).toEqual([
+      {
+        type: 'chat',
+        characterId: CHAR_ID,
+        targetId: 'other-1',
+        line: '今天天气真好呀',
+        reply: '今天天气真好呀',
+      },
+    ]);
+    expect(h.bubbles[0]?.text).toContain('想找苏晚聊聊天');
+    const react = h.traceRows.find(
+      (r) => (r.perception as { motive?: string }).motive === 'social',
+    );
+    expect(react).toBeDefined();
+    expect((react!.perception as { llm?: boolean }).llm).toBe(true);
+    expect((react!.decision as { layer: string }).layer).toBe('rule');
+    h.scheduler.dispose();
+  });
+
+  it('LLM 失败回落模板双句: 点火不丢失,line/reply 均为非空模板', async () => {
+    const h = harness(480, char({}), undefined, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
+    });
+    withRelation(h);
+    withEmptyPlan();
+    await vi.advanceTimersByTimeAsync(2_000);
+    const intent = h.intents[0] as { type: string; line?: string; reply?: string } | undefined;
+    expect(intent?.type).toBe('chat');
+    expect(intent?.line).toBeTruthy();
+    expect(intent?.reply).toBeTruthy();
+    expect((h.traceRows.find((r) => (r.perception as { motive?: string }).motive === 'social')!
+      .perception as { llm?: boolean }).llm).toBe(false);
+    h.scheduler.dispose();
+  });
+
+  it('同对冷却: 点火后 60 分内静默,冷却过再点;jev 冷却不受影响', async () => {
+    const h = harness(480, char({}), dialogueLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
+    });
+    withRelation(h);
+    withEmptyPlan();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(1);
+    h.clock.gameMinutes += 30;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(1); // 冷却中
+    h.clock.gameMinutes += 30;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(2); // 冷却过再点火
+    h.scheduler.dispose();
+  });
+
+  it('每日主动上限: SOCIAL_DAILY_INITIATE_CAP=6,第 7 次不再点火', async () => {
+    const h = harness(480, char({}), dialogueLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
+    });
+    withRelation(h);
+    withEmptyPlan();
+    for (let i = 0; i < 7; i += 1) {
+      if (i > 0) h.clock.gameMinutes += 60; // 跨出同对冷却
+      await vi.advanceTimersByTimeAsync(2_000);
+    }
+    expect(h.intents).toHaveLength(6);
+    h.scheduler.dispose();
+  });
+
+  it('异地熟人不点火进 jev 池: 桩选「找苏晚聊天」→ approach move_to', async () => {
+    const llm: Partial<MemoryLlm> = {
+      systemOne: () =>
+        Promise.resolve({
+          model: 'stub',
+          answers: { next: { type: 'choice', choice: '找苏晚聊天', probabilities: {}, confidence: 1 } },
+        }) as never,
+    };
+    const h = harness(480, char({}), llm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 50, y: 50 })],
+    });
+    withRelation(h);
+    withEmptyPlan();
+    h.onEvent({ type: 'work_task.cancelled', characterId: CHAR_ID, targetId: 'spot-1', tick: 1 } as WorldEvent);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 50, y: 50 }]);
+    expect(h.bubbles[0]?.text).toContain('找苏晚聊聊');
+    h.scheduler.dispose();
+  });
+
+  it('生成期间走散: 对方被拽远后放弃本轮,不产意图', async () => {
+    const h = harness(480, char({}), dialogueLlm, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
+    });
+    withRelation(h);
+    withEmptyPlan();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(1);
+    h.clock.gameMinutes += 60;
+    // 第二轮点火前把对方挪远(模拟生成期间走散后的下一轮:直接距离判定不点火)
+    const other = char({ id: 'other-1', name: '苏晚', x: 60, y: 60 });
+    (h.scheduler as unknown as { deps: { sim: { characters: Map<string, WorldCharacter> } } }).deps.sim.characters.set(
+      'other-1',
+      other,
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(1);
     h.scheduler.dispose();
   });
 });
