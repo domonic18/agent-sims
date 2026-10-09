@@ -356,6 +356,10 @@ export default function GamePage() {
         )}
 
       <Toasts />
+
+      <div className="build-info">
+        {`v${__BUILD_INFO__.version} · ${__BUILD_INFO__.sha} · ${__BUILD_INFO__.time}`}
+      </div>
     </main>
   );
 }

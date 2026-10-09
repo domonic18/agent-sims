@@ -83,6 +83,12 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.web
+      # 构建信息注入(OPS-1,游戏页右下角展示):compose 变量插值读当前 shell/.env,
+      # 构建姿势: BUILD_SHA=$(git rev-parse --short HEAD) BUILD_TIME="$(date '+%F %H:%M')" \
+      #   docker compose -f docker/docker-compose.yml -p agent-sims --env-file .env build web
+      args:
+        BUILD_SHA: ${BUILD_SHA:-}
+        BUILD_TIME: ${BUILD_TIME:-}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-9000}:9000"

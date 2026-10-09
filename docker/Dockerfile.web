@@ -2,6 +2,12 @@
 # /health、/api、/socket.io 反代 compose 内 app 容器,仅 9000 对外(frpc 穿透目标)
 FROM node:22-alpine AS build
 WORKDIR /repo
+# 构建信息注入(OPS-1): .dockerignore 排除 .git,容器内 git 不可用,经 build args 传入;
+# ARG 声明与 ENV 透传两行缺一不可(仅 ARG 不进 vite 进程环境,define 读不到)。留空则前端
+# 构建时间取当下、sha 落 dev 兜底;构建姿势见 docker-compose.yml web.build.args 注释
+ARG BUILD_SHA
+ARG BUILD_TIME
+ENV BUILD_SHA=${BUILD_SHA} BUILD_TIME=${BUILD_TIME}
 # npmjs 直连在构建机网络下不稳定,统一走 npmmirror(corepack 拉取 pnpm 与依赖安装)
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com \
     NPM_CONFIG_REGISTRY=https://registry.npmmirror.com

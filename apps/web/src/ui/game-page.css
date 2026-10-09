@@ -26,6 +26,21 @@
   height: 100%;
 }
 
+/* ---- 构建信息(OPS-1): vite define 注入,右下角一行;pointer-events none
+ * 不挡画布点选(游客点选物件=游览主交互),双击选中复制亦无需可点态 ---- */
+.game-page .build-info {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  z-index: 8;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  color: var(--px-dim);
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ---- 轻提示: 主界面底部被动作条占用,挂顶中时钟下方;像素直角 ---- */
 .game-page .toasts {
   bottom: auto;
