@@ -3,7 +3,8 @@ import type { DayPlan } from './slow-layer.js';
 /**
  * 脑状态(agent-design §3.2):角色"脑内"的东西存本模块内存结构,
  * 不进 WorldCharacter——世界侧角色只保留模拟必需的数值/位置/库存。
- * M4c 自治开关;M4d 日程计划;M4e 托管状态(含方针缓存)。
+ * M4c 自治开关;M4d 日程计划;M4e 托管状态(含方针缓存);D2 起统一内心
+ * 状态(innerState)承接 mood 镜像与 focus/wants/lastEvaluation。
  */
 
 /** 方针编译产物(agent-design §4.5 Talker-Reasoner):慢思考把方针文本编译为
@@ -78,23 +79,119 @@ export const schedule = {
 /** 情绪脑状态(10-cognition §4.4,L5): valence -1~1(负=低落正=愉快,半衰期衰减),
  * labels=近期情绪事件标签,since=本轮情绪起点(游戏分钟)。
  * 不进快照不下发——玩家经访谈/面板间接观测;真源在 character_moods 表,
- * 本 Map 是 MoodTracker 维护的同步镜像(供后续快层零延迟读取) */
+ * 内存镜像在 innerState(统一内心状态入口,供快层零延迟读取) */
 export interface MoodState {
   valence: number;
   labels: string[];
   since: number | null;
 }
 
-const moods = new Map<string, MoodState>();
+/** 意图(want,弹性意图模型 D3 的执行单元):慢层生成、快层择一执行 */
+export interface Want {
+  id: string;
+  activityId: string;
+  placeId?: string;
+  why: string;
+  urgency: number;
+  status: 'pending' | 'doing' | 'done' | 'abandoned';
+  createdAtMin: number;
+}
 
-export const mood = {
-  set(characterId: string, state: MoodState): void {
-    moods.set(characterId, state);
+/** 关注点:最近一次决策理由的一句话(访谈/叙事/jev 题面注入) */
+export interface FocusState {
+  text: string;
+  sinceMin: number;
+}
+
+/** 活动评价(记忆评价引擎 D4 写入):最近一次活动的第一人称判定 */
+export interface ActivityEvaluation {
+  activityId: string;
+  verdict: 'good' | 'ok' | 'bad';
+  reason: string;
+  atMin: number;
+}
+
+/**
+ * 统一内心状态(D2 地基,10-cognition §3):快层/慢层/记忆/社交/叙事的单一读写入口。
+ * mood 真源在 character_moods 表(MoodTracker 重算镜像),不落 inner_state 列;
+ * 其余字段落 characters.inner_state jsonb,重启灌回。
+ */
+export interface InnerState {
+  mood: MoodState;
+  focus: FocusState | null;
+  wants: Want[];
+  lastEvaluation: ActivityEvaluation | null;
+}
+
+/** jsonb 持久化载荷(mood 除外:重启由 MoodTracker 按冲量流水重算) */
+export type PersistedInnerState = Omit<InnerState, 'mood'>;
+
+const innerStates = new Map<string, InnerState>();
+
+function emptyMood(): MoodState {
+  return { valence: 0, labels: [], since: null };
+}
+
+/** 形状校验式灌回:库值残缺/类型不对逐字段兜默认,防脏数据毒化脑状态 */
+function hydrate(saved: unknown): PersistedInnerState {
+  const raw = (typeof saved === 'object' && saved !== null ? saved : {}) as Record<string, unknown>;
+  const focus =
+    typeof raw.focus === 'object' &&
+    raw.focus !== null &&
+    typeof (raw.focus as Record<string, unknown>).text === 'string' &&
+    typeof (raw.focus as Record<string, unknown>).sinceMin === 'number'
+      ? { text: (raw.focus as { text: string }).text, sinceMin: (raw.focus as { sinceMin: number }).sinceMin }
+      : null;
+  const wants = Array.isArray(raw.wants) ? raw.wants : [];
+  const evaluation =
+    typeof raw.lastEvaluation === 'object' &&
+    raw.lastEvaluation !== null &&
+    typeof (raw.lastEvaluation as Record<string, unknown>).activityId === 'string' &&
+    typeof (raw.lastEvaluation as Record<string, unknown>).reason === 'string'
+      ? (raw.lastEvaluation as ActivityEvaluation)
+      : null;
+  return { focus, wants, lastEvaluation: evaluation };
+}
+
+export const innerState = {
+  get(characterId: string): InnerState | undefined {
+    return innerStates.get(characterId);
   },
-  get(characterId: string): MoodState | undefined {
-    return moods.get(characterId);
+  /** 取或建(默认中性情绪+无关注+空意图) */
+  ensure(characterId: string): InnerState {
+    let state = innerStates.get(characterId);
+    if (state === undefined) {
+      state = { mood: emptyMood(), focus: null, wants: [], lastEvaluation: null };
+      innerStates.set(characterId, state);
+    }
+    return state;
+  },
+  /** MoodTracker 镜像同步入口(readMood 重算后写) */
+  setMood(characterId: string, moodState: MoodState): void {
+    this.ensure(characterId).mood = moodState;
+  },
+  moodOf(characterId: string): MoodState | undefined {
+    return innerStates.get(characterId)?.mood;
   },
   clear(characterId: string): void {
-    moods.delete(characterId);
+    innerStates.delete(characterId);
+  },
+  /** 落库载荷(无记录返回 null;浅拷贝防序列化期间被改) */
+  persistedOf(characterId: string): PersistedInnerState | null {
+    const state = innerStates.get(characterId);
+    if (state === undefined) return null;
+    return {
+      focus: state.focus === null ? null : { ...state.focus },
+      wants: [...state.wants],
+      lastEvaluation: state.lastEvaluation === null ? null : { ...state.lastEvaluation },
+    };
+  },
+  /** 启动恢复灌回(只补 focus/wants/lastEvaluation,mood 等 MoodTracker 重算) */
+  restore(characterId: string, saved: unknown): void {
+    const persisted = hydrate(saved);
+    const state = this.ensure(characterId);
+    state.focus = persisted.focus;
+    state.wants = persisted.wants;
+    state.lastEvaluation = persisted.lastEvaluation;
   },
 };

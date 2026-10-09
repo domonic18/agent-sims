@@ -4,7 +4,7 @@ import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
 import { renderPrompt } from '../prompts/registry.js';
 import type { WorldCharacter } from '../world/character.js';
-import { mood } from './cognition.js';
+import { innerState } from './cognition.js';
 import type { MemoryLlm } from './memory-writer.js';
 import { describeMood } from './mood.js';
 import { loadPersonaContext } from './slow-layer.js';
@@ -138,7 +138,7 @@ async function speak(
   if (context.sharedMemories.length > 0) {
     lines.push(`相关往事: ${context.sharedMemories.join(';')}`);
   }
-  const state = mood.get(self.id);
+  const state = innerState.moodOf(self.id);
   const moodLine = state !== undefined ? describeMood(state) : null;
   if (moodLine !== null) lines.push(`你此刻${moodLine}`);
   lines.push(

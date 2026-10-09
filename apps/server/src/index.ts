@@ -3,6 +3,7 @@ import { persistAutoArchive } from './admin-api/world-archives.js';
 import { restoreActiveWorld } from './admin-api/worlds.js';
 import { BALANCE } from './config/balance.js';
 import { env } from './config/env.js';
+import { flushInnerStates } from './agents/inner-state-db.js';
 import { tickBroadcast } from './socket/gateway.js';
 import { TickDriver } from './world/driver.js';
 
@@ -32,6 +33,7 @@ const shutdown = async (signal: string): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
   try {
+    await flushInnerStates(app.db, [...app.simulation.characters.keys()]);
     const saved = await persistAutoArchive(app, app.db);
     app.log.info(`${signal}: auto archive ${saved ? 'saved' : 'skipped'}`);
   } catch (err) {

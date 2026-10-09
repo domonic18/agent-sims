@@ -14,6 +14,10 @@ export const characters = pgTable('characters', {
   /** 托管状态(M10): { mode, policyText } | null=未托管;运行态真源在脑注册表,
    * 此列为路由变更写穿的恢复源(compiled 是可重建缓存,不落库) */
   hosting: jsonb('hosting'),
+  /** 统一内心状态(D2): { focus, wants, lastEvaluation } | null=无记录;
+   * 运行态真源在 cognition.innerState,定期写穿供重启灌回(mood 不落此列,
+   * 真源 character_moods,重启由 MoodTracker 重算) */
+  innerState: jsonb('inner_state'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

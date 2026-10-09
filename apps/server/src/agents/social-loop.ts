@@ -4,7 +4,7 @@ import type { DbHandle } from '../db/client.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { Simulation } from '../world/simulation.js';
 import { meetByProximity, relationKey } from '../world/social.js';
-import { mood } from './cognition.js';
+import { innerState } from './cognition.js';
 import { generateExchange } from './dialogue.js';
 import type { Decision } from './fast-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
@@ -120,7 +120,7 @@ export class SocialLoop {
     const inputs = this.socialInputs(char);
     if (inputs.length === 0) return [];
     const candidates = socialMotive(inputs, {
-      valence: mood.get(char.id)?.valence ?? 0,
+      valence: innerState.moodOf(char.id)?.valence ?? 0,
       nowGameMinutes: sim.clock.gameMinutes,
     });
     const hit = candidates.find((c) => c.colocated);

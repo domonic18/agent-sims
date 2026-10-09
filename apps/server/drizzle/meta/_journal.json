@@ -127,6 +127,13 @@
       "when": 1791517095459,
       "tag": "0017_smooth_norrin_radd",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791546020600,
+      "tag": "0018_sloppy_starjammers",
+      "breakpoints": true
     }
   ]
 }

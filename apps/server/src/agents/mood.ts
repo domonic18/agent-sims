@@ -5,7 +5,7 @@ import type { DbHandle } from '../db/client.js';
 import { characterMoods } from '../db/schema/memory.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
-import { mood as moodBrain, type MoodState } from './cognition.js';
+import { innerState, type MoodState } from './cognition.js';
 
 /** 单条事件对单个角色的情绪冲量 */
 export interface MoodDelta {
@@ -138,7 +138,7 @@ export async function readMood(
   // 角色不在活跃世界(旧世界/离线)时以最近一条冲量的游戏时刻为"现在",防真实时间虚增衰减
   const now = nowGameMinutes ?? (rows[0]?.gameMinutes ?? 0);
   const state = aggregateMood(rows, now);
-  moodBrain.set(characterId, state);
+  innerState.setMood(characterId, state);
   return state;
 }
 

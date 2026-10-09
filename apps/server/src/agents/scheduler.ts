@@ -8,7 +8,7 @@ import { relationKey } from '../world/social.js';
 import type { Simulation } from '../world/simulation.js';
 import type { WorldCharacter } from '../world/character.js';
 import { BALANCE } from '../config/balance.js';
-import { autonomy, hosting, mood, schedule } from './cognition.js';
+import { autonomy, hosting, innerState, schedule } from './cognition.js';
 import { describeMood } from './mood.js';
 import { jevDecide, planDecide, ruleDecide, type Decision } from './fast-layer.js';
 import { ResponseRegistry } from './responses.js';
@@ -347,7 +347,7 @@ export class AgentScheduler {
         for (const row of insights) lines.push(`相关记忆:${row.content}`);
       }
     }
-    const state = mood.get(char.id);
+    const state = innerState.moodOf(char.id);
     if (state !== undefined) {
       const moodLine = describeMood(state);
       if (moodLine !== null) lines.push(`你此刻${moodLine}`);
