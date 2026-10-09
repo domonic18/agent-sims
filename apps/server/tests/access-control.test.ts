@@ -38,9 +38,12 @@ describe('resolveSocketRole(player 角色准入)', () => {
   });
 
   it('production:player 角色 + 签名伪造 token → 降级 spectator', () => {
-    // 末位替换须保证不同:签名末位恰为 x 时 replace 会是无操作(1/64 概率踩中)
+    // 改戳签名中段字符:末位替换不行——32 字节摘要的 base64url 末位低 2 位被
+    // 丢弃(w→x 高 4 位相同即解码等值,verify 照过)
     const token = issueToken();
-    const forged = token.slice(0, -1) + (token.endsWith('x') ? 'y' : 'x');
+    const [head, payload, sig] = token.split('.');
+    const forgedSig = (sig![0] === 'A' ? 'B' : 'A') + sig!.slice(1);
+    const forged = `${head}.${payload}.${forgedSig}`;
     expect(resolveSocketRole({ role: 'player', token: forged })).toBe('spectator');
   });
 
