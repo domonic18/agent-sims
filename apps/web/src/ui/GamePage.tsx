@@ -208,13 +208,13 @@ export default function GamePage() {
             {snapshot !== null ? (
               <div className="hud-clock-date">
                 <small>
-                  DAY {snapshot.clock.day} {snapshot.clock.isNight ? '🌙' : '☀️'}
+                  第 {snapshot.clock.day} 天 {snapshot.clock.isNight ? '🌙' : '☀️'}
                 </small>
                 <b className="px-num">{snapshot.clock.time}</b>
               </div>
             ) : (
               <div className="hud-clock-date">
-                <small>WAIT</small>
+                <small>等待世界</small>
                 <b className="px-num">--:--</b>
               </div>
             )}

@@ -229,9 +229,10 @@
 
 .hud-clock-date small {
   display: block;
-  font-family: var(--px-font-pixel);
-  font-size: 8px;
-  color: var(--px-dim);
+  font-family: var(--px-font-ui);
+  font-size: 10px;
+  font-weight: bold;
+  color: var(--px-gold);
   letter-spacing: 1px;
 }
 
