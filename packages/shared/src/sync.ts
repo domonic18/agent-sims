@@ -108,6 +108,13 @@ export interface WorldSnapshotMessage {
       /** 租约付到的游戏日(含);自有忽略此字段 */
       paidThroughDay: number;
     } | null;
+    /** 今日意图(D6 展示,弹性意图模型): 慢层 wants 的对外视图;
+     * null=非托管/今日尚未生成(玩家操控角色恒 null) */
+    intents: Array<{
+      activityId: string;
+      why: string;
+      status: 'pending' | 'doing' | 'done' | 'abandoned';
+    }> | null;
   }>;
   /** 有向关系全量(社交 v1: A→B 与 B→A 独立两条;称号前端派生 relationTitle) */
   socials: SocialRelationView[];

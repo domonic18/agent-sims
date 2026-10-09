@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getActivityDefinition } from '@sims/shared';
 import { formatCoins } from '../../format';
 import { getHosting } from '../../net/hostingApi';
 import { useAuthStore } from '../../store/authStore';
@@ -6,6 +7,14 @@ import { useWorldStore } from '../../store/worldStore';
 import type { CharacterView } from '../side-panel/place';
 import { PixelAvatar } from './PixelAvatar';
 import { activityChip } from './activityChip';
+
+/** want 状态色标语义(D6): 面板小圆点+悬停文案 */
+const WANT_STATUS_TITLE: Record<NonNullable<CharacterView['intents']>[number]['status'], string> = {
+  pending: '未做',
+  doing: '进行中',
+  done: '已完成',
+  abandoned: '已放弃',
+};
 
 function VitalBar({
   label,
@@ -166,6 +175,25 @@ export function CharacterHud({
             </span>
           )}
         </div>
+
+        {character.intents !== null && character.intents.length > 0 && (
+          <div className="hud-char-wants">
+            <span className="hud-wants-head">今天想做</span>
+            <ul>
+              {character.intents.map((want) => (
+                <li key={`${want.activityId}-${want.why}`} className={`want ${want.status}`}>
+                  <i title={WANT_STATUS_TITLE[want.status]} />
+                  <span className="want-name">
+                    {getActivityDefinition(want.activityId)?.name ?? want.activityId}
+                  </span>
+                  <span className="want-why" title={want.why}>
+                    {want.why}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="hud-char-home">
           {housing !== null

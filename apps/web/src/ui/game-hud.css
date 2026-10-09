@@ -163,6 +163,81 @@
   vertical-align: top;
 }
 
+/* 今天想做(D6 弹性意图展示): 活动名+第一人称理由+状态色点 */
+.hud-char-wants {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 2px dashed var(--px-slate);
+}
+
+.hud-wants-head {
+  display: block;
+  font-size: 11px;
+  color: var(--px-dim);
+  margin-bottom: 4px;
+}
+
+.hud-char-wants ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hud-char-wants .want {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.hud-char-wants .want i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border: 1px solid var(--px-ink);
+}
+
+.hud-char-wants .want.pending i {
+  background: var(--px-slate);
+}
+
+.hud-char-wants .want.doing i {
+  background: var(--px-cyan);
+}
+
+.hud-char-wants .want.done i {
+  background: var(--px-green);
+}
+
+.hud-char-wants .want.abandoned i {
+  background: var(--px-red);
+}
+
+.hud-char-wants .want.done .want-why,
+.hud-char-wants .want.abandoned .want-why {
+  opacity: 0.55;
+}
+
+.hud-char-wants .want.abandoned .want-name {
+  text-decoration: line-through;
+}
+
+.hud-char-wants .want-name {
+  color: var(--px-gold);
+  flex: none;
+}
+
+.hud-char-wants .want-why {
+  color: var(--px-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hud-char-home {
   margin-top: 10px;
   padding-top: 9px;

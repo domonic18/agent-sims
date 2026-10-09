@@ -1,6 +1,21 @@
 import type { WorldSnapshotMessage } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
+import { innerState } from '../agents/cognition.js';
 import type { Simulation } from './simulation.js';
+
+/** 今日意图对外视图(D6):只发当日生成的;非托管/未生成=null(玩家操控角色恒 null) */
+function intentsView(
+  characterId: string,
+  day: number,
+): WorldSnapshotMessage['characters'][number]['intents'] {
+  const dayIntents = innerState.get(characterId)?.intents;
+  if (dayIntents === null || dayIntents === undefined || dayIntents.day !== day) return null;
+  return dayIntents.wants.map((want) => ({
+    activityId: want.activityId,
+    why: want.why,
+    status: want.status,
+  }));
+}
 
 /** 状态快照:调试端点与同步层共用的对外形态(协议面在 @sims/shared) */
 export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
@@ -54,6 +69,7 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
             paidThroughDay: character.housing.paidThroughDay,
           }
         : null,
+      intents: intentsView(character.id, sim.clock.day),
     })),
     socials: [...sim.socials.values()].map((relation) => ({
       fromId: relation.fromId,
