@@ -4,7 +4,7 @@
  */
 import type { AssetIssueScope, AssetIssueView } from '@sims/shared';
 import { ADMIN_API } from '@sims/shared';
-import { getToken } from '../admin/api';
+import { getToken } from './token';
 
 export async function reportAssetIssue(payload: {
   scope: AssetIssueScope;

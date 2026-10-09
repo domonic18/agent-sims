@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-
-const TOKEN_KEY = 'sims.admin.token';
+import { clearToken, getToken, setToken } from '../net/token';
 
 interface AdminUser {
   username: string;
@@ -31,7 +30,7 @@ async function requestMe(token: string): Promise<AdminUser> {
  * 同一签发端点(/api/admin/auth/login),socket 握手带上供服务端校验 player 角色。
  */
 export const useAuthStore = create<AuthState>((set) => ({
-  token: localStorage.getItem(TOKEN_KEY),
+  token: getToken(),
   username: null,
   ready: false,
   login: async (username, password) => {
@@ -46,15 +45,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     const issued = (await response.json()) as { token: string };
     const me = await requestMe(issued.token);
-    localStorage.setItem(TOKEN_KEY, issued.token);
+    setToken(issued.token);
     set({ token: issued.token, username: me.username });
   },
   logout: () => {
-    localStorage.removeItem(TOKEN_KEY);
+    clearToken();
     set({ token: null, username: null });
   },
   restore: async () => {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = getToken();
     if (token === null) {
       set({ ready: true });
       return;
@@ -63,7 +62,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const me = await requestMe(token);
       set({ token, username: me.username, ready: true });
     } catch {
-      localStorage.removeItem(TOKEN_KEY);
+      clearToken();
       set({ token: null, username: null, ready: true });
     }
   },

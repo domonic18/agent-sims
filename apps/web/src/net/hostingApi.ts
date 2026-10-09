@@ -4,7 +4,7 @@
  */
 import type { HostingStateView, MindTalkView } from '@sims/shared';
 import { ADMIN_API } from '@sims/shared';
-import { getToken } from '../admin/api';
+import { getToken } from './token';
 
 async function call<T>(path: string, init: RequestInit, failLabel: string): Promise<T> {
   const token = getToken();

@@ -41,6 +41,15 @@ const request = async (path: string, method: 'GET' | 'POST', body?: unknown): Pr
   return (await response.json()) as WorldSettingsView;
 };
 
+/** 公开只读 GET 通道: no-store 防快照类接口被 HTTP 缓存回填陈旧数据 */
+const jsonRequest = async <T>(path: string): Promise<T> => {
+  const response = await fetch(path, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`${path} 失败(${response.status})`);
+  }
+  return (await response.json()) as T;
+};
+
 export const getWorldSettings = (): Promise<WorldSettingsView> =>
   request('/api/world/settings', 'GET');
 
@@ -48,22 +57,12 @@ export const updateWorldSettings = (update: WorldSettingsUpdate): Promise<WorldS
   request('/api/world/settings', 'POST', update);
 
 /** 每世界配方公开读口(游客免登录;游戏页装载回填 worldStore) */
-export const getWorldRecipes = async (): Promise<WorldRecipesView> => {
-  const response = await fetch('/api/world/recipes', { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`/api/world/recipes 失败(${response.status})`);
-  }
-  return (await response.json()) as WorldRecipesView;
-};
+export const getWorldRecipes = (): Promise<WorldRecipesView> =>
+  jsonRequest<WorldRecipesView>('/api/world/recipes');
 
 /** 游戏页模型徽标(公开读):开关与模型名由服务端裁定,失败静默由调用方处理 */
-export const getUiMeta = async (): Promise<UiMetaView> => {
-  const response = await fetch('/api/world/ui-meta', { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`/api/world/ui-meta 失败(${response.status})`);
-  }
-  return (await response.json()) as UiMetaView;
-};
+export const getUiMeta = (): Promise<UiMetaView> =>
+  jsonRequest<UiMetaView>('/api/world/ui-meta');
 
 export const getWorldEvents = async (query: { limit?: number; characterId?: string; type?: string; types?: string[] } = {}): Promise<WorldEventsHistoryResponse> => {
   const params = new URLSearchParams();
@@ -72,11 +71,7 @@ export const getWorldEvents = async (query: { limit?: number; characterId?: stri
   if (query.type !== undefined) params.set('type', query.type);
   if (query.types !== undefined && query.types.length > 0) params.set('types', query.types.join(','));
   const qs = params.toString();
-  const response = await fetch(`/api/world/events${qs !== '' ? `?${qs}` : ''}`);
-  if (!response.ok) {
-    throw new Error(`/api/world/events 失败(${response.status})`);
-  }
-  return (await response.json()) as WorldEventsHistoryResponse;
+  return jsonRequest<WorldEventsHistoryResponse>(`/api/world/events${qs !== '' ? `?${qs}` : ''}`);
 };
 
 /** 记忆面板公开只读镜像(游客/观众可看;与 admin 端 fetchCharacterMemories 同形) */
@@ -89,17 +84,8 @@ export const getCharacterMemories = async (
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.type !== undefined) params.set('type', query.type);
   const qs = params.toString();
-  const response = await fetch(`/api/world/characters/${characterId}/memories${qs !== '' ? `?${qs}` : ''}`, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`/api/world/characters/${characterId}/memories 失败(${response.status})`);
-  }
-  return (await response.json()) as MemoryPanelResponse;
+  return jsonRequest<MemoryPanelResponse>(`/api/world/characters/${characterId}/memories${qs !== '' ? `?${qs}` : ''}`);
 };
 
-export const getCharacterImpressions = async (characterId: string): Promise<MemoryImpressionsResponse> => {
-  const response = await fetch(`/api/world/characters/${characterId}/impressions`, { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(`/api/world/characters/${characterId}/impressions 失败(${response.status})`);
-  }
-  return (await response.json()) as MemoryImpressionsResponse;
-};
+export const getCharacterImpressions = (characterId: string): Promise<MemoryImpressionsResponse> =>
+  jsonRequest<MemoryImpressionsResponse>(`/api/world/characters/${characterId}/impressions`);
