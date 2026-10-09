@@ -30,6 +30,7 @@ import {
   type NarrativeDraft,
   type PersonaDraft,
   type PersonaSaveRequest,
+  type PromptView,
   type PersonaView,
   type TechLogEntriesResponse,
   type TokenUsageEntriesResponse,
@@ -110,6 +111,10 @@ export async function login(payload: AdminLoginRequest): Promise<AdminLoginRespo
 
 export async function fetchModelConfigs(): Promise<ModelConfigView[]> {
   return await adminFetch<ModelConfigView[]>(ADMIN_API.modelConfigs);
+}
+
+export async function fetchPrompts(): Promise<PromptView[]> {
+  return await adminFetch<PromptView[]>(ADMIN_API.prompts);
 }
 
 export async function fetchMe(): Promise<{ username: string }> {

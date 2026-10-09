@@ -14,6 +14,7 @@ import { hosting, schedule } from '../agents/cognition.js';
 import type { MemoryLlm } from '../agents/memory-writer.js';
 import type { DbHandle } from '../db/client.js';
 import type { StructuredParse, StructuredToolSpec } from '../llm/types.js';
+import { renderPrompt } from '../prompts/registry.js';
 import { characters } from '../db/schema/index.js';
 import type { Simulation } from '../world/simulation.js';
 import { requireAdmin } from './auth.js';
@@ -113,12 +114,10 @@ export function parsePersonaDraft(raw: unknown): StructuredParse<PersonaDraft> {
 export function buildRandomPrompt(): string {
   const pick = (key: keyof typeof SEEDS): string =>
     SEEDS[key][randomInt(0, SEEDS[key].length)]!;
-  return [
-    '为像素小镇生成一位居民的预置人设卡,字段: 性格/兴趣/目标/说话风格/bio。',
-    '要求具体、接地气、有生活气息,五个字段都用中文,bio 为 2~3 句人物小传。',
-    `可参考的随机方向: 性格偏「${pick('性格')}」,兴趣偏「${pick('兴趣')}」,目标偏「${pick('目标')}」,说话风格偏「${pick('说话风格')}」。`,
-    '请调用 submit_persona 工具提交草稿。',
-  ].join('\n');
+  return renderPrompt('persona.random.user', {
+    seed_line: `可参考的随机方向: 性格偏「${pick('性格')}」,兴趣偏「${pick('兴趣')}」,目标偏「${pick('目标')}」,说话风格偏「${pick('说话风格')}」。`,
+    submit_line: '请调用 submit_persona 工具提交草稿。',
+  });
 }
 
 async function writePersona(
@@ -208,7 +207,7 @@ export function registerPersonaRoutes(
       const draft = await llm.chatStructured(
         'light',
         [
-          { role: 'system', content: '你是人设编剧,为像素小镇生成居民人设卡草稿。' },
+          { role: 'system', content: renderPrompt('persona.random.system') },
           { role: 'user', content: buildRandomPrompt() },
         ],
         personaTool(),

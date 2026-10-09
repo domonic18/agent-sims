@@ -8,6 +8,7 @@ import { loadPersonaContext } from '../agents/slow-layer.js';
 import type { DbHandle } from '../db/client.js';
 import { cognitionTrace } from '../db/schema/agent.js';
 import { memories } from '../db/schema/memory.js';
+import { renderPrompt } from '../prompts/registry.js';
 import type { Simulation } from '../world/simulation.js';
 import { requireAdmin } from './auth.js';
 import type { MindTalkMessage, MindTalkView } from '@sims/shared';
@@ -140,12 +141,7 @@ export function registerMindTalkRoutes(
         [
           {
             role: 'system',
-            content: [
-              `你是像素小镇的居民${char.name}。一位观察者正在和你聊天,想了解你的想法与生活。`,
-              '- 全程第一人称,按你的人设与说话风格回答;口吻自然,2~4 句,不要出戏。',
-              '- 只依据下方给你的记忆与人设回答;没发生过的事不要编造,不记得就直说不记得。',
-              context,
-            ].join('\n'),
+            content: renderPrompt('mindtalk.system', { name: char.name, context }),
           },
           ...session.messages.slice(0, -1).map((message) => ({
             role: message.role === 'agent' ? ('assistant' as const) : ('user' as const),

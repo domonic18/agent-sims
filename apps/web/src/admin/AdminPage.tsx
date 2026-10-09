@@ -25,6 +25,7 @@ import {
   SettingOutlined,
   UserOutlined,
   ExperimentOutlined,
+  ProfileOutlined,
 } from '@ant-design/icons';
 import zhCN from 'antd/locale/zh_CN';
 import 'dayjs/locale/zh-cn';
@@ -39,6 +40,7 @@ import { SysConfigPanel } from './SysConfigPanel';
 import { RecipesPanel } from './RecipesPanel';
 import { AnimPreviewPanel } from './AnimPreviewPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { PromptsPanel } from './PromptsPanel';
 
 function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   const { message } = AntdApp.useApp();
@@ -98,6 +100,7 @@ type AdminTab =
   | 'assets'
   | 'anim'
   | 'logs'
+  | 'prompts'
   | 'settings';
 
 const NAV_ITEMS: MenuProps['items'] = [
@@ -113,6 +116,7 @@ const NAV_ITEMS: MenuProps['items'] = [
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
       { key: 'anim', icon: <PlayCircleOutlined />, label: '动画演示器' },
       { key: 'logs', icon: <FileTextOutlined />, label: '运行日志' },
+      { key: 'prompts', icon: <ProfileOutlined />, label: '提示词' },
     ],
   },
   {
@@ -233,6 +237,8 @@ function AdminShell() {
             <AssetsPanel />
           ) : tab === 'logs' ? (
             <LogsPanel />
+          ) : tab === 'prompts' ? (
+            <PromptsPanel />
           ) : tab === 'settings' ? (
             <SettingsPanel username={username} />
           ) : (

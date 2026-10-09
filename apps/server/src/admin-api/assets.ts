@@ -12,6 +12,7 @@ import {
 import { z } from 'zod';
 import type { DbHandle } from '../db/client.js';
 import type { StructuredParse, StructuredToolSpec } from '../llm/types.js';
+import { renderPrompt } from '../prompts/registry.js';
 import { assetCategories, assets } from '../db/schema/index.js';
 import { publishManifest } from '../assets/library.js';
 import { libraryRoot, publishTarget } from '../assets/paths.js';
@@ -57,12 +58,7 @@ const aiReviewSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1, '至少选择一件素材').max(10, '单批最多 10 件'),
 });
 
-const AI_REVIEW_SYSTEM = [
-  '你是像素游戏素材库的审核员。给你一张游戏素材图片和它的登记元数据,判断图片内容与元数据是否相符。',
-  '图片是 16x16 网格的低分辨率像素游戏素材(现代拟物风格),细节稀少、色块概括是风格特征,不要因「缺乏细节/过于简单」判为不匹配;图片可能被放大过,锯齿与硬边正常。',
-  '判定核心: 图中主体物的**类别语义**与登记的 slug/名称是否一致(如 slug 是 sofa 而画的是柜子=不匹配;slug 是 lamp 而画的是台灯壁灯=不匹配)。slug 与名称是项目既定标识,不要因个人命名习惯(如 treadmill vs running_machine)或同义近类(desk/table)建议改名。',
-  '重点关注: 图文类别错位、图片裁切错误(残缺/一张图里混入多个不相关物件/错位)。',
-].join('\n');
+const AI_REVIEW_SYSTEM = renderPrompt('asset.review.system');
 
 /** 审核结果工具规格(结构化输出):provider 层 schema 约束 match 枚举与字段名 */
 function aiReviewTool(): StructuredToolSpec {

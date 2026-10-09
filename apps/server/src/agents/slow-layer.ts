@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/index.js';
 import type { LlmMessage, StructuredParse, StructuredToolSpec } from '../llm/types.js';
+import { renderPrompt } from '../prompts/registry.js';
 import type { WorldCharacter } from '../world/character.js';
 import { retrieveMemories } from './memory-retrieval.js';
 import type { CompiledPolicy } from './cognition.js';
@@ -87,18 +88,15 @@ export async function compilePolicy(
     return await llm.chatStructured(
       'slow',
       [
-        {
-          role: 'system',
-          content: '你把玩家的生活方针编译为结构化活动偏好。',
-        },
+        { role: 'system', content: renderPrompt('policy.compile.system') },
         {
           role: 'user',
-          content: [
-            `生活方针: ${text}`,
-            `可选活动: ${ACTIVITY_MENU}。`,
-            'focus=方针鼓励的活动,avoid=方针排斥的活动;都可为空数组,只准用可选活动里的 id。',
-            '请调用 submit_policy 工具提交编译结果。',
-          ].join('\n'),
+          content: renderPrompt('policy.compile.user', {
+            policy_text: text,
+            activity_menu: ACTIVITY_MENU,
+            rule_line: 'focus=方针鼓励的活动,avoid=方针排斥的活动;都可为空数组,只准用可选活动里的 id。',
+            submit_line: '请调用 submit_policy 工具提交编译结果。',
+          }),
         },
       ],
       policyTool(),
@@ -124,18 +122,15 @@ export async function compilePersonaPolicy(
     return await llm.chatStructured(
       'slow',
       [
-        {
-          role: 'system',
-          content: '你把角色的人设编译为结构化活动偏好。',
-        },
+        { role: 'system', content: renderPrompt('persona.policy.system') },
         {
           role: 'user',
-          content: [
-            `人设: ${persona}`,
-            `可选活动: ${ACTIVITY_MENU}。`,
-            'focus=这个人设会喜欢/常做的活动,avoid=这个人设不爱做/会回避的活动;都可为空数组,只准用可选活动里的 id,没有把握就留空。',
-            '请调用 submit_policy 工具提交编译结果。',
-          ].join('\n'),
+          content: renderPrompt('persona.policy.user', {
+            persona,
+            activity_menu: ACTIVITY_MENU,
+            rule_line: 'focus=这个人设会喜欢/常做的活动,avoid=这个人设不爱做/会回避的活动;都可为空数组,只准用可选活动里的 id,没有把握就留空。',
+            submit_line: '请调用 submit_policy 工具提交编译结果。',
+          }),
         },
       ],
       policyTool(),
@@ -324,19 +319,17 @@ function buildPlanMessages(
   return [
     {
       role: 'system',
-      content: `你是小镇居民「${char.name}」的内心。请根据当前状态与记忆,为今天(第 ${day} 天)安排一份务实的日程。`,
+      content: renderPrompt('plan.system', { name: char.name, day }),
     },
     {
       role: 'user',
-      content: [
-        `状态: 金币 ${char.coins},体力 ${char.energy},健康 ${char.health},知识 ${char.knowledge},${housingLine(char)}。`,
-        ...contextLines,
-        '近期记忆:',
-        memoryLines,
-        `可选活动: ${ACTIVITY_MENU}。`,
-        '要求: 覆盖 8 点到 22 点,时间段首尾相接,每段 1~4 小时;22 点到次日 8 点是睡觉时间,无需安排;结合记忆与状态做选择(如缺钱多安排工作,知识低多学习,想见朋友可以安排社交,去公园或餐馆碰碰运气)。',
-        '请调用 submit_day_plan 工具提交今天的日程(start/end 用小时)。',
-      ].join('\n'),
+      content: renderPrompt('plan.user', {
+        status_line: `状态: 金币 ${char.coins},体力 ${char.energy},健康 ${char.health},知识 ${char.knowledge},${housingLine(char)}。`,
+        context_lines: contextLines.join('\n'),
+        memory_lines: memoryLines,
+        activity_menu: ACTIVITY_MENU,
+        submit_line: '请调用 submit_day_plan 工具提交今天的日程(start/end 用小时)。',
+      }),
     },
   ];
 }

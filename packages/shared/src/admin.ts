@@ -314,7 +314,20 @@ export const ADMIN_API = {
   characterPersonaRandom: (id: string) => `/api/admin/characters/${id}/persona/random`,
   characterPersonaNarrativeGenerate: (id: string) => `/api/admin/characters/${id}/persona/narrative/generate`,
   characterMindTalk: (id: string) => `/api/admin/characters/${id}/mindtalk`,
+  prompts: '/api/admin/prompts',
 } as const;
+
+/** 外置提示词查看视图(GET /api/admin/prompts,只读): 元数据+模板全文 */
+export interface PromptView {
+  id: string;
+  title: string;
+  description: string;
+  slot: string;
+  taskType: string;
+  /** 模板内 {{var}} 占位清单(由代码注入) */
+  variables: string[];
+  content: string;
+}
 
 /** token 用量统计窗口 */
 export const TOKEN_USAGE_WINDOWS = ['today', '7d', '30d', 'all'] as const;

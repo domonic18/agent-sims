@@ -5,6 +5,7 @@ import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/agent.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
 import type { LlmMessage, StructuredParse, StructuredToolSpec } from '../llm/types.js';
+import { renderPrompt } from '../prompts/registry.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
 import type { MemoryLlm, MemoryWriter } from './memory-writer.js';
@@ -117,22 +118,18 @@ export function buildEvolveMessages(
   return [
     {
       role: 'system',
-      content: `你是小镇居民「${name}」的内心。你在复盘「我是谁」——只允许基于给定的近期认知微调自我描述,不得推翻既有核心特质,不得编造未发生的事。`,
+      content: renderPrompt('narrative.evolve.system', { name }),
     },
     {
       role: 'user',
-      content: [
-        `你目前的自我叙事(v${current.version}): ${current.text}`,
-        `你现有的自我特质词: ${current.traits.length > 0 ? current.traits.join('、') : '无'}`,
-        '你近期的认知(第一人称洞察):',
-        insights.length > 0 ? insights.map((s) => `- ${s}`).join('\n') : '- (暂无)',
-        '你对别人的印象:',
-        relations.length > 0 ? relations.map((s) => `- ${s}`).join('\n') : '- (暂无)',
-        '请调用 submit_narrative 工具提交修订:',
-        `- "text": 修订后的自我叙事,第一人称,≤${NARRATIVE_TEXT_MAX} 字,只许依据上述认知微调`,
-        `- "traits": 3~${TRAIT_MAX} 个核心特质词(可在原有基础上微调)`,
-        '- "change": 一句话说明这次看法哪里变了',
-      ].join('\n'),
+      content: renderPrompt('narrative.evolve.user', {
+        current_line: `你目前的自我叙事(v${current.version}): ${current.text}`,
+        traits_line: `你现有的自我特质词: ${current.traits.length > 0 ? current.traits.join('、') : '无'}`,
+        insight_lines: insights.length > 0 ? insights.map((s) => `- ${s}`).join('\n') : '- (暂无)',
+        relation_lines: relations.length > 0 ? relations.map((s) => `- ${s}`).join('\n') : '- (暂无)',
+        text_max: NARRATIVE_TEXT_MAX,
+        trait_max: TRAIT_MAX,
+      }),
     },
   ];
 }
@@ -150,20 +147,19 @@ export function buildInitMessages(
   return [
     {
       role: 'system',
-      content: `你是小镇居民「${name}」的内心。基于你的人设卡,用第一人称写一段「我是谁」的自我叙事。`,
+      content: renderPrompt('narrative.init.system', { name }),
     },
     {
       role: 'user',
-      content: [
-        `小传: ${bio !== '' ? bio : '(无)'}`,
-        `性格: ${field('性格') || '(未设定)'}`,
-        `兴趣: ${field('兴趣') || '(未设定)'}`,
-        `目标: ${field('目标') || '(未设定)'}`,
-        `说话风格: ${field('说话风格') || '(未设定)'}`,
-        '请调用 submit_narrative 工具提交你的自我叙事:',
-        `- "text": 你的自我叙事,第一人称,≤${NARRATIVE_TEXT_MAX} 字,贴合人设与说话风格,具体、接地气`,
-        `- "traits": 3~${TRAIT_MAX} 个核心特质词`,
-      ].join('\n'),
+      content: renderPrompt('narrative.init.user', {
+        bio_line: bio !== '' ? bio : '(无)',
+        trait_line: field('性格') || '(未设定)',
+        interest_line: field('兴趣') || '(未设定)',
+        goal_line: field('目标') || '(未设定)',
+        style_line: field('说话风格') || '(未设定)',
+        text_max: NARRATIVE_TEXT_MAX,
+        trait_max: TRAIT_MAX,
+      }),
     },
   ];
 }

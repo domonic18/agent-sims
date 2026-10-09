@@ -13,6 +13,7 @@ import { registerLogRoutes } from './logs.js';
 import { registerMemoryRoutes } from './memories.js';
 import { registerModelConfigRoutes } from './model-configs.js';
 import { registerPersonaRoutes } from './persona.js';
+import { registerPromptRoutes } from './prompts.js';
 import { registerScheduleRoutes } from './schedules.js';
 import { registerSysConfigRoutes } from './sys-configs.js';
 import { registerTokenUsageRoutes } from './token-usage.js';
@@ -39,4 +40,5 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle, sim: Si
   registerMoodRoutes(app, handle, sim);
   registerScheduleRoutes(app, sim);
   registerLogRoutes(app, handle);
+  registerPromptRoutes(app);
 }

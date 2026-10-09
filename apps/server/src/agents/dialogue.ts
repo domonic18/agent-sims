@@ -2,6 +2,7 @@ import { relationTitle, type TraitVector } from '@sims/shared';
 import { and, desc, eq, ilike } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
+import { renderPrompt } from '../prompts/registry.js';
 import type { WorldCharacter } from '../world/character.js';
 import { mood } from './cognition.js';
 import type { MemoryLlm } from './memory-writer.js';
@@ -149,7 +150,7 @@ async function speak(
   const result = await llm.chat(
     'light',
     [
-      { role: 'system', content: `你是小镇居民「${self.name}」的内心,正处在面对面的闲聊中。` },
+      { role: 'system', content: renderPrompt('dialogue.system', { name: self.name }) },
       { role: 'user', content: lines.join('\n') },
     ],
     // maxTokens 须给思考型模型(MiniMax-M2.7 等)留出推理余量:120 会整段耗在

@@ -5,7 +5,8 @@
   "type": "module",
   "files": [
     "dist",
-    "drizzle"
+    "drizzle",
+    "prompts"
   ],
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=../../.env src/index.ts",

@@ -4,6 +4,7 @@ import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
 import type { LlmMessage, StructuredParse, StructuredToolSpec } from '../llm/types.js';
+import { renderPrompt } from '../prompts/registry.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
 import type { MemoryLlm, MemoryWriter } from './memory-writer.js';
@@ -213,29 +214,22 @@ function buildConsolidationMessages(
   partners: ReadonlyMap<string, string>,
   withDreams: boolean,
 ): LlmMessage[] {
-  const mode = withDreams ? '沉睡' : '走神';
-  const dreamReq = withDreams
-    ? `- dreams: 1~${DREAM_MAX} 条梦境片段(把今天重放、变形,可怪诞但素材只来自上文)`
-    : '';
   return [
     {
       role: 'system',
-      content: `你是小镇居民「${name}」${mode}的大脑。基于给定的真实经历做认知沉淀:第一人称;只能使用给定素材,不得编造未发生的事。`,
+      content: renderPrompt('dream.system', { name, mode: withDreams ? '沉睡' : '走神' }),
     },
     {
       role: 'user',
-      content: [
-        '今天的经历(方括号内为重要度):',
-        rows.map((r) => `- [重要度 ${r.importance}] ${r.content}`).join('\n'),
-        `今天接触过的人(印象只能写给这个名单里的人): ${[...partners.keys()].join('、') || '无'}`,
-        '请调用 submit_consolidation 工具提交认知沉淀:',
-        dreamReq,
-        `- insights: 0~${INSIGHT_MAX} 条我总结出的认知(看法/教训/规律);sources 填支持该认知的经历原文,从上文逐字截取(可截片段);没有足够支持的认知不要写`,
-        `- relations: 0~${RELATION_MAX} 条对名单里的人的印象(是什么样的人、发生过什么、值不值得信任)`,
-        '只通过工具提交,不要输出其他内容。',
-      ]
-        .filter((line) => line !== '')
-        .join('\n'),
+      content: renderPrompt('dream.user', {
+        memory_lines: rows.map((r) => `- [重要度 ${r.importance}] ${r.content}`).join('\n'),
+        partners_line: `今天接触过的人(印象只能写给这个名单里的人): ${[...partners.keys()].join('、') || '无'}`,
+        dream_req: withDreams
+          ? `- dreams: 1~${DREAM_MAX} 条梦境片段(把今天重放、变形,可怪诞但素材只来自上文)`
+          : '',
+        insight_max: INSIGHT_MAX,
+        relation_max: RELATION_MAX,
+      }),
     },
   ];
 }
