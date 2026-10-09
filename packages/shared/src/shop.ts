@@ -38,9 +38,10 @@ export interface FoodShopItem {
 
 export type ShopItemDefinition = FoodShopItem;
 
-/** 货架=物品注册表中带定价的子集(元素即 ITEMS 对象,不拷贝) */
+/** 货架=物品注册表中带定价的 food 子集(元素即 ITEMS 对象,不拷贝);
+ * 材料类(wheat/scrap)带定价可卖入商店但不陈列本货架(E1 生产经济) */
 export const SHOP_ITEMS = ITEMS.filter(
-  (item) => item.price !== undefined,
+  (item) => item.price !== undefined && item.category === 'food',
 ) as readonly ShopItemDefinition[];
 
 export function getShopItem(id: string): ShopItemDefinition | null {

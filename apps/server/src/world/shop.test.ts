@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
-import { ITEMS, SHOP_ITEMS, getItem, getShopItem } from '@sims/shared';
+import { ITEMS, SHOP_ITEM_IDS, SHOP_ITEMS, getItem, getShopItem } from '@sims/shared';
 import { Simulation } from './simulation.js';
 
 /** 商店内部可行走格(x21..25/y27..32 内圈,避开柜台/货架) */
@@ -126,10 +126,10 @@ describe('商店背包制(M3.2 店内购买;M3.6g 背包/冰箱两级库存+体�
     expect(gina?.alive).toBe(true);
   });
 
-  it('目录完整性: 8 种食物,均带进食效果/梯度定价/正体积', () => {
-    expect(SHOP_ITEMS).toHaveLength(8);
-    const prices = SHOP_ITEMS.map((item) => item.price);
-    expect(new Set(prices).size).toBe(prices.length); // 价格互异
+  it('目录完整性: 10 货架物品(8 底货食物+浆果/浆果派),均带进食效果/正体积,底货价格梯度互异', () => {
+    expect(SHOP_ITEMS).toHaveLength(10);
+    const basePrices = SHOP_ITEM_IDS.map((id) => getShopItem(id)!.price);
+    expect(new Set(basePrices).size).toBe(basePrices.length); // 底货价格互异
     for (const item of SHOP_ITEMS) {
       expect(item.category).toBe('food');
       expect(getShopItem(item.id)).toBe(item);
@@ -143,7 +143,7 @@ describe('商店背包制(M3.2 店内购买;M3.6g 背包/冰箱两级库存+体�
   });
 });
 
-describe('商店初始存量售罄即止(食物经济 2026-10-07,04 §3.2)', () => {
+describe('商店供给(E1 生产经济: 居民卖入主渠道+每日兜底补货)', () => {
   it('构造即铺货: 8 货架食物各 SHOP_INITIAL_FOOD_STOCK 份,快照透传余量', () => {
     const sim = new Simulation();
     expect(sim.shopStock.size).toBe(8);
@@ -151,19 +151,22 @@ describe('商店初始存量售罄即止(食物经济 2026-10-07,04 §3.2)', () 
     expect(sim.snapshot().shopStock).toEqual(Object.fromEntries(sim.shopStock));
   });
 
-  it('售罄即止: 第 4 次购买拒绝且不扣币(文案指引采集/制作),他品独立计数,跨日不补货', () => {
+  it('售罄拒绝: 第 4 次购买拒绝且不扣币,他品独立计数;跨日兜底补货封顶初始存量', () => {
     const { sim, id } = simWith('pete', 100);
     sim.requestBuyItem(id, 'bread');
     sim.requestBuyItem(id, 'bread');
     sim.requestBuyItem(id, 'bread'); // 3→0
     expect(sim.shopStock.get('bread')).toBe(0);
     sim.character(id).coins = 100; // 余额充足仍拒
-    expect(() => sim.requestBuyItem(id, 'bread')).toThrow(/已售罄.*采集或制作/);
+    expect(() => sim.requestBuyItem(id, 'bread')).toThrow(/已售罄.*采集/);
     expect(sim.character(id).backpack).toEqual({ bread: 3 }); // 拒绝不入包
     sim.requestBuyItem(id, 'apple'); // 他品库存独立
     expect(sim.shopStock.get('apple')).toBe(BALANCE.SHOP_INITIAL_FOOD_STOCK - 1);
-    sim.advanceTicks(1440); // 跨日: 售罄即止,无补货路径
-    expect(sim.shopStock.get('bread')).toBe(0);
+    sim.advanceTicks(1440); // 跨日: SHOP_RESTOCK_DAILY=1 只防死锁
+    expect(sim.shopStock.get('bread')).toBe(1);
+    sim.advanceTicks(1440);
+    expect(sim.shopStock.get('bread')).toBe(2);
+    expect(sim.shopStock.get('apple')).toBe(BALANCE.SHOP_INITIAL_FOOD_STOCK); // 补货封顶初始存量
   });
 
   it('reset 重铺货: 售罄世界重置后货架回满(与 resourceNodes 恢复语义同构)', () => {
@@ -182,7 +185,7 @@ describe('商店初始存量售罄即止(食物经济 2026-10-07,04 §3.2)', () 
       expect(sim.shopStock.get('bread')).toBe(0);
       sim.spawnCharacter('zero', IN_SHOP.x, IN_SHOP.y, '零');
       sim.character('zero').coins = 50;
-      expect(() => sim.requestBuyItem('zero', 'bread')).toThrow(/已售罄.*采集或制作/);
+      expect(() => sim.requestBuyItem('zero', 'bread')).toThrow(/已售罄.*采集/);
       expect(sim.character('zero').coins).toBe(50);
     } finally {
       BALANCE.SHOP_INITIAL_FOOD_STOCK = original;
@@ -190,10 +193,10 @@ describe('商店初始存量售罄即止(食物经济 2026-10-07,04 §3.2)', () 
   });
 });
 
-describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () => {
-  it('目录完整性: 17 项,food 必带 effects,material 不可食用,货架恰为 8 项派生', () => {
+describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品;E1 材料带价可卖)', () => {
+  it('目录完整性: 17 项,food 必带 effects,material 不可食用,货架为带价食物子集', () => {
     expect(ITEMS).toHaveLength(17);
-    expect(SHOP_ITEMS).toHaveLength(8); // 货架=带定价子集(引用一致)
+    expect(SHOP_ITEMS).toHaveLength(10); // 8 底货食物+浆果/浆果派(引用一致)
     for (const item of ITEMS) {
       expect(getItem(item.id)).toBe(item);
       expect(item.volume).toBeGreaterThanOrEqual(1);
@@ -201,7 +204,6 @@ describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () =
         expect(item.effects).toBeDefined();
       } else {
         expect(item.effects).toBeUndefined();
-        expect(item.price).toBeUndefined();
       }
     }
   });
@@ -215,13 +217,48 @@ describe('物品注册表(M-G.6 单源: 货架派生+采集/制作物品)', () =
     expect(sim.character(id).score).toBe(4);
   });
 
-  it('非货架物品不可购买;material 不可食用', () => {
+  it('无定价物品不可购买;material 不可食用', () => {
     const { sim, id } = simWith('mia', 50);
-    expect(() => sim.requestBuyItem(id, 'berry')).toThrow(/非商店货架/);
     expect(() => sim.requestBuyItem(id, 'repair_kit')).toThrow(/非商店货架/);
     sim.character(id).backpack = { scrap: 1 };
     expect(() => sim.requestEatItem(id, 'scrap')).toThrow(/不可食用/);
     expect(sim.character(id).backpack).toEqual({ scrap: 1 }); // 拒绝不动库存
+  });
+
+  it('sell_item 收购(E1): 店内按 SELL_RATE×售价 结算,扣包入币上架;店外/无价/超量拒绝', () => {
+    const { sim, id } = simWith('olive', 0, { x: 8, y: 12 }); // 公寓入口,店外
+    const olive = sim.character(id);
+    olive.backpack = { berry: 5 };
+    expect(() => sim.requestSellItem(id, 'berry', 5)).toThrow(/须在商店内/); // 门外不收
+    expect(() => sim.requestSellItem(id, 'repair_kit', 1)).toThrow(/商店不收购/); // 无定价
+    olive.x = IN_SHOP.x;
+    olive.y = IN_SHOP.y;
+    expect(() => sim.requestSellItem(id, 'berry', 6)).toThrow(/不足 6 个/);
+
+    // 5×2×0.6=6 金币;整叠卖出后背包清空、货架上架
+    sim.requestSellItem(id, 'berry', 5);
+    expect(olive.coins).toBe(Math.floor(5 * 2 * BALANCE.SELL_RATE));
+    expect(olive.backpack).toEqual({});
+    expect(sim.shopStock.get('berry')).toBe(5);
+  });
+
+  it('镇内经济循环(E1): 居民卖入上架 → 他人可购买(含非底货品类)', () => {
+    const { sim } = simWith('paul', 0, { x: 8, y: 12 }); // paul 在店外
+    const buyer = 'quinn2';
+    sim.spawnCharacter(buyer, IN_SHOP.x, IN_SHOP.y, '昆');
+    sim.character(buyer).coins = 20;
+    sim.character(buyer).x = IN_SHOP.x;
+    sim.character(buyer).y = IN_SHOP.y;
+    sim.character('paul').backpack = { berry_pie: 1 };
+    sim.character('paul').x = IN_SHOP.x;
+    sim.character('paul').y = IN_SHOP.y;
+    sim.requestSellItem('paul', 'berry_pie', 1); // 上架,底货原本无此品
+    expect(sim.shopStock.get('berry_pie')).toBe(1);
+
+    sim.requestBuyItem(buyer, 'berry_pie');
+    expect(sim.character(buyer).backpack).toEqual({ berry_pie: 1 });
+    expect(sim.character(buyer).coins).toBe(20 - 8);
+    expect(sim.shopStock.get('berry_pie')).toBe(0);
   });
 
   it('新材料计入背包容积: 采集品/耗材按注册表体积占格', () => {

@@ -112,6 +112,22 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
     key: 'SPAWN_PREPAID_DAYS', label: '出生预付房租', group: 'economy', type: 'int', min: 0, max: 30,
     effect: 'spawn', desc: '新角色出生时预付的房租天数',
   },
+  {
+    key: 'SHOP_RESTOCK_DAILY', label: '商店每日补货', group: 'economy', type: 'int', min: 0, max: 50,
+    effect: 'live', desc: '日翻转时每种货架食物补货份数(封顶初始存量);0=不补货——供给主渠道为居民采集制作后卖入商店,此值仅防死锁兜底',
+  },
+  {
+    key: 'SELL_RATE', label: '商店收购价折率', group: 'economy', type: 'float', min: 0, max: 1, step: 0.05,
+    effect: 'live', desc: 'sell_item 卖出价=售价×该折率(0.6=六折收购),金币即时入袋、货架余量+1',
+  },
+  {
+    key: 'POVERTY_COIN_LINE', label: '贫困线金币', group: 'economy', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: '金币低于该值的空闲角色触发 rulePoverty 生存阀:按人设倾向选收入岗(服务/杂工)或卖掉背包货物',
+  },
+  {
+    key: 'POVERTY_MIN_ENERGY', label: '贫困线体力', group: 'economy', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: 'rulePoverty 要求的最低体力(低于则交棒休息/睡眠压力,不硬派岗)',
+  },
   // —— 社交 ——
   {
     key: 'CHAT_FAMILIARITY_GAIN', label: '聊天熟悉度收益', group: 'social', type: 'int', min: 0, max: 100,

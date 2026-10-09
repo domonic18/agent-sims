@@ -244,7 +244,7 @@ describe.skipIf(!dbUp)('退出自动存档+启动自动恢复(C8)', () => {
       await app.inject({ method: 'GET', url: '/api/admin/world-archives', headers: auth })
     ).json() as WorldArchiveView[];
     const autoLabels = list
-      .filter((a) => a.label.startsWith(AUTO_LABEL_PREFIX))
+      .filter((a) => a.worldId === world.id && a.label.startsWith(AUTO_LABEL_PREFIX))
       .map((a) => a.label);
     expect(autoLabels).toHaveLength(3);
     expect(list.some((a) => a.label === '手动保留档')).toBe(true);

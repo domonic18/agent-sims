@@ -6,6 +6,7 @@ import {
   intentSchema,
   type Intent,
 } from '@sims/shared';
+import { BALANCE } from '../config/balance.js';
 import type { Simulation } from '../world/simulation.js';
 
 export interface IntentResult {
@@ -78,6 +79,16 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       const name = getItem(intent.itemId)?.name ?? intent.itemId;
       const carried = character.backpack[intent.itemId] ?? 0;
       return { ok: true, message: `${character.name} 从冰箱取出「${name}」×${intent.count}(背包现有 ${carried} 份)` };
+    }
+    case 'sell_item': {
+      const character = sim.requestSellItem(intent.characterId, intent.itemId, intent.count);
+      const name = getItem(intent.itemId)?.name ?? intent.itemId;
+      const price = getItem(intent.itemId)?.price ?? 0;
+      const earn = Math.floor(price * intent.count * BALANCE.SELL_RATE);
+      return {
+        ok: true,
+        message: `${character.name} 卖出「${name}」×${intent.count},入账 ${earn} 金币,商店上架`,
+      };
     }
     case 'rent_property': {
       const character = sim.requestRentProperty(intent.characterId, intent.propertyId);

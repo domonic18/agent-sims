@@ -49,11 +49,13 @@ export const ITEMS: readonly ItemDefinition[] = [
   { id: 'hotdog', name: '热狗', category: 'food', price: 8, volume: 1, effects: { energy: 9, score: 1 } },
   { id: 'cake', name: '蛋糕', category: 'food', price: 10, volume: 3, effects: { energy: 3, score: 10 } },
   { id: 'sushi', name: '寿司套餐', category: 'food', price: 12, volume: 2, effects: { energy: 12, score: 5 } },
-  // 采集/制作产出(非货架,04-numerical §5.4)
-  { id: 'berry', name: '浆果', category: 'food', volume: 1, effects: { energy: 2, score: 0 } },
-  { id: 'berry_pie', name: '浆果派', category: 'food', volume: 2, effects: { energy: 8, score: 4 } },
-  { id: 'wheat', name: '小麦', category: 'material', volume: 1 },
-  { id: 'scrap', name: '废料', category: 'material', volume: 1 },
+  // 采集/制作产出(E1 生产经济,04-numerical §5.4):带定价即可卖入商店
+  // (SELL_RATE×售价收购,他人可买);不带初始货架存量(SHOP_ITEM_IDS 不含),
+  // 货源=居民出售——收购价压过打工时薪,卖货定位是补镇供给而非发财
+  { id: 'berry', name: '浆果', category: 'food', price: 2, volume: 1, effects: { energy: 2, score: 0 } },
+  { id: 'berry_pie', name: '浆果派', category: 'food', price: 8, volume: 2, effects: { energy: 8, score: 4 } },
+  { id: 'wheat', name: '小麦', category: 'material', price: 1, volume: 1 },
+  { id: 'scrap', name: '废料', category: 'material', price: 1, volume: 1 },
   { id: 'twig', name: '树枝', category: 'material', volume: 1 },
   { id: 'repair_kit', name: '修补钉', category: 'material', volume: 1 },
   // 生存资源三件套(M-S/S1,07-survival §2):建造材料,S2 建造配方消费

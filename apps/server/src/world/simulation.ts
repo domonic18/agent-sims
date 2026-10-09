@@ -47,7 +47,7 @@ import {
 import { EventBus } from './event-bus.js';
 import { requestCraft } from './craft.js';
 import { buyProperty, rentProperty } from './housing.js';
-import { buyItem, eatItem, storeItem, takeItem } from './inventory.js';
+import { buyItem, eatItem, sellItem, storeItem, takeItem } from './inventory.js';
 import { stepMaintenance, type RandomFn } from './maintenance.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
@@ -66,6 +66,7 @@ import {
   initShopStock,
   rebuildResourceNodes,
   respawnResourceNodes,
+  restockShopDaily,
   stepWorkTask,
 } from './work-dispatch.js';
 
@@ -250,6 +251,10 @@ export class Simulation {
 
   requestTakeItem(characterId: string, itemId: string, count: number): WorldCharacter {
     return takeItem(this, characterId, itemId, count);
+  }
+
+  requestSellItem(characterId: string, itemId: string, count: number): WorldCharacter {
+    return sellItem(this, characterId, itemId, count);
   }
 
   requestRentProperty(characterId: string, propertyId: string): WorldCharacter {
@@ -478,6 +483,7 @@ export class Simulation {
     if (this.clock.minuteOfDay === 0) {
       applySocialDailyRollover(this);
       this._respawnResourceNodes();
+      this._restockShopDaily();
     }
     // 睡眠结算(M-G.2):夜窗口(22:00~06:00)结束于 06:00——窗口跨 00:00,
     // 结算挂 NIGHT_END 而非日翻转;缺觉挂惩罚,账本无论是否缺觉均清零
@@ -567,6 +573,10 @@ export class Simulation {
 
   private _respawnResourceNodes(): void {
     respawnResourceNodes(this);
+  }
+
+  private _restockShopDaily(): void {
+    restockShopDaily(this);
   }
 
   private _checkDeath(character: WorldCharacter): void {

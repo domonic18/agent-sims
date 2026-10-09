@@ -6,6 +6,7 @@ import {
   eatItemIntentSchema,
   moveToIntentSchema,
   rentPropertyIntentSchema,
+  sellItemIntentSchema,
   stopMoveIntentSchema,
   storeItemIntentSchema,
   takeItemIntentSchema,
@@ -70,6 +71,23 @@ describe('executeIntent 意图执行', () => {
     expect(() =>
       executeIntent(sim, buyItemIntentSchema.parse({ type: 'buy_item', characterId: 'jev', itemId: 'cake' })),
     ).toThrow(/金币不足/);
+  });
+
+  it('sell_item: 店内卖出回执带入账与上架,协议拒绝非正整数份数', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('jev', 23, 28); // 商店内部
+    sim.character('jev').backpack = { berry: 3 };
+    const sold = executeIntent(
+      sim,
+      sellItemIntentSchema.parse({ type: 'sell_item', characterId: 'jev', itemId: 'berry', count: 3 }),
+    );
+    expect(sold.ok).toBe(true);
+    expect(sold.message).toContain('入账 3'); // floor(2×3×0.6)=3
+    expect(sim.character('jev').backpack).toEqual({});
+    expect(sim.shopStock.get('berry')).toBe(3);
+    expect(() =>
+      sellItemIntentSchema.parse({ type: 'sell_item', characterId: 'jev', itemId: 'berry', count: 0 }),
+    ).toThrow();
   });
 
   it('eat_item: 任意地点进食结算并清背包', () => {

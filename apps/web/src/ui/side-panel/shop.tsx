@@ -176,7 +176,7 @@ export function ShopSection({
   const inShop = atPlace !== null && placeIdMatches('shop', atPlace.id);
   return (
     <section className="panel-section">
-      <h3>商店{inShop ? ' · 在店内' : ''}(初始存量 · 售罄即止)</h3>
+      <h3>商店{inShop ? ' · 在店内' : ''}(售罄等补货,居民可卖入)</h3>
       <ul className="shop-list">
         {SHOP_ITEMS.map((item) => {
           const pendingBuy = pending?.kind === 'buy' && pending.id === item.id;
@@ -196,7 +196,7 @@ export function ShopSection({
                 disabled={moving || dead || soldOut}
                 title={
                   soldOut
-                    ? '已售罄——初始存量卖完即止,可采集或制作获取'
+                    ? '已售罄——等每日小额补货,或采集/制作后卖入商店'
                     : inShop
                       ? '购入放入背包(随身可吃)'
                       : '自动前往商店并购入背包'
@@ -226,12 +226,14 @@ export function BackpackSection({
 }) {
   const dead = !character.alive;
   const { atHome, leaseValid } = homeAccess(character.housing, atPlace?.id ?? null, day);
+  const inShop = atPlace !== null && placeIdMatches('shop', atPlace.id);
   const backpackUsed = inventoryVolume(character.backpack);
   const entries = Object.entries(character.backpack).filter(([, count]) => count > 0);
   return (
     <section className="panel-section">
       <h3>
         背包(随身) · 体积 {backpackUsed}/{BACKPACK_VOLUME_LIMIT}
+        {inShop ? ' · 在店内' : ''}
       </h3>
       {entries.length === 0 ? (
         <p className="hint">空空如也——到商店购入,或采集/制作获取食物</p>
@@ -260,6 +262,22 @@ export function BackpackSection({
                   >
                     吃
                   </button>
+                  {item?.price !== undefined && (
+                    <button
+                      type="button"
+                      disabled={dead || !inShop}
+                      title={
+                        !inShop
+                          ? '须在商店内才能卖出(收购价 6 折)'
+                          : `整叠卖给商店 ×${count},商店上架供他人购买`
+                      }
+                      onClick={() =>
+                        void run({ type: 'sell_item', characterId: character.id, itemId, count })
+                      }
+                    >
+                      卖
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={dead || !atHome || !leaseValid}

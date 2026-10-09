@@ -50,8 +50,15 @@ export interface BalanceConfig {
   START_COINS: number;
   SPAWN_PREPAID_DAYS: number;
   /** 商店初始食物存量(食物经济 2026-10-07,数值文档 §3.2): 每货架食物份数,
-   * 世界创建/重启重建时初始化,售罄即止不再补货——长期食物来源=采集/制作 */
+   * 世界创建/重启重建时初始化;E1 起供给主渠道=居民卖货(sell_item),每日小额补货仅兜底 */
   SHOP_INITIAL_FOOD_STOCK: number;
+  /** 每日兜底补货份数(E1 生产经济):日翻转时每货架食物补货,封顶初始存量;0=不补 */
+  SHOP_RESTOCK_DAILY: number;
+  /** 商店收购价折率(E1):sell_item 卖出价=售价×该值 */
+  SELL_RATE: number;
+  /** 贫困生存阀(E1):金币低于线且体力高于线的空闲角色按人设倾向选收入岗/卖货 */
+  POVERTY_COIN_LINE: number;
+  POVERTY_MIN_ENERGY: number;
   /** 快照数值保留小数位(协议序列化口径) */
   SNAPSHOT_DECIMALS: number;
   /** 携带/囤粮体积上限(M3.6g,数值文档 §3.2):背包随身,冰箱家中存取 */
@@ -147,6 +154,10 @@ export const BALANCE: BalanceConfig = {
   START_COINS: 0,
   SPAWN_PREPAID_DAYS: 1,
   SHOP_INITIAL_FOOD_STOCK: 3,
+  SHOP_RESTOCK_DAILY: 1,
+  SELL_RATE: 0.6,
+  POVERTY_COIN_LINE: 12,
+  POVERTY_MIN_ENERGY: 45,
   SNAPSHOT_DECIMALS: 1,
   BACKPACK_VOLUME_LIMIT,
   FRIDGE_VOLUME_LIMIT,

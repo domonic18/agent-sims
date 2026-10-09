@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
 import { autonomy, hosting, innerState } from './cognition.js';
 import type { DayIntents } from './cognition.js';
+import { INTENT_ACTIVITY_IDS } from './slow-layer.js';
 import type { DbHandle } from '../db/client.js';
 import type { runIntent } from '../intents/execute.js';
 import type { Simulation } from '../world/simulation.js';
@@ -106,6 +107,11 @@ function harness(
       ...(opts?.extraCharacters ?? []).map((c) => [c.id, c] as const),
     ]),
     socials: new Map(),
+    // E1 rule/want 世界查询与 townNeeds 读的世界表(空=无货/无节点/无损耗)
+    shopStock: new Map<string, number>(),
+    resourceNodes: new Map<string, never>(),
+    maintenanceSpots: new Map<string, never>(),
+    recipe: () => null,
     events: {
       subscribe: (fn: (event: WorldEvent) => void) => {
         eventHandler = fn;
@@ -329,7 +335,7 @@ describe('AgentScheduler(D3 意图执行)', () => {
       policyText: null,
       compiled: {
         focus: ['study'],
-        avoid: ['work', 'workout', 'stroll', 'socialize', 'explore', 'meal', 'rest'],
+        avoid: INTENT_ACTIVITY_IDS.filter((id) => id !== 'study'),
       },
     });
     const h = harness(0, char({})); // llm 未配置 chatStructured→composeIntents 回落

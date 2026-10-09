@@ -1,5 +1,5 @@
 import type { ActivityFinishedEvent, AgentDecisionMessage, WorldEvent } from '@sims/shared';
-import { getActivityDefinition } from '@sims/shared';
+import { getActivityDefinition, resourceNodeLabel, SHOP_ITEMS } from '@sims/shared';
 import { and, desc, eq, ilike } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
@@ -10,7 +10,14 @@ import type { WorldCharacter } from '../world/character.js';
 import { BALANCE } from '../config/balance.js';
 import { autonomy, hosting, innerState } from './cognition.js';
 import { describeMood } from './mood.js';
-import { jevDecide, wantSelect, ruleDecide, type Decision } from './fast-layer.js';
+import {
+  jevDecide,
+  wantSelect,
+  ruleDecide,
+  type Decision,
+  type RuleWorldQueries,
+  type WantWorldQueries,
+} from './fast-layer.js';
 import { ResponseRegistry } from './responses.js';
 import { persistInnerState } from './inner-state-db.js';
 import type { ScoredCandidate } from './social-motive.js';
@@ -125,7 +132,14 @@ export class AgentScheduler {
     for (const id of autonomy.list()) {
       const char = sim.characters.get(id);
       if (char === undefined) continue;
-      const rule = ruleDecide(char, sim.clock.day, sim.clock.minuteOfDay, sim.map.definition, this.anchorsAt());
+      const rule = ruleDecide(
+        char,
+        sim.clock.day,
+        sim.clock.minuteOfDay,
+        sim.map.definition,
+        this.anchorsAt(),
+        this.ruleWorld(char),
+      );
       if (rule.action === 'react') {
         this.apply(char, rule, 'threshold', {
           block: `${block}(${AUTONOMY_CHECK_INTERVAL_MINUTES}min)`,
@@ -154,6 +168,78 @@ export class AgentScheduler {
         .activityAnchors(activityId)
         .filter((a) => placeId === null || a.placeId === placeId)
         .map((a) => ({ x: a.x, y: a.y }));
+  }
+
+  /** rule 层世界查询(E1 依赖注入):货架余量/最近可食节点/活动倾向分(贫困选岗保人设) */
+  private ruleWorld(char: WorldCharacter): RuleWorldQueries {
+    const { sim } = this.deps;
+    return {
+      shopStock: (itemId) => sim.shopStock.get(itemId) ?? 0,
+      nearestEdibleNode: (from) => this.nearestNodeOf(['berry_bush', 'apple_tree'], from),
+      bias: biasOf(hosting.get(char.id)?.compiled ?? null),
+    };
+  }
+
+  /** want 层世界查询(E1 依赖注入):按 kind 寻节点+每世界配方就绪(存在+启用+背包含料) */
+  private wantWorld(char: WorldCharacter): WantWorldQueries {
+    const { sim } = this.deps;
+    return {
+      nearestNode: (kind, from) => this.nearestNodeOf([kind], from),
+      recipeReady: (recipeId) => {
+        const recipe = sim.recipe(recipeId);
+        if (recipe === null || recipe.enabled === false) return false;
+        return recipe.inputs.every((input) => (char.backpack[input.itemId] ?? 0) >= input.count);
+      },
+    };
+  }
+
+  /** 最近有存量资源节点(曼哈顿距离;charges null=无限) */
+  private nearestNodeOf(
+    kinds: readonly string[],
+    from: { x: number; y: number },
+  ): { id: string; x: number; y: number } | null {
+    let best: { id: string; x: number; y: number } | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const node of this.deps.sim.resourceNodes.values()) {
+      if (!kinds.includes(node.kind)) continue;
+      if (node.charges !== null && node.charges <= 0) continue;
+      const dist = Math.abs(node.x - from.x) + Math.abs(node.y - from.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = { id: node.id, x: node.x, y: node.y };
+      }
+    }
+    return best;
+  }
+
+  /** 小镇需求信号(E1):货架缺货/可采节点存量/待维护点/岗位概要,注入当日意图
+   * 生成——LLM 按人设×需求自发选岗,实现需求驱动的分工分化 */
+  private townNeeds(): string {
+    const { sim } = this.deps;
+    const parts: string[] = [];
+    const outOfStock = SHOP_ITEMS.filter((item) => (sim.shopStock.get(item.id) ?? 0) <= 0).map(
+      (item) => item.name,
+    );
+    if (outOfStock.length > 0) parts.push(`商店缺货:${outOfStock.join('/')}`);
+    const stocked = new Map<string, number>();
+    for (const node of sim.resourceNodes.values()) {
+      if (node.charges !== null && node.charges <= 0) continue;
+      stocked.set(node.kind, (stocked.get(node.kind) ?? 0) + 1);
+    }
+    const nodes = [...stocked].map(([kind, count]) => `${resourceNodeLabel(kind)}×${count}`);
+    if (nodes.length > 0) parts.push(`可采:${nodes.join('/')}`);
+    let litter = 0;
+    let fence = 0;
+    for (const spot of sim.maintenanceSpots.values()) {
+      if (spot.kind === 'litter') litter += 1;
+      else fence += 1;
+    }
+    const upkeep: string[] = [];
+    if (litter > 0) upkeep.push(`杂物×${litter}`);
+    if (fence > 0) upkeep.push(`围栏破损×${fence}`);
+    if (upkeep.length > 0) parts.push(`待维护:${upkeep.join('/')}`);
+    parts.push('上岗:服务员/售货员/馆员(时薪1.0,知识≥3),杂工(0.8);采集/制作所得可卖入商店');
+    return parts.join(';');
   }
 
   /**
@@ -217,7 +303,14 @@ export class AgentScheduler {
   /** 空闲放行的既有管线(rule→want→社交→jev,冷却护栏原样保留) */
   private runIdlePipeline(char: WorldCharacter, event: WorldEvent): void {
     const { sim } = this.deps;
-    const rule = ruleDecide(char, sim.clock.day, sim.clock.minuteOfDay, sim.map.definition, this.anchorsAt());
+    const rule = ruleDecide(
+      char,
+      sim.clock.day,
+      sim.clock.minuteOfDay,
+      sim.map.definition,
+      this.anchorsAt(),
+      this.ruleWorld(char),
+    );
     if (rule.action === 'react') {
       this.apply(char, rule, 'eventbus', { event: event.type });
       return;
@@ -530,6 +623,7 @@ export class AgentScheduler {
           persona,
           previous,
           focus: innerState.get(char.id)?.focus?.text ?? null,
+          townNeeds: this.townNeeds(),
         }),
       )
       .then(({ intents, compiled }) => {
@@ -571,6 +665,7 @@ export class AgentScheduler {
       sim.map.definition,
       this.anchorsAt(),
       biasOf(hosting.get(char.id)?.compiled ?? null),
+      this.wantWorld(char),
     );
     if (decision === null) return null;
     if (decision.abandonedWantIds !== undefined && decision.abandonedWantIds.length > 0) {

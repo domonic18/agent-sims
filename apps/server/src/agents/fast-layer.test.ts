@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { DayIntents } from './cognition.js';
-import { exploreTarget, jevDecide, wantSelect, ruleDecide, type Decision } from './fast-layer.js';
+import {
+  exploreTarget,
+  jevDecide,
+  wantSelect,
+  ruleDecide,
+  type Decision,
+  type RuleWorldQueries,
+} from './fast-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 
 const DAY = 4;
@@ -125,8 +132,10 @@ describe('ruleDecide(快层 rule,零模型数值压力反应)', () => {
 
     const owned = char({ housing: { propertyId: 'home-a', ownership: 'owned', paidThroughDay: DAY + 1 } });
     expect(decide(owned).action).toBe('continue');
+    // E1 贫困阀:钱不够续租但闲着 → 先谋生(贫困阀保人设选岗),不再静默
     const broke = char({ coins: 0, housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 } });
-    expect(decide(broke).action).toBe('continue');
+    expect(decide(broke).action).toBe('react');
+    expect(decide(broke).bubble).toContain('挣点钱');
   });
 
   it('饥饿优先于房租(生存压力先行)', () => {
@@ -180,6 +189,96 @@ describe('ruleDecide(快层 rule,零模型数值压力反应)', () => {
       housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 5 },
     });
     expect(ruleDecide(starving, DAY, NIGHT, TOWN_MAP, homeAnchors).intent?.type).toBe('move_to');
+  });
+});
+
+describe('ruleDecide E1 生存阀(贫困变现/直采逃生/饥饿让行/长椅兜底)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
+  const decideW = (c: WorldCharacter, world: RuleWorldQueries = {}, minuteOfDay = NOON): Decision =>
+    ruleDecide(c, DAY, minuteOfDay, TOWN_MAP, noAnchors, world);
+
+  it('贫困阀:背包有货在店内→整叠 sell_item;店外→先去商店', () => {
+    const inShop = decideW(
+      char({ coins: 5, energy: 60, x: shopXY.x, y: shopXY.y, backpack: { berry: 4 } }),
+    );
+    expect(inShop.intent).toEqual({
+      type: 'sell_item',
+      characterId: 'char-1',
+      itemId: 'berry',
+      count: 4,
+    });
+    expect(inShop.bubble).toContain('浆果');
+
+    const outside = decideW(char({ coins: 5, energy: 60, backpack: { berry: 4 } }));
+    expect(outside.intent).toEqual({
+      type: 'move_to',
+      characterId: 'char-1',
+      x: SHOP_ENTRANCE.x,
+      y: SHOP_ENTRANCE.y,
+    });
+  });
+
+  it('贫困阀选岗保人设:知识不够只剩杂工;知识够时倾向分高者胜出', () => {
+    const green = decideW(char({ coins: 5, energy: 60 }));
+    expect(green.intent?.type).toBe('move_to'); // 杂工,前往作业点
+
+    const waiter = decideW(char({ coins: 5, energy: 60, knowledge: 5 }), { bias: { waiter: 1 } });
+    expect(waiter.bubble).toContain('服务员');
+  });
+
+  it('贫困阀门槛:体力<阀值 或 金币≥贫困线 不触发', () => {
+    expect(decideW(char({ coins: 5, energy: 40 })).action).toBe('continue');
+    expect(decideW(char({ coins: BALANCE.POVERTY_COIN_LINE, energy: 60 })).action).toBe('continue');
+  });
+
+  it('直采逃生门:体力(20,30] 无食有节点→work_task 直发;≤接单线/无节点不动', () => {
+    const forage = decideW(char({ energy: 25, coins: 50 }), {
+      nearestEdibleNode: () => ({ id: 'berry_bush:12:8', x: 12, y: 8 }),
+    });
+    expect(forage.intent).toEqual({
+      type: 'work_task',
+      characterId: 'char-1',
+      targetId: 'berry_bush:12:8',
+    });
+    expect(forage.bubble).toContain('采点吃的');
+
+    // ≤20 在工单接单被拒线之下,白打意图
+    expect(
+      decideW(char({ energy: 15, coins: 0 }), { nearestEdibleNode: () => ({ id: 'b', x: 1, y: 1 }) })
+        .action,
+    ).toBe('continue');
+    expect(decideW(char({ energy: 25, coins: 50 })).action).toBe('continue'); // 无节点
+  });
+
+  it('饥饿让行:店空/买不起 → continue(不再对着售罄货架撞墙)', () => {
+    const empty = decideW(char({ energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE, coins: 50 }), {
+      shopStock: () => 0,
+    });
+    expect(empty.action).toBe('continue');
+
+    const broke = decideW(char({ energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE, coins: 0 }), {
+      shopStock: (id) => (id === 'berry' ? 5 : 0),
+    });
+    expect(broke.action).toBe('continue');
+  });
+
+  it('租约失效困倦 → 公园长椅兜底(两段式 rest,不再撞床)', () => {
+    const expired = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY - 1 };
+    const parkBench = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+      activityId === 'rest' && placeId === 'park' ? [{ x: 7, y: 8 }] : [];
+    const go = ruleDecide(char({ energy: 30, coins: 0, housing: expired }), DAY, NIGHT, TOWN_MAP, parkBench);
+    expect(go.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 7, y: 8 });
+    expect(go.bubble).toContain('长椅');
+
+    const sit = ruleDecide(
+      char({ x: 7, y: 8, energy: 30, coins: 0, housing: expired }),
+      DAY,
+      NIGHT,
+      TOWN_MAP,
+      parkBench,
+    );
+    expect(sit.intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'rest' });
   });
 });
 
@@ -375,5 +474,64 @@ describe('wantSelect explore want(散列目标,want 内粘性)', () => {
       activityId: 'explore',
     });
     expect(started!.bubble).toContain('探索');
+  });
+});
+
+describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+
+  it('采集 want:有节点→work_task 直发(自带寻路);无节点本轮跳过', () => {
+    const day = intents(1, [{ activityId: 'gather_berry', urgency: 0.9, why: '采点浆果' }]);
+    const go = wantSelect(char({ knowledge: 5 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      nearestNode: () => ({ id: 'berry_bush:12:8', x: 12, y: 8 }),
+    });
+    expect(go!.intent).toEqual({
+      type: 'work_task',
+      characterId: 'char-1',
+      targetId: 'berry_bush:12:8',
+    });
+    expect(go!.bubble).toContain('浆果丛');
+
+    expect(wantSelect(char({ knowledge: 5 }), day, 1, TOWN_MAP, noAnchors)).toBeNull();
+  });
+
+  it('制作 want:验料就绪+到站→craft;缺料跳过;不在站点先前往', () => {
+    const day = intents(1, [{ activityId: 'craft_berry_pie', urgency: 0.9, why: '烤个派' }]);
+    const stove = [{ x: 20, y: 21 }];
+    const stoveAnchors = (activityId: string): Array<{ x: number; y: number }> =>
+      activityId === 'craft_berry_pie' ? stove : [];
+    const ready = { recipeReady: () => true };
+
+    const atStation = wantSelect(
+      char({ x: 20, y: 21, knowledge: 5 }),
+      day,
+      1,
+      TOWN_MAP,
+      stoveAnchors,
+      {},
+      ready,
+    );
+    expect(atStation!.intent).toEqual({
+      type: 'craft',
+      characterId: 'char-1',
+      recipeId: 'craft_berry_pie',
+    });
+
+    const far = wantSelect(char({ knowledge: 5 }), day, 1, TOWN_MAP, stoveAnchors, {}, ready);
+    expect(far!.intent?.type).toBe('move_to');
+
+    expect(
+      wantSelect(char({ knowledge: 5 }), day, 1, TOWN_MAP, stoveAnchors, {}, {
+        recipeReady: () => false,
+      }),
+    ).toBeNull();
+  });
+
+  it('知识门槛预检:不够则跳过(pending 保留),学成后照常执行', () => {
+    const day = intents(1, [{ activityId: 'waiter', urgency: 0.9 }]);
+    expect(wantSelect(char({}), day, 1, TOWN_MAP, noAnchors)).toBeNull();
+    // 广场(30,30)在餐厅矩形内:上岗位就地开始
+    const go = wantSelect(char({ x: 8, y: 12, knowledge: 5 }), day, 1, TOWN_MAP, noAnchors);
+    expect(go!.intent?.type).toBe('move_to'); // 前往餐馆上岗
   });
 });

@@ -100,6 +100,17 @@ export const chatIntentSchema = z.object({
 
 export type ChatIntent = z.infer<typeof chatIntentSchema>;
 
+/** 出售(E1 生产经济):须在商店内,背包足量;商店按 SELL_RATE×售价收购,
+ * 货架余量+1——采集/制作产出入店,他人可买,镇内经济循环闭合 */
+export const sellItemIntentSchema = z.object({
+  type: z.literal('sell_item'),
+  characterId: z.string().min(1),
+  itemId: z.string().min(1),
+  count: z.number().int().min(1),
+});
+
+export type SellItemIntent = z.infer<typeof sellItemIntentSchema>;
+
 /** 维护工单(M-G.5):targetId=维护点 id(litter/fence_damage→clean/repair)或待救治角色 id(rescue) */
 export const workTaskIntentSchema = z.object({
   type: z.literal('work_task'),
@@ -130,6 +141,7 @@ export const intentSchema = z.discriminatedUnion('type', [
   rentPropertyIntentSchema,
   buyPropertyIntentSchema,
   chatIntentSchema,
+  sellItemIntentSchema,
   workTaskIntentSchema,
   craftIntentSchema,
 ]);

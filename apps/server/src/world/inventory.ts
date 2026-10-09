@@ -32,7 +32,7 @@ export function buyItem(sim: Simulation, characterId: string, itemId: string): W
   const stock = sim.shopStock.get(itemId) ?? 0;
   if (stock <= 0) {
     throw new Error(
-      `商店「${item.name}」已售罄(初始存量卖完即止,不再补货;可采集或制作获取)`,
+      `商店「${item.name}」已售罄(等每日小额补货,或采集/制作/等他人卖入)`,
     );
   }
   const used = inventoryVolume(character.backpack);
@@ -49,6 +49,44 @@ export function buyItem(sim: Simulation, characterId: string, itemId: string): W
   character.coins -= item.price;
   sim.shopStock.set(itemId, stock - 1);
   character.backpack[itemId] = (character.backpack[itemId] ?? 0) + 1;
+  return character;
+}
+
+/** 出售给商店(E1 生产经济):须在商店内;只收带定价物品(SELL_RATE×售价,
+ * 零件取整);背包扣减、金币入袋、货架余量+1——采集/制作产出入店可被他人
+ * 购买,镇内经济循环闭合。货架不封顶(卖多少收多少)。 */
+export function sellItem(
+  sim: Simulation,
+  characterId: string,
+  itemId: string,
+  count: number,
+): WorldCharacter {
+  const item = getItem(itemId);
+  if (item === null) {
+    throw new Error(`未知商品: ${itemId}`);
+  }
+  if (item.price === undefined) {
+    throw new Error(`「${item.name}」无定价,商店不收购`);
+  }
+  if (count < 1) {
+    throw new Error('出售数量须为正整数');
+  }
+  const character = sim.character(characterId);
+  ensureAlive(character);
+  ensureNotCollapsed(character);
+  if (!sim.map.contains('shop', character.x, character.y)) {
+    throw new Error(`${character.name} 须在商店内出售(先移动到商店)`);
+  }
+  if ((character.backpack[itemId] ?? 0) < count) {
+    throw new Error(`${character.name} 背包里「${item.name}」不足 ${count} 个`);
+  }
+  const earn = Math.floor(item.price * count * BALANCE.SELL_RATE);
+  character.backpack[itemId] = character.backpack[itemId]! - count;
+  if (character.backpack[itemId]! <= 0) {
+    delete character.backpack[itemId];
+  }
+  character.coins += earn;
+  sim.shopStock.set(itemId, (sim.shopStock.get(itemId) ?? 0) + count);
   return character;
 }
 

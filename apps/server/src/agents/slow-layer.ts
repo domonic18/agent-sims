@@ -15,10 +15,31 @@ import type { MemoryLlm } from './memory-writer.js';
  * 计划-实际偏差自动成为记忆素材。睡眠不进意图,由困倦压力(ruleSleepy)接管。
  */
 
-/** 意图活动白名单:免门槛/无条件可直接 start_activity 的活动
- * (sleep 由困倦压力驱动,不进意图;带 category 岗位与工单须接单,不排程;
- * socialize 为 C4 闲聚类块,聊天本身由动机引擎驱动) */
-export const INTENT_ACTIVITY_IDS = ['study', 'work', 'workout', 'stroll', 'socialize', 'explore', 'meal', 'rest'] as const;
+/** 意图活动白名单(E1 生产经济扩容):8 基础活动 + 服务三岗 + 采集四岗(growth
+ * 适用节点)+ 制作四配方。带 category 的岗位经知识门槛预检;采集经 work_task
+ * 通路(节点寻址)、制作经 craft 通路(验料),wantSelect 择条时分流;
+ * sleep 由困倦压力驱动不进意图,socialize 聊天由动机引擎驱动 */
+export const INTENT_ACTIVITY_IDS = [
+  'study',
+  'work',
+  'workout',
+  'stroll',
+  'socialize',
+  'explore',
+  'meal',
+  'rest',
+  'waiter',
+  'vendor',
+  'librarian',
+  'gather_berry',
+  'scavenge',
+  'pick_apple',
+  'harvest_wheat',
+  'craft_berry_pie',
+  'craft_bread',
+  'craft_sandwich',
+  'craft_repair_kit',
+] as const;
 
 const EVIDENCE_LIMIT = 6;
 
@@ -31,6 +52,9 @@ export interface IntentsContext {
   previous?: DayIntents | null;
   /** 当前关注点(innerState.focus,最近一次决策理由) */
   focus?: string | null;
+  /** 小镇需求信号(E1 需求驱动分工):缺货/可采/待修/岗位说明一句话,
+   * 注入 prompt 供人设×需求产 wants,不强制 */
+  townNeeds?: string;
 }
 
 /** 方针偏好工具规格(结构化输出):provider 层 schema 约束字段名与活动白名单 */
@@ -270,6 +294,17 @@ const FALLBACK_WHY: Record<string, readonly string[]> = {
   explore: ['镇上还有没去过的地方', '想去没走过的角落看看', '好奇心又犯了'],
   meal: ['嘴里有点馋', '肚子在抗议了', '该犒劳一下自己'],
   rest: ['累了歇会儿', '发会儿呆也好', '想慢下来喘口气'],
+  waiter: ['端盘子也算跟人打交道', '餐厅忙,去帮衬一手'],
+  vendor: ['站柜台看人来人往挺自在', '商店缺人,去搭把手'],
+  librarian: ['书堆里守着心里踏实', '馆里安静,正适合我'],
+  gather_berry: ['公园的浆果正熟', '摘点浆果,自己吃也能卖'],
+  scavenge: ['拾荒堆里说不定有宝贝', '去淘点废料回来'],
+  pick_apple: ['树上的苹果该摘了', '摘个苹果又甜又顶饿'],
+  harvest_wheat: ['麦子黄了,割回去做面包', '收点小麦攒着'],
+  craft_berry_pie: ['浆果攒够了,烤个派', '新鲜浆果派出炉想想就香'],
+  craft_bread: ['小麦烤成面包才顶饱', '就馋那一口面包香'],
+  craft_sandwich: ['面包夹苹果,凑一顿好的', '做个三明治当干粮'],
+  craft_repair_kit: ['围栏坏了好几处,打点钉子', '废料打成修补钉能用能卖'],
 };
 
 /** 回落意图(LLM 不可用/输出非法):按 bias 分+随机扰动排序取 3~4 条,
@@ -317,6 +352,9 @@ function buildIntentsMessages(
   }
   if (typeof ctx?.focus === 'string' && ctx.focus.trim() !== '') {
     contextLines.push(`你眼下最挂在心上的事: ${ctx.focus.trim()}。`);
+  }
+  if (typeof ctx?.townNeeds === 'string' && ctx.townNeeds.trim() !== '') {
+    contextLines.push(`小镇需求(参考着选活,不强制): ${ctx.townNeeds.trim()}。`);
   }
   if (typeof ctx?.policyText === 'string' && ctx.policyText.trim() !== '') {
     contextLines.push(`玩家给你的生活方针: ${ctx.policyText.trim()}`);

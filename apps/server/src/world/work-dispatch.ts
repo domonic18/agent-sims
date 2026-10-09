@@ -159,11 +159,24 @@ export function rebuildResourceNodes(sim: Simulation): void {
 }
 
 /** 商店货架初始化(构造/reset 共用):8 货架食物按 SHOP_INITIAL_FOOD_STOCK 各置份数;
- * 售罄即止,无任何补货路径(食物经济 2026-10-07,数值文档 §3.2) */
+ * E1 起供给主渠道=居民卖货(sell_item),此初始化只是开市底货 */
 export function initShopStock(sim: Simulation): void {
   sim.shopStock.clear();
   for (const itemId of SHOP_ITEM_IDS) {
     sim.shopStock.set(itemId, BALANCE.SHOP_INITIAL_FOOD_STOCK);
+  }
+}
+
+/** 每日兜底补货(E1 生产经济,日翻转 00:00 调用):每种货架食物补
+ * SHOP_RESTOCK_DAILY 份,封顶初始存量——主供给靠居民采集制作卖入,小额补货
+ * 只防全店断粮死锁;0=不补 */
+export function restockShopDaily(sim: Simulation): void {
+  if (BALANCE.SHOP_RESTOCK_DAILY <= 0) return;
+  const cap = BALANCE.SHOP_INITIAL_FOOD_STOCK;
+  for (const itemId of SHOP_ITEM_IDS) {
+    const stock = sim.shopStock.get(itemId) ?? 0;
+    if (stock >= cap) continue;
+    sim.shopStock.set(itemId, Math.min(cap, stock + BALANCE.SHOP_RESTOCK_DAILY));
   }
 }
 
