@@ -79,6 +79,10 @@ export function startActivity(
   if (recipe !== null && opts?.recipeId !== recipe.id) {
     throw new Error(`${definition.name} 为配方制作,须经 craft 意图(验料扣料)开始`);
   }
+  // 卖货(E4):want 载体活动,收益走 sell_item 结算,直发 start_activity 无意义
+  if (activityId === 'sell_goods') {
+    throw new Error(`${definition.name} 须经 sell_item 意图或物品栏卖出`);
+  }
   const character = sim.character(characterId);
   ensureAlive(character);
   // 虚脱门禁(numerical §2.3): 倒地只放行就地休息/睡觉,其余活动拒绝

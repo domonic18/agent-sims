@@ -36,6 +36,7 @@ export const ACTIVITY_IDS = [
   'craft_repair_kit',
   'craft_bread',
   'craft_sandwich',
+  'sell_goods',
 ] as const;
 
 export type ActivityId = (typeof ACTIVITY_IDS)[number];
@@ -304,6 +305,15 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     durationMinutes: 25,
     effects: { energy: -0.1, score: 0.05, coins: 0 },
     category: 'gather',
+  },
+  // 卖货(E4 生产经济闭环,design/09 §5.1):want 载体活动,收益不走活动速率而走
+  // sell_item 结算(售价×折率入袋+货架),直发 start_activity 拒绝(玩家走物品弹层「卖」钮)
+  {
+    id: 'sell_goods',
+    name: '卖货',
+    placeIds: ['shop'],
+    durationMinutes: 15,
+    effects: { energy: -0.05, score: 0.05, coins: 0 },
   },
 ];
 

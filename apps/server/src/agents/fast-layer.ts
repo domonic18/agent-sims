@@ -472,17 +472,32 @@ function hasAnyPlace(map: TileMapDefinition, placeIds: readonly string[]): boole
   return placeIds.some((id) => findPlaceByRef(map, id) !== null);
 }
 
-/** 数值需求增益(D3 弹性意图择行):缺钱工作欲↑钱多↓,疲惫休息就餐↑,没学识想学 */
+/** 数值需求增益(D3 弹性意图择行;E4 缺钱扩容):缺钱工作欲↑/卖货变现↑/采集备货↑,
+ * 钱多工作↓,疲惫休息就餐↑,没学识想学 */
 function needBoost(char: WorldCharacter, activityId: string): number {
-  if (activityId === 'work') {
-    if (char.coins < BALANCE.WANT_WORK_COIN_PRESSURE) return 1.5;
-    if (char.coins >= BALANCE.WANT_WORK_COIN_SATIETY) return 0.6;
+  if (char.coins < BALANCE.WANT_WORK_COIN_PRESSURE) {
+    if (activityId === 'work') return 1.5;
+    if (activityId === 'sell_goods') return 1.5; // 缺钱导向变现
+    if (gatherNodeKind(activityId) !== null) return 1.3; // 缺钱导向采集备货
   }
+  if (activityId === 'work' && char.coins >= BALANCE.WANT_WORK_COIN_SATIETY) return 0.6;
   if ((activityId === 'rest' || activityId === 'meal') && char.energy <= BALANCE.WANT_TIRED_ENERGY) {
     return 1.4;
   }
   if (activityId === 'study' && char.knowledge <= BALANCE.WANT_KNOWLEDGE_LOW) return 1.3;
   return 1;
+}
+
+/** 背包最值钱带价物(E4 卖货 want):总价(价×量)最高者优先变现 */
+function bestSellable(backpack: Record<string, number | undefined>): { id: string; count: number } | null {
+  let best: { id: string; count: number; total: number } | null = null;
+  for (const [id, count] of Object.entries(backpack)) {
+    const item = getItem(id);
+    if (item?.price === undefined || (count ?? 0) <= 0) continue;
+    const total = item.price * (count ?? 0);
+    if (best === null || total > best.total) best = { id, count: count!, total };
+  }
+  return best === null ? null : { id: best.id, count: best.count };
 }
 
 /**
@@ -492,6 +507,7 @@ function needBoost(char: WorldCharacter, activityId: string): number {
  * - 采集岗(E1;E4 两段式):查最近有存量节点邻位——远处 move_to、贴身 work_task
  *   (接单即到位计时,消灭移动中/途中掉力的错位拒单)
  * - 制作岗(E1):背包含料预检→站点锚点 craft{recipeId}/先 move_to 站点
+ * - 卖货(E4):背包有带价物→在店 sell_item 整叠变现/先 move_to 商店(空包跳过)
  * - 人指向社交(E2):带 target 的 socialize 远处 move_to 寻人,已贴身/对方不在
  *   则返回 null 让位空闲社交管线(want 由 social.chat 事件结算 done)
  * 不可执行的 want 当场废弃(rest 无居所/无锚点无场所);门槛不够/缺料/无节点
@@ -641,6 +657,35 @@ export function wantSelect(
       ...extra,
       intent: { type: 'move_to', characterId: char.id, x: spot.x, y: spot.y },
       bubble: `${picked.why},去${placePart}`,
+    };
+  }
+  // 卖货 want(E4 生产经济闭环):背包有带价物——在店 sell_item 整叠变现/店外先去
+  // 商店;空背包本轮跳过(pending 保留,采到货再变现)
+  if (picked.activityId === 'sell_goods') {
+    const sellable = bestSellable(char.backpack);
+    if (sellable === null) {
+      return { layer: 'plan', action: 'continue', ...extra, wantId: picked.id };
+    }
+    const shop = findPlaceByRef(map, 'shop');
+    if (shop === null) return null;
+    const name = getItem(sellable.id)?.name ?? sellable.id;
+    if (findPlaceAt(map, char.x, char.y)?.id === shop.id) {
+      return {
+        layer: 'plan',
+        action: 'react',
+        wantId: picked.id,
+        ...extra,
+        intent: { type: 'sell_item', characterId: char.id, itemId: sellable.id, count: sellable.count },
+        bubble: `${picked.why},把${name}卖给商店`,
+      };
+    }
+    return {
+      layer: 'plan',
+      action: 'react',
+      wantId: picked.id,
+      ...extra,
+      intent: { type: 'move_to', characterId: char.id, x: shop.entrance.x, y: shop.entrance.y },
+      bubble: `${picked.why},去商店卖${name}`,
     };
   }
   const anchors = anchorsOf(picked.activityId, null);

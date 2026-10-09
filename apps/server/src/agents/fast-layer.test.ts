@@ -229,7 +229,7 @@ describe('ruleDecide E1 生存阀(贫困变现/直采逃生/饥饿让行/长椅�
   });
 
   it('贫困阀门槛:体力<阀值 或 金币≥贫困线 不触发', () => {
-    expect(decideW(char({ coins: 5, energy: 40 })).action).toBe('continue');
+    expect(decideW(char({ coins: 5, energy: 34 })).action).toBe('continue'); // E4: 阀值 45→35
     expect(decideW(char({ coins: BALANCE.POVERTY_COIN_LINE, energy: 60 })).action).toBe('continue');
   });
 
@@ -574,6 +574,41 @@ describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () =
     // 广场(30,30)在餐厅矩形内:上岗位就地开始
     const go = wantSelect(char({ x: 8, y: 12, knowledge: 5 }), day, 1, TOWN_MAP, noAnchors);
     expect(go!.intent?.type).toBe('move_to'); // 前往餐馆上岗
+  });
+});
+
+describe('wantSelect 卖货 want(E4 变现通路)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const day = intents(1, [{ activityId: 'sell_goods', urgency: 0.9, why: '卖点货换钱' }]);
+  const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
+
+  it('店内:总价最高的带价物整叠 sell_item(berry 4×2=8 胜 scrap 3×1=3)', () => {
+    const decision = wantSelect(char({ x: shopXY.x, y: shopXY.y, backpack: { berry: 4, scrap: 3 } }), day, 1, TOWN_MAP, noAnchors);
+    expect(decision!.intent).toEqual({
+      type: 'sell_item',
+      characterId: 'char-1',
+      itemId: 'berry',
+      count: 4,
+    });
+    expect(decision!.bubble).toContain('卖点货换钱');
+    expect(decision!.bubble).toContain('浆果');
+  });
+
+  it('店外:先 move_to 商店入口', () => {
+    const decision = wantSelect(char({ backpack: { scrap: 2 } }), day, 1, TOWN_MAP, noAnchors);
+    expect(decision!.intent).toEqual({
+      type: 'move_to',
+      characterId: 'char-1',
+      x: SHOP_ENTRANCE.x,
+      y: SHOP_ENTRANCE.y,
+    });
+  });
+
+  it('空背包(无可变现物):本轮 continue,want 留 pending 非 abandoned', () => {
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, noAnchors);
+    expect(decision!.action).toBe('continue');
+    expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.intent).toBeUndefined();
   });
 });
 

@@ -263,7 +263,7 @@ export class AgentScheduler {
     if (litter > 0) upkeep.push(`杂物×${litter}`);
     if (fence > 0) upkeep.push(`围栏破损×${fence}`);
     if (upkeep.length > 0) parts.push(`待维护:${upkeep.join('/')}`);
-    parts.push('上岗:服务员/售货员/馆员(时薪1.0,知识≥3),杂工(0.8);采集/制作所得可卖入商店');
+    parts.push('上岗:服务员/售货员/馆员(时薪1.0,知识≥3),杂工(0.8);采集/制作所得可去商店卖货(sell_goods)换钱');
     return parts.join(';');
   }
 

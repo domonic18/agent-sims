@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { getActivityDefinition } from '@sims/shared';
 import type { DbHandle } from '../db/client.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { MemoryLlm } from './memory-writer.js';
 import {
+  INTENT_ACTIVITY_IDS,
   compilePersonaPolicy,
   composeIntents,
   evidenceQuery,
@@ -212,6 +214,15 @@ describe('describeIntents(昨日对照措辞)', () => {
         ],
       }),
     ).toBe('杂工(已完成): 挣钱;学习(未做): 想学新东西');
+  });
+});
+
+describe('INTENT_ACTIVITY_IDS(词汇表,E4 卖货通路)', () => {
+  it('含 sell_goods 且表内每项均为合法活动', () => {
+    expect(INTENT_ACTIVITY_IDS).toContain('sell_goods');
+    for (const id of INTENT_ACTIVITY_IDS) {
+      expect(getActivityDefinition(id)).not.toBeNull();
+    }
   });
 });
 

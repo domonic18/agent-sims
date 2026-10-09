@@ -206,6 +206,12 @@ describe('活动执行(M3.1;M3.6e 锚点;M3.6f 体力区段;M3.6g 净速率+休�
     sim.requestStopActivity('iris');
     expect(() => sim.requestStopActivity('iris')).toThrow(/没有进行中的活动/);
   });
+
+  it('卖货 want 载体(E4):直发 start_activity 拒绝,收益走 sell_item 结算', () => {
+    const { sim } = simWith('pete', 8, 12); // 位置无关:守卫先于锚点/场所判定
+    expect(() => sim.requestStartActivity('pete', 'sell_goods')).toThrow(/sell_item/);
+    expect(sim.character('pete').activity).toBeNull();
+  });
 });
 
 describe('职业类别与知识(M-G.4 类别平行模型,goal-design §4.2/numerical §5.1)', () => {

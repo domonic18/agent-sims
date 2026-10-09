@@ -15,9 +15,10 @@ import type { MemoryLlm } from './memory-writer.js';
  * 计划-实际偏差自动成为记忆素材。睡眠不进意图,由困倦压力(ruleSleepy)接管。
  */
 
-/** 意图活动白名单(E1 生产经济扩容):8 基础活动 + 服务三岗 + 采集四岗(growth
- * 适用节点)+ 制作四配方。带 category 的岗位经知识门槛预检;采集经 work_task
- * 通路(节点寻址)、制作经 craft 通路(验料),wantSelect 择条时分流;
+/** 意图活动白名单(E1 生产经济扩容;E4 增卖货):8 基础活动 + 服务三岗 +
+ * 采集四岗(growth 适用节点)+ 制作四配方 + 卖货。带 category 的岗位经知识门槛
+ * 预检;采集经 work_task 通路(节点寻址)、制作经 craft 通路(验料)、卖货经
+ * sell_item 通路(在店变现),wantSelect 择条时分流;
  * sleep 由困倦压力驱动不进意图,socialize 聊天由动机引擎驱动 */
 export const INTENT_ACTIVITY_IDS = [
   'study',
@@ -39,6 +40,7 @@ export const INTENT_ACTIVITY_IDS = [
   'craft_bread',
   'craft_sandwich',
   'craft_repair_kit',
+  'sell_goods',
 ] as const;
 
 const EVIDENCE_LIMIT = 6;
