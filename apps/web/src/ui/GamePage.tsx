@@ -29,6 +29,15 @@ const STATUS_LABEL: Record<string, string> = {
   disconnected: '已断开,自动重连中',
 };
 
+/** 页面级弹窗单状态机(天然互斥,替代多个 openId 手写互斥清理) */
+type ModalState =
+  | { kind: 'none' }
+  | { kind: 'login' }
+  | { kind: 'settings' }
+  | { kind: 'hosting'; characterId: string }
+  | { kind: 'mindtalk'; characterId: string }
+  | { kind: 'memory'; characterId: string };
+
 /**
  * 游戏主界面(UI-1): 全屏像素画布打底,HUD 悬浮——左上角色面板(‹›切换)、
  * 顶中时钟/倍率、右上日志与设置、底部快捷动作条。
@@ -47,11 +56,7 @@ export default function GamePage() {
   const username = useAuthStore((state) => state.username);
   const logout = useAuthStore((state) => state.logout);
   const isAdmin = token !== null;
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
-  const [hostingOpenId, setHostingOpenId] = useState<string | null>(null);
-  const [mindTalkOpenId, setMindTalkOpenId] = useState<string | null>(null);
-  const [memoryOpenId, setMemoryOpenId] = useState<string | null>(null);
+  const [modal, setModal] = useState<ModalState>({ kind: 'none' });
   const [controlError, setControlError] = useState<string | null>(null);
   // 模型徽标(公开读,后台开关裁定显隐):加载失败静默,不影响游戏
   const [uiMeta, setUiMeta] = useState<UiMetaView | null>(null);
@@ -88,8 +93,8 @@ export default function GamePage() {
   }, [token]);
 
   const openSettings = async (): Promise<void> => {
-    if (settingsOpen || !isAdmin) return;
-    setSettingsOpen(true);
+    if (!isAdmin || modal.kind === 'settings') return;
+    setModal({ kind: 'settings' });
     const current = useWorldStore.getState().snapshot;
     if (current !== null && !current.paused) {
       try {
@@ -103,7 +108,7 @@ export default function GamePage() {
   };
 
   const closeSettings = async (): Promise<void> => {
-    setSettingsOpen(false);
+    setModal((current) => (current.kind === 'settings' ? { kind: 'none' } : current));
     if (!resumeOnCloseRef.current) return;
     resumeOnCloseRef.current = false;
     const current = useWorldStore.getState().snapshot;
@@ -121,7 +126,7 @@ export default function GamePage() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !isAdmin) return;
-      void (settingsOpen ? closeSettings() : openSettings());
+      void (modal.kind === 'settings' ? closeSettings() : openSettings());
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -170,27 +175,19 @@ export default function GamePage() {
       <CharacterHud
         onHosting={(id) => {
           if (!isAdmin) {
-            setLoginOpen(true);
+            setModal({ kind: 'login' });
             return;
           }
-          setMindTalkOpenId(null);
-          setMemoryOpenId(null);
-          setHostingOpenId(id);
+          setModal({ kind: 'hosting', characterId: id });
         }}
         onMindTalk={(id) => {
           if (!isAdmin) {
-            setLoginOpen(true);
+            setModal({ kind: 'login' });
             return;
           }
-          setHostingOpenId(null);
-          setMemoryOpenId(null);
-          setMindTalkOpenId(id);
+          setModal({ kind: 'mindtalk', characterId: id });
         }}
-        onMemories={(id) => {
-          setHostingOpenId(null);
-          setMindTalkOpenId(null);
-          setMemoryOpenId(id);
-        }}
+        onMemories={(id) => setModal({ kind: 'memory', characterId: id })}
       />
 
       {isAdmin && (
@@ -251,7 +248,7 @@ export default function GamePage() {
               title="退出登录(回到游客浏览)"
               onClick={() => {
                 logout();
-                setSettingsOpen(false);
+                setModal({ kind: 'none' });
               }}
             >
               ⎋
@@ -270,7 +267,7 @@ export default function GamePage() {
             type="button"
             className="px-btn big"
             title="管理员登录(解锁居民操控)"
-            onClick={() => setLoginOpen(true)}
+            onClick={() => setModal({ kind: 'login' })}
           >
             🔑
           </button>
@@ -289,27 +286,29 @@ export default function GamePage() {
         />
       )}
 
-      {isAdmin && settingsOpen && <WorldSettingsModal onClose={() => void closeSettings()} />}
-      {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
-      {hostingOpenId !== null && (
+      {isAdmin && modal.kind === 'settings' && (
+        <WorldSettingsModal onClose={() => void closeSettings()} />
+      )}
+      {modal.kind === 'login' && <LoginModal onClose={() => setModal({ kind: 'none' })} />}
+      {modal.kind === 'hosting' && (
         <HostingModal
-          characterId={hostingOpenId}
-          characterName={nameOf(hostingOpenId, '居民')}
-          onClose={() => setHostingOpenId(null)}
+          characterId={modal.characterId}
+          characterName={nameOf(modal.characterId, '居民')}
+          onClose={() => setModal({ kind: 'none' })}
         />
       )}
-      {mindTalkOpenId !== null && (
+      {modal.kind === 'mindtalk' && (
         <MindTalkModal
-          characterId={mindTalkOpenId}
-          characterName={nameOf(mindTalkOpenId, '居民')}
-          onClose={() => setMindTalkOpenId(null)}
+          characterId={modal.characterId}
+          characterName={nameOf(modal.characterId, '居民')}
+          onClose={() => setModal({ kind: 'none' })}
         />
       )}
-      {memoryOpenId !== null && (
+      {modal.kind === 'memory' && (
         <MemoryModal
-          characterId={memoryOpenId}
-          characterName={nameOf(memoryOpenId, '居民')}
-          onClose={() => setMemoryOpenId(null)}
+          characterId={modal.characterId}
+          characterName={nameOf(modal.characterId, '居民')}
+          onClose={() => setModal({ kind: 'none' })}
         />
       )}
 

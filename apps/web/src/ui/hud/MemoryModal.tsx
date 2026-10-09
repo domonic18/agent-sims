@@ -8,6 +8,7 @@ import { MEMORY_TYPES, MEMORY_TYPE_LABELS } from '@sims/shared';
 import { getCharacterImpressions, getCharacterMemories } from '../../net/worldApi';
 import { formatGameMinutes } from '../../format';
 import { toErrorMessage } from '../errors';
+import { ModalPanel } from '../ModalPanel';
 
 /** 记忆查看弹窗(只读): 游戏页直接翻看 TA 的记忆流(游客/观众同样可见,直播观察姿态);
  * 缺省按时间倒序最近 50 条,输入检索词走三因子语义检索(命中带综合分/相关度);
@@ -73,15 +74,17 @@ export function MemoryModal({
   };
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="px-box settings-modal memory-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="settings-head">
-          <h2>🧠 {characterName} · 记忆</h2>
-          <button type="button" className="settings-close" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        <p className="hint">TA 经历过的事都会记在这里;洞察是 TA 从经历中沉淀的认知(带溯源),梦境是睡饱后的回忆变形(只读)。</p>
+    <ModalPanel
+      title={`🧠 ${characterName} · 记忆`}
+      onClose={onClose}
+      boxClassName="memory-modal"
+      footer={
+        <button type="button" className="px-btn" onClick={onClose}>
+          关闭
+        </button>
+      }
+    >
+      <p className="hint">TA 经历过的事都会记在这里;洞察是 TA 从经历中沉淀的认知(带溯源),梦境是睡饱后的回忆变形(只读)。</p>
 
         <div className="memory-search">
           <input
@@ -186,13 +189,6 @@ export function MemoryModal({
             </ul>
           </>
         )}
-
-        <div className="settings-actions">
-          <button type="button" className="px-btn" onClick={onClose}>
-            关闭
-          </button>
-        </div>
-      </div>
-    </div>
+    </ModalPanel>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { HostingStateView } from '@sims/shared';
 import { getHosting, setHosting } from '../../net/hostingApi';
 import { toErrorMessage } from '../errors';
+import { ModalPanel } from '../ModalPanel';
 
 /**
  * 托管弹窗(M4e):全托管/生活方针两模式切换,托管中可一键接管。
@@ -63,19 +64,41 @@ export function HostingModal({
   const hosted = state?.hosted ?? false;
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="px-box settings-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="settings-head">
-          <h2>🤖 {characterName} · 托管</h2>
-          <button type="button" className="settings-close" onClick={onClose}>
-            ✕
+    <ModalPanel
+      title={`🤖 ${characterName} · 托管`}
+      onClose={onClose}
+      footer={
+        <>
+          {hosted ? (
+            <button
+              type="button"
+              className="px-btn go"
+              disabled={busy}
+              onClick={() => void submit(false)}
+            >
+              {busy ? '处理中…' : '🎮 接管'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="px-btn go"
+              disabled={busy || (mode === 'policy' && policyText.trim() === '')}
+              onClick={() => void submit(true)}
+            >
+              {busy ? '处理中…' : '🤖 开始托管'}
+            </button>
+          )}
+          <button type="button" className="px-btn" onClick={onClose}>
+            关闭
           </button>
-        </div>
-        <p className="hint">
-          {hosted
-            ? '托管中:角色的日程与行动由 Agent 接管,你的操作会被拒绝;点击「接管」收回操控权。'
-            : '把角色托管给 Agent 自主生活:全托管=Agent 完全自主;生活方针=Agent 按你写下的方针安排日程(推荐)。'}
-        </p>
+        </>
+      }
+    >
+      <p className="hint">
+        {hosted
+          ? '托管中:角色的日程与行动由 Agent 接管,你的操作会被拒绝;点击「接管」收回操控权。'
+          : '把角色托管给 Agent 自主生活:全托管=Agent 完全自主;生活方针=Agent 按你写下的方针安排日程(推荐)。'}
+      </p>
 
         {!hosted && (
           <>
@@ -136,32 +159,6 @@ export function HostingModal({
         )}
 
         {error !== null && <p className="feedback err">{error}</p>}
-
-        <div className="settings-actions">
-          {hosted ? (
-            <button
-              type="button"
-              className="px-btn go"
-              disabled={busy}
-              onClick={() => void submit(false)}
-            >
-              {busy ? '处理中…' : '🎮 接管'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="px-btn go"
-              disabled={busy || (mode === 'policy' && policyText.trim() === '')}
-              onClick={() => void submit(true)}
-            >
-              {busy ? '处理中…' : '🤖 开始托管'}
-            </button>
-          )}
-          <button type="button" className="px-btn" onClick={onClose}>
-            关闭
-          </button>
-        </div>
-      </div>
-    </div>
+    </ModalPanel>
   );
 }
