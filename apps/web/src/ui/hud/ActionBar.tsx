@@ -80,7 +80,7 @@ function Menu({ label, title, disabled, items }: {
   );
 }
 
-/** 物品弹层(UI-1 C5): 内嵌全量 SidePanel(行动/物品/资产三页),点击外部关闭 */
+/** 行动面板弹层(UI-1 C5): 内嵌全量 SidePanel(行动/物品/资产三页),点击外部关闭 */
 function InventoryPopover({ onClose }: { onClose: () => void }): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -96,7 +96,7 @@ function InventoryPopover({ onClose }: { onClose: () => void }): JSX.Element {
     <div className="px-box inv-popover" ref={ref}>
       <div className="px-inner inv-popover-inner">
         <div className="inv-head">
-          <b>物品 · 行动面板</b>
+          <b>行动面板</b>
           <button type="button" className="px-btn sq" title="关闭" onClick={onClose}>
             ✕
           </button>
@@ -107,7 +107,7 @@ function InventoryPopover({ onClose }: { onClose: () => void }): JSX.Element {
   );
 }
 
-/** 底部快捷动作条(UI-1): 高频 go-and-do 一键直达;全量操作(社交/商店/制作/背包/资产)收进 📦 弹层 */
+/** 底部快捷动作条(UI-1): 高频 go-and-do 一键直达;全量操作(社交/商店/制作/背包/资产)收进 🧰 行动面板弹层 */
 export function ActionBar({
   character,
   snapshot,
@@ -219,10 +219,10 @@ export function ActionBar({
         <button
           type="button"
           className={`px-btn${invOpen ? ' on' : ''}`}
-          title="物品·行动面板(社交/商店/制作/背包/资产)"
+          title="行动面板(社交/商店/制作/背包/资产)"
           onClick={() => setInvOpen((value) => !value)}
         >
-          📦 物品
+          🧰 行动
         </button>
         {pending !== null && <span className="hud-tag route">…途中自动接续</span>}
       </div>

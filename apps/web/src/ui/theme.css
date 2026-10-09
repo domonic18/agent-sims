@@ -73,6 +73,8 @@
   gap: 4px;
   user-select: none;
   line-height: 1.2;
+  /* 按钮文案不折行: 窄视口下由容器换行消化,按钮自身保持单行完整可读 */
+  white-space: nowrap;
 }
 
 .px-btn:active {
@@ -170,6 +172,12 @@
 .px-num {
   font-family: var(--px-font-pixel);
   letter-spacing: 1px;
+}
+
+/* 文字选区(复制记忆/日志等): 金底墨字,任何底色上对比度都够(浏览器默认选区色在深色面板上糊) */
+::selection {
+  background: var(--px-gold);
+  color: var(--px-ink);
 }
 
 .px-title-shadow {
