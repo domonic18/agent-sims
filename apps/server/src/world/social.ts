@@ -2,6 +2,7 @@ import {
   compatibility,
   pickChatLine,
   relationTitle,
+  type FirstMetEvent,
   type FriendshipFormedEvent,
   type SocialChatEvent,
   type TraitVector,
@@ -148,6 +149,30 @@ function notifyFriendship(sim: Simulation, relation: SocialRelation): void {
     title,
   };
   sim.events.emit(event);
+}
+
+/**
+ * 共处破冰(social-design §2 补,D1):同场所共处攒够面熟度的陌生对双向建交,
+ * 熟悉度抬到 ACQUAINTANCE_FAMILIARITY;首次相识发 first.met 事件,旧识重逢
+ * (熟悉度衰减归零)静默刷新不重发。返回是否首次相识(供调用方写记忆)。
+ */
+export function meetByProximity(sim: Simulation, aId: string, bId: string): boolean {
+  const [forward, backward] = ensureRelations(sim, aId, bId);
+  const initial = BALANCE.ACQUAINTANCE_FAMILIARITY;
+  const isNew = forward.familiarity <= 0 && backward.familiarity <= 0;
+  forward.familiarity = Math.max(forward.familiarity, initial);
+  backward.familiarity = Math.max(backward.familiarity, initial);
+  if (!isNew) {
+    return false;
+  }
+  const event: FirstMetEvent = {
+    type: 'first.met',
+    aId,
+    bId,
+    tick: sim.tick,
+  };
+  sim.events.emit(event);
+  return true;
 }
 
 /** 世界日翻转(00:00)结算:熟悉度衰减+防刷计数自然跨日重置 */

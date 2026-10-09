@@ -2,8 +2,9 @@ import { BALANCE } from '../config/balance.js';
 
 /**
  * 社交动机引擎(10-cognition §7.2 C4,零模型):「想不想找 TA 聊天」由规则回答,
- * 不问模型——基础欲望=好感≥50,调节项=久未聊(熟悉度衰减的动机化)、同处一地
- * (同桌工作/同场活动的情境加成)、情绪加成(valence>0 更想说话)。
+ * 不问模型——基础欲望=好感≥50,调节项=久未聊(熟悉度衰减的动机化)、初识面熟
+ * (familiarity<20 好奇加成,D1 共处破冰的可达线保障)、同处一地(同桌工作/同场
+ * 活动的情境加成)、情绪加成(valence>0 更想说话)。
  * 风险护栏(§9): 同对冷却+每日主动上限+收益封顶(chatCount 归零档)三闸先于打分。
  * 纯函数:候选原始资料由调度泵从世界状态拼装,测试直接喂表。
  */
@@ -12,8 +13,10 @@ import { BALANCE } from '../config/balance.js';
 export interface SocialMotiveInput {
   targetId: string;
   name: string;
-  /** 我→TA 关系(候选必须已有关系记录:聊过天才认识) */
+  /** 我→TA 关系(候选必须已有关系记录:共处破冰或聊过天) */
   affinity: number;
+  /** 我→TA 熟悉度(0~100;初识低值享面熟加成) */
+  familiarity: number;
   /** 当日我→TA 已聊天次数(收益封顶判定) */
   chatCountToday: number;
   /** 我最近一次主动找 TA 的时刻(簿记;Number.NEGATIVE_INFINITY=从未) */
@@ -38,6 +41,9 @@ export interface ScoredCandidate extends SocialMotiveInput {
 /** 久未聊加成上限与斜率:每天 +0.1,封顶 0.3(三天没聊=很想聊) */
 const UNSEEN_DAILY_BONUS = 0.1;
 const UNSEEN_MAX_BONUS = 0.3;
+/** 初识面熟加成:刚认识(familiarity<20)还想多聊几句摸清底细,破冰后对话可自然续上 */
+const NOVICE_FAMILIARITY_LINE = 20;
+const NOVICE_BONUS = 0.15;
 /** 同处一地情境加成(同桌工作/同场活动) */
 const COLOCATED_BONUS = 0.2;
 /** 正情绪加成斜率:valence 1.0 → +0.1 */
@@ -69,6 +75,10 @@ export function socialMotive(
         ? Number.POSITIVE_INFINITY
         : Math.floor((self.nowGameMinutes - input.lastChatAt) / DAY_MINUTES);
     desire += Math.min(UNSEEN_MAX_BONUS, UNSEEN_DAILY_BONUS * days);
+    // 面熟加成:初识(familiarity<20)好奇驱动,让共处破冰后的第一场对话可达点火线
+    if (input.familiarity < NOVICE_FAMILIARITY_LINE) {
+      desire += NOVICE_BONUS;
+    }
     // 情境:同处一地才有的搭话契机
     if (input.colocated) desire += COLOCATED_BONUS;
     // 情绪:心情好更想说话(负值不加)

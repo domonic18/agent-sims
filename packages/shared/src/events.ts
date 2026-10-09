@@ -157,6 +157,16 @@ export const friendshipFormedEventSchema = z.object({
 
 export type FriendshipFormedEvent = z.infer<typeof friendshipFormedEventSchema>;
 
+/** 初次相识(共处破冰):两陌生人在同场所共处攒够面熟度自动认识,双向各发一次 */
+export const firstMetEventSchema = z.object({
+  type: z.literal('first.met'),
+  aId: z.string().min(1),
+  bId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type FirstMetEvent = z.infer<typeof firstMetEventSchema>;
+
 /** 维护点生成(M-G.5 损耗系统):litter/fence_damage 新增,web diff 渲染 */
 export const maintenanceSpawnedEventSchema = z.object({
   type: z.literal('maintenance.spawned'),
@@ -275,6 +285,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   worldResetEventSchema,
   socialChatEventSchema,
   friendshipFormedEventSchema,
+  firstMetEventSchema,
   maintenanceSpawnedEventSchema,
   workTaskAcceptedEventSchema,
   workTaskCancelledEventSchema,

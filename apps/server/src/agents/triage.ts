@@ -100,6 +100,7 @@ const EVENT_STRENGTH: Partial<
   'character.revived': { self: 7, near: 4 },
   'character.auto_revived': { self: 5, near: 3 },
   'friendship.formed': { self: 6, near: 3 },
+  'first.met': { self: 4, near: 2 },
   'social.chat': { self: 4, near: 2 },
   'activity.started': { self: 2, near: 0 },
   'activity.finished': { self: 2, near: 0 },

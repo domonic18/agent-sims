@@ -3,7 +3,7 @@ import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { Simulation } from '../world/simulation.js';
-import { relationKey } from '../world/social.js';
+import { meetByProximity, relationKey } from '../world/social.js';
 import { mood } from './cognition.js';
 import { generateExchange } from './dialogue.js';
 import type { Decision } from './fast-layer.js';
@@ -27,15 +27,89 @@ export interface SocialLoopDeps {
 
 /**
  * 自治社交管线(10-cognition §7.2 C4,自 AgentScheduler 抽出):
- * 空闲角色跑动机引擎(零模型)——同处一地的候选过点火线即经 light 槽生成双句对话
- * 直执(簿记先于 await);异地候选返回给 jev 池(LLM 决定要不要专程去找 TA)。
- * 一次至多点火一人。簿记:同对最近聊天时刻(双角色排序 key)+每角色每日主动计数。
+ * 共处破冰(acquaintanceStep,零模型)——同场所陌生对攒面熟度自动相识,解
+ * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑动机引擎(零模型)——同处一地
+ * 的候选过点火线即经 light 槽生成双句对话直执(簿记先于 await);异地候选返回给
+ * jev 池(LLM 决定要不要专程去找 TA)。一次至多点火一人。
+ * 簿记:同对最近聊天时刻(双角色排序 key)+每角色每日主动计数。
  */
 export class SocialLoop {
   private readonly socialPairLastAt = new Map<string, number>();
   private readonly socialDaily = new Map<string, { day: number; count: number }>();
+  /** 共处破冰累计(pairKey→{day,分钟}):纯内存,重启重新累计可接受(面熟慢慢攒) */
+  private readonly coPresence = new Map<string, { day: number; minutes: number }>();
+  /** 当日全世界建交数(防速熟) */
+  private metToday = { day: -1, count: 0 };
 
   constructor(private readonly deps: SocialLoopDeps) {}
+
+  /**
+   * 共处破冰步进(D1,15 游戏分一次,由调度泵阈值拍驱动):同场所(荒野则贴身可达)
+   * 的陌生对累计共处分钟,满 ACQUAINTANCE_THRESHOLD_MINUTES 且当日建交数未超上限
+   * 则双向建交+发 first.met。累计只在采样时刻共处才+15(采样偏差可接受:同场
+   * 活动以小时计)。仅感知/数值通道,不触发任何行为,符合铁律。
+   */
+  acquaintanceStep(): void {
+    const { sim } = this.deps;
+    const day = sim.clock.day;
+    if (this.metToday.day !== day) {
+      this.metToday = { day, count: 0 };
+    }
+    const alive = [...sim.characters.values()].filter((c) => c.alive && !c.collapsed);
+    const byPlace = new Map<string, WorldCharacter[]>();
+    const loners: WorldCharacter[] = [];
+    for (const char of alive) {
+      const placeId = findPlaceAt(sim.map.definition, char.x, char.y)?.id;
+      if (placeId === undefined) {
+        loners.push(char);
+        continue;
+      }
+      const group = byPlace.get(placeId);
+      if (group !== undefined) {
+        group.push(char);
+      } else {
+        byPlace.set(placeId, [char]);
+      }
+    }
+    const pairs: Array<[WorldCharacter, WorldCharacter]> = [];
+    for (const group of byPlace.values()) {
+      for (let i = 0; i < group.length; i += 1) {
+        for (let j = i + 1; j < group.length; j += 1) {
+          pairs.push([group[i]!, group[j]!]);
+        }
+      }
+    }
+    for (let i = 0; i < loners.length; i += 1) {
+      for (let j = i + 1; j < loners.length; j += 1) {
+        const a = loners[i]!;
+        const b = loners[j]!;
+        if (Math.abs(a.x - b.x) + Math.abs(a.y - b.y) <= BALANCE.SOCIAL_CHAT_DISTANCE) {
+          pairs.push([a, b]);
+        }
+      }
+    }
+    for (const [a, b] of pairs) {
+      if (sim.socials.get(relationKey(a.id, b.id)) !== undefined) continue;
+      const key = [a.id, b.id].sort().join('|');
+      const entry = this.coPresence.get(key) ?? { day, minutes: 0 };
+      if (entry.day !== day) {
+        entry.day = day;
+        entry.minutes = 0;
+      }
+      entry.minutes += 15;
+      this.coPresence.set(key, entry);
+      if (
+        entry.minutes < BALANCE.ACQUAINTANCE_THRESHOLD_MINUTES ||
+        this.metToday.count >= BALANCE.ACQUAINTANCE_DAILY_CAP
+      ) {
+        continue;
+      }
+      this.coPresence.delete(key);
+      if (meetByProximity(sim, a.id, b.id)) {
+        this.metToday.count += 1;
+      }
+    }
+  }
 
   idleSocialStep(
     char: WorldCharacter,
@@ -80,6 +154,7 @@ export class SocialLoop {
         targetId: relation.toId,
         name: target.name,
         affinity: relation.affinity,
+        familiarity: relation.familiarity,
         chatCountToday: relation.chatDay === sim.clock.day ? relation.chatCount : 0,
         lastChatAt: this.pairLastAt(char.id, relation.toId),
         initiatedToday: this.initiatedToday(char.id),

@@ -112,7 +112,7 @@ export class AgentScheduler {
     this.unsubscribe();
   }
 
-  /** 阈值巡检(threshold):补齐当日计划+defer 事后处理,跨 15 游戏分边界即 rule→plan 判定 */
+  /** 阈值巡检(threshold):补齐当日计划+defer 事后处理,跨 15 游戏分边界即共处破冰+rule→plan 判定 */
   private inspect(): void {
     const { sim } = this.deps;
     this.processDeferred();
@@ -123,6 +123,7 @@ export class AgentScheduler {
     const block = Math.floor(sim.clock.gameMinutes / AUTONOMY_CHECK_INTERVAL_MINUTES);
     if (block === this.lastInspectedBlock) return;
     this.lastInspectedBlock = block;
+    this.socialLoop.acquaintanceStep();
     for (const id of autonomy.list()) {
       const char = sim.characters.get(id);
       if (char === undefined) continue;

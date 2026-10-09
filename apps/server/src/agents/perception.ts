@@ -61,6 +61,8 @@ export function eventSubjects(event: WorldEvent): string[] {
       return [event.fromId, event.toId];
     case 'friendship.formed':
       return [event.aId, event.bId];
+    case 'first.met':
+      return [event.aId, event.bId];
     default:
       return [];
   }
@@ -82,6 +84,8 @@ function mainlineSubjects(event: WorldEvent): string[] {
     case 'social.chat':
       return [event.fromId];
     case 'friendship.formed':
+      return [event.aId];
+    case 'first.met':
       return [event.aId];
     default:
       return [];
@@ -118,6 +122,8 @@ function describeEvent(
     }
     case 'friendship.formed':
       return `我看到${nameOf(event.aId)}和${nameOf(event.bId)}结成了${event.title}`;
+    case 'first.met':
+      return `我看到${nameOf(event.aId)}和${nameOf(event.bId)}初次相识`;
     case 'work_task.completed': {
       const label = WORK_TASK_LABEL[event.task] ?? event.task;
       return `我看到${nameOf(event.characterId)}做完了${label}的活计`;

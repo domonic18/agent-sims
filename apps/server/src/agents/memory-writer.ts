@@ -270,6 +270,12 @@ export class MemoryWriter {
           type: 'dialogue',
           content: `我和${nameOf(event.bId)}结成了${event.title}`,
         };
+      case 'first.met':
+        return {
+          characterId: event.aId,
+          type: 'dialogue',
+          content: `我初次认识了${nameOf(event.bId)},是个面生的邻居`,
+        };
       case 'character.died':
         return {
           characterId: event.characterId,

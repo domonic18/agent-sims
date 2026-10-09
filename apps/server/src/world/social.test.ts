@@ -5,10 +5,12 @@ import {
   type TraitVector,
   type WorldEvent,
 } from '@sims/shared';
+import { BALANCE } from '../config/balance.js';
 import {
   applySocialDailyRollover,
   chat,
   ensureRelations,
+  meetByProximity,
   relationKey,
 } from './social.js';
 import { Simulation } from './simulation.js';
@@ -167,6 +169,46 @@ describe('首次结成朋友/挚友发一次性事件', () => {
     const formed = events.filter((event) => event.type === 'friendship.formed');
     expect(formed).toHaveLength(1);
     expect(formed[0]).toMatchObject({ type: 'friendship.formed', aId: 'a', bId: 'b', title: '朋友' });
+  });
+});
+
+describe('meetByProximity 共处破冰(D1)', () => {
+  it('陌生对首次相识:双向 familiarity 抬到初识值,发一次 first.met', () => {
+    const sim = socialSim();
+    const events: WorldEvent[] = [];
+    sim.events.subscribe((event) => events.push(event));
+
+    expect(meetByProximity(sim, 'a', 'b')).toBe(true);
+    const forward = sim.socials.get(relationKey('a', 'b'))!;
+    const backward = sim.socials.get(relationKey('b', 'a'))!;
+    expect(forward.familiarity).toBe(BALANCE.ACQUAINTANCE_FAMILIARITY);
+    expect(backward.familiarity).toBe(BALANCE.ACQUAINTANCE_FAMILIARITY);
+    expect(forward.affinity).toBe(0);
+    expect(events.filter((event) => event.type === 'first.met')).toHaveLength(1);
+  });
+
+  it('旧识重逢(熟悉度衰减归零)静默刷新不重发事件', () => {
+    const sim = socialSim();
+    const events: WorldEvent[] = [];
+    sim.events.subscribe((event) => events.push(event));
+    meetByProximity(sim, 'a', 'b');
+    const [forward] = ensureRelations(sim, 'a', 'b');
+    forward.familiarity = 0;
+    expect(meetByProximity(sim, 'a', 'b')).toBe(false);
+    expect(forward.familiarity).toBe(BALANCE.ACQUAINTANCE_FAMILIARITY); // 抬回但不重发
+    expect(events.filter((event) => event.type === 'first.met')).toHaveLength(1);
+  });
+
+  it('一边熟悉一边陌生(聊天单向涨)不判为新识,不重发', () => {
+    const sim = socialSim();
+    const events: WorldEvent[] = [];
+    sim.events.subscribe((event) => events.push(event));
+    chat(sim, 'a', 'b'); // forward 6, backward 0
+    expect(meetByProximity(sim, 'a', 'b')).toBe(false);
+    expect(events.filter((event) => event.type === 'first.met')).toHaveLength(0);
+    expect(sim.socials.get(relationKey('b', 'a'))!.familiarity).toBe(
+      BALANCE.ACQUAINTANCE_FAMILIARITY,
+    ); // 听者侧被抬到初识值
   });
 });
 

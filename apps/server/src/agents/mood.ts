@@ -44,6 +44,11 @@ export function moodDeltasFor(event: WorldEvent, nameOf: (id: string) => string)
         { characterId: event.aId, delta: 0.5, labels: [`和${nameOf(event.bId)}结交了`] },
         { characterId: event.bId, delta: 0.5, labels: [`和${nameOf(event.aId)}结交了`] },
       ];
+    case 'first.met':
+      return [
+        { characterId: event.aId, delta: 0.15, labels: [`认识了${nameOf(event.bId)}`] },
+        { characterId: event.bId, delta: 0.15, labels: [`认识了${nameOf(event.aId)}`] },
+      ];
     case 'craft.completed':
       return [{ characterId: event.characterId, delta: 0.4, labels: ['做出成品'] }];
     case 'work_task.completed':
