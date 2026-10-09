@@ -77,6 +77,8 @@ export class LlmError extends Error {
   constructor(
     public readonly slot: string,
     message: string,
+    /** shape=模型输出形态不合规(未调工具/参数非 JSON),结构化调用可带错重试;fatal=配置/网络/网关类,重试无意义 */
+    public readonly kind: 'shape' | 'fatal' = 'fatal',
   ) {
     super(message);
     this.name = 'LlmError';

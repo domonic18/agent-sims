@@ -163,7 +163,8 @@ export class ModelRouter {
   }
 
   /** 结构化输出(工具强制调用):模型对 schema「填空」而非照 prompt 猜字段名。
-   * parse 校验失败→把原因追加进对话重试一次,两次均失败抛 LlmError(调用方走既有回落);
+   * parse 校验失败与形态类失败(未调工具/参数非 JSON,LlmError.kind='shape')同走带错重试一次,
+   * 两次均不合规抛 LlmError(调用方走既有回落);fatal 类(配置/网络/网关)直接上抛不重试;
    * 每次调用各记账一行。anthropic 轨须显式关 thinking(与 tool_choice 互斥,kimi 实测)。 */
   async chatStructured<T>(
     slot: ModelSlot,
@@ -193,21 +194,32 @@ export class ModelRouter {
         });
         return result;
       };
-      let result = await call(messages);
-      let parsed = parse(result.input);
-      if (parsed.ok) return parsed.value;
-      logTech('warn', 'llm', '结构化输出校验失败,带错重试一次', {
+      const attempt = async (msgs: LlmMessage[]): Promise<StructuredParse<T>> => {
+        try {
+          return parse((await call(msgs)).input);
+        } catch (err) {
+          if (err instanceof LlmError && err.kind === 'shape') {
+            return { ok: false, reason: err.message.slice(0, 200) };
+          }
+          throw err;
+        }
+      };
+      let attemptResult = await attempt(messages);
+      if (attemptResult.ok) return attemptResult.value;
+      logTech('warn', 'llm', '结构化输出不合规,带错重试一次', {
         slot,
         taskType: task.taskType,
-        reason: parsed.reason.slice(0, 200),
+        reason: attemptResult.reason.slice(0, 200),
       });
-      result = await call([
+      attemptResult = await attempt([
         ...messages,
-        { role: 'user', content: `你上次提交的 JSON 未通过校验: ${parsed.reason}。请严格按工具定义的字段名与类型重新提交。` },
+        {
+          role: 'user',
+          content: `你上次未按要求提交结果: ${attemptResult.reason}。请直接调用 ${tool.name} 工具提交,严格按工具定义的字段名与类型。`,
+        },
       ]);
-      parsed = parse(result.input);
-      if (parsed.ok) return parsed.value;
-      throw new LlmError(slot, `结构化输出两次校验失败: ${parsed.reason.slice(0, 200)}`);
+      if (attemptResult.ok) return attemptResult.value;
+      throw new LlmError(slot, `结构化输出两次提交均不合规: ${attemptResult.reason.slice(0, 200)}`);
     });
   }
 

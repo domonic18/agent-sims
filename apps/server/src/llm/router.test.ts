@@ -282,8 +282,85 @@ describe('ModelRouter.chatStructured', () => {
     const retryMsgs = bodies[1]!.messages as Array<{ role: string; content: string }>;
     const last = retryMsgs[retryMsgs.length - 1]!;
     expect(last.role).toBe('user');
-    expect(last.content).toContain('未通过校验');
+    expect(last.content).toContain('未按要求提交');
     expect(last.content).toContain('answer=bad 不合规');
+    expect(last.content).toContain('submit_thing');
+  });
+
+  it('未调工具返回纯文本→视同不合规带错重试,重试消息引导调工具,二次成功', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    const { router, bodies } = seqRouter(
+      'anthropic',
+      [
+        { content: [{ type: 'text', text: '我直接把日程写出来:…' }], usage: { input_tokens: 30, output_tokens: 40 } },
+        { content: [{ type: 'tool_use', input: { answer: 'ok' } }], usage: { input_tokens: 10, output_tokens: 5 } },
+      ],
+      persisted,
+    );
+    const value = await router.chatStructured(
+      'slow',
+      [{ role: 'user', content: 'q' }],
+      tool,
+      { taskType: 'unit_test' },
+      parseOk,
+    );
+    expect(value).toBe('ok');
+    // 形态失败在适配器层抛错,按「适配器抛错时不记账」惯例仅二次成功调用记账
+    expect(persisted).toHaveLength(1);
+    const retryMsgs = bodies[1]!.messages as Array<{ role: string; content: string }>;
+    const last = retryMsgs[retryMsgs.length - 1]!;
+    expect(last.role).toBe('user');
+    expect(last.content).toContain('未返回 tool_use 块');
+    expect(last.content).toContain('submit_thing');
+  });
+
+  it('两次均未调工具→抛错(调用方走回落),适配器抛错不记账', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    const noCall = {
+      choices: [{ message: { content: '我拒绝用工具' } }],
+      usage: { prompt_tokens: 3, completion_tokens: 9 },
+    };
+    const { router } = seqRouter('openai', [noCall, noCall], persisted);
+    await expect(
+      router.chatStructured(
+        'slow',
+        [{ role: 'user', content: 'q' }],
+        tool,
+        { taskType: 'unit_test' },
+        parseOk,
+      ),
+    ).rejects.toThrow(/两次提交均不合规/);
+    expect(persisted).toEqual([]);
+  });
+
+  it('fatal 类失败(HTTP 500)不重试,直接上抛不记账', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      return new Response(JSON.stringify({ error: 'boom' }), {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as FetchImpl;
+    const router = new ModelRouter({} as never, {
+      fetchImpl,
+      loadConfig: async () => cfg('openai'),
+      persistUsage: async (entry) => {
+        persisted.push(entry);
+      },
+    });
+    await expect(
+      router.chatStructured(
+        'slow',
+        [{ role: 'user', content: 'q' }],
+        tool,
+        { taskType: 'unit_test' },
+        parseOk,
+      ),
+    ).rejects.toThrow(/500/);
+    expect(calls).toBe(1);
+    expect(persisted).toEqual([]);
   });
 
   it('两次校验均失败→抛错(调用方走回落),两次记账', async () => {
@@ -301,7 +378,7 @@ describe('ModelRouter.chatStructured', () => {
         { taskType: 'unit_test' },
         () => ({ ok: false as const, reason: '永远不行' }),
       ),
-    ).rejects.toThrow(/两次校验失败/);
+    ).rejects.toThrow(/两次提交均不合规/);
     expect(persisted).toHaveLength(2);
   });
 

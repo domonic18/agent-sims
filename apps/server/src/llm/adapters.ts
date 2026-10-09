@@ -213,7 +213,7 @@ export async function chatViaAnthropicStructured(
   };
   const block = (data.content ?? []).find((b) => b.type === 'tool_use' && b.input !== undefined);
   if (block === undefined) {
-    throw new LlmError(cfg.slot, `未返回 tool_use 块: ${JSON.stringify(data.content ?? []).slice(0, 200)}`);
+    throw new LlmError(cfg.slot, `未返回 tool_use 块: ${JSON.stringify(data.content ?? []).slice(0, 200)}`, 'shape');
   }
   return {
     input: block.input,
@@ -252,13 +252,13 @@ export async function chatViaOpenAiStructured(
   };
   const args = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (typeof args !== 'string' || args === '') {
-    throw new LlmError(cfg.slot, '未返回 function call 参数');
+    throw new LlmError(cfg.slot, '未返回 function call 参数', 'shape');
   }
   let input: unknown;
   try {
     input = JSON.parse(args);
   } catch {
-    throw new LlmError(cfg.slot, `function arguments 非 JSON: ${args.slice(0, 200)}`);
+    throw new LlmError(cfg.slot, `function arguments 非 JSON: ${args.slice(0, 200)}`, 'shape');
   }
   return { input, ...readOpenAiUsage(data) };
 }
