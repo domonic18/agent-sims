@@ -3,8 +3,8 @@ import { BALANCE } from '../config/balance.js';
 /**
  * 社交动机引擎(10-cognition §7.2 C4,零模型):「想不想找 TA 聊天」由规则回答,
  * 不问模型——基础欲望=好感≥50,调节项=久未聊(熟悉度衰减的动机化)、初识面熟
- * (familiarity<20 好奇加成,D1 共处破冰的可达线保障)、同处一地(同桌工作/同场
- * 活动的情境加成)、情绪加成(valence>0 更想说话)。
+ * (familiarity<20 好奇加成,D1 共处破冰的可达线保障)、贴身可达(同桌同场的现成
+ * 搭话契机,E2 起仅 chatReady 档享)、情绪加成(valence>0 更想说话)。
  * 风险护栏(§9): 同对冷却+每日主动上限+收益封顶(chatCount 归零档)三闸先于打分。
  * 纯函数:候选原始资料由调度泵从世界状态拼装,测试直接喂表。
  */
@@ -23,8 +23,10 @@ export interface SocialMotiveInput {
   lastChatAt: number;
   /** 我今日已主动发起次数(簿记,全对象合计) */
   initiatedToday: number;
-  /** 同处一地(同场所或进行同一活动) */
-  colocated: boolean;
+  /** 贴身可达(曼哈顿≤SOCIAL_CHAT_DISTANCE,可立即搭话;情境加成仅此档享) */
+  chatReady: boolean;
+  /** 同处一地(同场所/同活动)但未贴身,须走近才能聊(E2 口径拆分) */
+  samePlace: boolean;
 }
 
 /** 动机上下文(自己的状态切片) */
@@ -44,8 +46,9 @@ const UNSEEN_MAX_BONUS = 0.3;
 /** 初识面熟加成:刚认识(familiarity<20)还想多聊几句摸清底细,破冰后对话可自然续上 */
 const NOVICE_FAMILIARITY_LINE = 20;
 const NOVICE_BONUS = 0.15;
-/** 同处一地情境加成(同桌工作/同场活动) */
-const COLOCATED_BONUS = 0.2;
+/** 贴身可达情境加成(E2 放宽 0.2→0.3 且仅 chatReady 享:同场未近是「要去聊」
+ * 的理由,不是「正在聊」的契机,不再给分) */
+const CHAT_READY_BONUS = 0.3;
 /** 正情绪加成斜率:valence 1.0 → +0.1 */
 const MOOD_BONUS_RATE = 0.1;
 const DAY_MINUTES = 1440;
@@ -79,8 +82,8 @@ export function socialMotive(
     if (input.familiarity < NOVICE_FAMILIARITY_LINE) {
       desire += NOVICE_BONUS;
     }
-    // 情境:同处一地才有的搭话契机
-    if (input.colocated) desire += COLOCATED_BONUS;
+    // 情境:贴身可达才有的现成搭话契机
+    if (input.chatReady) desire += CHAT_READY_BONUS;
     // 情绪:心情好更想说话(负值不加)
     desire += MOOD_BONUS_RATE * Math.max(0, Math.min(1, self.valence));
     if (desire < BALANCE.SOCIAL_DESIRE_FIRE) continue;

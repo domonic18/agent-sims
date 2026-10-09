@@ -106,10 +106,12 @@ export interface BalanceConfig {
   SOCIAL_CHAT_DISTANCE: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
   FAMILIARITY_DECAY_PER_DAY: number;
-  /** 自治社交动机(10-cognition §7.2 C4): 欲望分点火线/同对聊天冷却(游戏分钟)/每角色每日主动上限 */
+  /** 自治社交动机(10-cognition §7.2 C4): 欲望分点火线/同对聊天冷却(游戏分钟)/
+   * 每角色每日主动上限/走散重试短冷却(E2 走散不罚) */
   SOCIAL_DESIRE_FIRE: number;
   SOCIAL_PAIR_COOLDOWN_MINUTES: number;
   SOCIAL_DAILY_INITIATE_CAP: number;
+  SOCIAL_RETRY_COOLDOWN_MINUTES: number;
   /** 共处破冰(D1):同场所陌生对共处累计满阈值分钟自动相识;每世界每日建交上限防速熟;初识熟悉度 */
   ACQUAINTANCE_THRESHOLD_MINUTES: number;
   ACQUAINTANCE_DAILY_CAP: number;
@@ -199,10 +201,11 @@ export const BALANCE: BalanceConfig = {
   CHAT_DECAY_STEPS: [1, 0.6, 0.4, 0.3, 0.2, 0.1],
   SOCIAL_CHAT_DISTANCE,
   FAMILIARITY_DECAY_PER_DAY: 1,
-  // 0.45=初识可达线: 0(好感)+0.15(面熟)+0.3(从未聊)+0.2(同地) = 0.65 必过,熟客靠久未聊回升
-  SOCIAL_DESIRE_FIRE: 0.45,
-  SOCIAL_PAIR_COOLDOWN_MINUTES: 60,
-  SOCIAL_DAILY_INITIATE_CAP: 6,
+  // 0.35=放宽点火线(E2): 初识可达线降至 0.55,更多对子过线;熟客靠久未聊回升
+  SOCIAL_DESIRE_FIRE: 0.35,
+  SOCIAL_PAIR_COOLDOWN_MINUTES: 30,
+  SOCIAL_DAILY_INITIATE_CAP: 8,
+  SOCIAL_RETRY_COOLDOWN_MINUTES: 10,
   ACQUAINTANCE_THRESHOLD_MINUTES: 120,
   ACQUAINTANCE_DAILY_CAP: 2,
   ACQUAINTANCE_FAMILIARITY: 5,

@@ -1,6 +1,11 @@
-import type { ActivityFinishedEvent, AgentDecisionMessage, WorldEvent } from '@sims/shared';
+import type {
+  ActivityFinishedEvent,
+  AgentDecisionMessage,
+  SocialChatEvent,
+  WorldEvent,
+} from '@sims/shared';
 import { getActivityDefinition, resourceNodeLabel, SHOP_ITEMS } from '@sims/shared';
-import { and, desc, eq, ilike } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
 import { runIntent } from '../intents/execute.js';
@@ -21,7 +26,12 @@ import {
 import { ResponseRegistry } from './responses.js';
 import { persistInnerState } from './inner-state-db.js';
 import type { ScoredCandidate } from './social-motive.js';
-import { biasOf, composeIntents, loadPersonaContext } from './slow-layer.js';
+import {
+  biasOf,
+  composeIntents,
+  loadPersonaContext,
+  type AcquaintanceBrief,
+} from './slow-layer.js';
 import {
   isTriagedEvent,
   triageEvent,
@@ -180,7 +190,8 @@ export class AgentScheduler {
     };
   }
 
-  /** want 层世界查询(E1 依赖注入):按 kind 寻节点+每世界配方就绪(存在+启用+背包含料) */
+  /** want 层世界查询(E1 依赖注入):按 kind 寻节点+每世界配方就绪(存在+启用+背包含料)
+   * +存活角色位置(E2 人指向寻人) */
   private wantWorld(char: WorldCharacter): WantWorldQueries {
     const { sim } = this.deps;
     return {
@@ -189,6 +200,12 @@ export class AgentScheduler {
         const recipe = sim.recipe(recipeId);
         if (recipe === null || recipe.enabled === false) return false;
         return recipe.inputs.every((input) => (char.backpack[input.itemId] ?? 0) >= input.count);
+      },
+      positionOf: (id) => {
+        const target = sim.characters.get(id);
+        return target === undefined || !target.alive
+          ? null
+          : { x: target.x, y: target.y, name: target.name };
       },
     };
   }
@@ -242,6 +259,63 @@ export class AgentScheduler {
     return parts.join(';');
   }
 
+  /** 熟人简报(E2 人指向社交):关系表(familiarity>0)按好感取前 5,拼印象
+   * (character_impressions)+多久没聊(社交簿记/聊天日);resolve 人名→id。
+   * 无熟人返回 null(不渲染行)。 */
+  private async socialBrief(char: WorldCharacter): Promise<AcquaintanceBrief | null> {
+    const { sim, handle } = this.deps;
+    const relations = [...sim.socials.values()]
+      .filter((r) => r.fromId === char.id && r.familiarity > 0)
+      .sort((a, b) => b.affinity - a.affinity || b.familiarity - a.familiarity)
+      .slice(0, 5);
+    if (relations.length === 0) return null;
+    let impressionOf = new Map<string, string>();
+    try {
+      const rows = await handle.db
+        .select({ aboutId: characterImpressions.aboutId, content: characterImpressions.content })
+        .from(characterImpressions)
+        .where(
+          and(
+            eq(characterImpressions.characterId, char.id),
+            inArray(
+              characterImpressions.aboutId,
+              relations.map((r) => r.toId),
+            ),
+          ),
+        );
+      impressionOf = new Map(rows.map((row) => [row.aboutId, row.content]));
+    } catch {
+      // 印象读不到就只拼关系行
+    }
+    const nameOf = (id: string): string => sim.characters.get(id)?.name ?? '某居民';
+    const lines = relations.map((r) => {
+      const seen = this.socialLoop.lastChatAtBetween(char.id, r.toId);
+      let since: string;
+      if (seen !== Number.NEGATIVE_INFINITY) {
+        const mins = Math.max(0, sim.clock.gameMinutes - seen);
+        since =
+          mins < 60
+            ? `${mins}分钟前聊过`
+            : mins < 1440
+              ? `${Math.floor(mins / 60)}小时前聊过`
+              : `${Math.floor(mins / 1440)}天前聊过`;
+      } else if (r.chatDay === sim.clock.day) {
+        since = '今天聊过';
+      } else if (r.chatDay > 0) {
+        since = `上次聊天在第${r.chatDay}天`;
+      } else {
+        since = '还没聊过天';
+      }
+      const impression = impressionOf.get(r.toId);
+      return `- ${nameOf(r.toId)}(好感${r.affinity}${impression !== undefined ? `,你对TA的印象:${impression}` : ''},${since})`;
+    });
+    return {
+      line: `你认识的居民(想专程找谁聊天,可在该条 want 的 target 里写 TA 的名字):\n${lines.join('\n')}`,
+      resolve: (name) =>
+        relations.find((r) => nameOf(r.toId) === name)?.toId,
+    };
+  }
+
   /**
    * 事件触发(C3 分级主管道):非叙事事件零惊动;叙事事件先喂救援台账,
    * 再逐角色分级分发。预算簿记在 assessInterrupt 首个 await 前同步提交,
@@ -249,6 +323,7 @@ export class AgentScheduler {
    */
   private onEvent(event: WorldEvent): void {
     if (event.type === 'activity.finished') this.settleWant(event);
+    if (event.type === 'social.chat') this.settleSocialChat(event);
     if (!isTriagedEvent(event)) return;
     this.registry.observe(event);
     const { sim } = this.deps;
@@ -502,6 +577,32 @@ export class AgentScheduler {
     });
   }
 
+  /** 人指向社交 want 结算(E2):动机引擎直执的聊天不走 activity.finished,
+   * 这里按 social.chat 事件收口——发起方(聊到了 target)与被指名方(被找)
+   * 双向各结算一条 doing 的带 target socialize want 为 done。 */
+  private settleSocialChat(event: SocialChatEvent): void {
+    for (const characterId of [event.fromId, event.toId]) {
+      if (!autonomy.has(characterId)) continue;
+      const intents = innerState.get(characterId)?.intents;
+      if (intents === undefined || intents === null) continue;
+      const partner = characterId === event.fromId ? event.toId : event.fromId;
+      const want = intents.wants.find(
+        (w) =>
+          w.status === 'doing' &&
+          w.activityId === 'socialize' &&
+          w.targetCharacterId === partner,
+      );
+      if (want === undefined) continue;
+      want.status = 'done';
+      persistInnerState(this.deps.handle, characterId);
+      this.trace.record(characterId, this.deps.sim.clock.gameMinutes, {
+        trigger: 'eventbus',
+        perception: { event: event.type, want: want.id, with: partner },
+        decision: { layer: 'plan', conclusion: 'continue' },
+      });
+    }
+  }
+
   /** defer 队列巡检(2s):空闲且保鲜期内补执行响应;过期记一行 trace 出队 */
   private processDeferred(): void {
     const { sim } = this.deps;
@@ -615,8 +716,11 @@ export class AgentScheduler {
     if (existing?.day === this.deps.sim.clock.day) return;
     this.planning.add(char.id);
     const previous = existing?.day === this.deps.sim.clock.day - 1 ? existing : null;
-    void loadPersonaContext(this.deps.handle, char.id)
-      .then((persona) =>
+    void Promise.all([
+      loadPersonaContext(this.deps.handle, char.id),
+      this.socialBrief(char),
+    ])
+      .then(([persona, acquaintances]) =>
         composeIntents(this.deps.llm, this.deps.handle, char, this.deps.sim.clock, {
           policyText: hosting.get(char.id)?.policyText ?? undefined,
           compiled: hosting.get(char.id)?.compiled ?? null,
@@ -624,6 +728,7 @@ export class AgentScheduler {
           previous,
           focus: innerState.get(char.id)?.focus?.text ?? null,
           townNeeds: this.townNeeds(),
+          acquaintances,
         }),
       )
       .then(({ intents, compiled }) => {
@@ -709,9 +814,10 @@ export class AgentScheduler {
     socialCandidates: ScoredCandidate[] = [],
   ): Promise<void> {
     const { sim } = this.deps;
-    // 异地熟人进 jev 池(同地已由动机直执;位置此刻快照,到达后仍走校验链)
+    // 异地熟人进 jev 池(E2 口径:贴身已直执、同场未近已走近,只余真异地;
+    // 位置此刻快照,到达后仍走校验链)
     const feed = socialCandidates
-      .filter((c) => !c.colocated)
+      .filter((c) => !c.chatReady && !c.samePlace)
       .map((c) => {
         const target = sim.characters.get(c.targetId);
         return target === undefined

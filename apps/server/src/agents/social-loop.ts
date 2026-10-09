@@ -1,6 +1,8 @@
 import { findPlaceAt, pickChatLine } from '@sims/shared';
+import { and, eq } from 'drizzle-orm';
 import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
+import { characterImpressions } from '../db/schema/memory.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { Simulation } from '../world/simulation.js';
 import { meetByProximity, relationKey } from '../world/social.js';
@@ -28,9 +30,11 @@ export interface SocialLoopDeps {
 /**
  * 自治社交管线(10-cognition §7.2 C4,自 AgentScheduler 抽出):
  * 共处破冰(acquaintanceStep,零模型)——同场所陌生对攒面熟度自动相识,解
- * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑动机引擎(零模型)——同处一地
- * 的候选过点火线即经 light 槽生成双句对话直执(簿记先于 await);异地候选返回给
- * jev 池(LLM 决定要不要专程去找 TA)。一次至多点火一人。
+ * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑动机引擎(零模型,E2 口径拆分)——
+ * 贴身可达候选过点火线即经 light 槽生成双句对话直执(簿记先于 await,走散降级
+ * 短冷却);同场未贴身则零 LLM 直接 move_to 走近,到场由 arrived 事件重燃引擎;
+ * 异地候选返回给 jev 池(LLM 决定要不要专程去找 TA)。一次至多点火一人。
+ * 聊后即时印象 upsert(character_impressions),下次对话 prompt 立即可见。
  * 簿记:同对最近聊天时刻(双角色排序 key)+每角色每日主动计数。
  */
 export class SocialLoop {
@@ -123,15 +127,41 @@ export class SocialLoop {
       valence: innerState.moodOf(char.id)?.valence ?? 0,
       nowGameMinutes: sim.clock.gameMinutes,
     });
-    const hit = candidates.find((c) => c.colocated);
+    // 贴身可达:light 槽生成双句直执(簿记先于 await 防双发;走散降级短冷却)
+    const hit = candidates.find((c) => c.chatReady);
     if (hit !== undefined) {
       this.bookSocial(char.id, hit.targetId);
       void this.socialReact(char, hit, trigger);
+      return candidates;
+    }
+    // 走近再聊(E2):同场未贴身→零 LLM 直接 move_to 对方位置,不簿记不计数
+    // (走到才算主动);到场经 character.arrived(triage self=3)重燃动机引擎
+    const approach = candidates.find((c) => c.samePlace);
+    if (approach !== undefined && char.activity === null && char.path.length === 0) {
+      const target = sim.characters.get(approach.targetId);
+      if (target !== undefined) {
+        this.deps.apply(
+          char,
+          {
+            layer: 'rule',
+            action: 'react',
+            intent: { type: 'move_to', characterId: char.id, x: target.x, y: target.y },
+            bubble: `想找${target.name}聊聊,走过去`,
+          },
+          trigger,
+          {
+            motive: 'social',
+            approach: target.id,
+            desire: Math.round(approach.desire * 100) / 100,
+          },
+        );
+      }
     }
     return candidates;
   }
 
-  /** 动机候选原始资料:已认识(familiarity>0)且对方存活的关系,拼同地/收益/簿记切片 */
+  /** 动机候选原始资料:已认识(familiarity>0)且对方存活的关系,拼两档同地
+   * (chatReady 贴身/samePlace 同场未近)+收益/簿记切片 */
   private socialInputs(char: WorldCharacter): SocialMotiveInput[] {
     const { sim } = this.deps;
     const inputs: SocialMotiveInput[] = [];
@@ -142,12 +172,11 @@ export class SocialLoop {
       const target = sim.characters.get(relation.toId);
       if (target === undefined || !target.alive || target.collapsed) continue;
       const targetPlace = findPlaceAt(sim.map.definition, target.x, target.y)?.id ?? null;
-      // 同处一地: 贴身可达(荒野无地点时按距离)或同场所或进行同一活动
-      const near =
+      // chatReady=贴身可达(与 chat 校验同一曼哈顿口径);samePlace=同场所/同活动
+      const chatReady =
         Math.abs(char.x - target.x) + Math.abs(char.y - target.y) <=
         BALANCE.SOCIAL_CHAT_DISTANCE;
-      const colocated =
-        near ||
+      const samePlace =
         (selfPlace !== null && selfPlace === targetPlace) ||
         (selfActivity !== null && selfActivity === (target.activity?.activityId ?? null));
       inputs.push({
@@ -158,7 +187,8 @@ export class SocialLoop {
         chatCountToday: relation.chatDay === sim.clock.day ? relation.chatCount : 0,
         lastChatAt: this.pairLastAt(char.id, relation.toId),
         initiatedToday: this.initiatedToday(char.id),
-        colocated,
+        chatReady,
+        samePlace,
       });
     }
     return inputs;
@@ -191,6 +221,69 @@ export class SocialLoop {
     this.socialDaily.set(characterId, entry);
   }
 
+  /** 走散降级(E2 走散不罚):冷却改写为短窗(RETRY 分钟后可重试),
+   * 当日主动计数返还——生成期间被拽走不算一次主动社交 */
+  private downgradeWalkedAway(characterId: string, targetId: string): void {
+    const { sim } = this.deps;
+    this.socialPairLastAt.set(
+      [characterId, targetId].sort().join('|'),
+      sim.clock.gameMinutes -
+        (BALANCE.SOCIAL_PAIR_COOLDOWN_MINUTES - BALANCE.SOCIAL_RETRY_COOLDOWN_MINUTES),
+    );
+    const entry = this.socialDaily.get(characterId);
+    if (entry !== undefined && entry.day === sim.clock.day && entry.count > 0) {
+      entry.count -= 1;
+    }
+  }
+
+  /** 同对最近一次社交簿记时刻(熟人行「多久没聊」用;NEGATIVE_INFINITY=从未) */
+  lastChatAtBetween(aId: string, bId: string): number {
+    return this.pairLastAt(aId, bId);
+  }
+
+  /** 聊后即时印象(E2):无印象建浅印象(规则拼接零 LLM),已有只刷新时刻不动文案——
+   * 下次对话/意图 prompt 立即可见「刚聊过」;失败静默(印象属锦上添花) */
+  private async touchImpression(
+    char: WorldCharacter,
+    target: WorldCharacter,
+    line: string,
+  ): Promise<void> {
+    const { handle, sim } = this.deps;
+    try {
+      const existing = await handle.db
+        .select({ content: characterImpressions.content })
+        .from(characterImpressions)
+        .where(
+          and(
+            eq(characterImpressions.characterId, char.id),
+            eq(characterImpressions.aboutId, target.id),
+          ),
+        )
+        .limit(1);
+      const content =
+        existing[0]?.content ?? `今天和${target.name}聊了几句:「${line}」`;
+      await handle.db
+        .insert(characterImpressions)
+        .values({
+          characterId: char.id,
+          aboutId: target.id,
+          content,
+          gameMinutes: sim.clock.gameMinutes,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [characterImpressions.characterId, characterImpressions.aboutId],
+          set: {
+            content,
+            gameMinutes: sim.clock.gameMinutes,
+            updatedAt: new Date(),
+          },
+        });
+    } catch {
+      // 印象刷新失败不影响聊天本身
+    }
+  }
+
   /** 点火执行:light 槽双句生成→chat 意图直执;生成失败回落模板双句(不丢点火) */
   private async socialReact(
     char: WorldCharacter,
@@ -211,7 +304,8 @@ export class SocialLoop {
     );
     const distance = Math.abs(char.x - target.x) + Math.abs(char.y - target.y);
     if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {
-      // 生成期间走散(对方被意图拽走等):本轮放弃,冷却已簿记不重试
+      // 生成期间走散(对方被意图拽走等):本轮放弃,冷却降级为短窗可重试(E2 走散不罚)
+      this.downgradeWalkedAway(char.id, target.id);
       this.deps.trace.record(char.id, sim.clock.gameMinutes, {
         trigger,
         perception: { motive: 'social', walkedAway: true, target: target.id },
@@ -237,5 +331,6 @@ export class SocialLoop {
         llm: exchange !== null,
       },
     );
+    void this.touchImpression(char, target, line);
   }
 }

@@ -110,7 +110,7 @@ const EVENT_STRENGTH: Partial<
   'craft.completed': { self: 3, near: 0 },
   'maintenance.spawned': { self: null, near: 2 },
   'sleep.debt_applied': { self: 4, near: 0 },
-  'character.arrived': { self: 1, near: 0 },
+  'character.arrived': { self: 3, near: 0 }, // E2: 到达重燃空闲管线(走近社交/继续择 want),忙时不打断(g2)
 };
 
 /** ①相关性门:主体是我 / 涉及我的熟人 / 主体发生在感知半径内 */

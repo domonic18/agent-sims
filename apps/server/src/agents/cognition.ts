@@ -76,6 +76,8 @@ export interface Want {
   id: string;
   activityId: string;
   placeId?: string;
+  /** 人指向社交(E2):仅 socialize want 携带,值=想找的熟人 id;结算走 social.chat */
+  targetCharacterId?: string;
   why: string;
   urgency: number;
   status: 'pending' | 'doing' | 'done' | 'abandoned';
@@ -157,6 +159,9 @@ function hydrate(saved: unknown): PersistedInnerState {
                 status,
                 createdAtMin: w.createdAtMin,
                 ...(typeof w.placeId === 'string' ? { placeId: w.placeId } : {}),
+                ...(typeof w.targetCharacterId === 'string'
+                  ? { targetCharacterId: w.targetCharacterId }
+                  : {}),
               } satisfies Want,
             ];
           }),

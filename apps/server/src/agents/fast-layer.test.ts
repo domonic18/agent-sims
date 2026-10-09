@@ -62,6 +62,7 @@ function intents(day: number, wants: Array<Partial<DayIntents['wants'][number]> 
       urgency: w.urgency ?? 0.5,
       status: w.status ?? 'pending',
       createdAtMin: w.createdAtMin ?? 480,
+      ...(w.targetCharacterId !== undefined ? { targetCharacterId: w.targetCharacterId } : {}),
     })),
   };
 }
@@ -533,5 +534,45 @@ describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () =
     // 广场(30,30)在餐厅矩形内:上岗位就地开始
     const go = wantSelect(char({ x: 8, y: 12, knowledge: 5 }), day, 1, TOWN_MAP, noAnchors);
     expect(go!.intent?.type).toBe('move_to'); // 前往餐馆上岗
+  });
+});
+
+describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+
+  it('远处熟人: move_to 对方当前位置寻人,wantId 带出', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, why: '想找铁牛聊聊', targetCharacterId: 'npc-9' },
+    ]);
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 30, y: 30, name: '铁牛' } : null),
+    });
+    expect(decision).not.toBeNull();
+    expect(decision!.action).toBe('react');
+    expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 30, y: 30 });
+    expect(decision!.bubble).toContain('铁牛');
+  });
+
+  it('已贴身(≤SOCIAL_CHAT_DISTANCE): 返回 null 让位动机引擎,want 留待 social.chat 结算', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
+    ]);
+    expect(
+      wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+        positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
+      }),
+    ).toBeNull();
+  });
+
+  it('对方不在(下线/亡故): null 跳过,want 不废弃', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'ghost' },
+    ]);
+    expect(
+      wantSelect(char({}), day, 1, TOWN_MAP, noAnchors, {}, {
+        positionOf: () => null,
+      }),
+    ).toBeNull();
   });
 });

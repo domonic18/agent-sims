@@ -55,6 +55,15 @@ export interface IntentsContext {
   /** 小镇需求信号(E1 需求驱动分工):缺货/可采/待修/岗位说明一句话,
    * 注入 prompt 供人设×需求产 wants,不强制 */
   townNeeds?: string;
+  /** 熟人简报(E2 人指向社交):渲染行(名字+好感+印象+多久没聊)注入 prompt,
+   * resolve 把 LLM 写的 target 人名解析回 characterId(解析不了剥掉 target 保留 want) */
+  acquaintances?: AcquaintanceBrief | null;
+}
+
+/** 熟人简报(E2):调度泵从关系表+印象表+社交簿记拼装 */
+export interface AcquaintanceBrief {
+  line: string;
+  resolve: (name: string) => string | undefined;
 }
 
 /** 方针偏好工具规格(结构化输出):provider 层 schema 约束字段名与活动白名单 */
@@ -239,6 +248,10 @@ function intentsTool(): StructuredToolSpec {
             required: ['activity', 'urgency', 'why'],
             properties: {
               activity: { type: 'string', enum: [...INTENT_ACTIVITY_IDS] },
+              target: {
+                type: 'string',
+                description: '想找谁(可选,仅 activity=socialize 时填熟人名字)',
+              },
               urgency: { type: 'number', minimum: 0, maximum: 1 },
               why: { type: 'string' },
             },
@@ -251,8 +264,14 @@ function intentsTool(): StructuredToolSpec {
 
 /** 工具入参→wants:入参为 {wants:[...]}(chatStructured 交付整个工具入参对象);
  * 剔除非法行(活动不在白名单/urgency 非数字),urgency 截断到 0~1,why 缺省兜「随性而为」;
+ * target 人名经 resolveTarget 解析为熟人 id,解析不了剥掉 target 保留 want(E2);
  * wants 缺失非数组或无有效行判失败(触发带错重试,调用方回落 fallback)。 */
-export function parseIntents(raw: unknown, day: number, nowMin: number): StructuredParse<Want[]> {
+export function parseIntents(
+  raw: unknown,
+  day: number,
+  nowMin: number,
+  resolveTarget?: (name: string) => string | undefined,
+): StructuredParse<Want[]> {
   const rows =
     typeof raw === 'object' && raw !== null && Array.isArray((raw as { wants?: unknown }).wants)
       ? (raw as { wants: unknown[] }).wants
@@ -269,6 +288,12 @@ export function parseIntents(raw: unknown, day: number, nowMin: number): Structu
     const urgency = Number(r.urgency);
     if (!Number.isFinite(urgency)) continue;
     const why = typeof r.why === 'string' && r.why.trim() !== '' ? r.why.trim() : '随性而为';
+    const target =
+      typeof r.target === 'string' && r.target.trim() !== '' ? r.target.trim() : null;
+    const targetCharacterId =
+      activity === 'socialize' && target !== null
+        ? resolveTarget?.(target) ?? undefined
+        : undefined;
     wants.push({
       id: `w${day}-${wants.length}`,
       activityId: activity,
@@ -276,6 +301,7 @@ export function parseIntents(raw: unknown, day: number, nowMin: number): Structu
       urgency: Math.min(1, Math.max(0, urgency)),
       status: 'pending',
       createdAtMin: nowMin,
+      ...(targetCharacterId !== undefined ? { targetCharacterId } : {}),
     });
   }
   if (wants.length === 0) {
@@ -355,6 +381,9 @@ function buildIntentsMessages(
   }
   if (typeof ctx?.townNeeds === 'string' && ctx.townNeeds.trim() !== '') {
     contextLines.push(`小镇需求(参考着选活,不强制): ${ctx.townNeeds.trim()}。`);
+  }
+  if (typeof ctx?.acquaintances?.line === 'string' && ctx.acquaintances.line.trim() !== '') {
+    contextLines.push(ctx.acquaintances.line.trim());
   }
   if (typeof ctx?.policyText === 'string' && ctx.policyText.trim() !== '') {
     contextLines.push(`玩家给你的生活方针: ${ctx.policyText.trim()}`);
@@ -476,7 +505,7 @@ export async function composeIntents(
       buildIntentsMessages(char, evidence, clock.day, { ...ctx, compiled }),
       intentsTool(),
       { taskType: 'agent.day_intents', characterId: char.id, temperature: 0.9 },
-      (raw) => parseIntents(raw, clock.day, clock.gameMinutes),
+      (raw) => parseIntents(raw, clock.day, clock.gameMinutes, ctx?.acquaintances?.resolve),
     );
     const kept = wants.filter((w) => (bias[w.activityId] ?? 0) > -1);
     return {

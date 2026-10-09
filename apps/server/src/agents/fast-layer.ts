@@ -466,6 +466,8 @@ function needBoost(char: WorldCharacter, activityId: string): number {
  * - 基础/服务岗:两段式 start_activity(服务岗带知识门槛预检,不够跳过不打无效意图)
  * - 采集岗(E1):查最近有存量节点→work_task 直发(单内含寻路,产出入包)
  * - 制作岗(E1):背包含料预检→站点锚点 craft{recipeId}/先 move_to 站点
+ * - 人指向社交(E2):带 target 的 socialize 远处 move_to 寻人,已贴身/对方不在
+ *   则返回 null 让位空闲社交管线(want 由 social.chat 事件结算 done)
  * 不可执行的 want 当场废弃(rest 无居所/无锚点无场所);门槛不够/缺料/无节点
  * 只是本轮跳过(pending 保留——学了知识/采到料/节点重生后可再评);
  * 体力见底时非基础块让位生存压力。无意图/意图耗尽返回 null,交还 jev/continue。
@@ -491,6 +493,7 @@ export function wantSelect(
       return false;
     }
     if (knowledgeShort(char, definition)) return false; // 门槛不够先跳过(pending 保留,学成再干)
+    if (w.activityId === 'socialize' && w.targetCharacterId !== undefined) return true; // 人指向寻人不看场所
     if (gatherNodeKind(w.activityId) !== null) {
       return gatherTarget(w.activityId, char, world) !== null; // 无可采节点先跳过
     }
@@ -532,6 +535,25 @@ export function wantSelect(
   const definition = getActivityDefinition(picked.activityId)!;
   const extra: Pick<Decision, 'abandonedWantIds'> = {};
   if (abandoned.length > 0) extra.abandonedWantIds = abandoned;
+  // 人指向社交 want(E2):远处 move_to 寻人;已贴身/对方不在则让位——贴身时
+  // 空闲社交管线(动机引擎)直执聊天,want 由 social.chat 事件结算 done
+  if (picked.activityId === 'socialize' && picked.targetCharacterId !== undefined) {
+    const pos = world.positionOf?.(picked.targetCharacterId) ?? null;
+    if (pos !== null) {
+      const distance = Math.abs(char.x - pos.x) + Math.abs(char.y - pos.y);
+      if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {
+        return {
+          layer: 'plan',
+          action: 'react',
+          wantId: picked.id,
+          ...extra,
+          intent: { type: 'move_to', characterId: char.id, x: pos.x, y: pos.y },
+          bubble: `${picked.why},去找${pos.name}`,
+        };
+      }
+    }
+    return null;
+  }
   if (picked.activityId === 'explore') {
     const decision = exploreDecision(char, map, picked.id, definition.placeIds);
     if (decision === null) {
@@ -615,6 +637,8 @@ export interface WantWorldQueries {
   nearestNode?: (kind: string, from: { x: number; y: number }) => { id: string; x: number; y: number } | null;
   /** 配方就绪(存在+启用+背包含料;缺省按 shared 源表验料,不查每世界启用位) */
   recipeReady?: (recipeId: string) => boolean;
+  /** 存活角色位置(E2 人指向社交寻人;null=不存在/已亡故,want 跳过) */
+  positionOf?: (characterId: string) => { x: number; y: number; name: string } | null;
 }
 
 /** 采集岗→节点 kind(GATHER_TASKS 表驱动;非采集活动返回 null) */

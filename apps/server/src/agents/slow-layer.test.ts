@@ -142,6 +142,39 @@ describe('parseIntents(工具入参→wants)', () => {
     expect(parseIntents('我想想', DAY, 500).ok).toBe(false);
     expect(parseIntents(null, DAY, 500).ok).toBe(false);
   });
+
+  it('人指向 target(E2):socialize 熟人名解析为 id;解析不了剥 target 保留 want;非 socialize 忽略', () => {
+    const resolve = (name: string): string | undefined =>
+      name === '铁牛' ? 'npc-9' : undefined;
+    const parsed = parseIntents(
+      {
+        wants: [
+          { activity: 'socialize', urgency: 0.9, why: '找铁牛聊聊', target: '铁牛' },
+          { activity: 'socialize', urgency: 0.5, why: '找人说话', target: '路人甲' },
+          { activity: 'work', urgency: 0.5, why: '挣钱', target: '铁牛' },
+        ],
+      },
+      DAY,
+      500,
+      resolve,
+    );
+    if (!parsed.ok) throw new Error(`校验失败 ${parsed.reason}`);
+    expect(parsed.value).toEqual([
+      {
+        id: 'w5-0',
+        activityId: 'socialize',
+        why: '找铁牛聊聊',
+        urgency: 0.9,
+        status: 'pending',
+        createdAtMin: 500,
+        targetCharacterId: 'npc-9',
+      },
+      // 「路人甲」解析不了:剥 target 保留 want
+      { id: 'w5-1', activityId: 'socialize', why: '找人说话', urgency: 0.5, status: 'pending', createdAtMin: 500 },
+      // 非 socialize 的 target 一律忽略
+      { id: 'w5-2', activityId: 'work', why: '挣钱', urgency: 0.5, status: 'pending', createdAtMin: 500 },
+    ]);
+  });
 });
 
 describe('fallbackIntents(个性化回落)', () => {

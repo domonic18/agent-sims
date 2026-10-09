@@ -481,6 +481,15 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     const h = harness(480, worldChar, respondLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
     });
+    // 钉死 stroll:回落按倾向分去随机化(E1 扩池后采集/制作等在本桩不可执行会零意图)
+    hosting.set(CHAR_ID, {
+      mode: 'policy',
+      policyText: null,
+      compiled: {
+        focus: ['stroll'],
+        avoid: INTENT_ACTIVITY_IDS.filter((id) => id !== 'stroll'),
+      },
+    });
     innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
@@ -514,6 +523,15 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     const worldChar = char({ activity: activity('stroll') });
     const h = harness(480, worldChar, respondLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
+    });
+    // 钉死 stroll:回落按倾向分去随机化(E1 扩池后采集/制作等在本桩不可执行会零意图)
+    hosting.set(CHAR_ID, {
+      mode: 'policy',
+      policyText: null,
+      compiled: {
+        focus: ['stroll'],
+        avoid: INTENT_ACTIVITY_IDS.filter((id) => id !== 'stroll'),
+      },
     });
     innerState.setIntents(CHAR_ID, {
       day: 0,
@@ -681,7 +699,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     h.scheduler.dispose();
   });
 
-  it('同对冷却: 点火后 60 分内静默,冷却过再点;jev 冷却不受影响', async () => {
+  it('同对冷却: 点火后 30 分内静默(E2 60→30),冷却过再点;jev 冷却不受影响', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
@@ -689,26 +707,26 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
-    h.clock.gameMinutes += 30;
+    h.clock.gameMinutes += 15;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1); // 冷却中
-    h.clock.gameMinutes += 30;
+    h.clock.gameMinutes += 15;
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(2); // 冷却过再点火
+    expect(h.intents).toHaveLength(2); // 恰好 30 分:冷却过再点火
     h.scheduler.dispose();
   });
 
-  it('每日主动上限: SOCIAL_DAILY_INITIATE_CAP=6,第 7 次不再点火', async () => {
+  it('每日主动上限: SOCIAL_DAILY_INITIATE_CAP=8(E2 6→8),第 9 次不再点火', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
-    for (let i = 0; i < 7; i += 1) {
+    for (let i = 0; i < 9; i += 1) {
       if (i > 0) h.clock.gameMinutes += 60; // 跨出同对冷却
       await vi.advanceTimersByTimeAsync(2_000);
     }
-    expect(h.intents).toHaveLength(6);
+    expect(h.intents).toHaveLength(8);
     h.scheduler.dispose();
   });
 
@@ -749,6 +767,44 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     );
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
+    h.scheduler.dispose();
+  });
+});
+
+describe('AgentScheduler(E2 人指向社交 want)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    autonomy.enable(CHAR_ID);
+  });
+  afterEach(() => {
+    autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
+    innerState.clear(CHAR_ID);
+    vi.useRealTimers();
+  });
+
+  it('远处 target: move_to 寻人并标 doing;social.chat 结算 done', async () => {
+    const npc = char({ id: 'npc-1', name: '铁牛', x: 20, y: 20 });
+    const h = harness(0, char({ x: 30, y: 30 }), undefined, { extraCharacters: [npc] });
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', targetCharacterId: 'npc-1', why: '找铁牛聊聊', urgency: 0.9, status: 'pending', createdAtMin: 0 },
+      ],
+    });
+    h.onEvent(chatEvent(1)); // self 强度4→idle 管线→wantSelect 寻人
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 20, y: 20 }]);
+    expect(h.bubbles[0]!.text).toContain('铁牛');
+    expect(innerState.get(CHAR_ID)!.intents!.wants[0]!.status).toBe('doing');
+    h.onEvent(chatEvent(2)); // settleSocialChat: doing+target 匹配→done
+    await vi.advanceTimersByTimeAsync(0);
+    expect(innerState.get(CHAR_ID)!.intents!.wants[0]!.status).toBe('done');
+    const settled = h.traceRows.find((r) => (r.perception as { with?: string }).with === 'npc-1');
+    expect(settled).toBeDefined();
+    expect((settled!.perception as { want?: string }).want).toBe('w0');
+    expect(h.intents).toHaveLength(1); // 结算后 idle 管线不再产新意图
     h.scheduler.dispose();
   });
 });
