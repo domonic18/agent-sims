@@ -1,0 +1,120 @@
+/* ---- 右上 世界日志抽屉(C3) ---- */
+.log-root {
+  position: relative;
+}
+
+.log-unread {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+
+.log-drawer {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  z-index: 30;
+}
+
+.log-drawer-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+.log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.log-head b {
+  font-size: 13px;
+}
+
+.log-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.log-chips .px-btn {
+  width: auto;
+  padding: 3px 7px;
+  font-size: 11px;
+}
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(52vh, 480px);
+  overflow-y: auto;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+  padding: 6px;
+}
+
+.log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  color: var(--px-text);
+  border: none;
+  background: none;
+}
+
+.log-entry.has-char {
+  cursor: pointer;
+}
+
+.log-entry.has-char:hover {
+  background: rgba(41, 54, 111, 0.6);
+}
+
+.log-time {
+  flex: none;
+  color: var(--px-dim);
+  font-size: 10px;
+  font-family: var(--px-font-pixel);
+}
+
+.log-icon {
+  flex: none;
+}
+
+.log-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.log-entry.tone-good .log-text {
+  color: var(--px-ok);
+}
+
+.log-entry.tone-bad .log-text {
+  color: var(--px-bad);
+}
+
+.log-history-sep {
+  margin: 4px 0 2px;
+  padding: 2px 0;
+  text-align: center;
+  color: var(--px-dim);
+  font-size: 10px;
+  border-bottom: 2px dashed var(--px-slate);
+}
+
+.log-empty {
+  margin: 0;
+  padding: 12px 0;
+  text-align: center;
+  color: var(--px-dim);
+  font-size: 12px;
+}

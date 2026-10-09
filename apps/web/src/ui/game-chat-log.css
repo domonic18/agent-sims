@@ -1,0 +1,81 @@
+/* ---- 左下 对话记录(社交 v1): 谁跟谁说了什么的常驻轻量流,可收起为药丸 ---- */
+.chat-log {
+  position: absolute;
+  left: 16px;
+  bottom: 18px;
+  z-index: 8;
+  width: min(300px, calc(100vw - 32px));
+  opacity: 0.88;
+}
+
+/* 对话面板展开时徽标上移避让(ChatLog 先于徽标渲染,兄弟选择器联动);
+ * 收起为药丸时徽标回到底角 */
+.chat-log:not(.chat-log-collapsed) ~ .hud-model-badge {
+  bottom: 230px;
+}
+
+.chat-log-collapsed {
+  width: auto;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.chat-log-pill {
+  font-size: 11px;
+  color: var(--px-dim);
+}
+
+.chat-log-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 5px 6px;
+}
+
+.chat-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--px-dim);
+}
+
+.chat-log-toggle {
+  font-size: 10px;
+  padding: 1px 5px;
+}
+
+.chat-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 150px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.chat-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--px-text);
+}
+
+.chat-entry .log-time {
+  flex: none;
+  font-size: 9px;
+  color: var(--px-slate);
+  white-space: nowrap;
+}
+
+.chat-entry .log-icon {
+  flex: none;
+}
+
+.chat-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--px-white);
+}
