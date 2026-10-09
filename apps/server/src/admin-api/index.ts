@@ -33,8 +33,8 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle, sim: Si
   registerAssetRoutes(app, handle);
   registerAssetIssueRoutes(app, handle);
   registerMemoryRoutes(app, handle, sim);
-  registerAutonomyRoutes(app, sim);
-  registerHostingRoutes(app, sim);
+  registerAutonomyRoutes(app, handle, sim);
+  registerHostingRoutes(app, handle, sim);
   registerPersonaRoutes(app, handle, sim);
   registerMindTalkRoutes(app, handle, sim);
   registerMoodRoutes(app, handle, sim);

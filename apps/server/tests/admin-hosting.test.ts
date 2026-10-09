@@ -5,6 +5,7 @@ import { env } from '../src/config/env.js';
 import { autonomy, hosting, schedule } from '../src/agents/cognition.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { registerHostingRoutes } from '../src/admin-api/hosting.js';
+import type { DbHandle } from '../src/db/client.js';
 import type { Simulation } from '../src/world/simulation.js';
 
 const CHAR_ID = 'char-1';
@@ -45,7 +46,13 @@ function harness(chatContent: string | Error): Harness {
     tick: 7,
     events: { emit: (event: Record<string, unknown>) => events.push(event) },
   } as unknown as Simulation;
-  registerHostingRoutes(app, sim);
+  // 写穿桩(M10):空转链,不落库也不观测——持久化语义由容器走查覆盖
+  const handle = {
+    db: {
+      update: () => ({ set: () => ({ where: () => ({ catch: () => {} }) }) }),
+    },
+  } as unknown as DbHandle;
+  registerHostingRoutes(app, handle, sim);
   return { app, events, get chatCalls() { return chatCalls; } };
 }
 

@@ -11,6 +11,9 @@ export const characters = pgTable('characters', {
   persona: jsonb('persona').notNull().default({}), // 人设卡(traits/persona/modelSlot 预留)
   position: jsonb('position'), // { x, y } 当前世界坐标
   stats: jsonb('stats'), // { energy, score, coins }
+  /** 托管状态(M10): { mode, policyText } | null=未托管;运行态真源在脑注册表,
+   * 此列为路由变更写穿的恢复源(compiled 是可重建缓存,不落库) */
+  hosting: jsonb('hosting'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

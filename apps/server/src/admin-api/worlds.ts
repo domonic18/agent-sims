@@ -25,6 +25,7 @@ import {
   type WorldgenReport,
 } from '@sims/shared';
 import { publishTarget, readManifestVersion } from '../assets/paths.js';
+import { restoreHostingFromDb } from './hosting.js';
 import { restoreLatestArchive } from './world-archives.js';
 import { TileMap } from '../world/map.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
@@ -278,9 +279,11 @@ export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle)
       return;
     }
   }
-  // 有档灌最近一档(restoreArchive 连带 rules/params/recipes/gameType/时钟);
-  // 无档冻结空场(内置地图世界出厂态+冻结,与 C4 行为一致)
-  if (!(await restoreLatestArchive(app, handle, row.id))) {
+  // 有档灌最近一档(restoreArchive 连带 rules/params/recipes/gameType/时钟),
+  // 角色就位后再恢复托管状态(M10);无档冻结空场(内置地图世界出厂态+冻结,与 C4 行为一致)
+  if (await restoreLatestArchive(app, handle, row.id)) {
+    await restoreHostingFromDb(app, handle, row.id);
+  } else {
     app.simulation.setPaused(true);
   }
 }
