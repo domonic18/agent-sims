@@ -4,7 +4,6 @@ import { ASSET_ISSUE_SCOPES, ASSET_ISSUE_STATUSES, type AssetIssueView } from '@
 import { z } from 'zod';
 import type { DbHandle } from '../db/client.js';
 import { assetIssues } from '../db/schema/index.js';
-import { requireAdmin } from './auth.js';
 
 /**
  * 素材问题单 CRUD(UI-2 报错闭环):游戏内信息卡/动画演示器/后台审查页三处上报,
@@ -46,7 +45,6 @@ export function registerAssetIssueRoutes(app: FastifyInstance, handle: DbHandle)
   const { db } = handle;
 
   app.post('/api/admin/asset-issues', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     const parsed = issueCreateSchema.safeParse(request.body);
     if (!parsed.success) {
       return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
@@ -70,8 +68,7 @@ export function registerAssetIssueRoutes(app: FastifyInstance, handle: DbHandle)
     return reply.send(toView(existing[0]!));
   });
 
-  app.get('/api/admin/asset-issues', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
+  app.get('/api/admin/asset-issues', async (request) => {
     const query = request.query as { status?: string; scope?: string; refSlug?: string };
     const conditions = [];
     if (query.status !== undefined && query.status !== '') {
@@ -94,7 +91,6 @@ export function registerAssetIssueRoutes(app: FastifyInstance, handle: DbHandle)
   });
 
   app.patch('/api/admin/asset-issues/:id', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     const id = Number((request.params as { id: string }).id);
     const parsed = issuePatchSchema.safeParse(request.body);
     if (!parsed.success) return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');

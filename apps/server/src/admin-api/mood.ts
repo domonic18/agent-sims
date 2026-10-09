@@ -5,12 +5,10 @@ import { readMood, readMoodHistory } from '../agents/mood.js';
 import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/index.js';
 import type { Simulation } from '../world/simulation.js';
-import { requireAdmin } from './auth.js';
 
 /** C2 情绪面板 API(10-cognition §4.4): 当前态(冲量流水半衰期衰减聚合)+历史(新→旧) */
 export function registerMoodRoutes(app: FastifyInstance, handle: DbHandle, sim: Simulation): void {
   app.get('/api/admin/characters/:id/mood', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const [character] = await handle.db
       .select({ name: characters.name })

@@ -10,7 +10,6 @@ import {
 import { z } from 'zod';
 import type { DbHandle } from '../db/client.js';
 import { characters, tokenUsage } from '../db/schema/index.js';
-import { requireAdmin } from './auth.js';
 
 // 统计时区钉住管理员本地时区:UTC 容器里 date_trunc('day', now()) 会把「今日」算成北京时间 08:00 起
 const STATS_TZ = 'Asia/Shanghai';
@@ -121,7 +120,6 @@ async function buildTrend(
 
 export function registerTokenUsageRoutes(app: FastifyInstance, handle: DbHandle): void {
   app.get('/api/admin/token-usage/summary', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = windowSchema.safeParse(request.query);
     if (!parsed.success) {
       return await reply.code(400).send({ error: 'window 取值不合法' });
@@ -211,7 +209,6 @@ export function registerTokenUsageRoutes(app: FastifyInstance, handle: DbHandle)
   });
 
   app.get('/api/admin/token-usage/entries', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = entriesQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return await reply.code(400).send({ error: '查询参数不合法' });

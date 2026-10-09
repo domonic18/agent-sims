@@ -8,7 +8,6 @@ import type { DbHandle } from '../db/client.js';
 import { worlds } from '../db/schema/index.js';
 import type { Simulation } from '../world/simulation.js';
 import { whenParamPersistIdle } from '../world/param-persist.js';
-import { requireAdmin } from './auth.js';
 
 function effectiveView(): Record<string, number> {
   const balance = BALANCE as unknown as Record<string, number>;
@@ -48,12 +47,10 @@ export function registerSysConfigRoutes(app: FastifyInstance, handle: DbHandle, 
   }
 
   app.get('/api/admin/sys-config', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     return await reply.send(await sysConfigView());
   });
 
   app.put('/api/admin/sys-config', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = updateBodySchema.safeParse(request.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -70,7 +67,6 @@ export function registerSysConfigRoutes(app: FastifyInstance, handle: DbHandle, 
   });
 
   app.post('/api/admin/sys-config/reset', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     applySettingParams(sim, {}, true);
     await whenParamPersistIdle();
     return await reply.send(await sysConfigView());

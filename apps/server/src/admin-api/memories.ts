@@ -14,7 +14,6 @@ import type { DbHandle } from '../db/client.js';
 import { characterImpressions, characters, memories } from '../db/schema/index.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
-import { requireAdmin } from './auth.js';
 
 const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -216,12 +215,10 @@ export function registerMemoryRoutes(
   sim: Simulation,
 ): void {
   app.get('/api/admin/characters/:id/memories', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     await memoriesPanelHandler(app, handle, sim)(request, reply);
   });
 
   app.get('/api/admin/characters/:id/impressions', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     await impressionsHandler(handle)(request, reply);
   });
 }

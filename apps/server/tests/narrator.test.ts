@@ -4,24 +4,11 @@ import type { NarrativeHistoryEntry, SelfNarrative, WorldEvent } from '@sims/sha
 import { Narrator } from '../src/agents/narrator.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { MemoryWriter } from '../src/agents/memory-writer.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { characters, memories, worlds } from '../src/db/schema/index.js';
 import { Simulation } from '../src/world/simulation.js';
 
-// 集成测试:连 dev compose 的 postgres(需已 migrate+seed);库不可达时整组跳过
-let handle: DbHandle;
-
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 const WORLD_ID = '00000000-0000-4000-8000-00000000a306';
 const CHAR_A = '00000000-0000-4000-8000-00000000a307';

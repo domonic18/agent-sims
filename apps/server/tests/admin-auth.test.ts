@@ -1,29 +1,17 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { adminUsers } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
 
-// 集成测试:连 dev compose 的 postgres(需已 migrate+seed);库不可达时整组跳过。
 // 用独立用户 vitest-auth 改密,避免影响 vitest-admin(其他测试文件并行登录用它)。
 const TEST_USERNAME = 'vitest-auth';
 const TEST_PASSWORD = 'vitest-auth-pass-1';
 
-let handle: DbHandle;
 let token = '';
 
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 beforeAll(async () => {
   if (!dbUp) return;

@@ -8,7 +8,6 @@ import {
 import type { DbHandle } from '../db/client.js';
 import { worldArchives, worldState, worlds } from '../db/schema/index.js';
 import type { SimulationArchive } from '../world/simulation.js';
-import { requireAdmin } from './auth.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -50,7 +49,6 @@ function toView(
  */
 export function registerWorldArchiveRoutes(app: FastifyInstance, handle: DbHandle): void {
   app.get('/api/admin/world-archives', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const rows = await handle.db
       .select({ archive: worldArchives, worldName: worlds.name })
       .from(worldArchives)
@@ -60,7 +58,6 @@ export function registerWorldArchiveRoutes(app: FastifyInstance, handle: DbHandl
   });
 
   app.post('/api/admin/world-archives', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const body = (request.body ?? {}) as { label?: unknown };
     const [world] = await handle.db
       .select()
@@ -89,7 +86,6 @@ export function registerWorldArchiveRoutes(app: FastifyInstance, handle: DbHandl
   });
 
   app.post('/api/admin/world-archives/:id/load', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const params = request.params as { id: string };
     if (!UUID_RE.test(params.id)) {
       return await reply.code(404).send({ error: '存档不存在' });
@@ -132,7 +128,6 @@ export function registerWorldArchiveRoutes(app: FastifyInstance, handle: DbHandl
   });
 
   app.delete('/api/admin/world-archives/:id', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const params = request.params as { id: string };
     if (!UUID_RE.test(params.id)) {
       return await reply.code(404).send({ error: '存档不存在' });

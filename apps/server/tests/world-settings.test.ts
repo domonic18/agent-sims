@@ -4,31 +4,18 @@ import type { WorldSettingsView } from '@sims/shared';
 import { SYS_CONFIG_FIELDS } from '@sims/shared';
 import { buildApp } from '../src/app.js';
 import { applyWorldParams, BALANCE, BALANCE_DEFAULTS } from '../src/config/balance.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { adminUsers, worlds } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
 import { whenParamPersistIdle } from '../src/world/param-persist.js';
 
-// 集成测试:连 dev compose 的 postgres(需已 migrate);库不可达时整组跳过。
 // 覆盖常开设置通道 /api/world/settings:读写形状→暂停倍率→规则热改+持久→
 // 参数热调+持久→resetParams 清残留(难度预设切换语义)。
 const TEST_USERNAME = 'vitest-settings-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
 const WORLD_NAME_PREFIX = 'vitest-settings-world-';
 
-let handle: DbHandle;
-
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 beforeAll(async () => {
   if (!dbUp) return;

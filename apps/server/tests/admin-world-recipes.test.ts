@@ -2,32 +2,20 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defaultRecipes, type WorldRecipesView } from '@sims/shared';
 import { buildApp } from '../src/app.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { adminUsers, worlds } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
 import { whenParamPersistIdle } from '../src/world/param-persist.js';
 
-// 集成测试:连 dev compose 的 postgres;不可达时整组跳过。
 // 每世界配方读写:GET 取运行时全集→PUT 合法热改+存档回写→非法 400 不落值;
 // 持久化经 world.recipes 事件(param-persist 回写活跃世界 config.rules.recipes)。
 const TEST_USERNAME = 'vitest-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
 const WORLD_NAME = 'vitest-recipes-world-配方镇';
 
-let handle: DbHandle;
 let token = '';
 
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 beforeAll(async () => {
   if (!dbUp) return;

@@ -2,24 +2,10 @@ import { eq } from 'drizzle-orm';
 import type { CharacterMoodResponse } from '@sims/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { characterMoods, characters, worlds } from '../src/db/schema/index.js';
-import { issueAdminToken } from '../src/utils/token.js';
 
-// 集成测试:连 dev compose 的 postgres(需已 migrate);库不可达时整组跳过
-let handle: DbHandle;
-
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp, authHeader } = await setupIntegrationDb();
 
 const WORLD_ID = '00000000-0000-4000-8000-00000000c601';
 const CHAR_ID = '00000000-0000-4000-8000-00000000c602';
@@ -31,15 +17,6 @@ async function until(cond: () => Promise<boolean>, ms = 3000): Promise<void> {
     if (Date.now() - startedAt > ms) throw new Error('admin-mood 等待超时');
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-}
-
-function authHeader(): string {
-  const issued = issueAdminToken({
-    username: 'vitest',
-    masterKey: env.MASTER_KEY,
-    ttlMs: 3_600_000,
-  });
-  return `Bearer ${issued.token}`;
 }
 
 describe.skipIf(!dbUp)('情绪面板 API(C2: 事件打标+衰减聚合+历史)', () => {

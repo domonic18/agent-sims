@@ -21,7 +21,6 @@ import {
 } from '../llm/adapters.js';
 import { ModelRouter } from '../llm/router.js';
 import type { SlotRuntimeConfig } from '../llm/types.js';
-import { requireAdmin } from './auth.js';
 
 const putSchema = z.object({
   protocol: z.enum(MODEL_PROTOCOLS).optional(),
@@ -158,14 +157,12 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
   const router = new ModelRouter(handle);
 
   app.get('/api/admin/model-configs', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const rows = await handle.db.select().from(modelConfigs);
     const bySlot = new Map(rows.map((row) => [row.slot, row] as const));
     return await reply.send(MODEL_SLOTS.map((slot) => toView(slot, bySlot.get(slot))));
   });
 
   app.put('/api/admin/model-configs/:slot', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const params = request.params as { slot: string };
     if (!MODEL_SLOTS.includes(params.slot as ModelSlot)) {
       return await reply.code(404).send({ error: `未知槽位: ${params.slot}` });
@@ -223,7 +220,6 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
   });
 
   app.post('/api/admin/model-configs/:slot/test', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const params = request.params as { slot: string };
     if (!MODEL_SLOTS.includes(params.slot as ModelSlot)) {
       return await reply.code(404).send({ error: `未知槽位: ${params.slot}` });
@@ -241,7 +237,6 @@ export function registerModelConfigRoutes(app: FastifyInstance, handle: DbHandle
 
   /** 试调用:走 ModelRouter 真实调用链(协议适配+token 记账),与「测试连通」互补 */
   app.post('/api/admin/model-configs/:slot/invoke', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const params = request.params as { slot: string };
     if (!MODEL_SLOTS.includes(params.slot as ModelSlot)) {
       return await reply.code(404).send({ error: `未知槽位: ${params.slot}` });

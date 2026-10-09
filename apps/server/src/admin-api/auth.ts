@@ -1,5 +1,10 @@
 import { eq } from 'drizzle-orm';
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type {
+  FastifyInstance,
+  FastifyReply,
+  FastifyRequest,
+  preHandlerHookHandler,
+} from 'fastify';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import type { DbHandle } from '../db/client.js';
@@ -23,6 +28,13 @@ const changePasswordSchema = z.object({
 /** 校验 Bearer token;失败时已发送 401 响应,返回 false */
 export function requireAdmin(request: FastifyRequest, reply: FastifyReply): boolean {
   return authenticate(request, reply) !== null;
+}
+
+/** 后台路由统一守卫(preHandler): 失败时 authenticate 已发送 401,返回 reply 终止后续钩子与处理器 */
+export function adminGuard(): preHandlerHookHandler {
+  return async (request, reply) => {
+    if (authenticate(request, reply) === null) return reply;
+  };
 }
 
 /** 校验 Bearer token 并返回 username;失败时已发送 401 响应,返回 null */

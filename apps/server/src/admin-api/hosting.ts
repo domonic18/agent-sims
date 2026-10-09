@@ -7,7 +7,6 @@ import { compilePolicy } from '../agents/slow-layer.js';
 import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/index.js';
 import type { Simulation } from '../world/simulation.js';
-import { requireAdmin } from './auth.js';
 
 const bodySchema = z.object({
   enabled: z.boolean(),
@@ -96,7 +95,6 @@ export async function restoreHostingFromDb(
  */
 export function registerHostingRoutes(app: FastifyInstance, handle: DbHandle, sim: Simulation): void {
   app.get('/api/admin/characters/:id/hosting', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
@@ -105,7 +103,6 @@ export function registerHostingRoutes(app: FastifyInstance, handle: DbHandle, si
   });
 
   app.post('/api/admin/characters/:id/hosting', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) {

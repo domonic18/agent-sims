@@ -4,29 +4,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { mindSessions } from '../src/admin-api/mindtalk.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { characters, worlds } from '../src/db/schema/index.js';
 import { cognitionTrace } from '../src/db/schema/agent.js';
 import { characterMoods } from '../src/db/schema/memory.js';
 import { memories } from '../src/db/schema/memory.js';
-import { issueAdminToken } from '../src/utils/token.js';
 
 const WORLD_ID = '00000000-0000-4000-8000-00000000c501';
 const CHAR_ID = '00000000-0000-4000-8000-00000000c502';
 
-let handle: DbHandle;
-
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp, authHeader } = await setupIntegrationDb();
 
 interface ChatReply {
   content: string;
@@ -59,15 +46,6 @@ function chatLlm(replies: Array<string | Error>): { llm: MemoryLlm; chats: Recor
     },
   };
   return { llm, chats };
-}
-
-function authHeader(): string {
-  const issued = issueAdminToken({
-    username: 'vitest',
-    masterKey: env.MASTER_KEY,
-    ttlMs: 3_600_000,
-  });
-  return `Bearer ${issued.token}`;
 }
 
 describe.skipIf(!dbUp)('意识访谈 API(观察者与 agent 对话,写回记忆)', () => {

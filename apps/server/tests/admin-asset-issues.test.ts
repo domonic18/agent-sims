@@ -2,29 +2,17 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AssetIssueListResponse, AssetIssueView } from '@sims/shared';
 import { buildApp } from '../src/app.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { adminUsers, assetIssues } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
 
-// 集成测试:连 dev compose 的 postgres(需已 migrate);库不可达时整组跳过
 const TEST_USERNAME = 'vitest-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
 const MARK = 'vitest-issue';
 
-let handle: DbHandle;
 let token = '';
 
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 const cleanup = async () => {
   await handle.db.delete(assetIssues).where(eq(assetIssues.refSlug, MARK));

@@ -3,13 +3,11 @@ import { eq, like } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CreateWorldRequest, WorldArchiveView, WorldView } from '@sims/shared';
 import { buildApp } from '../src/app.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { adminUsers, worlds } from '../src/db/schema/index.js';
 import { AUTO_LABEL_PREFIX, persistAutoArchive } from '../src/admin-api/world-archives.js';
 import { restoreActiveWorld } from '../src/admin-api/worlds.js';
 
-// 集成测试:连 dev compose 的 postgres(需已 migrate+seed);库不可达时整组跳过
 const TEST_USERNAME = 'vitest-archive-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
 const WORLD_NAME_PREFIX = 'vitest-archive-world-';
@@ -21,18 +19,7 @@ const CREATE_BODY: CreateWorldRequest = {
   ],
 };
 
-let handle: DbHandle;
-
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 beforeAll(async () => {
   if (!dbUp) return;

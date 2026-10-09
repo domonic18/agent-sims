@@ -18,7 +18,6 @@ import { publishManifest } from '../assets/library.js';
 import { libraryRoot, publishTarget } from '../assets/paths.js';
 import { ModelRouter } from '../llm/router.js';
 import { LlmError } from '../llm/types.js';
-import { requireAdmin } from './auth.js';
 
 /** 库根与发布目标:dev 下按源码相对定位;容器部署时发布链路随 M-L.3 渲染对接一并处理 */
 const LIBRARY_ROOT = libraryRoot();
@@ -150,8 +149,7 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   const { db } = handle;
   const modelRouter = new ModelRouter(handle);
 
-  app.get(ADMIN_API.assetCategories, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
+  app.get(ADMIN_API.assetCategories, async () => {
     const rows = await db.select().from(assetCategories).orderBy(asc(assetCategories.sortOrder), asc(assetCategories.id));
     const counts = await db
       .select({ categoryId: assets.categoryId, n: count() })
@@ -162,7 +160,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.post(ADMIN_API.assetCategories, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     const parsed = categoryCreateSchema.safeParse(request.body);
     if (!parsed.success) {
       return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
@@ -197,7 +194,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.patch(`${ADMIN_API.assetCategories}/:id`, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
       const id = Number((request.params as { id: string }).id);
       const parsed = z
         .object({ name: z.string().trim().min(1).max(30) })
@@ -214,7 +210,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   );
 
   app.delete(`${ADMIN_API.assetCategories}/:id`, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
       const id = Number((request.params as { id: string }).id);
       const childCount = await db
         .select({ n: count() })
@@ -235,8 +230,7 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
     },
   );
 
-  app.get(ADMIN_API.assets, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
+  app.get(ADMIN_API.assets, async (request) => {
     const query = request.query as {
       categoryId?: string;
       status?: string;
@@ -293,7 +287,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.patch('/api/admin/assets/:id', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     const id = Number((request.params as { id: string }).id);
     const parsed = assetPatchSchema.safeParse(request.body);
     if (!parsed.success) return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
@@ -326,7 +319,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.post(ADMIN_API.assetAiReview, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     const parsed = aiReviewSchema.safeParse(request.body);
     if (!parsed.success) return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
     const rows = await db
@@ -388,7 +380,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.post(ADMIN_API.assetBulkStatus, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     const parsed = bulkStatusSchema.safeParse(request.body);
     if (!parsed.success) return parseError(reply, parsed.error.issues[0]?.message ?? '请求体不合法');
     const updated = await db
@@ -400,7 +391,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.post(ADMIN_API.assetPublish, async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     try {
       const result = await publishManifest(db, LIBRARY_ROOT, PUBLISH_TARGET);
       return reply.send(result);
@@ -410,7 +400,6 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.get('/api/admin/assets/:id/image', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return null;
     const id = Number((request.params as { id: string }).id);
     const rows = await db
       .select({ filePath: assets.filePath })

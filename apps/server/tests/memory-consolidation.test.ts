@@ -1,27 +1,14 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { characterImpressions, characters, memories, worlds } from '../src/db/schema/index.js';
 import { MemoryConsolidator } from '../src/agents/memory-consolidation.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { MemoryWriter } from '../src/agents/memory-writer.js';
 import { Simulation } from '../src/world/simulation.js';
 
-// 集成测试:连 dev compose 的 postgres(需已 migrate+seed);库不可达时整组跳过
-let handle: DbHandle;
-
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 const WORLD_ID = '00000000-0000-4000-8000-00000000a301';
 // 单一 id 贯穿:sim 角色 key 与 characters 表主键共用同一 uuid

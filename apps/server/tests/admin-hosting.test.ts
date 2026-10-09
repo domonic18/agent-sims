@@ -4,6 +4,7 @@ import { issueAdminToken } from '../src/utils/token.js';
 import { env } from '../src/config/env.js';
 import { autonomy, hosting, schedule } from '../src/agents/cognition.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
+import { adminGuard } from '../src/admin-api/auth.js';
 import { registerHostingRoutes } from '../src/admin-api/hosting.js';
 import type { DbHandle } from '../src/db/client.js';
 import type { Simulation } from '../src/world/simulation.js';
@@ -41,6 +42,8 @@ function harness(chatContent: string | Error): Harness {
     },
   };
   app.decorate('llm', llm);
+  // 与生产 scoped 装配同款守卫(registerHostingRoutes 自身不再内联鉴权)
+  app.addHook('preHandler', adminGuard());
   const sim = {
     characters: new Map([[CHAR_ID, { id: CHAR_ID }]]),
     tick: 7,

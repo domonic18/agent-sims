@@ -4,26 +4,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { hosting, schedule } from '../src/agents/cognition.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { characters, worlds } from '../src/db/schema/index.js';
-import { issueAdminToken } from '../src/utils/token.js';
 
 const WORLD_ID = '00000000-0000-4000-8000-00000000c401';
 const CHAR_ID = '00000000-0000-4000-8000-00000000c402';
 
-let handle: DbHandle;
-
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp, authHeader } = await setupIntegrationDb();
 
 const DRAFT_JSON =
   '{"性格":"节俭惜财","兴趣":"钓鱼与下棋","目标":"攒钱开一家小店","说话风格":"言简意赅","bio":"镇上沉默的钓鱼人,账本记得很细"}';
@@ -51,15 +38,6 @@ function randomLlm(replies: Array<string | Error>): { llm: MemoryLlm; calls: () 
     },
   };
   return { llm, calls: () => count };
-}
-
-function authHeader(): string {
-  const issued = issueAdminToken({
-    username: 'vitest',
-    masterKey: env.MASTER_KEY,
-    ttlMs: 3_600_000,
-  });
-  return `Bearer ${issued.token}`;
 }
 
 describe.skipIf(!dbUp)('预置人设 API(查看/保存/LLM 随机草稿)', () => {

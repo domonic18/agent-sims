@@ -8,7 +8,6 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { DbHandle } from '../db/client.js';
 import { adminAuditLogs, techLogs, worldEvents } from '../db/schema/index.js';
-import { requireAdmin } from './auth.js';
 
 const listQuerySchema = z.object({
   characterId: z.string().trim().min(1).optional(),
@@ -23,7 +22,6 @@ const listQuerySchema = z.object({
 /** M-G.1 三日志查询 API: 世界事件/技术运行/操作审计,统一分页协议 */
 export function registerLogRoutes(app: FastifyInstance, handle: DbHandle): void {
   app.get('/api/admin/logs/world-events', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return await reply.code(400).send({ error: '查询参数不合法' });
@@ -61,7 +59,6 @@ export function registerLogRoutes(app: FastifyInstance, handle: DbHandle): void 
   });
 
   app.get('/api/admin/logs/tech-logs', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return await reply.code(400).send({ error: '查询参数不合法' });
@@ -99,7 +96,6 @@ export function registerLogRoutes(app: FastifyInstance, handle: DbHandle): void 
   });
 
   app.get('/api/admin/logs/audit-logs', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return await reply.code(400).send({ error: '查询参数不合法' });

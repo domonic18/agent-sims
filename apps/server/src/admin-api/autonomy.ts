@@ -4,14 +4,12 @@ import { autonomy, hosting } from '../agents/cognition.js';
 import type { DbHandle } from '../db/client.js';
 import type { Simulation } from '../world/simulation.js';
 import { persistHosting } from './hosting.js';
-import { requireAdmin } from './auth.js';
 
 const bodySchema = z.object({ enabled: z.boolean() });
 
 /** M4c 自治开关:显式开启后该角色才进 AgentScheduler 泵(默认全关,玩家角色不被接管) */
 export function registerAutonomyRoutes(app: FastifyInstance, handle: DbHandle, sim: Simulation): void {
   app.get('/api/admin/characters/:id/autonomy', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
@@ -20,7 +18,6 @@ export function registerAutonomyRoutes(app: FastifyInstance, handle: DbHandle, s
   });
 
   app.post('/api/admin/characters/:id/autonomy', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) {

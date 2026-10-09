@@ -5,8 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AssetAiReviewResponse } from '@sims/shared';
 import { libraryRoot } from '../src/assets/paths.js';
 import { buildApp } from '../src/app.js';
-import { env } from '../src/config/env.js';
-import { createDb, type DbHandle } from '../src/db/client.js';
+import { setupIntegrationDb } from './helpers/integration.js';
 import { adminUsers, assets, modelConfigs } from '../src/db/schema/index.js';
 import { hashPassword } from '../src/utils/crypto.js';
 
@@ -15,19 +14,9 @@ import { hashPassword } from '../src/utils/crypto.js';
 const TEST_USERNAME = 'vitest-admin';
 const TEST_PASSWORD = 'vitest-pass-123456';
 
-let handle: DbHandle;
 let token = '';
 
-const dbUp = await (async () => {
-  handle = createDb(env.DATABASE_URL);
-  try {
-    await handle.client`SELECT 1`;
-    return true;
-  } catch {
-    await handle.client.end().catch(() => {});
-    return false;
-  }
-})();
+const { handle, up: dbUp } = await setupIntegrationDb();
 
 beforeAll(async () => {
   if (!dbUp) return;

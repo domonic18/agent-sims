@@ -10,7 +10,6 @@ import { cognitionTrace } from '../db/schema/agent.js';
 import { memories } from '../db/schema/memory.js';
 import { renderPrompt } from '../prompts/registry.js';
 import type { Simulation } from '../world/simulation.js';
-import { requireAdmin } from './auth.js';
 import type { MindTalkMessage, MindTalkView } from '@sims/shared';
 
 const bodySchema = z.object({ text: z.string().trim().min(1, '问题不能为空').max(500) });
@@ -88,7 +87,6 @@ export function registerMindTalkRoutes(
   sim: Simulation,
 ): void {
   app.get('/api/admin/characters/:id/mindtalk', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
@@ -98,7 +96,6 @@ export function registerMindTalkRoutes(
   });
 
   app.post('/api/admin/characters/:id/mindtalk', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) {

@@ -17,7 +17,6 @@ import type { StructuredParse, StructuredToolSpec } from '../llm/types.js';
 import { renderPrompt } from '../prompts/registry.js';
 import { characters } from '../db/schema/index.js';
 import type { Simulation } from '../world/simulation.js';
-import { requireAdmin } from './auth.js';
 
 const cardSchema = z.object({
   性格: z.string().trim().min(1).max(200),
@@ -154,7 +153,6 @@ export function registerPersonaRoutes(
   sim: Simulation,
 ): void {
   app.get('/api/admin/characters/:id/persona', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
@@ -168,7 +166,6 @@ export function registerPersonaRoutes(
   });
 
   app.put('/api/admin/characters/:id/persona', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     const parsed = saveSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -197,7 +194,6 @@ export function registerPersonaRoutes(
   });
 
   app.post('/api/admin/characters/:id/persona/random', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
@@ -224,7 +220,6 @@ export function registerPersonaRoutes(
 
   // 自我叙事草稿(C5): light 槽从人设卡提炼第一人称「我是谁」,仅返回不落库
   app.post('/api/admin/characters/:id/persona/narrative/generate', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const { id } = request.params as { id: string };
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });

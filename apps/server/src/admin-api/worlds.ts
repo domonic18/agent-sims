@@ -34,7 +34,6 @@ import { z } from 'zod';
 import { applyWorldParams, BALANCE, validateBalanceOverrides } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { characters, worldState, worlds } from '../db/schema/index.js';
-import { requireAdmin } from './auth.js';
 
 const characterSchema = z.object({
   name: z.string().trim().min(1, '人物名不能为空').max(20),
@@ -290,7 +289,6 @@ export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle)
 
 export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): void {
   app.get('/api/admin/worlds', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const rows = await handle.db
       .select()
       .from(worlds)
@@ -325,7 +323,6 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.post('/api/admin/worlds/preview', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = worldgenSchema.safeParse(request.body);
     if (!parsed.success) {
       return await reply.code(400).send({ error: parsed.error.issues[0]?.message ?? '参数不合法' });
@@ -347,7 +344,6 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.post('/api/admin/worlds', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -481,7 +477,6 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
 
   // 运行中世界动态加居民(C5):body 复用创建时的 character 段;下一 tick 快照自动同步(web 零改动)
   app.post('/api/admin/characters', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const parsed = characterSchema.safeParse(request.body);
     if (!parsed.success) {
       return await reply.code(400).send({ error: parsed.error.issues[0]?.message ?? '参数不合法' });
@@ -559,7 +554,6 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.post('/api/admin/worlds/:id/close', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const params = request.params as { id: string };
     const [row] = await handle.db.select().from(worlds).where(eq(worlds.id, params.id)).limit(1);
     if (!row) {
@@ -577,7 +571,6 @@ export function registerWorldRoutes(app: FastifyInstance, handle: DbHandle): voi
   });
 
   app.delete('/api/admin/worlds/:id', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
     const params = request.params as { id: string };
     const [row] = await handle.db.select().from(worlds).where(eq(worlds.id, params.id)).limit(1);
     if (!row) {
