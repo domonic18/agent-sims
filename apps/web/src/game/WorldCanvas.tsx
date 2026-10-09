@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Phaser from 'phaser';
 import { WorldScene } from './WorldScene';
+import { RENDER_DPR } from './text-style';
 import type { TileMapDefinition } from '@sims/shared';
 import { fetchGameAssetRegistry } from './manifest';
 import { getWorldRecipes } from '../net/worldApi';
@@ -32,15 +33,17 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
       .then(([registry, map, recipes]) => {
         if (cancelled) return;
         useWorldStore.getState().setBootPhase('textures');
+        // Retina 高清: 画布栅格 = 视口 CSS × DPR,CSS 拉伸回 100%(NONE 模式 Phaser
+        // 不接管样式/尺寸,窗口变化在 onResize 手动 setGameSize);相机 zoom 按 DPR
+        // 放大(WorldScene),可见世界范围与旧 1x 一致,逐设备像素渲染不再发糊
         game = new Phaser.Game({
           type: Phaser.AUTO,
           parent: host,
-          // UI-1: 画布=视口尺寸(Scale.RESIZE 随窗口自适应),相机跟随角色,不再整图 letterbox
-          width: host.clientWidth,
-          height: host.clientHeight,
+          width: Math.round(host.clientWidth * RENDER_DPR),
+          height: Math.round(host.clientHeight * RENDER_DPR),
           pixelArt: true,
           backgroundColor: '#8fc978',
-          scale: { mode: Phaser.Scale.RESIZE },
+          scale: { mode: Phaser.Scale.NONE },
           scene: [WorldScene],
         });
         // create() 在 boot 后异步执行,先写入再启动不会丢
@@ -59,7 +62,15 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
           setAssetError(err instanceof Error ? err.message : '素材清单加载失败');
         }
       });
+    const onResize = (): void => {
+      game?.scale.setGameSize(
+        Math.round(host.clientWidth * RENDER_DPR),
+        Math.round(host.clientHeight * RENDER_DPR),
+      );
+    };
+    window.addEventListener('resize', onResize);
     return () => {
+      window.removeEventListener('resize', onResize);
       cancelled = true;
       game?.destroy(true);
     };

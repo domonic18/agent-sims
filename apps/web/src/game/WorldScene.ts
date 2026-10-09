@@ -22,13 +22,15 @@ import { MAINTENANCE_SPRITES, syncMaintenanceViews } from './maintenance-view';
 import { RESOURCE_SPRITES, syncResourceViews } from './resources-view';
 import { drawTownMap } from './terrain';
 import { showSpeechBubble } from './speech';
+import { RENDER_DPR } from './text-style';
 
-/** 相机(UI-1 全屏模式):默认 2x 跟随选中角色;缩放下限动态=视口能容下全图;overview 模式缩到下限居中 */
-const ZOOM_DEFAULT = 2;
-const ZOOM_MIN = 1;
-const ZOOM_MAX = 4;
-/** 按压位移超过该像素数即判定为拖拽平移(自由视角),否则 pointerup 按点击处理 */
-const DRAG_THRESHOLD_PX = 6;
+/** 相机(UI-1 全屏模式):默认 2x 跟随选中角色;缩放下限动态=视口能容下全图;overview 模式缩到下限居中。
+ * zoom 以画布栅格像素计(画布=CSS×DPR),全部乘回 DPR 保持与 CSS 视觉一致 */
+const ZOOM_DEFAULT = 2 * RENDER_DPR;
+const ZOOM_MIN = 1 * RENDER_DPR;
+const ZOOM_MAX = 4 * RENDER_DPR;
+/** 按压位移超过该像素数即判定为拖拽平移(自由视角),否则 pointerup 按点击处理(栅格像素) */
+const DRAG_THRESHOLD_PX = 6 * RENDER_DPR;
 
 /**
  * 世界渲染场景编排:地形/内景/灯光/喷泉/角色视图各模块装配
