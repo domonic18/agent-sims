@@ -26,7 +26,9 @@ declare module 'fastify' {
 }
 
 export function buildApp(options: { logger?: boolean; clockGameMinutes?: number } = {}): FastifyInstance {
-  const app = Fastify({ logger: options.logger ?? false });
+  // trustProxy(OPS-2):生产入口为 nginx 反代,从 X-Forwarded-For 还原真实客户端 IP,
+  // 登录防暴力按 IP 计数才不致全站共享 nginx 容器 IP;nginx 侧同步覆写(非追加)XFF 防伪造
+  const app = Fastify({ logger: options.logger ?? false, trustProxy: true });
 
   app.get('/health', async () => ({ ok: true }));
   // 当前世界地图定义(M-L.5:前端渲染经 manifest 素材绘制任意生成地图)

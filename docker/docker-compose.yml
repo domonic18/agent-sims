@@ -39,8 +39,8 @@ services:
       ASSET_LIBRARY_ROOT: /app/workspace/asset-library
       ASSETS_PUBLISH_TARGET: /publish
       DATABASE_URL: postgres://sims:${POSTGRES_PASSWORD:-sims}@postgres:5432/agent_sims
-    ports:
-      - "${GAME_PORT:-3100}:3100" # 调试/Spike① 脚本直连;常规入口走 web 9000
+    # 单入口化(OPS-2):不映射 3100 到宿主机,公网仅经 web nginx 9000 反代访问
+    #(/api、/socket.io、/health);调试脚本走本地 pnpm dev 直连 3100,不依赖生产栈
     depends_on:
       postgres:
         condition: service_healthy

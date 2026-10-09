@@ -8,6 +8,19 @@ const envSchema = z.object({
   ADMIN_INITIAL_PASSWORD: z.string().min(6),
   /** 管理端会话有效期(默认 12 小时) */
   ADMIN_TOKEN_TTL_MS: z.coerce.number().int().positive().default(12 * 60 * 60 * 1000),
+  /**
+   * 跨域白名单(OPS-2,逗号分隔;默认空=仅同源)。socket.io 握手按此放行,
+   * HTTP API 不挂 CORS 中间件本就同源;仅当页面与 API 不同域部署时才需配置
+   */
+  CORS_ORIGINS: z
+    .string()
+    .default('')
+    .transform((s) =>
+      s
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    ),
   /** 模型连通性探测超时(默认 15 秒) */
   PROBE_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   /** LLM 正式调用超时(默认 60 秒;慢思考长输出可 env 上调) */

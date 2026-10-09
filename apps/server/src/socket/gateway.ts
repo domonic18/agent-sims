@@ -44,7 +44,9 @@ export function attachSocketGateway(
   clients: ClientRegistry,
 ): Server {
   const io = new Server(httpServer, {
-    cors: { origin: true }, // 单机自部署,放开跨域(本地 Vite 5173 / frpc 同源)
+    // CORS 同源化(OPS-2):页面经 nginx 同源反代连接(本地 Vite dev 由 proxy 转发,亦同源),
+    // 默认不发 CORS 头(origin:false);仅 CORS_ORIGINS 白名单场景才放开跨域握手
+    cors: { origin: env.CORS_ORIGINS.length > 0 ? env.CORS_ORIGINS : false },
   });
 
   // 在线人数(直播访客数):全部 socket 连接都计入;变化时全端广播,新连者单发当前值

@@ -10,6 +10,7 @@ import { env } from '../config/env.js';
 import type { DbHandle } from '../db/client.js';
 import { adminUsers } from '../db/schema/index.js';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
+import { LoginThrottle } from '../utils/login-throttle.js';
 import { issueAdminToken, verifyAdminToken } from '../utils/token.js';
 
 const loginSchema = z.object({
@@ -56,10 +57,22 @@ export function authenticate(request: FastifyRequest, reply: FastifyReply): stri
 }
 
 export function registerAuthRoutes(app: FastifyInstance, handle: DbHandle): void {
+  // 防暴力锁实例随路由注册期创建(buildApp 每次新建,测试互不串扰)
+  const loginThrottle = new LoginThrottle();
+
   app.post('/api/admin/auth/login', async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       return await reply.code(400).send({ error: '请求参数不合法' });
+    }
+    // 防暴力(OPS-2):IP+用户名双键任一命中即 429,拒绝发生在查库之前;
+    // request.ip 依赖 trustProxy 还原真实客户端 IP(nginx 边缘覆写 XFF)
+    const gate = loginThrottle.check(request.ip, parsed.data.username);
+    if (gate.locked) {
+      return await reply
+        .code(429)
+        .header('Retry-After', String(gate.retryAfterSec))
+        .send({ error: `失败次数过多,请 ${Math.max(gate.retryAfterSec, 1)} 秒后再试` });
     }
     const [user] = await handle.db
       .select()
@@ -67,8 +80,10 @@ export function registerAuthRoutes(app: FastifyInstance, handle: DbHandle): void
       .where(eq(adminUsers.username, parsed.data.username))
       .limit(1);
     if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+      loginThrottle.failure(request.ip, parsed.data.username);
       return await reply.code(401).send({ error: '用户名或密码错误' });
     }
+    loginThrottle.success(request.ip, parsed.data.username);
     const issued = issueAdminToken({
       username: user.username,
       masterKey: env.MASTER_KEY,
