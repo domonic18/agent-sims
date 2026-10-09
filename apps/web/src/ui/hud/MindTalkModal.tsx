@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MindTalkView } from '@sims/shared';
 import { getMindTalk, sendMindTalk } from '../../net/hostingApi';
+import { toErrorMessage } from '../errors';
+import { useScrollToBottom } from './useScrollToBottom';
 
 /**
  * 意识访谈弹窗(观察者定位): 与 agent 自由对话,TA 基于自身记忆/最近念头/人设第一人称回答;
@@ -29,7 +31,7 @@ export function MindTalkModal({
         if (!cancelled) setView(restored);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(toErrorMessage(err));
       });
     return () => {
       cancelled = true;
@@ -44,7 +46,7 @@ export function MindTalkModal({
         setView(await sendMindTalk(characterId, text));
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toErrorMessage(err));
       } finally {
         setBusy(false);
       }
@@ -53,10 +55,7 @@ export function MindTalkModal({
   );
 
   // 新消息自动滚底
-  useEffect(() => {
-    const log = logRef.current;
-    if (log !== null) log.scrollTop = log.scrollHeight;
-  }, [view?.messages.length, busy]);
+  useScrollToBottom(logRef, [view?.messages.length, busy]);
 
   const submit = (): void => {
     const text = draft.trim();

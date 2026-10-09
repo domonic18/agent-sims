@@ -10,6 +10,7 @@ import {
 } from '@sims/shared';
 import { useWorldStore } from '../store/worldStore';
 import { getWorldSettings, updateWorldSettings } from '../net/worldApi';
+import { toErrorMessage } from './errors';
 import './world-settings.css';
 
 /**
@@ -37,7 +38,7 @@ export function WorldSettingsModal({ onClose }: { onClose: () => void }) {
         applyRules(view.rules);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : '世界设置加载失败');
+        if (!cancelled) setError(toErrorMessage(err, '世界设置加载失败'));
       });
     return () => {
       cancelled = true;
@@ -60,7 +61,7 @@ export function WorldSettingsModal({ onClose }: { onClose: () => void }) {
       await action();
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     } finally {
       setBusy(false);
     }

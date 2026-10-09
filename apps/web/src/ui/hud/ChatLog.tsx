@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WorldEvent, WorldEventHistoryEntry } from '@sims/shared';
-import { getWorldEvents } from '../../net/worldApi';
 import { useWorldStore } from '../../store/worldStore';
 import { eventDedupeKey, eventLogLabel, eventParticipantsKnown } from './eventLog';
 import { useEventClock } from './useEventClock';
+import { useCharacterLookup } from './useCharacterLookup';
+import { loadEventHistory } from './loadEventHistory';
+import { useScrollToBottom } from './useScrollToBottom';
 
 const CHAT_TYPE = 'social.chat';
 const HISTORY_LIMIT = 30;
@@ -29,8 +31,11 @@ export function ChatLog(): JSX.Element {
     let cancelled = false;
     void (async () => {
       try {
-        const resp = await getWorldEvents({ limit: HISTORY_LIMIT, type: CHAT_TYPE });
-        if (!cancelled) setHistory(resp.entries.reverse());
+        const entries = await loadEventHistory(
+          { limit: HISTORY_LIMIT, type: CHAT_TYPE },
+          events,
+        );
+        if (!cancelled) setHistory(entries);
       } catch {
         if (!cancelled) setHistory([]);
       }
@@ -40,10 +45,7 @@ export function ChatLog(): JSX.Element {
     };
   }, []);
 
-  const nameOf = (id: string): string =>
-    snapshot?.characters.find((item) => item.id === id)?.name ?? id;
-  const known = (id: string): boolean =>
-    snapshot?.characters.some((item) => item.id === id) ?? false;
+  const { nameOf, known } = useCharacterLookup(snapshot);
 
   // 当事人不在当前世界快照的条目(旧世界残留)整条隐去,避免裸 id 行
   const chatKnown = (event: WorldEvent): boolean => eventParticipantsKnown(event, known);
@@ -53,11 +55,7 @@ export function ChatLog(): JSX.Element {
     (entry) => !seen.has(eventDedupeKey(entry.event)) && chatKnown(entry.event),
   );
 
-  useEffect(() => {
-    if (!collapsed && listRef.current !== null) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [collapsed, history, live]);
+  useScrollToBottom(listRef, [collapsed, history, live], !collapsed);
 
   const toggle = (): void => {
     setCollapsed((value) => {

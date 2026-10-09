@@ -6,6 +6,7 @@ import type { TileMapDefinition } from '@sims/shared';
 import { fetchGameAssetRegistry } from './manifest';
 import { getWorldRecipes } from '../net/worldApi';
 import { useWorldStore } from '../store/worldStore';
+import { toErrorMessage } from '../ui/errors';
 import { CameraModeChip } from '../ui/hud/CameraModeChip';
 
 /** Phaser 画布宿主:先取素材 manifest 再创建世界场景(主页面与 /lab 调试台复用) */
@@ -59,7 +60,7 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
         if (!cancelled) {
           // error 阶段让 GamePage 摘除加载罩,露出下方错误文案
           useWorldStore.getState().setBootPhase('error');
-          setAssetError(err instanceof Error ? err.message : '素材清单加载失败');
+          setAssetError(toErrorMessage(err, '素材清单加载失败'));
         }
       });
     const onResize = (): void => {

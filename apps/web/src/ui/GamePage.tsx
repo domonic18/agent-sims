@@ -18,6 +18,8 @@ import { LogDrawer } from './hud/LogDrawer';
 import { ChatLog } from './hud/ChatLog';
 import { BootScreen } from './BootScreen';
 import { useGoAndDo } from './side-panel/useGoAndDo';
+import { useCharacterLookup } from './hud/useCharacterLookup';
+import { toErrorMessage } from './errors';
 import './game-page.css';
 import './world-settings.css';
 
@@ -70,6 +72,7 @@ export default function GamePage() {
 
   const character =
     snapshot?.characters.find((item) => item.id === selectedCharacterId) ?? null;
+  const { nameOf } = useCharacterLookup(snapshot);
   const { run, startActivity, startWorkTask, startSleep, pending } = useGoAndDo(
     character,
     snapshot,
@@ -94,7 +97,7 @@ export default function GamePage() {
         resumeOnCloseRef.current = true;
         setControlError(null);
       } catch (error) {
-        setControlError(error instanceof Error ? error.message : String(error));
+        setControlError(toErrorMessage(error));
       }
     }
   };
@@ -109,7 +112,7 @@ export default function GamePage() {
         await updateWorldSettings({ paused: false });
         setControlError(null);
       } catch (error) {
-        setControlError(error instanceof Error ? error.message : String(error));
+        setControlError(toErrorMessage(error));
       }
     }
   };
@@ -131,7 +134,7 @@ export default function GamePage() {
       await updateWorldSettings({ paused: !current.paused });
       setControlError(null);
     } catch (error) {
-      setControlError(error instanceof Error ? error.message : String(error));
+      setControlError(toErrorMessage(error));
     }
   };
 
@@ -140,7 +143,7 @@ export default function GamePage() {
       await updateWorldSettings({ timeScale: scale });
       setControlError(null);
     } catch (error) {
-      setControlError(error instanceof Error ? error.message : String(error));
+      setControlError(toErrorMessage(error));
     }
   };
 
@@ -291,21 +294,21 @@ export default function GamePage() {
       {hostingOpenId !== null && (
         <HostingModal
           characterId={hostingOpenId}
-          characterName={snapshot?.characters.find((item) => item.id === hostingOpenId)?.name ?? '居民'}
+          characterName={nameOf(hostingOpenId, '居民')}
           onClose={() => setHostingOpenId(null)}
         />
       )}
       {mindTalkOpenId !== null && (
         <MindTalkModal
           characterId={mindTalkOpenId}
-          characterName={snapshot?.characters.find((item) => item.id === mindTalkOpenId)?.name ?? '居民'}
+          characterName={nameOf(mindTalkOpenId, '居民')}
           onClose={() => setMindTalkOpenId(null)}
         />
       )}
       {memoryOpenId !== null && (
         <MemoryModal
           characterId={memoryOpenId}
-          characterName={snapshot?.characters.find((item) => item.id === memoryOpenId)?.name ?? '居民'}
+          characterName={nameOf(memoryOpenId, '居民')}
           onClose={() => setMemoryOpenId(null)}
         />
       )}

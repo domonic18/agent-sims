@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { toErrorMessage } from './errors';
 
 /**
  * 管理员登录弹窗(游戏界面零依赖,不用 antd):凭证与后台共用同一签发端点,
@@ -20,7 +21,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
       await login(username.trim(), password);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     } finally {
       setBusy(false);
     }

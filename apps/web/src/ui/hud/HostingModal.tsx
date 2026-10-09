@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { HostingStateView } from '@sims/shared';
 import { getHosting, setHosting } from '../../net/hostingApi';
+import { toErrorMessage } from '../errors';
 
 /**
  * 托管弹窗(M4e):全托管/生活方针两模式切换,托管中可一键接管。
@@ -35,7 +36,7 @@ export function HostingModal({
         }
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(toErrorMessage(err));
       });
     return () => {
       cancelled = true;
@@ -53,7 +54,7 @@ export function HostingModal({
       setState(view);
       if (view.mode === 'policy' && view.policyText !== null) setPolicyText(view.policyText);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     } finally {
       setBusy(false);
     }

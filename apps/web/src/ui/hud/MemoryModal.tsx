@@ -7,6 +7,7 @@ import type {
 import { MEMORY_TYPES, MEMORY_TYPE_LABELS } from '@sims/shared';
 import { getCharacterImpressions, getCharacterMemories } from '../../net/worldApi';
 import { formatGameMinutes } from '../../format';
+import { toErrorMessage } from '../errors';
 
 /** 记忆查看弹窗(只读): 游戏页直接翻看 TA 的记忆流(游客/观众同样可见,直播观察姿态);
  * 缺省按时间倒序最近 50 条,输入检索词走三因子语义检索(命中带综合分/相关度);
@@ -46,7 +47,7 @@ export function MemoryModal({
         if (imp !== null) setImpressions(imp);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(toErrorMessage(err));
       } finally {
         setLoading(false);
       }

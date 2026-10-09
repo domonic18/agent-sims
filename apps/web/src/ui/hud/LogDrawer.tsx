@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WorldEvent, WorldEventHistoryEntry } from '@sims/shared';
-import { getWorldEvents } from '../../net/worldApi';
 import { useWorldStore } from '../../store/worldStore';
 import {
   CATEGORY_EVENT_TYPES,
   EVENT_CATEGORY_LABEL,
-  eventDedupeKey,
   eventLogCategory,
   eventLogLabel,
   eventParticipantsKnown,
 } from './eventLog';
 import { useEventClock } from './useEventClock';
+import { useCharacterLookup } from './useCharacterLookup';
+import { loadEventHistory } from './loadEventHistory';
+import { useScrollToBottom } from './useScrollToBottom';
 
 const FILTERS = ['all', 'work', 'social', 'life', 'world'] as const;
 type Filter = (typeof FILTERS)[number];
@@ -60,11 +61,7 @@ export function LogDrawer(): JSX.Element {
   }
 
   // 开抽屉/新条目时滚到最新
-  useEffect(() => {
-    if (open && listRef.current !== null) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [open, events]);
+  useScrollToBottom(listRef, [open, events], open);
 
   // 按分类回填历史段;失败静默(切回该页签重试),不影响实时流
   useEffect(() => {
@@ -72,19 +69,12 @@ export function LogDrawer(): JSX.Element {
     fetchingRef.current = true;
     void (async () => {
       try {
-        const resp = await getWorldEvents(
+        const entries = await loadEventHistory(
           filter === 'all'
             ? { limit: 500 }
             : { limit: 200, types: CATEGORY_EVENT_TYPES[filter] },
+          useWorldStore.getState().events,
         );
-        const seen = new Set(
-          useWorldStore
-            .getState()
-            .events.map((item) => eventDedupeKey(item.event)),
-        );
-        const entries = resp.entries
-          .filter((entry) => !seen.has(eventDedupeKey(entry.event)))
-          .reverse();
         setHistoryByFilter((prev) => new Map(prev).set(filter, entries));
       } catch {
         // 留空待重试
@@ -94,10 +84,7 @@ export function LogDrawer(): JSX.Element {
     })();
   }, [open, filter, historyByFilter]);
 
-  const nameOf = (id: string): string =>
-    snapshot?.characters.find((item) => item.id === id)?.name ?? id;
-  const known = (id: string): boolean =>
-    snapshot?.characters.some((item) => item.id === id) ?? false;
+  const { nameOf, known } = useCharacterLookup(snapshot);
 
   const byCategory = (event: WorldEvent): boolean =>
     filter === 'all' || eventLogCategory(event) === filter;
