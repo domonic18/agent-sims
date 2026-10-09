@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { WorldEvent, WorldEventHistoryEntry } from '@sims/shared';
 import { getWorldEvents } from '../../net/worldApi';
 import { useWorldStore } from '../../store/worldStore';
-import { eventDedupeKey, eventLogLabel } from './eventLog';
+import { eventDedupeKey, eventLogLabel, eventParticipantsKnown } from './eventLog';
 import { useEventClock } from './useEventClock';
 
 const CHAT_TYPE = 'social.chat';
@@ -42,10 +42,16 @@ export function ChatLog(): JSX.Element {
 
   const nameOf = (id: string): string =>
     snapshot?.characters.find((item) => item.id === id)?.name ?? id;
+  const known = (id: string): boolean =>
+    snapshot?.characters.some((item) => item.id === id) ?? false;
 
-  const live = events.filter((item) => item.event.type === CHAT_TYPE);
+  // 当事人不在当前世界快照的条目(旧世界残留)整条隐去,避免裸 id 行
+  const chatKnown = (event: WorldEvent): boolean => eventParticipantsKnown(event, known);
+  const live = events.filter((item) => item.event.type === CHAT_TYPE && chatKnown(item.event));
   const seen = new Set(live.map((item) => eventDedupeKey(item.event)));
-  const historyVisible = (history ?? []).filter((entry) => !seen.has(eventDedupeKey(entry.event)));
+  const historyVisible = (history ?? []).filter(
+    (entry) => !seen.has(eventDedupeKey(entry.event)) && chatKnown(entry.event),
+  );
 
   useEffect(() => {
     if (!collapsed && listRef.current !== null) {

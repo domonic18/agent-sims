@@ -27,6 +27,20 @@ export const EVENT_CATEGORY_LABEL: Record<EventLogCategory, string> = {
 export const eventDedupeKey = (event: WorldEvent): string =>
   `${event.type}|${event.tick}|${'characterId' in event ? event.characterId : ''}`;
 
+/** 事件当事人是否都在当前世界(world_events 跨世界累积,历史回填会翻出
+ * 旧世界条目,当事人不在快照里名字只能显示裸 id,直接整条隐去) */
+export function eventParticipantsKnown(
+  event: WorldEvent,
+  known: (id: string) => boolean,
+): boolean {
+  if ('characterId' in event && !known(event.characterId)) return false;
+  if ('fromId' in event && !known(event.fromId)) return false;
+  if ('toId' in event && !known(event.toId)) return false;
+  if ('aId' in event && !known(event.aId)) return false;
+  if ('bId' in event && !known(event.bId)) return false;
+  return true;
+}
+
 /** 事件类型 → 筛选分类(Record 键穷尽 WorldEvent 全部 type,新增事件漏配即编译错误);
  * 分类历史回填(CATEGORY_EVENT_TYPES)与展示过滤共用本表,单一事实源 */
 const CATEGORY_OF: Record<WorldEvent['type'], EventLogCategory> = {

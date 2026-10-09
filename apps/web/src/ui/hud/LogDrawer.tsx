@@ -8,6 +8,7 @@ import {
   eventDedupeKey,
   eventLogCategory,
   eventLogLabel,
+  eventParticipantsKnown,
 } from './eventLog';
 import { useEventClock } from './useEventClock';
 
@@ -95,12 +96,16 @@ export function LogDrawer(): JSX.Element {
 
   const nameOf = (id: string): string =>
     snapshot?.characters.find((item) => item.id === id)?.name ?? id;
+  const known = (id: string): boolean =>
+    snapshot?.characters.some((item) => item.id === id) ?? false;
 
   const byCategory = (type: WorldEvent['type']): boolean =>
     filter === 'all' || eventLogCategory(type) === filter;
 
   const history = historyByFilter.get(filter) ?? null;
-  const historyVisible = (history ?? []).filter((entry) => byCategory(entry.event.type));
+  const historyVisible = (history ?? []).filter(
+    (entry) => byCategory(entry.event.type) && eventParticipantsKnown(entry.event, known),
+  );
   const visible = events.filter((item) => byCategory(item.event.type));
 
   const renderRow = (key: number, event: WorldEvent, timeText: string): JSX.Element => {
