@@ -229,14 +229,19 @@ function dayPlanTool(): StructuredToolSpec {
   };
 }
 
-/** 工具入参→计划块:剔除非法行(活动不在白名单/区间越界/倒挂),按 start 排序;
- * 非数组或无有效行判失败(触发带错重试,调用方回落模板)。 */
+/** 工具入参→计划块:入参为 {blocks:[...]}(chatStructured 交付整个工具入参对象);
+ * 剔除非法行(活动不在白名单/区间越界/倒挂),按 start 排序;
+ * blocks 缺失非数组或无有效行判失败(触发带错重试,调用方回落模板)。 */
 export function parseDayPlan(raw: unknown): StructuredParse<PlanBlock[]> {
-  if (!Array.isArray(raw)) {
-    return { ok: false, reason: '输出须为 JSON 数组(blocks)' };
+  const rows =
+    typeof raw === 'object' && raw !== null && Array.isArray((raw as { blocks?: unknown }).blocks)
+      ? (raw as { blocks: unknown[] }).blocks
+      : null;
+  if (rows === null) {
+    return { ok: false, reason: 'blocks 须为时间段的 JSON 数组' };
   }
   const blocks: PlanBlock[] = [];
-  for (const row of raw) {
+  for (const row of rows) {
     if (typeof row !== 'object' || row === null) continue;
     const r = row as Record<string, unknown>;
     const start = Number(r.start);

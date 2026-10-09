@@ -283,7 +283,7 @@ describe('AgentScheduler(M4d 日程执行)', () => {
 
   const studyPlanLlm: Partial<MemoryLlm> = {
     chatStructured: (_slot, _messages, _tool, _task, parse) => {
-      const parsed = parse([{ start: 8, end: 12, activity: 'study' }]);
+      const parsed = parse({ blocks: [{ start: 8, end: 12, activity: 'study' }] });
       if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
       return Promise.resolve(parsed.value);
     },
@@ -422,7 +422,7 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     const planAndRespondLlm: Partial<MemoryLlm> = {
       ...respondLlm,
       chatStructured: (_slot, _messages, _tool, _task, parse) => {
-        const parsed = parse([{ start: 8, end: 12, activity: 'study' }]);
+        const parsed = parse({ blocks: [{ start: 8, end: 12, activity: 'study' }] });
         if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
         return Promise.resolve(parsed.value);
       },

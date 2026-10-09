@@ -94,9 +94,11 @@ function llmStub(opts: {
 }
 
 describe('parseDayPlan(工具入参→计划块)', () => {
-  it('合法数组解析成块并按 start 排序', () => {
+  it('{blocks:[...]} 入参解析成块并按 start 排序(chatStructured 交付整个工具入参对象)', () => {
     expect(
-      parseDayPlan([{ start: 14, end: 18, activity: 'work' }, { start: 8, end: 12, activity: 'study' }]),
+      parseDayPlan({
+        blocks: [{ start: 14, end: 18, activity: 'work' }, { start: 8, end: 12, activity: 'study' }],
+      }),
     ).toEqual({
       ok: true,
       value: [
@@ -106,13 +108,15 @@ describe('parseDayPlan(工具入参→计划块)', () => {
     });
   });
 
-  it('非法行剔除(sleep 不在白名单);重叠合法行保留由执行层取首块;非数组/无有效行判失败', () => {
+  it('非法行剔除(sleep 不在白名单);重叠合法行保留由执行层取首块;blocks 缺失/非数组/无有效行判失败', () => {
     expect(
-      parseDayPlan([
-        { start: 8, end: 12, activity: 'study' },
-        { start: 12, end: 13, activity: 'sleep' },
-        { start: 9, end: 10, activity: 'stroll' },
-      ]),
+      parseDayPlan({
+        blocks: [
+          { start: 8, end: 12, activity: 'study' },
+          { start: 12, end: 13, activity: 'sleep' },
+          { start: 9, end: 10, activity: 'stroll' },
+        ],
+      }),
     ).toEqual({
       ok: true,
       value: [
@@ -120,11 +124,12 @@ describe('parseDayPlan(工具入参→计划块)', () => {
         { startMin: 540, endMin: 600, activityId: 'stroll' },
       ],
     });
-    expect(parseDayPlan([]).ok).toBe(false);
+    expect(parseDayPlan({ blocks: [] }).ok).toBe(false);
+    expect(parseDayPlan([{ start: 8, end: 12, activity: 'study' }]).ok).toBe(false);
     expect(parseDayPlan('{"start":8}').ok).toBe(false);
     expect(parseDayPlan('今天想休息').ok).toBe(false);
-    expect(parseDayPlan([{ start: 25, end: 26, activity: 'study' }]).ok).toBe(false);
-    expect(parseDayPlan([{ start: 12, end: 8, activity: 'study' }]).ok).toBe(false);
+    expect(parseDayPlan({ blocks: [{ start: 25, end: 26, activity: 'study' }] }).ok).toBe(false);
+    expect(parseDayPlan({ blocks: [{ start: 12, end: 8, activity: 'study' }] }).ok).toBe(false);
   });
 });
 
@@ -142,7 +147,7 @@ describe('planBlockAt(分钟→当前块)', () => {
 describe('planDay(慢层日计划生成)', () => {
   it('LLM 正常输出→source llm,记忆证据进 prompt(embed+检索各一次)', async () => {
     const s = llmStub({
-      chatContent: '[{"start":8,"end":12,"activity":"study"},{"start":12,"end":13,"activity":"meal"}]',
+      chatContent: '{"blocks":[{"start":8,"end":12,"activity":"study"},{"start":12,"end":13,"activity":"meal"}]}',
       memoryRows: [{ content: '我学习了 60 分钟' }, { content: '我和阿泽聊了天' }],
     });
     const plan = await planDay(s.llm, s.handle, char({}), { day: DAY, gameMinutes: 500 });
@@ -170,10 +175,10 @@ describe('planDay(慢层日计划生成)', () => {
   });
 
   it('无住房角色的状态行提示居无定所;租客带房源名', async () => {
-    const { llm, handle, chatMessages } = llmStub({ chatContent: '[]' });
+    const { llm, handle, chatMessages } = llmStub({ chatContent: '{"blocks":[]}' });
     await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 });
     expect(chatMessages[1]!.content).toContain('居无定所');
-    const renter = llmStub({ chatContent: '[]' });
+    const renter = llmStub({ chatContent: '{"blocks":[]}' });
     await planDay(
       renter.llm,
       renter.handle,
@@ -203,7 +208,7 @@ describe('parsePolicy(工具入参→方针偏好)', () => {
 
 describe('planDay ctx 注入(M4e 方针+人设)', () => {
   it('方针原文+编译缓存+人设进 prompt;avoid 提示语带白名单活动', async () => {
-    const s = llmStub({ chatContent: '[{"start":8,"end":12,"activity":"study"}]' });
+    const s = llmStub({ chatContent: '{"blocks":[{"start":8,"end":12,"activity":"study"}]}' });
     await planDay(
       s.llm,
       s.handle,
@@ -223,7 +228,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
   });
 
   it('昨日计划+风味提示进 prompt:对照引导不照搬', async () => {
-    const s = llmStub({ chatContent: '[{"start":8,"end":12,"activity":"study"}]' });
+    const s = llmStub({ chatContent: '{"blocks":[{"start":8,"end":12,"activity":"study"}]}' });
     await planDay(s.llm, s.handle, char({}), { day: DAY, gameMinutes: 500 }, {
       previous: {
         day: DAY - 1,
@@ -243,7 +248,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
   it('LLM 输出含 avoid 活动→硬过滤剔除', async () => {
     const s = llmStub({
       chatContent:
-        '[{"start":8,"end":12,"activity":"study"},{"start":12,"end":14,"activity":"stroll"}]',
+        '{"blocks":[{"start":8,"end":12,"activity":"study"},{"start":12,"end":14,"activity":"stroll"}]}',
     });
     const plan = await planDay(
       s.llm,
@@ -258,7 +263,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
 
   it('LLM 输出全被滤空→回落模板且模板同样滤 avoid', async () => {
     const s = llmStub({
-      chatContent: '[{"start":10,"end":12,"activity":"stroll"}]',
+      chatContent: '{"blocks":[{"start":10,"end":12,"activity":"stroll"}]}',
     });
     const plan = await planDay(
       s.llm,
@@ -302,7 +307,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
         const parsed = parse(
           isPolicy
             ? { focus: ['study', 'sleep'], avoid: ['stroll'] }
-            : [{ start: 8, end: 12, activity: 'study' }],
+            : { blocks: [{ start: 8, end: 12, activity: 'study' }] },
         );
         if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
         return Promise.resolve(parsed.value);
@@ -333,7 +338,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
       chat: () => Promise.reject(new Error('unused')) as never,
       chatStructured: (_slot, _messages, _tool, task, parse) => {
         if (task?.taskType === 'agent.persona_policy') personaPolicyCalls += 1;
-        const parsed = parse([{ start: 8, end: 12, activity: 'study' }]);
+        const parsed = parse({ blocks: [{ start: 8, end: 12, activity: 'study' }] });
         if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
         return Promise.resolve(parsed.value);
       },
