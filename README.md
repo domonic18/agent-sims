@@ -25,7 +25,7 @@ pnpm install
 pnpm dev
 ```
 
-生产部署: `docker compose -f docker/docker-compose.yml up -d`
+生产部署: 见 [docs/deploy.md](docs/deploy.md)(首启部署 / 升级 / 备份恢复 / TLS 反代建议;9000 单入口,首启自动建表+种子)。
 
 ## 文档
 
@@ -35,6 +35,7 @@ pnpm dev
 - **架构设计**：[docs/arch/](docs/arch/)
 - **迭代计划**：[docs/plan/01-development-plan.md](docs/plan/01-development-plan.md)
 - **调研评估**：[docs/research/](docs/research/)
+- **部署指南**：[docs/deploy.md](docs/deploy.md)
 
 ## 目录结构
 
@@ -47,3 +48,9 @@ docs/            文档中心(需求基准/架构终态/迭代计划/调研评�
 scripts/         运维与工具脚本
 workspace/       宿主机持久化数据(postgres 数据卷/备份,不入库)
 ```
+
+## 开源声明
+
+- 本仓库**尚未附加开源许可证**:在许可证落地前,代码默认保留所有权利,请勿直接转载或再分发
+- 游戏内默认素材为付费资源(LimeZu 完整版),**不随开源分发**;随仓库可再分发的开源基础素材包在筹备中(M-OPS OPS-3,含许可核实与 `LICENSE` 落地)
+- 素材来源与许可声明将随 OPS-3 一并在本节更新
