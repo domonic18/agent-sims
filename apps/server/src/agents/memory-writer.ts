@@ -57,7 +57,8 @@ const IMPORTANCE_SCALE = [
   '深远影响:动摇长期目标或重要人际关系',
   '决定性影响:彻底改变人生走向的事件',
 ];
-const MAX_INFLIGHT = 6; // 全局并发管线(LLM 双调用/条)上限,超出丢弃新事件并记日志
+const MAX_INFLIGHT = 6; // 全局并发管线(LLM 双调用/条)上限
+const MAX_PENDING = 24; // 排队上限(D5 背压):满载排队而非丢弃,队列满仍丢+日志
 
 interface MemoryTask {
   characterId: string;
@@ -65,6 +66,13 @@ interface MemoryTask {
   content: string;
   /** D4 重要活动的轻槽复盘材料(baseLine=事实行);缺省=纯模板不入复盘 */
   retrospect?: { baseLine: string; evaluation: ActivityEvalResult };
+}
+
+/** 管线队列条目:run=事件经历走 Jev 打分;manual=直写跳过打分;resolve 供 writeManual 等待 */
+interface QueueEntry {
+  task: MemoryTask;
+  manual?: { importance: number; opts: { sourceIds?: string[]; consolidated?: boolean } };
+  resolve?: () => void;
 }
 
 function clampImportance(score: number): number {
@@ -79,11 +87,12 @@ function errMsg(err: unknown): string {
  * 记忆写入器(M4b/A2):订阅 sim.events 把玩家意图驱动的经历转写为角色记忆。
  * 管线=Jev 打分(importance 1~10,失败兜底 5)→ embedding 槽向量化(失败落空向量)
  * →memories 落库(带 gameMinutes)。EventBus 订阅处于 tick 调用链上,故订阅回调
- * 只做满载判定即返回,管线异步 fire-and-forget,任何失败只落技术日志绝不外抛。
- * 护栏:全局并发上限 6,管线满时丢弃新事件并记日志(记忆非关键路径,宁缺不积压)。
+ * 只做入队即返回,管线异步 fire-and-forget,任何失败只落技术日志绝不外抛。
+ * 背压(D5):并发上限 6,满载进排队(≤24),突发挤占不再丢记忆;队列满仍丢+日志。
  */
 export class MemoryWriter {
   private inFlight = 0;
+  private readonly pending: QueueEntry[] = [];
   /** 白天反思累加器(10-cognition §5): 各角色自上次反思起的新增记忆 importance 累计 */
   private readonly importanceSinceReflection = new Map<string, number>();
   /** 活动期间的聊天计数(D4 社交获得维度): activity.finished 消费后清零 */
@@ -121,14 +130,42 @@ export class MemoryWriter {
     const perceived = perceiveTasks(event, this.sim.characters, autonomy.list());
     const tasks: MemoryTask[] = main === null ? perceived : [main, ...perceived];
     for (const task of tasks) {
-      if (this.inFlight >= MAX_INFLIGHT) {
-        logTech('warn', 'memory', '记忆管线已满,丢弃新事件', { characterId: task.characterId });
-        continue;
-      }
-      this.inFlight += 1;
-      void this.run(task).finally(() => {
-        this.inFlight -= 1;
+      this.enqueue({ task });
+    }
+  }
+
+  /** 入队+补位泵:队列满丢弃(直写路径立即放行防悬挂),有空槽即启动任务 */
+  private enqueue(entry: QueueEntry): void {
+    if (this.pending.length >= MAX_PENDING) {
+      logTech('warn', 'memory', '记忆管线积压超限,丢弃新任务', {
+        characterId: entry.task.characterId,
       });
+      entry.resolve?.();
+      return;
+    }
+    this.pending.push(entry);
+    this.drain();
+  }
+
+  private drain(): void {
+    while (this.inFlight < MAX_INFLIGHT && this.pending.length > 0) {
+      const entry = this.pending.shift()!;
+      this.inFlight += 1;
+      void (entry.manual !== undefined
+        ? this.persist(entry.task, entry.manual.importance, entry.manual.opts)
+        : this.run(entry.task)
+      )
+        .catch((err: unknown) => {
+          logTech('error', 'memory', '记忆管线任务失败', {
+            characterId: entry.task.characterId,
+            err: errMsg(err),
+          });
+        })
+        .finally(() => {
+          this.inFlight -= 1;
+          entry.resolve?.();
+          this.drain();
+        });
     }
   }
 
@@ -270,25 +307,13 @@ export class MemoryWriter {
     type: MemoryType = 'event',
     opts: { sourceIds?: string[]; consolidated?: boolean } = {},
   ): Promise<void> {
-    if (this.inFlight >= MAX_INFLIGHT) {
-      logTech('warn', 'memory', '记忆管线已满,丢弃直写', { characterId });
-      return;
-    }
-    this.inFlight += 1;
-    try {
-      await this.persist(
-        { characterId, type, content },
-        clampImportance(importance),
-        opts,
-      );
-    } catch (err) {
-      logTech('error', 'memory', '直写记忆落库失败', {
-        characterId,
-        err: errMsg(err),
+    await new Promise<void>((resolve) => {
+      this.enqueue({
+        task: { characterId, type, content },
+        manual: { importance: clampImportance(importance), opts },
+        resolve,
       });
-    } finally {
-      this.inFlight -= 1;
-    }
+    });
   }
 
   /** 事件→记忆任务;白名单全为玩家意图驱动,控制/参数/存档类事件不入记忆。

@@ -2,10 +2,11 @@ import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
 import { setupIntegrationDb } from './helpers/integration.js';
-import { characters, memories, worlds } from '../src/db/schema/index.js';
+import { characters, dialogues, memories, worlds } from '../src/db/schema/index.js';
 import { hosting, innerState } from '../src/agents/cognition.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { MemoryWriter } from '../src/agents/memory-writer.js';
+import { attachWorldEventLog } from '../src/world/event-log.js';
 import { Simulation } from '../src/world/simulation.js';
 
 const { handle, up: dbUp } = await setupIntegrationDb();
@@ -240,11 +241,11 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     writer.dispose();
   });
 
-  it('护栏:挂起占满 6 条并发管线,第 7 条新事件丢弃,最终落 6 条', async () => {
+  it('背压(D5):并发 6 条挂起时新事件排队不丢弃,放行后全部落库', async () => {
     const sim = buildSimWithCharacters();
     const { llm, release } = stubLlm({ hangScore: true });
     const writer = new MemoryWriter(sim, handle, llm);
-    for (let i = 0; i < 7; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       sim.events.emit({
         type: 'craft.completed',
         characterId: CHAR_A,
@@ -252,11 +253,54 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
         tick: 20 + i,
       });
     }
+    expect((await memoryRows(CHAR_A)).length).toBe(0); // 6 在途+4 排队,无丢弃
     release();
-    await until(async () => (await memoryRows(CHAR_A)).length === 6, 5000);
-    await new Promise((resolve) => setTimeout(resolve, 100)); // 确认不再增长
-    expect((await memoryRows(CHAR_A)).length).toBe(6);
+    await until(async () => (await memoryRows(CHAR_A)).length === 10, 5000);
     writer.dispose();
+  });
+
+  it('背压上限:并发 6+排队 24 共 30 条,第 31 条丢弃', async () => {
+    const sim = buildSimWithCharacters();
+    const { llm, release } = stubLlm({ hangScore: true });
+    const writer = new MemoryWriter(sim, handle, llm);
+    for (let i = 0; i < 31; i += 1) {
+      sim.events.emit({
+        type: 'craft.completed',
+        characterId: CHAR_A,
+        recipeId: 'craft_berry_pie',
+        tick: 30 + i,
+      });
+    }
+    release();
+    await until(async () => (await memoryRows(CHAR_A)).length === 30, 10000);
+    await new Promise((resolve) => setTimeout(resolve, 100)); // 确认不再增长
+    expect((await memoryRows(CHAR_A)).length).toBe(30);
+    writer.dispose();
+  });
+
+  it('D5 social.chat 经事件落库订阅补写 dialogues(此前表无写入方)', async () => {
+    const sim = buildSimWithCharacters();
+    const eventLog = attachWorldEventLog(handle, sim.events);
+    try {
+      sim.events.emit({
+        type: 'social.chat',
+        fromId: CHAR_A,
+        toId: CHAR_B,
+        tick: 60,
+        content: '「今儿天真好」「是啊」',
+        affinityDelta: 0.1,
+      });
+      await until(async () => {
+        const rows = await handle.db.select().from(dialogues).where(eq(dialogues.speakerId, CHAR_A));
+        return rows.length >= 1;
+      });
+      const [row] = await handle.db.select().from(dialogues).where(eq(dialogues.speakerId, CHAR_A));
+      expect(row?.listenerId).toBe(CHAR_B);
+      expect(row?.content).toBe('「今儿天真好」「是啊」');
+    } finally {
+      eventLog.dispose();
+      await handle.db.delete(dialogues).where(eq(dialogues.speakerId, CHAR_A));
+    }
   });
 
   it('直写 type 参数(M5): dream 类型透传落库,importance 调用方给定', async () => {

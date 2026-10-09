@@ -1,6 +1,6 @@
 import type { WorldEvent } from '@sims/shared';
 import type { DbHandle } from '../db/client.js';
-import { worldEvents } from '../db/schema/index.js';
+import { dialogues, worldEvents } from '../db/schema/index.js';
 import type { EventBus } from './event-bus.js';
 
 /** 事件各形态角色字段(characterId/fromId/aId…)统一提取为筛选用主角色 */
@@ -29,6 +29,14 @@ export function attachWorldEventLog(
           tick: event.tick,
           payload: event,
         });
+        // D5:对话原文落 dialogues(此前表无写入方);与事件流同链串行,失败不回灌世界
+        if (event.type === 'social.chat') {
+          await handle.db.insert(dialogues).values({
+            speakerId: event.fromId,
+            listenerId: event.toId,
+            content: event.content,
+          });
+        }
       })
       .catch((err: unknown) => {
         console.error('[event-log] 世界事件落库失败', err);
