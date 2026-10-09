@@ -4,7 +4,7 @@ import type {
   SocialChatEvent,
   WorldEvent,
 } from '@sims/shared';
-import { getActivityDefinition, resourceNodeLabel, SHOP_ITEMS } from '@sims/shared';
+import { getActivityDefinition, resourceNodeLabel, SHOP_ITEMS, TOWN_MAP } from '@sims/shared';
 import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
@@ -716,6 +716,15 @@ export class AgentScheduler {
     if (existing?.day === this.deps.sim.clock.day) return;
     this.planning.add(char.id);
     const previous = existing?.day === this.deps.sim.clock.day - 1 ? existing : null;
+    // 昨天的约定(E3 聚会邀约):次晨兑现一次——prompt 注入+确定性前置赴约 want
+    const pending = innerState.get(char.id)?.pendingInvitation ?? null;
+    const due = pending !== null && pending.day < this.deps.sim.clock.day ? pending : null;
+    const invitationLine =
+      due === null
+        ? undefined
+        : `${this.deps.sim.characters.get(due.withId)?.name ?? '朋友'}和你约好今天一起去${
+            TOWN_MAP.places.find((p) => p.id === due.placeId)?.name ?? due.placeId
+          }(${due.note})`;
     void Promise.all([
       loadPersonaContext(this.deps.handle, char.id),
       this.socialBrief(char),
@@ -729,6 +738,7 @@ export class AgentScheduler {
           focus: innerState.get(char.id)?.focus?.text ?? null,
           townNeeds: this.townNeeds(),
           acquaintances,
+          invitation: invitationLine,
         }),
       )
       .then(({ intents, compiled }) => {
@@ -736,6 +746,18 @@ export class AgentScheduler {
         const hosted = hosting.get(char.id);
         if (hosted !== undefined && hosted.compiled === null && compiled !== null) {
           hosting.set(char.id, { ...hosted, compiled });
+        }
+        if (due !== null) {
+          intents.wants.unshift({
+            id: `w${intents.day}-inv`,
+            activityId: 'socialize',
+            why: `赴约:${due.note}`,
+            urgency: 0.9,
+            status: 'pending',
+            createdAtMin: this.deps.sim.clock.gameMinutes,
+            targetCharacterId: due.withId,
+          });
+          innerState.ensure(char.id).pendingInvitation = null; // 兑现一次
         }
         innerState.setIntents(char.id, intents);
         persistInnerState(this.deps.handle, char.id);

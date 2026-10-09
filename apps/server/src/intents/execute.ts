@@ -109,14 +109,14 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
         intent.characterId,
         intent.targetId,
         intent.line,
-        intent.reply,
+        intent.lines,
       );
       const from = sim.character(intent.characterId);
       const to = sim.character(intent.targetId);
       return {
         ok: true,
         message:
-          intent.reply !== undefined
+          intent.lines !== undefined
             ? `${from.name} 和 ${to.name} 聊了天:${content}`
             : `${from.name} 对 ${to.name} 说:「${content}」`,
       };

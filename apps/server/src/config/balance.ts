@@ -104,6 +104,8 @@ export interface BalanceConfig {
   CHAT_DECAY_STEPS: readonly number[];
   /** 闲聊同处一地距离(曼哈顿;双端同源常量,原 PRESENCE 更名) */
   SOCIAL_CHAT_DISTANCE: number;
+  /** 自然终止多轮对话(E3):单场对话最多句数;每轮 light 调用搭终止信号,零额外调用 */
+  CHAT_MAX_ROUNDS: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
   FAMILIARITY_DECAY_PER_DAY: number;
   /** 自治社交动机(10-cognition §7.2 C4): 欲望分点火线/同对聊天冷却(游戏分钟)/
@@ -200,6 +202,7 @@ export const BALANCE: BalanceConfig = {
   CHAT_DAILY_GAINED,
   CHAT_DECAY_STEPS: [1, 0.6, 0.4, 0.3, 0.2, 0.1],
   SOCIAL_CHAT_DISTANCE,
+  CHAT_MAX_ROUNDS: 4,
   FAMILIARITY_DECAY_PER_DAY: 1,
   // 0.35=放宽点火线(E2): 初识可达线降至 0.55,更多对子过线;熟客靠久未聊回升
   SOCIAL_DESIRE_FIRE: 0.35,

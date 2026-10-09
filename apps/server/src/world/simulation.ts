@@ -266,9 +266,9 @@ export class Simulation {
   }
 
   /** 闲聊(社交 v1):返回本句话内容(回执/气泡显示);line 缺省走模板池;
-   * reply(C4 对话)=听者台词,与 line 合并双句进事件 content */
-  requestChat(characterId: string, targetId: string, line?: string, reply?: string): string {
-    return chat(this, characterId, targetId, line, reply);
+   * lines(E3 多轮)=交替台词,合并全句进事件 content,收益只结算一次 */
+  requestChat(characterId: string, targetId: string, line?: string, lines?: readonly string[]): string {
+    return chat(this, characterId, targetId, line, lines);
   }
 
   /** 维护工单(M-G.5):接单寻路,到位后由 _stepWorkTask 计时结算 */

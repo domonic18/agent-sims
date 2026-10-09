@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { relationKey } from '../world/social.js';
 import { Simulation } from '../world/simulation.js';
+import { innerState } from './cognition.js';
 import { SocialLoop } from './social-loop.js';
 import type { MemoryLlm } from './memory-writer.js';
 
@@ -132,18 +133,39 @@ function captureLoop(
       systemOne: () => Promise.reject(new Error('unused')),
       embed: () => Promise.reject(new Error('unused')),
       chat: llm.chat ?? (() => Promise.reject(new Error('no light'))),
-      chatStructured: () => Promise.reject(new Error('unused')),
+      chatStructured:
+        llm.chatStructured ??
+        (() => Promise.reject(new Error('no structured'))),
     } as MemoryLlm,
     trace: {
       record: (_id: string, _min: number, entry: unknown) =>
         traces.push(entry as Record<string, unknown>),
     } as never,
-    apply: (_char, decision) => applied.push(decision as never),
+    apply: (_char, decision, _trigger, perception) => {
+      applied.push(decision as never);
+      traces.push({ perception });
+    },
   });
   return { loop, applied, traces };
 }
 
-/** 挡门桩:所有 DB 查询挂在 gate 上,release 后放行(控制 generateExchange 期间的世界变化) */
+/** 空结果桩:印象/共同记忆均为空(generateConversation 上下文走无印象分支) */
+function emptyHandle(): DbHandle {
+  return {
+    db: {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Promise.resolve([]),
+            orderBy: () => ({ limit: () => Promise.resolve([]) }),
+          }),
+        }),
+      }),
+    },
+  } as unknown as DbHandle;
+}
+
+/** 挡门桩:所有 DB 查询挂在 gate 上,release 后放行(控制 generateConversation 期间的世界变化) */
 function gatedHandle(): { handle: DbHandle; release: () => void } {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
@@ -254,5 +276,88 @@ describe('SocialLoop.idleSocialStep E2(口径拆分/走近再聊/走散不罚/�
     await flush();
     expect(known.upserts).toHaveLength(1);
     expect(known.upserts[0]!.values.content).toBe('老朋友,靠得住');
+  });
+});
+
+describe('SocialLoop.socialReact E3(自然终止多轮/聚会邀约)', () => {
+  afterEach(() => {
+    innerState.clear('a');
+    innerState.clear('b');
+  });
+
+  it('多轮生成 lines 直执:单轮终止补模板保底双句,trace 记 llm', async () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { loop, applied, traces } = captureLoop(sim, emptyHandle(), {
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        const parsed = parse({ line: '去公园坐坐?', wantsMore: false });
+        if (!parsed.ok) return Promise.reject(new Error('桩: 校验失败'));
+        return Promise.resolve(parsed.value);
+      },
+    });
+    loop.idleSocialStep(sim.character('a'), 'threshold');
+    await flush();
+    expect(applied[0]!.intent.type).toBe('chat');
+    const lines = applied[0]!.intent.lines as string[];
+    expect(lines[0]).toBe('去公园坐坐?'); // 发起者先说
+    expect(lines).toHaveLength(2); // 终止后听者句回落模板保底
+    expect(lines[1]).toBeTruthy();
+    expect(traces.some((t) => (t.perception as { llm?: boolean }).llm === true)).toBe(true);
+  });
+
+  it('发起方邀约:双方脑内各记 pendingInvitation(withId 互换)', async () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { loop, applied } = captureLoop(sim, emptyHandle(), {
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        const parsed = parse({
+          line: '改天去公园晒太阳?',
+          wantsMore: false,
+          invitation: { placeId: 'park', note: '天气好想出门' },
+        });
+        if (!parsed.ok) return Promise.reject(new Error('桩: 校验失败'));
+        return Promise.resolve(parsed.value);
+      },
+    });
+    loop.idleSocialStep(sim.character('a'), 'threshold');
+    await flush();
+    expect(applied).toHaveLength(1);
+    expect(innerState.get('a')!.pendingInvitation).toEqual({
+      placeId: 'park',
+      note: '天气好想出门',
+      withId: 'b',
+      day: sim.clock.day,
+    });
+    expect(innerState.get('b')!.pendingInvitation).toMatchObject({ withId: 'a' });
+  });
+
+  it('无邀约不写脑内;多轮续聊按 wantsMore 走(AB 交替由 dialogue 桩模拟)', async () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    let call = 0;
+    const { loop, applied } = captureLoop(sim, emptyHandle(), {
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        call += 1;
+        const parsed = parse(
+          call === 1
+            ? { line: '早啊', wantsMore: true }
+            : { line: '早,吃了吗', wantsMore: false },
+        );
+        if (!parsed.ok) return Promise.reject(new Error('桩: 校验失败'));
+        return Promise.resolve(parsed.value);
+      },
+    });
+    loop.idleSocialStep(sim.character('a'), 'threshold');
+    await flush();
+    expect(call).toBe(2);
+    expect(applied[0]!.intent.lines).toEqual(['早啊', '早,吃了吗']);
+    expect(innerState.get('a')?.pendingInvitation ?? null).toBeNull();
+    expect(innerState.get('b')?.pendingInvitation ?? null).toBeNull();
   });
 });

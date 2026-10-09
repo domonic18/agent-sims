@@ -134,7 +134,8 @@ export const worldResetEventSchema = z.object({
 
 export type WorldResetEvent = z.infer<typeof worldResetEventSchema>;
 
-/** 闲聊(社交 v1):content 为本句话气泡/日志显示用,affinityDelta 供日志展示 */
+/** 闲聊(社交 v1):content 为本句话气泡/日志显示用,affinityDelta 供日志展示;
+ * lines(E3 多轮)=交替台词原句(发起者先说),content 合并全句兼容旧渲染 */
 export const socialChatEventSchema = z.object({
   type: z.literal('social.chat'),
   fromId: z.string().min(1),
@@ -142,6 +143,7 @@ export const socialChatEventSchema = z.object({
   tick: z.number().int(),
   content: z.string().min(1),
   affinityDelta: z.number(),
+  lines: z.array(z.string().min(1)).min(1).optional(),
 });
 
 export type SocialChatEvent = z.infer<typeof socialChatEventSchema>;

@@ -58,6 +58,8 @@ export interface IntentsContext {
   /** 熟人简报(E2 人指向社交):渲染行(名字+好感+印象+多久没聊)注入 prompt,
    * resolve 把 LLM 写的 target 人名解析回 characterId(解析不了剥掉 target 保留 want) */
   acquaintances?: AcquaintanceBrief | null;
+  /** 昨天的约定(E3 聚会邀约):一句话邀约事由,注入 prompt 促成赴约 want */
+  invitation?: string;
 }
 
 /** 熟人简报(E2):调度泵从关系表+印象表+社交簿记拼装 */
@@ -384,6 +386,9 @@ function buildIntentsMessages(
   }
   if (typeof ctx?.acquaintances?.line === 'string' && ctx.acquaintances.line.trim() !== '') {
     contextLines.push(ctx.acquaintances.line.trim());
+  }
+  if (typeof ctx?.invitation === 'string' && ctx.invitation.trim() !== '') {
+    contextLines.push(`昨天的约定: ${ctx.invitation.trim()}。记得安排赴约。`);
   }
   if (typeof ctx?.policyText === 'string' && ctx.policyText.trim() !== '') {
     contextLines.push(`玩家给你的生活方针: ${ctx.policyText.trim()}`);

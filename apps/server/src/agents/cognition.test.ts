@@ -29,13 +29,14 @@ describe('托管注册表(M4e 单一事实源)', () => {
 });
 
 describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
-  it('ensure 默认中性情绪+无意图,同实例复用', () => {
+  it('ensure 默认中性情绪+无意图+无邀约,同实例复用', () => {
     const state = innerState.ensure('char-1');
     expect(state).toEqual({
       mood: { valence: 0, labels: [], since: null },
       focus: null,
       intents: null,
       lastEvaluation: null,
+      pendingInvitation: null,
     });
     expect(innerState.ensure('char-1')).toBe(state);
   });
@@ -59,7 +60,7 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
     expect(innerState.get('char-1')!.intents).toBeNull();
   });
 
-  it('persistedOf 只含 focus/intents/lastEvaluation 且为深拷贝', () => {
+  it('persistedOf 只含持久化四字段(focus/intents/lastEvaluation/pendingInvitation)且为深拷贝', () => {
     const state = innerState.ensure('char-1');
     state.focus = { text: '想去做工', sinceMin: 50 };
     innerState.setIntents('char-1', {
@@ -82,6 +83,7 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
         ],
       },
       lastEvaluation: null,
+      pendingInvitation: null,
     });
     expect(saved).not.toHaveProperty('mood'); // mood 真源 character_moods,不落此列
     saved!.intents!.wants.pop();

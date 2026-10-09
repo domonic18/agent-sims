@@ -88,14 +88,14 @@ export type BuyPropertyIntent = z.infer<typeof buyPropertyIntentSchema>;
 
 /** 聊天(社交 v1):双方同处一地(同场所或曼哈顿 ≤2),每日同对限次防刷。
  * line 缺省走模板池;事件响应等场景可携带具体台词(如获救道谢),≤80 字。
- * reply(10-cognition §7.2 C4 对话): Agent 一问一答的第二句(听者台词),
- * 由调度泵经 light 槽生成后随 chat 意图一次结算,事件 content 合并双句 */
+ * lines(E3 自然终止多轮): Agent 多轮对话的交替台词(2~4 句,发起者先说),
+ * 由调度泵经 light 槽逐轮生成后随 chat 意图一次结算,收益只按一场计不按句数放大 */
 export const chatIntentSchema = z.object({
   type: z.literal('chat'),
   characterId: z.string().min(1),
   targetId: z.string().min(1),
   line: z.string().min(1).max(80).optional(),
-  reply: z.string().min(1).max(80).optional(),
+  lines: z.array(z.string().min(1).max(80)).min(2).max(4).optional(),
 });
 
 export type ChatIntent = z.infer<typeof chatIntentSchema>;

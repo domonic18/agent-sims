@@ -653,26 +653,27 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
   }
 
   const dialogueLlm: Partial<MemoryLlm> = {
-    chat: () =>
-      Promise.resolve({ content: '今天天气真好呀', promptTokens: 10, completionTokens: 5 }),
+    chatStructured: (_slot, _messages, _tool, _task, parse) => {
+      const parsed = parse({ line: '今天天气真好呀', wantsMore: false });
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
+    },
   };
 
-  it('动机点火: 同地熟人过线,light 双句生成→chat 直执,trace 记 motive=social', async () => {
+  it('动机点火: 同地熟人过线,light 台词生成→chat lines 直执,trace 记 motive=social', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000); // 阈值巡检块 0
-    expect(h.intents).toEqual([
-      {
-        type: 'chat',
-        characterId: CHAR_ID,
-        targetId: 'other-1',
-        line: '今天天气真好呀',
-        reply: '今天天气真好呀',
-      },
-    ]);
+    const intent = h.intents[0] as
+      | { type: string; targetId: string; lines?: string[] }
+      | undefined;
+    expect(intent?.type).toBe('chat');
+    expect(intent?.targetId).toBe('other-1');
+    expect(intent?.lines![0]).toBe('今天天气真好呀'); // 发起者先说
+    expect(intent?.lines).toHaveLength(2); // 终止后听者句模板保底
     expect(h.bubbles[0]?.text).toContain('想找苏晚聊聊天');
     const react = h.traceRows.find(
       (r) => (r.perception as { motive?: string }).motive === 'social',
@@ -683,17 +684,18 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     h.scheduler.dispose();
   });
 
-  it('LLM 失败回落模板双句: 点火不丢失,line/reply 均为非空模板', async () => {
+  it('LLM 失败回落模板双句: 点火不丢失,lines 均为非空模板', async () => {
     const h = harness(480, char({}), undefined, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000);
-    const intent = h.intents[0] as { type: string; line?: string; reply?: string } | undefined;
+    const intent = h.intents[0] as { type: string; lines?: string[] } | undefined;
     expect(intent?.type).toBe('chat');
-    expect(intent?.line).toBeTruthy();
-    expect(intent?.reply).toBeTruthy();
+    expect(intent?.lines).toHaveLength(2);
+    expect(intent?.lines![0]).toBeTruthy();
+    expect(intent?.lines![1]).toBeTruthy();
     expect((h.traceRows.find((r) => (r.perception as { motive?: string }).motive === 'social')!
       .perception as { llm?: boolean }).llm).toBe(false);
     h.scheduler.dispose();
@@ -805,6 +807,67 @@ describe('AgentScheduler(E2 人指向社交 want)', () => {
     expect(settled).toBeDefined();
     expect((settled!.perception as { want?: string }).want).toBe('w0');
     expect(h.intents).toHaveLength(1); // 结算后 idle 管线不再产新意图
+    h.scheduler.dispose();
+  });
+});
+
+describe('AgentScheduler(E3 聚会邀约)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    autonomy.enable(CHAR_ID);
+  });
+  afterEach(() => {
+    autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
+    innerState.clear(CHAR_ID);
+    vi.useRealTimers();
+  });
+
+  /** study 意图桩,顺带截获 prompt 全文(验证「昨天的约定」注入) */
+  const intentsLlm = (seen: string[]): Partial<MemoryLlm> => ({
+    chatStructured: (_slot, messages, _tool, _task, parse) => {
+      seen.push(messages.map((m) => m.content).join('\n'));
+      const parsed = parse({ wants: [{ activity: 'study', urgency: 0.8, why: '想学点东西' }] });
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
+    },
+  });
+
+  it('昨天的约定: 次晨意图前置赴约 want+prompt 注入,邀约兑现一次', async () => {
+    const seen: string[] = [];
+    const h = harness(1440 + 480, char({}), intentsLlm(seen)); // 次日 08:00
+    innerState.ensure(CHAR_ID).pendingInvitation = {
+      placeId: 'park',
+      note: '晒太阳',
+      withId: 'npc-1',
+      day: 0,
+    };
+    await vi.advanceTimersByTimeAsync(2_000); // 晨间意图生成
+    const wants = innerState.get(CHAR_ID)!.intents!.wants;
+    expect(wants[0]).toMatchObject({
+      id: 'w1-inv',
+      activityId: 'socialize',
+      targetCharacterId: 'npc-1',
+      why: '赴约:晒太阳',
+      urgency: 0.9,
+    });
+    expect(innerState.get(CHAR_ID)!.pendingInvitation).toBeNull(); // 兑现一次
+    expect(seen.some((text) => text.includes('昨天的约定'))).toBe(true);
+    h.scheduler.dispose();
+  });
+
+  it('当日约定不兑现: day 未跨日不前置 want 也不消费', async () => {
+    const seen: string[] = [];
+    const h = harness(480, char({}), intentsLlm(seen)); // 首日 08:00
+    innerState.ensure(CHAR_ID).pendingInvitation = {
+      placeId: 'park',
+      note: '晒太阳',
+      withId: 'npc-1',
+      day: 0,
+    };
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(innerState.get(CHAR_ID)!.intents!.wants[0]!.id).toBe('w0-0');
+    expect(innerState.get(CHAR_ID)!.pendingInvitation).toMatchObject({ day: 0 }); // 留待次日
     h.scheduler.dispose();
   });
 });

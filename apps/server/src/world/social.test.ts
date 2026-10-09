@@ -124,17 +124,23 @@ describe('chat 闲聊全链', () => {
     expect(sim.character('p').score).toBe(0);
   });
 
-  it('C4 对话:line+reply 合并双句进 content,单 line(道谢)保持单句', () => {
+  it('C4 对话:lines 合并多句进 content(单次结算不放大收益),单 line(道谢)保持单句', () => {
     const sim = socialSim();
     const events: WorldEvent[] = [];
     sim.events.subscribe((event) => events.push(event));
-    const both = chat(sim, 'a', 'b', '早啊', '早,吃了吗');
-    expect(both).toBe('「早啊」「早,吃了吗」');
-    expect(events.find((event) => event.type === 'social.chat')).toMatchObject({
+    const before = sim.socials.get(relationKey('a', 'b'))?.familiarity ?? 0;
+    const multi = chat(sim, 'a', 'b', undefined, ['早啊', '早,吃了吗', '吃什么好']);
+    expect(multi).toBe('「早啊」「早,吃了吗」「吃什么好」');
+    const emitted = events.find((event) => event.type === 'social.chat');
+    expect(emitted).toMatchObject({
       fromId: 'a',
       toId: 'b',
-      content: '「早啊」「早,吃了吗」',
+      content: '「早啊」「早,吃了吗」「吃什么好」',
+      lines: ['早啊', '早,吃了吗', '吃什么好'],
     });
+    // 收益只按一场计:三句与单句同增幅(CHAT_FAMILIARITY_GAIN×decay,不按句数放大)
+    const singleGain = sim.socials.get(relationKey('a', 'b'))!.familiarity - before;
+    expect(singleGain).toBeCloseTo(6, 5);
     const single = chat(sim, 'a', 'b', '多谢相救');
     expect(single).toBe('多谢相救');
   });

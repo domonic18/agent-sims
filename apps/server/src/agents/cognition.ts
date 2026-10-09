@@ -105,6 +105,16 @@ export interface ActivityEvaluation {
   atMin: number;
 }
 
+/** 聚会邀约(E3 最小版):聊天中一方顺带发出,双方脑内各记一条;
+ * 约定次日(day>该日)晨意图生成时兑现为赴约 want(玩家角色无 intents 自然跳过) */
+export interface PendingInvitation {
+  placeId: string;
+  note: string;
+  withId: string;
+  /** 约定成立的游戏日 */
+  day: number;
+}
+
 /**
  * 统一内心状态(D2 地基,10-cognition §3):快层/慢层/记忆/社交/叙事的单一读写入口。
  * mood 真源在 character_moods 表(MoodTracker 重算镜像),不落 inner_state 列;
@@ -116,6 +126,8 @@ export interface InnerState {
   /** 当日意图集(慢层 composeIntents 写,快层 wantSelect 择条执行;跨日/重规划由 scheduler 管理) */
   intents: DayIntents | null;
   lastEvaluation: ActivityEvaluation | null;
+  /** 待兑现聚会邀约(E3):null=无;次晨生成意图时消费一次 */
+  pendingInvitation: PendingInvitation | null;
 }
 
 /** jsonb 持久化载荷(mood 除外:重启由 MoodTracker 按冲量流水重算) */
@@ -174,7 +186,19 @@ function hydrate(saved: unknown): PersistedInnerState {
     typeof (raw.lastEvaluation as Record<string, unknown>).reason === 'string'
       ? (raw.lastEvaluation as ActivityEvaluation)
       : null;
-  return { focus, intents, lastEvaluation: evaluation };
+  const rawInvitation =
+    typeof raw.pendingInvitation === 'object' && raw.pendingInvitation !== null
+      ? (raw.pendingInvitation as Record<string, unknown>)
+      : null;
+  const pendingInvitation: PendingInvitation | null =
+    rawInvitation !== null &&
+    typeof rawInvitation.placeId === 'string' &&
+    typeof rawInvitation.note === 'string' &&
+    typeof rawInvitation.withId === 'string' &&
+    typeof rawInvitation.day === 'number'
+      ? { placeId: rawInvitation.placeId, note: rawInvitation.note, withId: rawInvitation.withId, day: rawInvitation.day }
+      : null;
+  return { focus, intents, lastEvaluation: evaluation, pendingInvitation };
 }
 
 const innerStates = new Map<string, InnerState>();
@@ -191,7 +215,7 @@ export const innerState = {
   ensure(characterId: string): InnerState {
     let state = innerStates.get(characterId);
     if (state === undefined) {
-      state = { mood: emptyMood(), focus: null, intents: null, lastEvaluation: null };
+      state = { mood: emptyMood(), focus: null, intents: null, lastEvaluation: null, pendingInvitation: null };
       innerStates.set(characterId, state);
     }
     return state;
@@ -227,14 +251,16 @@ export const innerState = {
       intents:
         state.intents === null ? null : { ...state.intents, wants: state.intents.wants.map((w) => ({ ...w })) },
       lastEvaluation: state.lastEvaluation === null ? null : { ...state.lastEvaluation },
+      pendingInvitation: state.pendingInvitation === null ? null : { ...state.pendingInvitation },
     };
   },
-  /** 启动恢复灌回(只补 focus/intents/lastEvaluation,mood 等 MoodTracker 重算) */
+  /** 启动恢复灌回(只补 focus/intents/lastEvaluation/pendingInvitation,mood 等 MoodTracker 重算) */
   restore(characterId: string, saved: unknown): void {
     const persisted = hydrate(saved);
     const state = this.ensure(characterId);
     state.focus = persisted.focus;
     state.intents = persisted.intents;
     state.lastEvaluation = persisted.lastEvaluation;
+    state.pendingInvitation = persisted.pendingInvitation;
   },
 };

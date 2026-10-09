@@ -7,7 +7,7 @@ import type { WorldCharacter } from '../world/character.js';
 import type { Simulation } from '../world/simulation.js';
 import { meetByProximity, relationKey } from '../world/social.js';
 import { innerState } from './cognition.js';
-import { generateExchange } from './dialogue.js';
+import { generateConversation } from './dialogue.js';
 import type { Decision } from './fast-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 import { socialMotive, type ScoredCandidate, type SocialMotiveInput } from './social-motive.js';
@@ -284,7 +284,8 @@ export class SocialLoop {
     }
   }
 
-  /** 点火执行:light 槽双句生成→chat 意图直执;生成失败回落模板双句(不丢点火) */
+  /** 点火执行:light 槽多轮生成(E3 自然终止)→chat 意图一次结算;败句回落
+   * 模板补齐(不丢点火),发起方邀约顺带写入双方脑内(次晨转赴约 want) */
   private async socialReact(
     char: WorldCharacter,
     candidate: ScoredCandidate,
@@ -295,7 +296,7 @@ export class SocialLoop {
     if (target === undefined) return;
     const relation = sim.socials.get(relationKey(char.id, target.id));
     if (relation === undefined) return;
-    const exchange = await generateExchange(
+    const conversation = await generateConversation(
       this.deps.llm,
       this.deps.handle,
       char,
@@ -313,14 +314,14 @@ export class SocialLoop {
       });
       return;
     }
-    const line = exchange?.line ?? pickChatLine(relation.familiarity);
-    const reply = exchange?.reply ?? pickChatLine(relation.familiarity);
+    const lines = conversation !== null ? [...conversation.lines] : [];
+    while (lines.length < 2) lines.push(pickChatLine(relation.familiarity));
     this.deps.apply(
       char,
       {
         layer: 'rule',
         action: 'react',
-        intent: { type: 'chat', characterId: char.id, targetId: target.id, line, reply },
+        intent: { type: 'chat', characterId: char.id, targetId: target.id, lines },
         bubble: `想找${target.name}聊聊天`,
       },
       trigger,
@@ -328,9 +329,23 @@ export class SocialLoop {
         motive: 'social',
         target: target.id,
         desire: Math.round(candidate.desire * 100) / 100,
-        llm: exchange !== null,
+        llm: conversation !== null,
       },
     );
-    void this.touchImpression(char, target, line);
+    if (conversation?.invitation !== null && conversation?.invitation !== undefined) {
+      this.bookInvitation(char.id, target.id, conversation.invitation);
+    }
+    void this.touchImpression(char, target, lines[0]!);
+  }
+
+  /** 聚会邀约(E3 最小版):双方脑内各记一条约定,次晨意图生成兑现为赴约 want */
+  private bookInvitation(
+    fromId: string,
+    toId: string,
+    invitation: { placeId: string; note: string },
+  ): void {
+    const day = this.deps.sim.clock.day;
+    innerState.ensure(fromId).pendingInvitation = { ...invitation, withId: toId, day };
+    innerState.ensure(toId).pendingInvitation = { ...invitation, withId: fromId, day };
   }
 }

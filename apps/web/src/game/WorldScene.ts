@@ -255,18 +255,24 @@ export class WorldScene extends Phaser.Scene {
     this._fountain.update(this, now);
   }
 
-  /** 闲聊事件 → 双方头顶对话气泡(社交 v1;幽灵不显示) */
+  /** 闲聊事件 → 对话气泡(社交 v1;幽灵不显示):多轮对话(E3)按句顺序在
+   * 发起者/听者头顶交替冒泡,单句保持双方同显 */
   private _drainSocialEvents(queue: Array<{ seq: number; event: WorldEvent }>): void {
+    const BUBBLE_CADENCE_MS = 1800;
     for (const { seq, event } of queue) {
       if (seq <= this._lastEventSeq) continue;
       this._lastEventSeq = seq;
       if (event.type !== 'social.chat') continue;
-      for (const id of new Set([event.fromId, event.toId])) {
-        const view = this._views.get(id);
-        if (view !== undefined && view.alive) {
-          showSpeechBubble(this, view.node, event.content);
-        }
-      }
+      const lines = event.lines ?? [event.content];
+      lines.forEach((line, i) => {
+        const speakerId = i % 2 === 0 ? event.fromId : event.toId;
+        const show = (): void => {
+          const view = this._views.get(speakerId);
+          if (view !== undefined && view.alive) showSpeechBubble(this, view.node, line);
+        };
+        if (i === 0) show();
+        else this.time.delayedCall(i * BUBBLE_CADENCE_MS, show);
+      });
     }
   }
 

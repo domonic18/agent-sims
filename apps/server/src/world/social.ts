@@ -67,15 +67,16 @@ export function randomTraits(): TraitVector {
  * (曼哈顿 ≤ SOCIAL_CHAT_DISTANCE);收益=基础×当日递减×相性系数,
  * 每游戏日超过 CHAT_DAILY_GAINED 次后不拒绝但收益为 0(对话照常)。
  * line 缺省走模板池;调用方可指定具体台词(事件响应道谢等)。
- * line+reply 同时存在(10-cognition §7.2 C4 Agent 对话)时事件 content
- * 合并为双句「问」「答」。返回聊天语(回执展示用)。
+ * lines(E3 自然终止多轮)=一场对话的交替台词(发起者先说),事件 content
+ * 合并全句并随事件携带 lines 原句;收益只结算一次,不按句数放大。
+ * 返回聊天语(回执展示用)。
  */
 export function chat(
   sim: Simulation,
   fromId: string,
   toId: string,
   line?: string,
-  reply?: string,
+  lines?: readonly string[],
 ): string {
   const from = sim.character(fromId);
   const to = sim.character(toId);
@@ -108,10 +109,10 @@ export function chat(
   from.score += scoreGain;
   to.score += scoreGain;
 
-  const content =
-    line !== undefined && reply !== undefined
-      ? `「${line}」「${reply}」`
-      : (line ?? pickChatLine(forward.familiarity));
+  const multi = lines !== undefined && lines.length > 0;
+  const content = multi
+    ? lines.map((l) => `「${l}」`).join('')
+    : (line ?? pickChatLine(forward.familiarity));
   const event: SocialChatEvent = {
     type: 'social.chat',
     fromId,
@@ -119,6 +120,7 @@ export function chat(
     tick: sim.tick,
     content,
     affinityDelta: Math.round(affinityDelta * 10) / 10,
+    ...(multi ? { lines: [...lines] } : {}),
   };
   sim.events.emit(event);
   notifyFriendship(sim, forward);
