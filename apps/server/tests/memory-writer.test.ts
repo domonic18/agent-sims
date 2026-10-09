@@ -1,8 +1,9 @@
 import { eq, inArray } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
 import { setupIntegrationDb } from './helpers/integration.js';
 import { characters, memories, worlds } from '../src/db/schema/index.js';
+import { hosting, innerState } from '../src/agents/cognition.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { MemoryWriter } from '../src/agents/memory-writer.js';
 import { Simulation } from '../src/world/simulation.js';
@@ -38,7 +39,7 @@ async function insertFixtures(): Promise<void> {
         tier: 'resident',
         name: '苏晚',
         gender: 'female',
-        persona: {},
+        persona: { card: { 性格: '安静', 兴趣: '读书' } },
         position: { x: 1, y: 1 },
         stats: {},
       },
@@ -69,18 +70,31 @@ function stubLlm(impl: {
   failScore?: boolean;
   failEmbed?: boolean;
   hangScore?: boolean;
-}): { llm: MemoryLlm; scoreCalls: () => number; release: () => void } {
+  failChat?: boolean;
+  chatSentence?: string;
+}): {
+  llm: MemoryLlm;
+  scoreCalls: () => number;
+  chatCalls: () => number;
+  questions: () => string[];
+  release: () => void;
+} {
   let scoreCallCount = 0;
+  let chatCallCount = 0;
+  const questionLog: string[] = [];
   let release: (() => void) | null = null;
   const hung = new Promise<void>((resolve) => {
     release = resolve;
   });
   return {
     scoreCalls: () => scoreCallCount,
+    chatCalls: () => chatCallCount,
+    questions: () => questionLog,
     release: () => release?.(),
     llm: {
-      systemOne: async (_slot, _state, _questions, _task) => {
+      systemOne: async (_slot, state, _questions, _task) => {
         scoreCallCount += 1;
+        questionLog.push(state);
         if (impl.failScore) throw new Error('stub jev down');
         if (impl.hangScore) {
           await hung;
@@ -100,6 +114,11 @@ function stubLlm(impl: {
           promptTokens: 10,
           completionTokens: 2,
         };
+      },
+      chat: async () => {
+        chatCallCount += 1;
+        if (impl.failChat) throw new Error('stub light down');
+        return { content: impl.chatSentence ?? '风都变甜了', promptTokens: 5, completionTokens: 3 };
       },
       embed: async () => {
         if (impl.failEmbed) throw new Error('stub embedding down');
@@ -128,6 +147,14 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     await handle.db.delete(memories).where(inArray(memories.characterId, [CHAR_A, CHAR_B]));
   });
 
+  afterEach(() => {
+    // D4 脑状态注册表是模块级单例,测试间必须清场
+    hosting.delete(CHAR_A);
+    hosting.delete(CHAR_B);
+    innerState.clear(CHAR_A);
+    innerState.clear(CHAR_B);
+  });
+
   afterAll(async () => {
     if (!dbUp) return;
     await clearFixtures();
@@ -153,7 +180,7 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     const [row] = await memoryRows(CHAR_A);
     expect(row.type).toBe('event');
     expect(row.characterId).toBe(CHAR_A); // 事件 id 即表主键(单一 id 贯穿)
-    expect(row.content).toBe('我学习了 60 分钟');
+    expect(row.content.startsWith('我学习了 60 分钟。')).toBe(true); // 事实行+第一人称评价句(D4)
     expect(row.importance).toBe(9); // score 答案为量表下标 0 起:stub 回 8 → 第 9 档
     expect(row.embedding).toHaveLength(2048);
     expect(row.gameMinutes).toBe(minutesAtWrite);
@@ -198,7 +225,8 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     await until(async () => (await memoryRows(CHAR_A)).length === 2);
     await until(async () => (await memoryRows(CHAR_B)).length === 2);
     const aRows = await memoryRows(CHAR_A);
-    const chat = aRows.find((row) => row.type === 'dialogue');
+    // chat 与结交同为 dialogue 类型,管线并发完成顺序不定,按正文定位
+    const chat = aRows.find((row) => row.content.includes('聊了聊'));
     expect(chat?.content).toBe('我和苏晚聊了聊:今天菜价真贵');
     expect(aRows.find((row) => row.content === '我和苏晚结成了朋友')).toBeDefined();
     const bRows = await memoryRows(CHAR_B);
@@ -240,6 +268,95 @@ describe.skipIf(!dbUp)('MemoryWriter(M4b/A2)', () => {
     expect(row.type).toBe('dream');
     expect(row.importance).toBe(7);
     expect(row.embedding).toHaveLength(2048); // 走同一条 persist 管线
+    writer.dispose();
+  });
+
+  it('D4 重要活动(高偏好)触发轻槽复盘: LLM 句替换模板,lastEvaluation 同步落脑状态', async () => {
+    const sim = buildSimWithCharacters();
+    hosting.set(CHAR_A, { mode: 'policy', policyText: null, compiled: { focus: ['study'], avoid: [] } });
+    const { llm, chatCalls, scoreCalls } = stubLlm({ score: 6, chatSentence: '风都变甜了' });
+    const writer = new MemoryWriter(sim, handle, llm);
+    sim.events.emit({
+      type: 'activity.finished',
+      characterId: CHAR_A,
+      activityId: 'study',
+      tick: 30,
+      elapsedMinutes: 60,
+      reason: 'completed',
+    });
+    await until(async () => (await memoryRows(CHAR_A)).length === 1);
+    const [row] = await memoryRows(CHAR_A);
+    expect(row.content).toBe('我学习了 60 分钟。风都变甜了');
+    expect(chatCalls()).toBe(1); // 轻槽恰好一次
+    expect(scoreCalls()).toBe(1); // jev 打分照常
+    const evaluation = innerState.get(CHAR_A)?.lastEvaluation;
+    expect(evaluation?.activityId).toBe('study');
+    expect(evaluation?.verdict).toBe('good');
+    // lastEvaluation 在事件结算时写确定性评价;轻槽 LLM 句只进记忆正文(上一断言)
+    expect(evaluation?.reason).toContain('正合我的心意');
+    writer.dispose();
+  });
+
+  it('D4 轻槽失败回模板评价句: 记忆仍落库不外抛', async () => {
+    const sim = buildSimWithCharacters();
+    hosting.set(CHAR_A, { mode: 'policy', policyText: null, compiled: { focus: ['study'], avoid: [] } });
+    const { llm, chatCalls } = stubLlm({ failChat: true });
+    const writer = new MemoryWriter(sim, handle, llm);
+    sim.events.emit({
+      type: 'activity.finished',
+      characterId: CHAR_A,
+      activityId: 'study',
+      tick: 31,
+      elapsedMinutes: 60,
+      reason: 'completed',
+    });
+    await until(async () => (await memoryRows(CHAR_A)).length === 1);
+    const [row] = await memoryRows(CHAR_A);
+    expect(row.content.startsWith('我学习了 60 分钟。')).toBe(true);
+    expect(row.content).toContain('正合我的心意'); // 模板句含 bias 后缀
+    expect(chatCalls()).toBe(1);
+    writer.dispose();
+  });
+
+  it('D4 复盘节流: 每角色每日 ≤4 次轻槽,超出回模板', async () => {
+    const sim = buildSimWithCharacters();
+    hosting.set(CHAR_A, { mode: 'policy', policyText: null, compiled: { focus: ['study'], avoid: [] } });
+    const { llm, chatCalls } = stubLlm({ chatSentence: '风都变甜了' });
+    const writer = new MemoryWriter(sim, handle, llm);
+    for (let i = 0; i < 5; i += 1) {
+      sim.events.emit({
+        type: 'activity.finished',
+        characterId: CHAR_A,
+        activityId: 'study',
+        tick: 40 + i,
+        elapsedMinutes: 60,
+        reason: 'completed',
+      });
+    }
+    await until(async () => (await memoryRows(CHAR_A)).length === 5, 5000);
+    const rows = await memoryRows(CHAR_A);
+    const llmRetrospects = rows.filter((r) => r.content.includes('风都变甜了'));
+    expect(llmRetrospects).toHaveLength(4); // 第 5 条回落模板句
+    expect(chatCalls()).toBe(4);
+    writer.dispose();
+  });
+
+  it('D4 persona 进 jev 题面: 人设卡字段拼入经历问句', async () => {
+    const sim = buildSimWithCharacters();
+    const { llm, questions } = stubLlm({ score: 6 });
+    const writer = new MemoryWriter(sim, handle, llm);
+    sim.events.emit({
+      type: 'work_task.completed',
+      characterId: CHAR_B,
+      targetId: 't1',
+      task: 'clean',
+      pay: 12,
+      tick: 50,
+    });
+    await until(async () => (await memoryRows(CHAR_B)).length === 1);
+    const question = questions()[0] ?? '';
+    expect(question).toContain('居民「苏晚」(人设: 性格: 安静;兴趣: 读书)的一段经历');
+    expect(question).toContain('我做完了一份清扫的活计');
     writer.dispose();
   });
 });

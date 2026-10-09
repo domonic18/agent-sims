@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { WorldEvent } from '@sims/shared';
-import { aggregateMood, describeMood, moodDeltasFor } from './mood.js';
+import type { ActivityFinishedEvent, WorldEvent } from '@sims/shared';
+import { afterEach } from 'vitest';
+import { hosting, innerState } from './cognition.js';
+import { activityVerdictDelta, aggregateMood, describeMood, moodDeltasFor } from './mood.js';
 
 const nameOf = (id: string): string => (id === 'b' ? '苏晚' : '阿泽');
 
@@ -88,6 +90,40 @@ describe('aggregateMood(冲量流水→当前情绪)', () => {
   it('gameMinutes 为空的行按"现在"计(不衰减)', () => {
     const state = aggregateMood([row(0.4, null)], 99999);
     expect(state.valence).toBeCloseTo(0.4, 5);
+  });
+});
+
+describe('activityVerdictDelta(完成活动按评价 verdict 给冲量,D4)', () => {
+  const finished = (overrides: Partial<ActivityFinishedEvent> = {}): ActivityFinishedEvent =>
+    ({
+      type: 'activity.finished', characterId: 'a', activityId: 'study', tick: 1,
+      elapsedMinutes: 60, reason: 'completed', ...overrides,
+    });
+
+  afterEach(() => {
+    hosting.delete('a');
+    innerState.clear('a');
+  });
+
+  it('高偏好称心完成: +0.1(「学习称心」)', () => {
+    hosting.set('a', { mode: 'policy', policyText: null, compiled: { focus: ['study'], avoid: [] } });
+    expect(activityVerdictDelta(finished())).toEqual({
+      characterId: 'a', delta: 0.1, labels: ['学习称心'],
+    });
+  });
+
+  it('排斥活动叠加低 mood 扫兴收场: -0.1(「学习扫兴」)', () => {
+    hosting.set('a', { mode: 'policy', policyText: null, compiled: { focus: [], avoid: ['study'] } });
+    innerState.ensure('a').mood = { valence: -0.5, labels: [], since: null };
+    expect(activityVerdictDelta(finished())).toEqual({
+      characterId: 'a', delta: -0.1, labels: ['学习扫兴'],
+    });
+  });
+
+  it('中性完成零冲量;非 completed 收尾不评价', () => {
+    expect(activityVerdictDelta(finished())).toBeNull();
+    expect(activityVerdictDelta(finished({ reason: 'interrupted', elapsedMinutes: 20 }))).toBeNull();
+    expect(activityVerdictDelta(finished({ reason: 'insufficient_coins', elapsedMinutes: 10 }))).toBeNull();
   });
 });
 

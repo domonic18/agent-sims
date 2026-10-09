@@ -171,6 +171,7 @@ export async function jevDecide(
   char: WorldCharacter,
   map: TileMapDefinition,
   socialCandidates: readonly JevSocialCandidate[] = [],
+  persona?: string,
 ): Promise<Decision | null> {
   if (!char.alive || char.collapsed) return null; // 失能不越权(与 ruleDecide 同门槛)
   if (char.activity !== null || char.path.length > 0) return null; // jev 只服务空闲角色,忙角色不白烧 LLM
@@ -198,7 +199,7 @@ export async function jevDecide(
   try {
     const result = await llm.systemOne(
       'jev',
-      `${char.name}现在空闲,凭直觉选一个此刻最想做的事`,
+      `${char.name}${persona !== undefined ? `(人设: ${persona})` : ''}现在空闲,凭直觉选一个此刻最想做的事`,
       {
         next: {
           type: 'choice',

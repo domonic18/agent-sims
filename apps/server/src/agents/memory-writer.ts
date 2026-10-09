@@ -1,9 +1,13 @@
 import { getActivityDefinition, RECIPES, type MemoryType, type WorldEvent } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
-import { autonomy } from './cognition.js';
+import { autonomy, hosting, innerState } from './cognition.js';
+import { evaluateActivity, type ActivityEvalResult } from './memory-evaluator.js';
 import { perceiveTasks } from './perception.js';
+import { biasOf, loadPersonaContext } from './slow-layer.js';
+import { renderPrompt } from '../prompts/registry.js';
 import type { DbHandle } from '../db/client.js';
 import { memories } from '../db/schema/memory.js';
+import { persistInnerState } from './inner-state-db.js';
 import type { ModelRouter } from '../llm/router.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
@@ -59,6 +63,8 @@ interface MemoryTask {
   characterId: string;
   type: MemoryType;
   content: string;
+  /** D4 重要活动的轻槽复盘材料(baseLine=事实行);缺省=纯模板不入复盘 */
+  retrospect?: { baseLine: string; evaluation: ActivityEvalResult };
 }
 
 function clampImportance(score: number): number {
@@ -80,6 +86,10 @@ export class MemoryWriter {
   private inFlight = 0;
   /** 白天反思累加器(10-cognition §5): 各角色自上次反思起的新增记忆 importance 累计 */
   private readonly importanceSinceReflection = new Map<string, number>();
+  /** 活动期间的聊天计数(D4 社交获得维度): activity.finished 消费后清零 */
+  private readonly recentChats = new Map<string, number>();
+  /** 轻槽复盘节流(D4): 每角色每日 ≤RETROSPECT_MAX_PER_DAY,超限回模板句 */
+  private readonly retrospectCount = new Map<string, { day: number; count: number }>();
   private reflectionHook: ((characterId: string) => void) | null = null;
   private readonly unsubscribe: () => void;
 
@@ -101,6 +111,11 @@ export class MemoryWriter {
   }
 
   private onEvent(event: WorldEvent): void {
+    if (event.type === 'social.chat') {
+      // 双方聊天计数:下一次 activity.finished 结算为「社交获得」
+      this.recentChats.set(event.fromId, (this.recentChats.get(event.fromId) ?? 0) + 1);
+      this.recentChats.set(event.toId, (this.recentChats.get(event.toId) ?? 0) + 1);
+    }
     // 当事人经历(M4b 主线)+ 附近自治角色的旁观感知(M4c §4.1)进同一条并发管线
     const main = this.toTask(event);
     const perceived = perceiveTasks(event, this.sim.characters, autonomy.list());
@@ -119,12 +134,20 @@ export class MemoryWriter {
 
   private async run(task: MemoryTask): Promise<void> {
     try {
+      // D4:人设一次加载,复盘与 jev 题面共用;查询失败静默无副作用
+      const persona = await loadPersonaContext(this.handle, task.characterId);
+      let content = task.content;
+      const retrospect = task.retrospect;
+      if (retrospect !== undefined) {
+        content = await this.retrospectContent({ ...task, retrospect }, persona);
+      }
       let importance = DEFAULT_IMPORTANCE;
       try {
         const name = this.sim.characters.get(task.characterId)?.name ?? '无名居民';
+        const personaLine = persona === undefined ? '' : `(人设: ${persona})`;
         const result = await this.llm.systemOne(
           'jev',
-          `居民「${name}」的一段经历:${task.content}`,
+          `居民「${name}」${personaLine}的一段经历:${content}`,
           {
             importance: {
               type: 'score',
@@ -143,12 +166,52 @@ export class MemoryWriter {
           err: errMsg(err),
         });
       }
-      await this.persist(task, importance);
+      await this.persist({ ...task, content }, importance);
     } catch (err) {
       logTech('error', 'memory', '记忆落库失败', {
         characterId: task.characterId,
         err: errMsg(err),
       });
+    }
+  }
+
+  /** 重要活动轻槽一句话复盘(D4):≤4 次/角色/日,超限或轻槽失败回模板评价句 */
+  private async retrospectContent(
+    task: MemoryTask & { retrospect: { baseLine: string; evaluation: ActivityEvalResult } },
+    persona: string | undefined,
+  ): Promise<string> {
+    const template = `${task.retrospect.baseLine}。${task.retrospect.evaluation.sentence}`;
+    const day = this.sim.clock.day;
+    const slot = this.retrospectCount.get(task.characterId);
+    const used = slot?.day === day ? slot.count : 0;
+    if (used >= BALANCE.RETROSPECT_MAX_PER_DAY) return template;
+    this.retrospectCount.set(task.characterId, { day, count: used + 1 });
+    try {
+      const name = this.sim.characters.get(task.characterId)?.name ?? '无名居民';
+      const result = await this.llm.chat(
+        'light',
+        [
+          { role: 'system', content: renderPrompt('evaluate.system', { name }) },
+          {
+            role: 'user',
+            content: [
+              `刚结束的经历: ${task.retrospect.baseLine}`,
+              `既有评价: ${task.retrospect.evaluation.sentence}`,
+              `人设: ${persona ?? '暂无'}`,
+              '用一句话说出你此刻最真实的感受。',
+            ].join('\n'),
+          },
+        ],
+        { taskType: 'memory.evaluate', characterId: task.characterId, maxTokens: 80 },
+      );
+      const sentence = result.content.trim().replace(/^["'「」]+|["'「」]+$/g, '');
+      return sentence === '' ? template : `${task.retrospect.baseLine}。${sentence}`;
+    } catch (err) {
+      logTech('warn', 'memory', '轻槽复盘失败,回模板评价句', {
+        characterId: task.characterId,
+        err: errMsg(err),
+      });
+      return template;
     }
   }
 
@@ -229,16 +292,46 @@ export class MemoryWriter {
   }
 
   /** 事件→记忆任务;白名单全为玩家意图驱动,控制/参数/存档类事件不入记忆。
-   * 对话与结交 v1 只记发起方(aId/fromId),另一方的记忆由后续固化窗口补。 */
+   * 对话与结交 v1 只记发起方(aId/fromId),另一方的记忆由后续固化窗口补。
+   * D4:activity.finished 过评价引擎——事实行+第一人称评价句替换裸流水账,
+   * 评价同步落 innerState.lastEvaluation;重要活动附轻槽复盘材料。 */
   private toTask(event: WorldEvent): MemoryTask | null {
     const nameOf = (id: string): string => this.sim.characters.get(id)?.name ?? '某居民';
     switch (event.type) {
       case 'activity.finished': {
         const label = getActivityDefinition(event.activityId)?.name ?? event.activityId;
+        const baseLine = `我${label}了 ${event.elapsedMinutes} 分钟${FINISH_REASON_NOTE[event.reason] ?? ''}`;
+        if (event.reason === 'died' || event.reason === 'collapsed') {
+          return { characterId: event.characterId, type: 'event', content: baseLine };
+        }
+        const socialGain = this.recentChats.get(event.characterId) ?? 0;
+        this.recentChats.delete(event.characterId);
+        const inner = innerState.get(event.characterId);
+        const wants = inner?.intents?.wants ?? [];
+        const want =
+          wants.find((w) => w.status === 'doing' && w.activityId === event.activityId) ??
+          wants.find((w) => w.activityId === event.activityId);
+        const evaluation = evaluateActivity({
+          activityId: event.activityId,
+          elapsedMinutes: event.elapsedMinutes,
+          reason: event.reason,
+          bias: biasOf(hosting.get(event.characterId)?.compiled ?? null)[event.activityId] ?? 0,
+          moodValence: inner?.mood.valence ?? null,
+          wantWhy: want?.why ?? null,
+          socialGain,
+        });
+        innerState.setLastEvaluation(event.characterId, {
+          activityId: event.activityId,
+          verdict: evaluation.verdict,
+          reason: evaluation.sentence,
+          atMin: this.sim.clock.gameMinutes,
+        });
+        persistInnerState(this.handle, event.characterId);
         return {
           characterId: event.characterId,
           type: 'event',
-          content: `我${label}了 ${event.elapsedMinutes} 分钟${FINISH_REASON_NOTE[event.reason] ?? ''}`,
+          content: `${baseLine}。${evaluation.sentence}`,
+          ...(evaluation.important ? { retrospect: { baseLine, evaluation } } : {}),
         };
       }
       case 'work_task.completed': {

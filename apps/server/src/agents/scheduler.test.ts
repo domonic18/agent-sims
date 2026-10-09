@@ -351,6 +351,8 @@ describe('AgentScheduler(D3 意图执行)', () => {
     const react = h.traceRows.find((r) => (r.decision as { layer?: string }).layer === 'plan');
     expect(react).toBeDefined();
     expect(innerState.get(CHAR_ID)?.intents?.wants[0]?.status).toBe('doing');
+    // D4:开始执行即落关注点(决策理由一句话,访谈/检索/jev 注入用)
+    expect(innerState.get(CHAR_ID)?.focus?.text).toBe('想学点东西');
     h.scheduler.dispose();
   });
 

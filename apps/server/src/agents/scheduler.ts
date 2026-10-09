@@ -593,13 +593,18 @@ export class AgentScheduler {
     if (changed) persistInnerState(this.deps.handle, characterId);
   }
 
-  /** 意图出执行口即标 doing 并落库(activity.finished 再按原因终裁) */
+  /** 意图出执行口即标 doing 并落库(activity.finished 再按原因终裁);
+   * focus 同步为该 want 的第一人称理由(访谈/叙事/次日意图检索共用) */
   private markWantDoing(characterId: string, wantId: string): void {
     const intents = innerState.get(characterId)?.intents;
     if (intents === undefined || intents === null) return;
     const want = intents.wants.find((w) => w.id === wantId);
     if (want === undefined || want.status !== 'pending') return;
     want.status = 'doing';
+    innerState.ensure(characterId).focus = {
+      text: want.why,
+      sinceMin: this.deps.sim.clock.gameMinutes,
+    };
     persistInnerState(this.deps.handle, characterId);
   }
 
@@ -625,7 +630,8 @@ export class AgentScheduler {
             };
       })
       .filter((c): c is NonNullable<typeof c> => c !== null);
-    const decision = await jevDecide(this.deps.llm, char, sim.map.definition, feed);
+    const persona = await loadPersonaContext(this.deps.handle, char.id);
+    const decision = await jevDecide(this.deps.llm, char, sim.map.definition, feed, persona);
     if (decision === null) {
       // jev 槽不可用/无有效候选:观测层面记一次 continue,快层静默回落
       this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {

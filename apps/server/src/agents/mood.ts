@@ -1,11 +1,13 @@
 import { desc, eq } from 'drizzle-orm';
-import type { WorldEvent } from '@sims/shared';
+import { getActivityDefinition, type ActivityFinishedEvent, type WorldEvent } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { characterMoods } from '../db/schema/memory.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
-import { innerState, type MoodState } from './cognition.js';
+import { hosting, innerState, type MoodState } from './cognition.js';
+import { evaluateActivity } from './memory-evaluator.js';
+import { biasOf } from './slow-layer.js';
 
 /** 单条事件对单个角色的情绪冲量 */
 export interface MoodDelta {
@@ -70,6 +72,32 @@ export function moodDeltasFor(event: WorldEvent, nameOf: (id: string) => string)
 
 function mostRecentFirst(a: MoodRow, b: MoodRow): number {
   return (b.gameMinutes ?? 0) - (a.gameMinutes ?? 0);
+}
+
+/** D4 正常完成的活动按评价 verdict 给小幅冲量(good +0.1 称心/bad -0.1 扫兴,
+ * ok 零冲量);verdict 与记忆评价引擎同一纯函数,与记忆正文口径一致 */
+export function activityVerdictDelta(event: ActivityFinishedEvent): MoodDelta | null {
+  if (event.reason !== 'completed') return null;
+  const inner = innerState.get(event.characterId);
+  const wants = inner?.intents?.wants ?? [];
+  const want =
+    wants.find((w) => w.status === 'doing' && w.activityId === event.activityId) ??
+    wants.find((w) => w.activityId === event.activityId);
+  const evaluation = evaluateActivity({
+    activityId: event.activityId,
+    elapsedMinutes: event.elapsedMinutes,
+    reason: event.reason,
+    bias: biasOf(hosting.get(event.characterId)?.compiled ?? null)[event.activityId] ?? 0,
+    moodValence: inner?.mood.valence ?? null,
+    wantWhy: want?.why ?? null,
+  });
+  if (evaluation.verdict === 'ok') return null;
+  const label = getActivityDefinition(event.activityId)?.name ?? event.activityId;
+  return {
+    characterId: event.characterId,
+    delta: evaluation.verdict === 'good' ? 0.1 : -0.1,
+    labels: [evaluation.verdict === 'good' ? `${label}称心` : `${label}扫兴`],
+  };
 }
 
 /** 冲量流水→当前情绪(纯函数): 每行按半衰期衰减求和后钳到 [-1,1];
@@ -181,7 +209,11 @@ export class MoodTracker {
   }
 
   private onEvent(event: WorldEvent): void {
-    const deltas = moodDeltasFor(event, (id) => this.sim.characters.get(id)?.name ?? '某居民');
+    let deltas = moodDeltasFor(event, (id) => this.sim.characters.get(id)?.name ?? '某居民');
+    if (event.type === 'activity.finished') {
+      const verdictDelta = activityVerdictDelta(event);
+      if (verdictDelta !== null) deltas = [...deltas, verdictDelta];
+    }
     if (deltas.length === 0) return;
     const gameMinutes = this.sim.clock.gameMinutes;
     void (async () => {

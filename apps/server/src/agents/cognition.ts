@@ -206,6 +206,10 @@ export const innerState = {
   clearIntents(characterId: string): void {
     this.ensure(characterId).intents = null;
   },
+  /** 记忆评价引擎(D4)落最近一次活动评价,供访谈/叙事/意图生成读取 */
+  setLastEvaluation(characterId: string, evaluation: ActivityEvaluation): void {
+    this.ensure(characterId).lastEvaluation = evaluation;
+  },
   clear(characterId: string): void {
     innerStates.delete(characterId);
   },

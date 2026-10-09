@@ -34,6 +34,7 @@ const META: readonly PromptMeta[] = [
   { id: 'dream.system', title: '认知固化 · 系统提示', description: '睡眠固化/白天反思共用的 system 段(沉睡/走神模式)', slot: 'slow', taskType: 'agent.dream / agent.reflect', variables: ['name', 'mode'] },
   { id: 'dream.user', title: '认知固化 · 用户消息', description: '当日记忆素材+互动者白名单+三段产物要求(dream 段可选)', slot: 'slow', taskType: 'agent.dream / agent.reflect', variables: ['memory_lines', 'partners_line', 'dream_req', 'insight_max', 'relation_max'] },
   { id: 'dialogue.system', title: '对话台词 · 系统提示', description: '面对面闲聊单句台词生成的 system 段', slot: 'light', taskType: 'agent.dialogue', variables: ['name'] },
+  { id: 'evaluate.system', title: '记忆复盘 · 系统提示', description: '重要活动轻槽一句话复盘的 system 段(感受重构,禁编造新事件)', slot: 'light', taskType: 'memory.evaluate', variables: ['name'] },
   { id: 'asset.review.system', title: '素材审核 · 系统提示', description: '视觉模型图文相符审核的 system 段', slot: 'vision', taskType: 'asset_ai_review', variables: [] },
   { id: 'persona.random.system', title: '人设草稿 · 系统提示', description: '后台随机生成居民人设卡的 system 段', slot: 'light', taskType: 'agent.persona_random', variables: [] },
   { id: 'persona.random.user', title: '人设草稿 · 用户消息', description: '生成要求+随机方向种子', slot: 'light', taskType: 'agent.persona_random', variables: ['seed_line', 'submit_line'] },

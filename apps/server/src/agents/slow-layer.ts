@@ -356,19 +356,35 @@ function buildIntentsMessages(
   ];
 }
 
-/** 记忆证据:状态摘要做语义查询,embed 失败退双因子,检索失败退空证据(绝不阻塞意图) */
+/** 记忆检索语义查询(D4 动态化):昨日意图+当前关注点拼串,替代固定串——
+ * 检索出的证据与「今天想做什么」的决策相关,而非泛泛的生平 */
+export function evidenceQuery(
+  char: { name: string },
+  ctx?: IntentsContext,
+): string {
+  const hints: string[] = [];
+  if (typeof ctx?.focus === 'string' && ctx.focus.trim() !== '') hints.push(ctx.focus.trim());
+  if (ctx?.previous !== null && ctx?.previous !== undefined && ctx.previous.wants.length > 0) {
+    hints.push(describeIntents(ctx.previous));
+  }
+  return hints.length > 0
+    ? `${char.name}: ${hints.join(';')}`
+    : `${char.name}的日常生活、工作与人际经历`;
+}
+
+/** 记忆证据:语义查询(evidenceQuery)+embed,embed 失败退双因子,检索失败退空证据(绝不阻塞意图) */
 async function loadEvidence(
   llm: MemoryLlm,
   handle: DbHandle,
   char: WorldCharacter,
   gameMinutes: number,
+  ctx?: IntentsContext,
 ): Promise<string[]> {
   try {
-    const emb = await llm.embed(
-      'embedding',
-      [`${char.name}的日常生活、工作与人际经历`],
-      { taskType: 'agent.day_intents', characterId: char.id },
-    );
+    const emb = await llm.embed('embedding', [evidenceQuery(char, ctx)], {
+      taskType: 'agent.day_intents',
+      characterId: char.id,
+    });
     const scored = await retrieveMemories(handle, {
       characterId: char.id,
       currentGameMinutes: gameMinutes,
@@ -403,7 +419,7 @@ export async function composeIntents(
   clock: { day: number; gameMinutes: number },
   ctx?: IntentsContext,
 ): Promise<ComposedIntents> {
-  const evidence = await loadEvidence(llm, handle, char, clock.gameMinutes);
+  const evidence = await loadEvidence(llm, handle, char, clock.gameMinutes, ctx);
   let compiled = ctx?.compiled ?? null;
   if (compiled === null && (ctx?.policyText === undefined || ctx.policyText.trim() === '')) {
     const persona = ctx?.persona;

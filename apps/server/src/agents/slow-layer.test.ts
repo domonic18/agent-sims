@@ -5,6 +5,7 @@ import type { MemoryLlm } from './memory-writer.js';
 import {
   compilePersonaPolicy,
   composeIntents,
+  evidenceQuery,
   fallbackIntents,
   parseIntents,
   parsePolicy,
@@ -178,6 +179,28 @@ describe('describeIntents(昨日对照措辞)', () => {
         ],
       }),
     ).toBe('杂工(已完成): 挣钱;学习(未做): 想学新东西');
+  });
+});
+
+describe('evidenceQuery(记忆检索动态查询,D4)', () => {
+  it('关注点+昨日意图拼串,检索跟决策走', () => {
+    expect(
+      evidenceQuery({ name: '阿测' }, {
+        focus: '想把欠的房租挣出来',
+        previous: {
+          day: 4,
+          wants: [
+            { id: 'w4-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'done', createdAtMin: 100 },
+          ],
+          source: 'llm',
+        },
+      }),
+    ).toBe('阿测: 想把欠的房租挣出来;杂工(已完成): 挣钱');
+  });
+
+  it('无上下文回落生平泛查询;空白关注点视为无', () => {
+    expect(evidenceQuery({ name: '阿测' })).toBe('阿测的日常生活、工作与人际经历');
+    expect(evidenceQuery({ name: '阿测' }, { focus: '   ' })).toBe('阿测的日常生活、工作与人际经历');
   });
 });
 

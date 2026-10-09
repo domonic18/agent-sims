@@ -115,6 +115,8 @@ export interface BalanceConfig {
   /** 困倦压力(D3,纯数值替代 planNight 时间表):夜间/白天开始犯困的体力线,越困越想睡 */
   SLEEPY_NIGHT_ENERGY: number;
   SLEEPY_DAY_ENERGY: number;
+  /** 记忆评价(D4):重要活动轻槽 LLM 一句话复盘的每角色每日上限,超限回模板句 */
+  RETROSPECT_MAX_PER_DAY: number;
   /** 资源节点存量上限(04 §5.4 表值=出厂默认;junk -1=无限不枯竭) */
   NODE_MAX_CHARGES_BERRY: number;
   NODE_MAX_CHARGES_JUNK: number;
@@ -199,6 +201,7 @@ export const BALANCE: BalanceConfig = {
   WANT_KNOWLEDGE_LOW: 30,
   SLEEPY_NIGHT_ENERGY: 60,
   SLEEPY_DAY_ENERGY: 25,
+  RETROSPECT_MAX_PER_DAY: 4,
   NODE_MAX_CHARGES_BERRY: 3,
   NODE_MAX_CHARGES_JUNK: -1,
   NODE_MAX_CHARGES_TREE: 5,
