@@ -38,7 +38,9 @@ describe('resolveSocketRole(player 角色准入)', () => {
   });
 
   it('production:player 角色 + 签名伪造 token → 降级 spectator', () => {
-    const forged = issueToken().replace(/.$/, 'x');
+    // 末位替换须保证不同:签名末位恰为 x 时 replace 会是无操作(1/64 概率踩中)
+    const token = issueToken();
+    const forged = token.slice(0, -1) + (token.endsWith('x') ? 'y' : 'x');
     expect(resolveSocketRole({ role: 'player', token: forged })).toBe('spectator');
   });
 
