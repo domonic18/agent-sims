@@ -324,6 +324,8 @@ export interface UiMetaView {
   showModels: boolean;
   /** 慢思考 LLM(slow 槽)模型名 */
   slowModel: string | null;
+  /** 轻量 LLM(light 槽)模型名 */
+  lightModel: string | null;
   /** SystemOne(jev 槽)模型名 */
   jevModel: string | null;
 }

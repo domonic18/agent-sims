@@ -32,14 +32,17 @@ declare module 'fastify' {
   }
 }
 
-export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
+export function buildApp(options: { logger?: boolean; clockGameMinutes?: number } = {}): FastifyInstance {
   const app = Fastify({ logger: options.logger ?? false });
 
   app.get('/health', async () => ({ ok: true }));
   // 当前世界地图定义(M-L.5:前端渲染经 manifest 素材绘制任意生成地图)
   app.get('/api/world/map', async () => app.simulation.map.definition);
 
-  app.decorate('simulation', new Simulation());
+  const simulation = new Simulation();
+  // 测试注水: 事件历史查询有 tick 护栏(只回当前世界 tick 及以下),需要把世界时钟拨到未来
+  if (options.clockGameMinutes !== undefined) simulation.clock.restore(options.clockGameMinutes);
+  app.decorate('simulation', simulation);
   app.decorate('clients', new ClientRegistry());
   app.decorate('io', attachSocketGateway(app.server, app.simulation, app.clients));
 
@@ -82,7 +85,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
     },
   });
   registerAdminApi(app, handle, app.simulation);
-  registerWorldEventRoutes(app, handle);
+  registerWorldEventRoutes(app, handle, app.simulation);
   registerWorldSettingsRoutes(app, app.simulation);
   registerUiMetaRoutes(app, handle);
   registerCharacterMemoryRoutes(app, handle, app.simulation);

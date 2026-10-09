@@ -13,6 +13,11 @@ export const RENDER_DPR = Math.min(window.devicePixelRatio || 1, 2);
  */
 export const TEXT_RESOLUTION = Math.min(RENDER_DPR * 2, 4);
 
+/** 画布中文文本字体栈: 不显式指定时 Phaser 落到 Courier,中日韩字符走浏览器
+ * 等宽兜底(锯齿衬线感,走查反馈「字体不好看」);与 DOM 端 --px-font-ui 同源 */
+export const UI_FONT_FAMILY =
+  '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif';
+
 /** 角色名字标签(头顶白字黑底条) */
 export function nameTextStyle(): Phaser.Types.GameObjects.Text.TextStyle {
   return {
@@ -20,6 +25,7 @@ export function nameTextStyle(): Phaser.Types.GameObjects.Text.TextStyle {
     color: '#ffffff',
     resolution: TEXT_RESOLUTION,
     padding: { x: 3, y: 1 },
+    fontFamily: UI_FONT_FAMILY,
   };
 }
 
@@ -31,6 +37,7 @@ export function badgeTextStyle(color = '#ffffff'): Phaser.Types.GameObjects.Text
     resolution: TEXT_RESOLUTION,
     padding: { x: 2, y: 1 },
     backgroundColor: 'rgba(26,28,44,0.55)',
+    fontFamily: UI_FONT_FAMILY,
   };
 }
 
@@ -47,5 +54,6 @@ export function speechTextStyle(wrapWidth: number): Phaser.Types.GameObjects.Tex
     align: 'center',
     wordWrap: { width: wrapWidth },
     resolution: TEXT_RESOLUTION,
+    fontFamily: UI_FONT_FAMILY,
   };
 }

@@ -15,6 +15,7 @@ import { MemoryModal } from './hud/MemoryModal';
 import { ActionBar } from './hud/ActionBar';
 import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
+import { ChatLog } from './hud/ChatLog';
 import { BootScreen } from './BootScreen';
 import { useGoAndDo } from './side-panel/useGoAndDo';
 import './game-page.css';
@@ -326,11 +327,29 @@ export default function GamePage() {
         }}
       />
 
+      <ChatLog />
+
       {uiMeta?.showModels === true &&
-        (uiMeta.slowModel !== null || uiMeta.jevModel !== null) && (
+        (uiMeta.slowModel !== null || uiMeta.lightModel !== null || uiMeta.jevModel !== null) && (
           <div className="hud-model-badge">
-            {uiMeta.slowModel !== null && <span>LLM {uiMeta.slowModel}</span>}
-            {uiMeta.jevModel !== null && <span>SystemOne {uiMeta.jevModel}</span>}
+            {uiMeta.slowModel !== null && (
+              <span>
+                <i>慢思考</i>
+                {uiMeta.slowModel}
+              </span>
+            )}
+            {uiMeta.lightModel !== null && (
+              <span>
+                <i>轻量LLM</i>
+                {uiMeta.lightModel}
+              </span>
+            )}
+            {uiMeta.jevModel !== null && (
+              <span>
+                <i>决策Jev</i>
+                {uiMeta.jevModel}
+              </span>
+            )}
           </div>
         )}
 

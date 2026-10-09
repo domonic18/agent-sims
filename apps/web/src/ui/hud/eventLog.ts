@@ -23,36 +23,50 @@ export const EVENT_CATEGORY_LABEL: Record<EventLogCategory, string> = {
   world: '世界',
 };
 
-/** 事件类型 → 筛选分类(18 种 type 全覆盖,新增事件漏配即编译错误) */
+/** 历史段与实时段去重键(同 tick 同类型同角色视为同一条) */
+export const eventDedupeKey = (event: WorldEvent): string =>
+  `${event.type}|${event.tick}|${'characterId' in event ? event.characterId : ''}`;
+
+/** 事件类型 → 筛选分类(Record 键穷尽 WorldEvent 全部 type,新增事件漏配即编译错误);
+ * 分类历史回填(CATEGORY_EVENT_TYPES)与展示过滤共用本表,单一事实源 */
+const CATEGORY_OF: Record<WorldEvent['type'], EventLogCategory> = {
+  'work_task.accepted': 'work',
+  'work_task.cancelled': 'work',
+  'work_task.completed': 'work',
+  'craft.completed': 'work',
+  'social.chat': 'social',
+  'friendship.formed': 'social',
+  'character.arrived': 'life',
+  'activity.started': 'life',
+  'activity.finished': 'life',
+  'character.died': 'life',
+  'character.revived': 'life',
+  'character.auto_revived': 'life',
+  'sleep.debt_applied': 'life',
+  'sleep.settled': 'life',
+  'character.hosting_changed': 'life',
+  'maintenance.spawned': 'world',
+  'world.control': 'world',
+  'world.params': 'world',
+  'world.rules': 'world',
+  'world.recipes': 'world',
+  'world.reset': 'world',
+};
+
 export function eventLogCategory(type: WorldEvent['type']): EventLogCategory {
-  switch (type) {
-    case 'work_task.accepted':
-    case 'work_task.cancelled':
-    case 'work_task.completed':
-    case 'craft.completed':
-      return 'work';
-    case 'social.chat':
-    case 'friendship.formed':
-      return 'social';
-    case 'character.arrived':
-    case 'activity.started':
-    case 'activity.finished':
-    case 'character.died':
-    case 'character.revived':
-    case 'character.auto_revived':
-    case 'sleep.debt_applied':
-    case 'sleep.settled':
-    case 'character.hosting_changed':
-      return 'life';
-    case 'maintenance.spawned':
-    case 'world.control':
-    case 'world.params':
-    case 'world.rules':
-    case 'world.recipes':
-    case 'world.reset':
-      return 'world';
-  }
+  return CATEGORY_OF[type];
 }
+
+/** 分类 → 事件类型清单(日志抽屉按分类回填历史时下发 types 过滤参数) */
+export const CATEGORY_EVENT_TYPES: Record<EventLogCategory, WorldEvent['type'][]> = (
+  Object.keys(CATEGORY_OF) as Array<WorldEvent['type']>
+).reduce(
+  (acc, type) => {
+    acc[CATEGORY_OF[type]].push(type);
+    return acc;
+  },
+  { work: [], social: [], life: [], world: [] } as Record<EventLogCategory, WorldEvent['type'][]>,
+);
 
 function activityIcon(activityId: string): string {
   return ACTIVITY_EMOJI[activityId as keyof typeof ACTIVITY_EMOJI] ?? '✨';

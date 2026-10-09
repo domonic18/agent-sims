@@ -65,11 +65,12 @@ export const getUiMeta = async (): Promise<UiMetaView> => {
   return (await response.json()) as UiMetaView;
 };
 
-export const getWorldEvents = async (query: { limit?: number; characterId?: string; type?: string } = {}): Promise<WorldEventsHistoryResponse> => {
+export const getWorldEvents = async (query: { limit?: number; characterId?: string; type?: string; types?: string[] } = {}): Promise<WorldEventsHistoryResponse> => {
   const params = new URLSearchParams();
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.characterId !== undefined) params.set('characterId', query.characterId);
   if (query.type !== undefined) params.set('type', query.type);
+  if (query.types !== undefined && query.types.length > 0) params.set('types', query.types.join(','));
   const qs = params.toString();
   const response = await fetch(`/api/world/events${qs !== '' ? `?${qs}` : ''}`);
   if (!response.ok) {

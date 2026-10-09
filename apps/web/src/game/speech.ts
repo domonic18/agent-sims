@@ -24,9 +24,12 @@ export function showSpeechBubble(
 ): void {
   const stroke = style.stroke ?? 0x39516a;
   active.get(node)?.destroy();
-  const text = scene.add.text(0, -4, content, speechTextStyle(150)).setOrigin(0.5, 1);
+  // 文本在框内垂直居中(框底 y=-4): 旧版 origin(0.5,1) 贴底,中文字形下沉被
+  // 描边压住显得「靠下且不全」;按框高对称内边距 6px 居中
+  const text = scene.add.text(0, 0, content, speechTextStyle(150)).setOrigin(0.5, 0.5);
   const width = Math.max(text.width + 18, 30);
-  const height = text.height + 10;
+  const height = text.height + 12;
+  text.setPosition(0, -4 - height / 2);
   const bg = scene.add.graphics();
   // 白底不透明+墨色描边直角框(贴像素气质): 深描边在夜色/浅草地上都清晰;
   // 尾巴三角最后重涂盖掉框底边穿过段,再描尾巴两条斜边,与框融为一体

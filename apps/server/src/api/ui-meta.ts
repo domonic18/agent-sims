@@ -9,7 +9,7 @@ import { requireAdmin } from '../admin-api/auth.js';
 /** 徽标开关的 kv 键(app_settings 首个消费键,后续同类 UI 开关沿用本表) */
 const SHOW_MODELS_KEY = 'ui.showModels';
 
-/** 徽标视图: 开关 + slow/jev 槽位启用中的模型名(未启用/未配置为 null,不外发 baseUrl/key) */
+/** 徽标视图: 开关 + slow/light/jev 三槽位启用中的模型名(未启用/未配置为 null,不外发 baseUrl/key) */
 async function uiMetaView(handle: DbHandle): Promise<UiMetaView> {
   const [rows, settings] = await Promise.all([
     handle.db.select().from(modelConfigs),
@@ -20,13 +20,14 @@ async function uiMetaView(handle: DbHandle): Promise<UiMetaView> {
       .limit(1),
   ]);
   const bySlot = new Map(rows.map((row) => [row.slot, row] as const));
-  const modelOf = (slot: 'slow' | 'jev'): string | null => {
+  const modelOf = (slot: 'slow' | 'light' | 'jev'): string | null => {
     const row = bySlot.get(slot);
     return row !== undefined && row.enabled && row.model !== '' ? row.model : null;
   };
   return {
     showModels: settings[0]?.value === true,
     slowModel: modelOf('slow'),
+    lightModel: modelOf('light'),
     jevModel: modelOf('jev'),
   };
 }

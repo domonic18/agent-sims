@@ -3,7 +3,9 @@ import type { WorldEvent, WorldEventHistoryEntry } from '@sims/shared';
 import { getWorldEvents } from '../../net/worldApi';
 import { useWorldStore } from '../../store/worldStore';
 import {
+  CATEGORY_EVENT_TYPES,
   EVENT_CATEGORY_LABEL,
+  eventDedupeKey,
   eventLogCategory,
   eventLogLabel,
 } from './eventLog';
@@ -17,13 +19,11 @@ const FILTER_LABEL: Record<Filter, string> = {
   ...EVENT_CATEGORY_LABEL,
 };
 
-/** 历史段与实时段去重键(同 tick 同类型同角色视为同一条;环形窗口内事件即全量广播也全量落库) */
-const dedupeKey = (event: WorldEvent): string =>
-  `${event.type}|${event.tick}|${'characterId' in event ? event.characterId : ''}`;
-
 /**
  * 世界日志抽屉(UI-1 C3/C4): 右上 📜 开关+未读角标(关抽屉期间 eventSeq 增量),
- * 实时流消费 worldStore.events;首次打开回填服务端历史段(分隔线之下为实时);
+ * 实时流消费 worldStore.events;打开时按当前分类回填服务端历史段(分隔线之下为实时,
+ * 全部=最近 500 条,单分类=按 types 过滤——到达/活动类事件刷屏,整段拉取会把
+ * 工作/社交类挤空,分类页签显示成永远「暂无日志」);
  * 筛选 chips;条目=游戏时间+icon+中文文本,数值增减着色;点击条目定位关联角色。
  */
 export function LogDrawer(): JSX.Element {
@@ -41,9 +41,12 @@ export function LogDrawer(): JSX.Element {
   // 条目到达时的游戏时间(同 tick 内多条共用同一时刻)
   const timeOf = useEventClock(events, snapshot?.clock, eventSeq);
 
-  // 历史段(C4): 首次打开时拉服务端最近事件回填,与实时段按 type+tick+characterId 去重
-  const [history, setHistory] = useState<WorldEventHistoryEntry[] | null>(null);
-  const historyTriedRef = useRef(false);
+  // 历史段(C4): 打开时按当前分类回填服务端历史(每分类拉一次,切换页签按需补拉,
+  // 失败静默可重试),与实时段按 type+tick+characterId 去重
+  const [historyByFilter, setHistoryByFilter] = useState<Map<Filter, WorldEventHistoryEntry[]>>(
+    () => new Map(),
+  );
+  const fetchingRef = useRef(false);
 
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -62,24 +65,33 @@ export function LogDrawer(): JSX.Element {
     }
   }, [open, events]);
 
-  // 首次打开回填历史段;失败静默(下次重开重试),不影响实时流
+  // 按分类回填历史段;失败静默(切回该页签重试),不影响实时流
   useEffect(() => {
-    if (!open || historyTriedRef.current) return;
-    historyTriedRef.current = true;
+    if (!open || historyByFilter.has(filter) || fetchingRef.current) return;
+    fetchingRef.current = true;
     void (async () => {
       try {
-        const resp = await getWorldEvents({ limit: 100 });
+        const resp = await getWorldEvents(
+          filter === 'all'
+            ? { limit: 500 }
+            : { limit: 200, types: CATEGORY_EVENT_TYPES[filter] },
+        );
         const seen = new Set(
           useWorldStore
             .getState()
-            .events.map((item) => dedupeKey(item.event)),
+            .events.map((item) => eventDedupeKey(item.event)),
         );
-        setHistory(resp.entries.filter((entry) => !seen.has(dedupeKey(entry.event))).reverse());
+        const entries = resp.entries
+          .filter((entry) => !seen.has(eventDedupeKey(entry.event)))
+          .reverse();
+        setHistoryByFilter((prev) => new Map(prev).set(filter, entries));
       } catch {
-        historyTriedRef.current = false;
+        // 留空待重试
+      } finally {
+        fetchingRef.current = false;
       }
     })();
-  }, [open]);
+  }, [open, filter, historyByFilter]);
 
   const nameOf = (id: string): string =>
     snapshot?.characters.find((item) => item.id === id)?.name ?? id;
@@ -87,6 +99,7 @@ export function LogDrawer(): JSX.Element {
   const byCategory = (type: WorldEvent['type']): boolean =>
     filter === 'all' || eventLogCategory(type) === filter;
 
+  const history = historyByFilter.get(filter) ?? null;
   const historyVisible = (history ?? []).filter((entry) => byCategory(entry.event.type));
   const visible = events.filter((item) => byCategory(item.event.type));
 
@@ -147,7 +160,8 @@ export function LogDrawer(): JSX.Element {
               {history !== null && historyVisible.length > 0 && (
                 <p className="log-history-sep">以上为历史</p>
               )}
-              {visible.length === 0 && historyVisible.length === 0 && (
+              {history === null && <p className="log-empty">加载中…</p>}
+              {history !== null && visible.length === 0 && historyVisible.length === 0 && (
                 <p className="log-empty">暂无日志</p>
               )}
               {visible.map((item) =>

@@ -28,7 +28,7 @@
   --px-ok: #8ee6a1;
   --px-bad: #ff9b9b;
 
-  --px-font-ui: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --px-font-ui: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   --px-font-pixel: 'px-font', var(--px-font-ui);
 }
 
