@@ -9,10 +9,11 @@ import type {
 import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { applyRevision, buildInitMessages, parseNarrativeDraft } from '../agents/narrator.js';
+import { applyRevision, buildInitMessages, narrativeTool, parseNarrativeDraft } from '../agents/narrator.js';
 import { hosting, schedule } from '../agents/cognition.js';
 import type { MemoryLlm } from '../agents/memory-writer.js';
 import type { DbHandle } from '../db/client.js';
+import type { StructuredParse, StructuredToolSpec } from '../llm/types.js';
 import { characters } from '../db/schema/index.js';
 import type { Simulation } from '../world/simulation.js';
 import { requireAdmin } from './auth.js';
@@ -72,18 +73,26 @@ function view(id: string, persona: Record<string, unknown>): PersonaView {
   };
 }
 
-/** 截取首个 JSON 对象并按五字段白名单解析;非法返回 null */
-export function parsePersonaDraft(raw: string): PersonaDraft | null {
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (match === null) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    return null;
+/** 人设卡工具规格(结构化输出):五字段全必填(生成侧保证,解析侧再兜底) */
+function personaTool(): StructuredToolSpec {
+  const text = { type: 'string' };
+  return {
+    name: 'submit_persona',
+    description: '提交生成的居民人设卡草稿',
+    inputSchema: {
+      type: 'object',
+      required: ['性格', '兴趣', '目标', '说话风格', 'bio'],
+      properties: { 性格: text, 兴趣: text, 目标: text, 说话风格: text, bio: text },
+    },
+  };
+}
+
+/** 工具入参→人设草稿: 五字段白名单截断;任一为空判失败(触发带错重试,再失败 502) */
+export function parsePersonaDraft(raw: unknown): StructuredParse<PersonaDraft> {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ok: false, reason: '输出须为 JSON 对象' };
   }
-  if (parsed === null || typeof parsed !== 'object') return null;
-  const value = parsed as Record<string, unknown>;
+  const value = raw as Record<string, unknown>;
   const field = (key: string): string =>
     typeof value[key] === 'string' ? (value[key] as string).trim().slice(0, 200) : '';
   const bio = typeof value.bio === 'string' ? value.bio.trim().slice(0, 500) : '';
@@ -94,17 +103,21 @@ export function parsePersonaDraft(raw: string): PersonaDraft | null {
     说话风格: field('说话风格'),
     bio,
   };
-  if (Object.values(card).some((text) => text === '')) return null;
-  return { bio, card };
+  const missing = (Object.keys(card) as Array<keyof PersonaCard>).filter((key) => card[key] === '');
+  if (missing.length > 0) {
+    return { ok: false, reason: `以下字段缺失或为空: ${missing.join('、')}` };
+  }
+  return { ok: true, value: { bio, card } };
 }
 
 export function buildRandomPrompt(): string {
   const pick = (key: keyof typeof SEEDS): string =>
     SEEDS[key][randomInt(0, SEEDS[key].length)]!;
   return [
-    '为像素小镇生成一位居民的预置人设卡,只输出 JSON(不要解释),字段: 性格/兴趣/目标/说话风格/bio。',
+    '为像素小镇生成一位居民的预置人设卡,字段: 性格/兴趣/目标/说话风格/bio。',
     '要求具体、接地气、有生活气息,五个字段都用中文,bio 为 2~3 句人物小传。',
     `可参考的随机方向: 性格偏「${pick('性格')}」,兴趣偏「${pick('兴趣')}」,目标偏「${pick('目标')}」,说话风格偏「${pick('说话风格')}」。`,
+    '请调用 submit_persona 工具提交草稿。',
   ].join('\n');
 }
 
@@ -192,18 +205,16 @@ export function registerPersonaRoutes(
     }
     const llm = app.llm as MemoryLlm;
     try {
-      const result = await llm.chat(
+      const draft = await llm.chatStructured(
         'light',
         [
-          { role: 'system', content: '你是人设编剧。只输出 JSON,不要解释。' },
+          { role: 'system', content: '你是人设编剧,为像素小镇生成居民人设卡草稿。' },
           { role: 'user', content: buildRandomPrompt() },
         ],
+        personaTool(),
         { taskType: 'agent.persona_random' },
+        parsePersonaDraft,
       );
-      const draft = parsePersonaDraft(result.content);
-      if (draft === null) {
-        return await reply.code(502).send({ error: '人设草稿生成失败,请重试' });
-      }
       return await reply.send(draft);
     } catch (error) {
       return await reply
@@ -233,14 +244,13 @@ export function registerPersonaRoutes(
     const name = sim.characters.get(id)?.name ?? '无名居民';
     const llm = app.llm as MemoryLlm;
     try {
-      const result = await llm.chat('light', buildInitMessages(name, bio, card), {
-        taskType: 'agent.narrative_init',
-        characterId: id,
-      });
-      const draft = parseNarrativeDraft(result.content);
-      if (draft === null) {
-        return await reply.code(502).send({ error: '叙事草稿生成失败,请重试' });
-      }
+      const draft = await llm.chatStructured(
+        'light',
+        buildInitMessages(name, bio, card),
+        narrativeTool(false),
+        { taskType: 'agent.narrative_init', characterId: id },
+        parseNarrativeDraft,
+      );
       return await reply.send({ text: draft.text, traits: draft.traits });
     } catch (error) {
       return await reply

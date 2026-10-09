@@ -145,7 +145,10 @@ function harness(
       if (llm?.chat === undefined) return Promise.reject(new Error('no chat'));
       return llm.chat(_slot, messages, task);
     },
-    chatStructured: () => Promise.reject(new Error('no chatStructured')),
+    chatStructured: (slot, messages, tool, task, parse) => {
+      if (llm?.chatStructured === undefined) return Promise.reject(new Error('no chatStructured'));
+      return llm.chatStructured(slot, messages, tool, task, parse);
+    },
   };
   const scheduler = new AgentScheduler({
     sim,
@@ -279,12 +282,11 @@ describe('AgentScheduler(M4d 日程执行)', () => {
   });
 
   const studyPlanLlm: Partial<MemoryLlm> = {
-    chat: () =>
-      Promise.resolve({
-        content: '[{"start":8,"end":12,"activity":"study"}]',
-        promptTokens: 10,
-        completionTokens: 5,
-      }),
+    chatStructured: (_slot, _messages, _tool, _task, parse) => {
+      const parsed = parse([{ start: 8, end: 12, activity: 'study' }]);
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
+    },
   };
 
   it('无当日计划即生成:slow chat 合法 JSON→计划落脑+day_rollover trace+记忆直写', async () => {
@@ -419,12 +421,11 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
   it('中断退避跨日不残留: 绝对 gameMinutes 语义,次日同刻照常回计划', async () => {
     const planAndRespondLlm: Partial<MemoryLlm> = {
       ...respondLlm,
-      chat: () =>
-        Promise.resolve({
-          content: '[{"start":8,"end":12,"activity":"study"}]',
-          promptTokens: 10,
-          completionTokens: 5,
-        }),
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        const parsed = parse([{ start: 8, end: 12, activity: 'study' }]);
+        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+        return Promise.resolve(parsed.value);
+      },
     };
     const worldChar = char({ activity: activity('stroll') });
     const h = harness(480, worldChar, planAndRespondLlm, {

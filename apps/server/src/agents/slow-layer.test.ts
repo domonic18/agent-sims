@@ -40,6 +40,7 @@ function char(overrides: Partial<WorldCharacter>): WorldCharacter {
 }
 
 function llmStub(opts: {
+  /** 模型要提交的工具入参:JSON 串自动 parse,parse 失败原样传(垃圾输出场景) */
   chatContent?: string;
   chatReject?: boolean;
   memoryRows?: Array<{ content: string }>;
@@ -73,40 +74,57 @@ function llmStub(opts: {
       embedCalls += 1;
       return Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 });
     },
-    chatStructured: () => Promise.reject(new Error('unused')),
-    chat: (_slot, messages) => {
+    chat: () => Promise.reject(new Error('unused')) as never,
+    chatStructured: (_slot, messages, _tool, _task, parse) => {
       chatMessages.push(...messages);
       if (opts.chatReject === true) return Promise.reject(new Error('slow 槽未配置'));
-      return Promise.resolve({
-        content: opts.chatContent ?? '',
-        promptTokens: 10,
-        completionTokens: 10,
-      });
+      if (opts.chatContent === undefined) return Promise.reject(new Error('桩未配置输出'));
+      let raw: unknown;
+      try {
+        raw = JSON.parse(opts.chatContent);
+      } catch {
+        raw = opts.chatContent;
+      }
+      const parsed = parse(raw);
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
     },
   };
   return { llm, handle, chatMessages, get embedCalls() { return embedCalls; } };
 }
 
-describe('parseDayPlan(慢槽自由文本→计划块)', () => {
-  it('合法 JSON 数组解析成块并按 start 排序', () => {
-    const blocks = parseDayPlan('[{"start":14,"end":18,"activity":"work"},{"start":8,"end":12,"activity":"study"}]');
-    expect(blocks).toEqual([
-      { startMin: 480, endMin: 720, activityId: 'study' },
-      { startMin: 840, endMin: 1080, activityId: 'work' },
-    ]);
+describe('parseDayPlan(工具入参→计划块)', () => {
+  it('合法数组解析成块并按 start 排序', () => {
+    expect(
+      parseDayPlan([{ start: 14, end: 18, activity: 'work' }, { start: 8, end: 12, activity: 'study' }]),
+    ).toEqual({
+      ok: true,
+      value: [
+        { startMin: 480, endMin: 720, activityId: 'study' },
+        { startMin: 840, endMin: 1080, activityId: 'work' },
+      ],
+    });
   });
 
-  it('容忍围栏与前后杂讯;非法行剔除(sleep 不在白名单);重叠合法行保留由执行层取首块', () => {
-    const fenced = parseDayPlan('好的,计划如下:\n```json\n[{"start":8,"end":12,"activity":"study"},{"start":12,"end":13,"activity":"sleep"},{"start":9,"end":10,"activity":"stroll"}]\n```');
-    expect(fenced).toEqual([
-      { startMin: 480, endMin: 720, activityId: 'study' },
-      { startMin: 540, endMin: 600, activityId: 'stroll' },
-    ]);
-    expect(parseDayPlan('[]')).toBeNull();
-    expect(parseDayPlan('{"start":8}')).toBeNull();
-    expect(parseDayPlan('今天想休息')).toBeNull();
-    expect(parseDayPlan('[{"start":25,"end":26,"activity":"study"}]')).toBeNull();
-    expect(parseDayPlan('[{"start":12,"end":8,"activity":"study"}]')).toBeNull();
+  it('非法行剔除(sleep 不在白名单);重叠合法行保留由执行层取首块;非数组/无有效行判失败', () => {
+    expect(
+      parseDayPlan([
+        { start: 8, end: 12, activity: 'study' },
+        { start: 12, end: 13, activity: 'sleep' },
+        { start: 9, end: 10, activity: 'stroll' },
+      ]),
+    ).toEqual({
+      ok: true,
+      value: [
+        { startMin: 480, endMin: 720, activityId: 'study' },
+        { startMin: 540, endMin: 600, activityId: 'stroll' },
+      ],
+    });
+    expect(parseDayPlan([]).ok).toBe(false);
+    expect(parseDayPlan('{"start":8}').ok).toBe(false);
+    expect(parseDayPlan('今天想休息').ok).toBe(false);
+    expect(parseDayPlan([{ start: 25, end: 26, activity: 'study' }]).ok).toBe(false);
+    expect(parseDayPlan([{ start: 12, end: 8, activity: 'study' }]).ok).toBe(false);
   });
 });
 
@@ -166,17 +184,20 @@ describe('planDay(慢层日计划生成)', () => {
   });
 });
 
-describe('parsePolicy(慢槽输出→方针偏好)', () => {
-  it('合法 JSON 解析 focus/avoid,非白名单活动逐个丢弃', () => {
-    expect(parsePolicy('{"focus":["study","sleep","work"],"avoid":["stroll"]}')).toEqual({
-      focus: ['study', 'work'],
-      avoid: ['stroll'],
+describe('parsePolicy(工具入参→方针偏好)', () => {
+  it('合法对象解析 focus/avoid,非白名单活动逐个丢弃', () => {
+    expect(parsePolicy({ focus: ['study', 'sleep', 'work'], avoid: ['stroll'] })).toEqual({
+      ok: true,
+      value: { focus: ['study', 'work'], avoid: ['stroll'] },
     });
   });
-  it('不可解析/形状非法返回 null', () => {
-    expect(parsePolicy('我想想')).toBeNull();
-    expect(parsePolicy('[1,2]')).toBeNull();
-    expect(parsePolicy('{"focus":"study"}')).toEqual({ focus: [], avoid: [] });
+  it('非对象判失败;focus 非数组视为空(宽松)', () => {
+    expect(parsePolicy('我想想').ok).toBe(false);
+    expect(parsePolicy(null).ok).toBe(false);
+    expect(parsePolicy({ focus: 'study' })).toEqual({
+      ok: true,
+      value: { focus: [], avoid: [] },
+    });
   });
 });
 
@@ -273,18 +294,18 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     const llm: MemoryLlm = {
       systemOne: () => Promise.reject(new Error('unused')) as never,
       embed: () => Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 }),
-      chatStructured: () => Promise.reject(new Error('unused')),
-      chat: (_slot, messages, task) => {
+      chat: () => Promise.reject(new Error('unused')) as never,
+      chatStructured: (_slot, messages, _tool, task, parse) => {
         const isPolicy = task?.taskType === 'agent.persona_policy';
         if (isPolicy) personaPolicyCalls += 1;
         chats.push(messages[messages.length - 1]!.content);
-        return Promise.resolve({
-          content: isPolicy
-            ? '{"focus":["study","sleep"],"avoid":["stroll"]}'
-            : '[{"start":8,"end":12,"activity":"study"}]',
-          promptTokens: 10,
-          completionTokens: 10,
-        });
+        const parsed = parse(
+          isPolicy
+            ? { focus: ['study', 'sleep'], avoid: ['stroll'] }
+            : [{ start: 8, end: 12, activity: 'study' }],
+        );
+        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+        return Promise.resolve(parsed.value);
       },
     };
     const handle = {
@@ -309,14 +330,12 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     const llm: MemoryLlm = {
       systemOne: () => Promise.reject(new Error('unused')) as never,
       embed: () => Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 }),
-      chatStructured: () => Promise.reject(new Error('unused')),
-      chat: (_slot, _messages, task) => {
+      chat: () => Promise.reject(new Error('unused')) as never,
+      chatStructured: (_slot, _messages, _tool, task, parse) => {
         if (task?.taskType === 'agent.persona_policy') personaPolicyCalls += 1;
-        return Promise.resolve({
-          content: '[{"start":8,"end":12,"activity":"study"}]',
-          promptTokens: 10,
-          completionTokens: 10,
-        });
+        const parsed = parse([{ start: 8, end: 12, activity: 'study' }]);
+        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+        return Promise.resolve(parsed.value);
       },
     };
     const handle = {

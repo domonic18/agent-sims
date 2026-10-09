@@ -7,30 +7,30 @@ import {
   parseNarrativeDraft,
 } from './narrator.js';
 
-describe('parseNarrativeDraft(慢槽输出→叙事草稿)', () => {
-  it('解析含杂质 JSON,text 截 200,traits 过滤截断,change 保留', () => {
-    const raw = `好的,这是修订:\n${JSON.stringify({
+describe('parseNarrativeDraft(工具入参→叙事草稿)', () => {
+  it('解析对象,text 截 200,traits 过滤截断,change 保留', () => {
+    const draft = parseNarrativeDraft({
       text: `  ${'我'.repeat(220)}  `,
       traits: ['节俭', '', '   ', 'x'.repeat(30), 42, '热心', '多愁善感', '慢性子'],
       change: '我开始在意别人了',
-    })}\n以上。`;
-    const draft = parseNarrativeDraft(raw);
-    expect(draft?.text).toBe('我'.repeat(200));
-    expect(draft?.traits).toEqual(['节俭', 'x'.repeat(20), '热心', '多愁善感', '慢性子']);
-    expect(draft?.change).toBe('我开始在意别人了');
+    });
+    expect(draft.ok).toBe(true);
+    if (draft.ok) {
+      expect(draft.value.text).toBe('我'.repeat(200));
+      expect(draft.value.traits).toEqual(['节俭', 'x'.repeat(20), '热心', '多愁善感', '慢性子']);
+      expect(draft.value.change).toBe('我开始在意别人了');
+    }
   });
 
   it('change 无效用兜底文案(避免整次失败循环)', () => {
-    const draft = parseNarrativeDraft(
-      JSON.stringify({ text: '我还是我', traits: ['沉稳'], change: '   ' }),
-    );
-    expect(draft?.change).toBe('我对自己的看法有些更新');
+    const draft = parseNarrativeDraft({ text: '我还是我', traits: ['沉稳'], change: '   ' });
+    expect(draft.ok && draft.value.change).toBe('我对自己的看法有些更新');
   });
 
-  it('无 JSON/坏 JSON/空 text 返回 null(整次放弃,次轮重试)', () => {
-    expect(parseNarrativeDraft('昨夜无事可记。')).toBeNull();
-    expect(parseNarrativeDraft('{不是 JSON}')).toBeNull();
-    expect(parseNarrativeDraft(JSON.stringify({ text: '   ', traits: [] }))).toBeNull();
+  it('非对象/空 text 判失败(触发带错重试)', () => {
+    expect(parseNarrativeDraft('昨夜无事可记。').ok).toBe(false);
+    expect(parseNarrativeDraft(null).ok).toBe(false);
+    expect(parseNarrativeDraft({ text: '   ', traits: [] }).ok).toBe(false);
   });
 });
 

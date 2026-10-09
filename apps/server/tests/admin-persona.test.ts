@@ -25,12 +25,6 @@ const dbUp = await (async () => {
   }
 })();
 
-interface ChatReply {
-  content: string;
-  promptTokens: number;
-  completionTokens: number;
-}
-
 const DRAFT_JSON =
   '{"性格":"节俭惜财","兴趣":"钓鱼与下棋","目标":"攒钱开一家小店","说话风格":"言简意赅","bio":"镇上沉默的钓鱼人,账本记得很细"}';
 
@@ -40,11 +34,20 @@ function randomLlm(replies: Array<string | Error>): { llm: MemoryLlm; calls: () 
   const llm: MemoryLlm = {
     systemOne: () => Promise.reject(new Error('unused')) as never,
     embed: () => Promise.reject(new Error('unused')),
-    chat: () => {
+    chat: () => Promise.reject(new Error('unused')) as never,
+    chatStructured: (_slot, _messages, _tool, _task, parse) => {
       count += 1;
       const next = queue.shift();
       if (next === undefined || next instanceof Error) return Promise.reject(new Error('桩耗尽'));
-      return Promise.resolve({ content: next, promptTokens: 1, completionTokens: 1 } satisfies ChatReply);
+      let raw: unknown;
+      try {
+        raw = JSON.parse(next);
+      } catch {
+        raw = next;
+      }
+      const parsed = parse(raw);
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
     },
   };
   return { llm, calls: () => count };

@@ -23,11 +23,20 @@ function harness(chatContent: string | Error): Harness {
   const llm: MemoryLlm = {
     systemOne: () => Promise.reject(new Error('unused')) as never,
     embed: () => Promise.reject(new Error('unused')),
-    chat: () => {
+    chat: () => Promise.reject(new Error('unused')) as never,
+    // 桩语义=chatContent 即模型要提交的工具入参;非 JSON 原样交 parse 判定(校验失败同走异常)
+    chatStructured: (_slot, _messages, _tool, _task, parse) => {
       chatCalls += 1;
-      return chatContent instanceof Error
-        ? Promise.reject(chatContent)
-        : Promise.resolve({ content: chatContent, promptTokens: 1, completionTokens: 1 });
+      if (chatContent instanceof Error) return Promise.reject(chatContent);
+      let raw: unknown;
+      try {
+        raw = JSON.parse(chatContent);
+      } catch {
+        raw = chatContent;
+      }
+      const parsed = parse(raw);
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
     },
   };
   app.decorate('llm', llm);

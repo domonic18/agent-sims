@@ -11,6 +11,7 @@ import {
 } from '@sims/shared';
 import { z } from 'zod';
 import type { DbHandle } from '../db/client.js';
+import type { StructuredParse, StructuredToolSpec } from '../llm/types.js';
 import { assetCategories, assets } from '../db/schema/index.js';
 import { publishManifest } from '../assets/library.js';
 import { libraryRoot, publishTarget } from '../assets/paths.js';
@@ -61,31 +62,48 @@ const AI_REVIEW_SYSTEM = [
   '图片是 16x16 网格的低分辨率像素游戏素材(现代拟物风格),细节稀少、色块概括是风格特征,不要因「缺乏细节/过于简单」判为不匹配;图片可能被放大过,锯齿与硬边正常。',
   '判定核心: 图中主体物的**类别语义**与登记的 slug/名称是否一致(如 slug 是 sofa 而画的是柜子=不匹配;slug 是 lamp 而画的是台灯壁灯=不匹配)。slug 与名称是项目既定标识,不要因个人命名习惯(如 treadmill vs running_machine)或同义近类(desk/table)建议改名。',
   '重点关注: 图文类别错位、图片裁切错误(残缺/一张图里混入多个不相关物件/错位)。',
-  '严格只输出一个 JSON 对象,禁止 markdown 围栏,字段如下:',
-  '{"match":"yes|no|unsure","see":"图中画的是什么(中文一句话)","kindGuess":"若能判断出家具类型给英文 kind 小写(如 sofa/bed/tv/wardrobe),判断不出则 null","problems":["发现的问题,每条一句中文"],"suggestion":"修正建议(中文说明或指出应换图),无则 null"}',
 ].join('\n');
 
-/** 宽松解析视觉模型输出:剥围栏、截取首尾大括号、字段兜底 */
-function parseAiReview(content: string): AssetAiReviewResult {
-  const text = content
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '');
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end <= start) {
-    throw new Error(`模型输出非 JSON: ${content.slice(0, 80)}`);
-  }
-  const raw = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+/** 审核结果工具规格(结构化输出):provider 层 schema 约束 match 枚举与字段名 */
+function aiReviewTool(): StructuredToolSpec {
   return {
-    match: raw.match === 'yes' || raw.match === 'no' ? raw.match : 'unsure',
-    see: typeof raw.see === 'string' ? raw.see : '',
-    kindGuess: typeof raw.kindGuess === 'string' && raw.kindGuess !== '' ? raw.kindGuess : null,
-    problems: Array.isArray(raw.problems)
-      ? raw.problems.filter((p): p is string => typeof p === 'string')
-      : [],
-    suggestion:
-      typeof raw.suggestion === 'string' && raw.suggestion !== '' ? raw.suggestion : null,
+    name: 'submit_asset_review',
+    description: '提交素材图文相符审核结果',
+    inputSchema: {
+      type: 'object',
+      required: ['match', 'see', 'problems'],
+      properties: {
+        match: { type: 'string', enum: ['yes', 'no', 'unsure'] },
+        see: { type: 'string', description: '图中画的是什么(中文一句话)' },
+        kindGuess: {
+          type: ['string', 'null'],
+          description: '若能判断出家具类型给英文 kind 小写(如 sofa/bed/tv/wardrobe),判断不出则 null',
+        },
+        problems: { type: 'array', items: { type: 'string' }, description: '发现的问题,每条一句中文' },
+        suggestion: { type: ['string', 'null'], description: '修正建议,无则 null' },
+      },
+    },
+  };
+}
+
+/** 工具入参→审核结果:字段宽松兜底(match 非法值归 unsure);整体非对象判失败(触发带错重试) */
+function parseAiReview(raw: unknown): StructuredParse<AssetAiReviewResult> {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ok: false, reason: '输出须为 JSON 对象' };
+  }
+  const value = raw as Record<string, unknown>;
+  return {
+    ok: true,
+    value: {
+      match: value.match === 'yes' || value.match === 'no' ? value.match : 'unsure',
+      see: typeof value.see === 'string' ? value.see : '',
+      kindGuess: typeof value.kindGuess === 'string' && value.kindGuess !== '' ? value.kindGuess : null,
+      problems: Array.isArray(value.problems)
+        ? value.problems.filter((p): p is string => typeof p === 'string')
+        : [],
+      suggestion:
+        typeof value.suggestion === 'string' && value.suggestion !== '' ? value.suggestion : null,
+    },
   };
 }
 
@@ -349,15 +367,17 @@ export function registerAssetRoutes(app: FastifyInstance, handle: DbHandle): voi
           `标签: ${asset.tags.length > 0 ? asset.tags.join('/') : '无'}`,
           `来源: ${asset.source}`,
         ].join('\n');
-        const result = await modelRouter.chat(
+        const result = await modelRouter.chatStructured(
           'vision',
           [
             { role: 'system', content: AI_REVIEW_SYSTEM },
             { role: 'user', content: `审核这张素材图片。登记元数据:\n${meta}`, images: [dataUrl] },
           ],
+          aiReviewTool(),
           { taskType: 'asset_ai_review', maxTokens: 800, temperature: 0 },
+          parseAiReview,
         );
-        items.push({ id, slug: asset.slug, ok: true, result: parseAiReview(result.content) });
+        items.push({ id, slug: asset.slug, ok: true, result });
       } catch (err) {
         const message =
           err instanceof LlmError

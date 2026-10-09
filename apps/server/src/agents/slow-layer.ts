@@ -2,7 +2,7 @@ import { getActivityDefinition, getPropertyDefinition } from '@sims/shared';
 import { eq } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/index.js';
-import type { LlmMessage } from '../llm/types.js';
+import type { LlmMessage, StructuredParse, StructuredToolSpec } from '../llm/types.js';
 import type { WorldCharacter } from '../world/character.js';
 import { retrieveMemories } from './memory-retrieval.js';
 import type { CompiledPolicy } from './cognition.js';
@@ -63,33 +63,48 @@ export interface PlanContext {
   previous?: DayPlan | null;
 }
 
-/** 方针编译(slow 槽):文本→白名单活动偏好集;解析失败/调用失败返回 null,
+/** 方针偏好工具规格(结构化输出):provider 层 schema 约束字段名与活动白名单 */
+export function policyTool(): StructuredToolSpec {
+  const ids = { type: 'string', enum: [...PLAN_ACTIVITY_IDS] };
+  return {
+    name: 'submit_policy',
+    description: '提交活动偏好编译结果(focus=鼓励,avoid=排斥)',
+    inputSchema: {
+      type: 'object',
+      required: ['focus', 'avoid'],
+      properties: { focus: { type: 'array', items: ids }, avoid: { type: 'array', items: ids } },
+    },
+  };
+}
+
+/** 方针编译(slow 槽):文本→白名单活动偏好集;调用/校验失败(两次)返回 null,
  * 调用方回落「只用原文」(方针缓存,文本变更才重编译,agent-design §4.5) */
 export async function compilePolicy(
   llm: MemoryLlm,
   text: string,
 ): Promise<CompiledPolicy | null> {
   try {
-    const result = await llm.chat(
+    return await llm.chatStructured(
       'slow',
       [
         {
           role: 'system',
-          content: '你把玩家的生活方针编译为结构化活动偏好。只输出 JSON,不要解释。',
+          content: '你把玩家的生活方针编译为结构化活动偏好。',
         },
         {
           role: 'user',
           content: [
             `生活方针: ${text}`,
             `可选活动: ${ACTIVITY_MENU}。`,
-            '只输出 JSON 对象: {"focus":["activityId",...],"avoid":["activityId",...]}。',
             'focus=方针鼓励的活动,avoid=方针排斥的活动;都可为空数组,只准用可选活动里的 id。',
+            '请调用 submit_policy 工具提交编译结果。',
           ].join('\n'),
         },
       ],
+      policyTool(),
       { taskType: 'agent.policy_compile' },
+      parsePolicy,
     );
-    return parsePolicy(result.content);
   } catch {
     return null;
   }
@@ -99,55 +114,50 @@ export async function compilePolicy(
 const personaPolicies = new Map<string, { key: string; compiled: CompiledPolicy }>();
 
 /** 人设偏好编译(slow 槽):人格卡→活动偏好集,full 托管(无玩家方针)时提供差异化计划倾向。
- * 解析失败/调用失败返回 null(当天只用原文人设,不缓存) */
+ * 调用/校验失败返回 null(当天只用原文人设,不缓存) */
 export async function compilePersonaPolicy(
   llm: MemoryLlm,
   persona: string,
   characterId?: string,
 ): Promise<CompiledPolicy | null> {
   try {
-    const result = await llm.chat(
+    return await llm.chatStructured(
       'slow',
       [
         {
           role: 'system',
-          content: '你把角色的人设编译为结构化活动偏好。只输出 JSON,不要解释。',
+          content: '你把角色的人设编译为结构化活动偏好。',
         },
         {
           role: 'user',
           content: [
             `人设: ${persona}`,
             `可选活动: ${ACTIVITY_MENU}。`,
-            '只输出 JSON 对象: {"focus":["activityId",...],"avoid":["activityId",...]}。',
             'focus=这个人设会喜欢/常做的活动,avoid=这个人设不爱做/会回避的活动;都可为空数组,只准用可选活动里的 id,没有把握就留空。',
+            '请调用 submit_policy 工具提交编译结果。',
           ].join('\n'),
         },
       ],
+      policyTool(),
       { taskType: 'agent.persona_policy', characterId },
+      parsePolicy,
     );
-    return parsePolicy(result.content);
   } catch {
     return null;
   }
 }
 
-/** 慢槽输出→方针偏好:截取首个 JSON 对象,活动逐个过白名单,非字符串丢弃 */
-export function parsePolicy(raw: string): CompiledPolicy | null {
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (match === null) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    return null;
+/** 工具入参→方针偏好:活动逐个过白名单,非字符串丢弃(宽松);整体非对象判失败(触发带错重试) */
+export function parsePolicy(raw: unknown): StructuredParse<CompiledPolicy> {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ok: false, reason: '输出须为 JSON 对象' };
   }
-  if (typeof parsed !== 'object' || parsed === null) return null;
-  const record = parsed as Record<string, unknown>;
+  const record = raw as Record<string, unknown>;
   const pick = (value: unknown): string[] =>
     Array.isArray(value)
       ? value.filter((id): id is string => typeof id === 'string' && (PLAN_ACTIVITY_IDS as readonly string[]).includes(id))
       : [];
-  return { focus: pick(record.focus), avoid: pick(record.avoid) };
+  return { ok: true, value: { focus: pick(record.focus), avoid: pick(record.avoid) } };
 }
 
 /** 人设卡上下文:读 characters.persona 拼人设段;无卡/查询失败返回 undefined(静默降级) */
@@ -201,20 +211,37 @@ function fallbackPlan(day: number): DayPlan {
   return { day, blocks: [...DEFAULT_PLAN_TEMPLATE], source: 'fallback' };
 }
 
-/** 慢槽输出→计划块:截取首个 JSON 数组,剔除非法行(活动不在白名单/区间越界/倒挂)。
- * 无有效行或不可解析返回 null(调用方回落模板)。 */
-export function parseDayPlan(raw: string): PlanBlock[] | null {
-  const match = raw.match(/\[[\s\S]*\]/);
-  if (match === null) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    return null;
+/** 日计划工具规格(结构化输出):start/end 为小时(0~24),activity 白名单 */
+function dayPlanTool(): StructuredToolSpec {
+  const hour = { type: 'number', minimum: 0, maximum: 24 };
+  return {
+    name: 'submit_day_plan',
+    description: '提交当日日程(blocks 时间段首尾相接)',
+    inputSchema: {
+      type: 'object',
+      required: ['blocks'],
+      properties: {
+        blocks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            required: ['start', 'end', 'activity'],
+            properties: { start: hour, end: hour, activity: { type: 'string', enum: [...PLAN_ACTIVITY_IDS] } },
+          },
+        },
+      },
+    },
+  };
+}
+
+/** 工具入参→计划块:剔除非法行(活动不在白名单/区间越界/倒挂),按 start 排序;
+ * 非数组或无有效行判失败(触发带错重试,调用方回落模板)。 */
+export function parseDayPlan(raw: unknown): StructuredParse<PlanBlock[]> {
+  if (!Array.isArray(raw)) {
+    return { ok: false, reason: '输出须为 JSON 数组(blocks)' };
   }
-  if (!Array.isArray(parsed)) return null;
   const blocks: PlanBlock[] = [];
-  for (const row of parsed) {
+  for (const row of raw) {
     if (typeof row !== 'object' || row === null) continue;
     const r = row as Record<string, unknown>;
     const start = Number(r.start);
@@ -234,9 +261,11 @@ export function parseDayPlan(raw: string): PlanBlock[] | null {
       activityId: activity,
     });
   }
-  if (blocks.length === 0) return null;
+  if (blocks.length === 0) {
+    return { ok: false, reason: '无合法计划块(start/end 须 0~24 且 end>start,activity 须在可选活动内)' };
+  }
   blocks.sort((a, b) => a.startMin - b.startMin);
-  return blocks;
+  return { ok: true, value: blocks };
 }
 
 /** 当前分钟落在哪个计划块(含头不含尾);空档/无计划返回 null */
@@ -306,7 +335,7 @@ function buildPlanMessages(
         memoryLines,
         `可选活动: ${ACTIVITY_MENU}。`,
         '要求: 覆盖 8 点到 22 点,时间段首尾相接,每段 1~4 小时;22 点到次日 8 点是睡觉时间,无需安排;结合记忆与状态做选择(如缺钱多安排工作,知识低多学习,想见朋友可以安排社交,去公园或餐馆碰碰运气)。',
-        '只输出 JSON 数组,格式: [{"start":8,"end":12,"activity":"study"}]。',
+        '请调用 submit_day_plan 工具提交今天的日程(start/end 用小时)。',
       ].join('\n'),
     },
   ];
@@ -371,19 +400,17 @@ export async function planDay(
   }
   const avoid = compiled?.avoid ?? [];
   try {
-    const result = await llm.chat(
+    const blocks = await llm.chatStructured(
       'slow',
       buildPlanMessages(char, evidence, clock.day, { ...ctx, compiled }),
+      dayPlanTool(),
       { taskType: 'agent.day_plan', characterId: char.id, temperature: 0.9 },
+      parseDayPlan,
     );
-    const blocks = parseDayPlan(result.content);
-    if (blocks !== null) {
-      const kept = applyAvoid(blocks, avoid);
-      return kept.length > 0
-        ? { day: clock.day, blocks: kept, source: 'llm' }
-        : applyAvoidFallback(clock.day, avoid);
-    }
-    return applyAvoidFallback(clock.day, avoid);
+    const kept = applyAvoid(blocks, avoid);
+    return kept.length > 0
+      ? { day: clock.day, blocks: kept, source: 'llm' }
+      : applyAvoidFallback(clock.day, avoid);
   } catch {
     return applyAvoidFallback(clock.day, avoid);
   }

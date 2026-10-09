@@ -4,7 +4,7 @@ import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/agent.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
-import type { LlmMessage } from '../llm/types.js';
+import type { LlmMessage, StructuredParse, StructuredToolSpec } from '../llm/types.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
 import type { MemoryLlm, MemoryWriter } from './memory-writer.js';
@@ -62,22 +62,35 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** 慢槽修订输出→叙事草稿: text 必须有效(无效返回 null 整次放弃,次轮重试);
+/** 自我叙事工具规格(结构化输出):withChange=周级修订(带 change 说明),否则初始生成 */
+export function narrativeTool(withChange: boolean): StructuredToolSpec {
+  return {
+    name: 'submit_narrative',
+    description: withChange ? '提交修订后的自我叙事' : '提交自我叙事',
+    inputSchema: {
+      type: 'object',
+      required: withChange ? ['text', 'traits', 'change'] : ['text', 'traits'],
+      properties: {
+        text: { type: 'string' },
+        traits: { type: 'array', items: { type: 'string' }, maxItems: TRAIT_MAX },
+        ...(withChange ? { change: { type: 'string' } } : {}),
+      },
+    },
+  };
+}
+
+/** 工具入参→叙事草稿: text 必须有效(无效判失败,触发带错重试);
  * traits 白名单截断;change 无效用兜底文案(避免永远失败循环) */
 export function parseNarrativeDraft(
-  raw: string,
-): (NarrativeDraft & { change: string }) | null {
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (match === null) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    return null;
+  raw: unknown,
+): StructuredParse<NarrativeDraft & { change: string }> {
+  if (typeof raw !== 'object' || raw === null) {
+    return { ok: false, reason: '输出须为 JSON 对象' };
   }
-  if (typeof parsed !== 'object' || parsed === null) return null;
-  const value = parsed as Record<string, unknown>;
-  if (typeof value.text !== 'string' || value.text.trim() === '') return null;
+  const value = raw as Record<string, unknown>;
+  if (typeof value.text !== 'string' || value.text.trim() === '') {
+    return { ok: false, reason: 'text 须为非空字符串' };
+  }
   const traits = Array.isArray(value.traits)
     ? value.traits
         .filter((t): t is string => typeof t === 'string' && t.trim() !== '')
@@ -88,7 +101,10 @@ export function parseNarrativeDraft(
     typeof value.change === 'string' && value.change.trim() !== ''
       ? value.change.trim().slice(0, CHANGE_MAX)
       : '我对自己的看法有些更新';
-  return { text: value.text.trim().slice(0, NARRATIVE_TEXT_MAX), traits, change };
+  return {
+    ok: true,
+    value: { text: value.text.trim().slice(0, NARRATIVE_TEXT_MAX), traits, change },
+  };
 }
 
 /** 修订 prompt(慢槽): 防漂移明令+素材白名单,10-cognition §6 */
@@ -101,7 +117,7 @@ export function buildEvolveMessages(
   return [
     {
       role: 'system',
-      content: `你是小镇居民「${name}」的内心。你在复盘「我是谁」——只允许基于给定的近期认知微调自我描述,不得推翻既有核心特质,不得编造未发生的事。只输出 JSON,不要解释。`,
+      content: `你是小镇居民「${name}」的内心。你在复盘「我是谁」——只允许基于给定的近期认知微调自我描述,不得推翻既有核心特质,不得编造未发生的事。`,
     },
     {
       role: 'user',
@@ -112,11 +128,10 @@ export function buildEvolveMessages(
         insights.length > 0 ? insights.map((s) => `- ${s}`).join('\n') : '- (暂无)',
         '你对别人的印象:',
         relations.length > 0 ? relations.map((s) => `- ${s}`).join('\n') : '- (暂无)',
-        '请输出一个 JSON 对象,字段:',
+        '请调用 submit_narrative 工具提交修订:',
         `- "text": 修订后的自我叙事,第一人称,≤${NARRATIVE_TEXT_MAX} 字,只许依据上述认知微调`,
         `- "traits": 3~${TRAIT_MAX} 个核心特质词(可在原有基础上微调)`,
         '- "change": 一句话说明这次看法哪里变了',
-        '只输出 JSON,不要解释。',
       ].join('\n'),
     },
   ];
@@ -135,7 +150,7 @@ export function buildInitMessages(
   return [
     {
       role: 'system',
-      content: `你是小镇居民「${name}」的内心。基于你的人设卡,用第一人称写一段「我是谁」的自我叙事。只输出 JSON,不要解释。`,
+      content: `你是小镇居民「${name}」的内心。基于你的人设卡,用第一人称写一段「我是谁」的自我叙事。`,
     },
     {
       role: 'user',
@@ -145,10 +160,9 @@ export function buildInitMessages(
         `兴趣: ${field('兴趣') || '(未设定)'}`,
         `目标: ${field('目标') || '(未设定)'}`,
         `说话风格: ${field('说话风格') || '(未设定)'}`,
-        '请输出一个 JSON 对象,字段:',
+        '请调用 submit_narrative 工具提交你的自我叙事:',
         `- "text": 你的自我叙事,第一人称,≤${NARRATIVE_TEXT_MAX} 字,贴合人设与说话风格,具体、接地气`,
         `- "traits": 3~${TRAIT_MAX} 个核心特质词`,
-        '只输出 JSON,不要解释。',
       ].join('\n'),
     },
   ];
@@ -354,7 +368,7 @@ export class Narrator {
       // 无新认知与印象时不修订(防纯漂移: 没有素材支撑的变化不写)
       if (insightRows.length === 0 && relationRows.length === 0) return;
 
-      const result = await this.llm.chat(
+      const draft = await this.llm.chatStructured(
         'slow',
         buildEvolveMessages(
           name,
@@ -362,13 +376,10 @@ export class Narrator {
           insightRows.map((r) => r.content),
           relationRows.map((r) => r.content),
         ),
+        narrativeTool(true),
         { taskType: 'agent.narrative_evolve', characterId },
+        parseNarrativeDraft,
       );
-      const draft = parseNarrativeDraft(result.content);
-      if (draft === null) {
-        logTech('info', 'narrator', '叙事修订输出无效,留待下次', { characterId, reason });
-        return;
-      }
       const milestoneNote = reason.startsWith('milestone:')
         ? MILESTONE_LABELS[reason.slice('milestone:'.length)] ?? ''
         : '';
