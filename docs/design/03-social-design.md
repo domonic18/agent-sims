@@ -62,3 +62,13 @@
 - 相性公式/称号阈值/chat 收益·递减·每日上限: 见 numerical-design §6.1~§6.4。
 - 同场增益结算位置: 每 tick 逐角色、在活动净速率与繁荣分之后(applySocialPresenceBonus)。
 - 幽灵/死亡对关系: v1 不特殊处理(关系保留、幽灵拒绝 chat);悼念/衰减加速留 M4+。
+
+## 8. 共处破冰(D1,2026-10-09 落地)
+
+v1 冷启动死锁: 社交动机要求 familiarity>0,而关系只能由 chat 创建、chat 只能由动机引擎发起——陌生对永远聊不上(长跑实测全镇互为陌生人 14 天零对话);且点火线数学不可达(SOCIAL_DESIRE_FIRE=0.7 > 初识者动机上限 0.6)。修法是**数值感知的共处破冰通道**,零模型:
+
+- **acquaintanceStep**(15 游戏分节拍): 同场所共处的陌生对(familiarity=0 且无记录)累加共处分钟(acquaintance 字段随 socials 快照下发);
+- 达 `ACQUAINTANCE_THRESHOLD_MINUTES`(120 共处分钟)→ 双向建交(familiarity=`ACQUAINTANCE_FAMILIARITY`=5)+ `first.met` 事件 + 双方各写一条记忆(经评价引擎);`ACQUAINTANCE_DAILY_CAP`=2 对/角色/日防速熟;
+- 公式配套: 初识面熟加成 +0.15(动机引擎),`SOCIAL_DESIRE_FIRE` 0.7→0.45——初识者动机可达点火线,解死锁后能自发开口;
+- 语义边界: 破冰≠成为朋友,只是把「认识」交给物理共处;聊不聊仍由动机引擎回答(10-cognition-design §7.2);
+- 配套容忍: 轻活动(stroll/meal/rest/socialize)可被搭话不打断(不 finishActivity,聊完继续),替代旧「忙碌即跳过」。
