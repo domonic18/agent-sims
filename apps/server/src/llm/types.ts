@@ -13,6 +13,23 @@ export interface LlmChatResult {
   completionTokens: number;
 }
 
+/** 结构化输出工具规格:provider 层 schema 约束(工具强制调用),inputSchema 为 JSON Schema */
+export interface StructuredToolSpec {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+/** 结构化解析回调结果:fail 时的 reason 会追加进对话做带错重试 */
+export type StructuredParse<T> = { ok: true; value: T } | { ok: false; reason: string };
+
+export interface LlmStructuredResult {
+  /** 工具入参(未经校验的 unknown,校验归调用方) */
+  input: unknown;
+  promptTokens: number;
+  completionTokens: number;
+}
+
 export interface LlmEmbedResult {
   vector: number[];
   promptTokens: number;

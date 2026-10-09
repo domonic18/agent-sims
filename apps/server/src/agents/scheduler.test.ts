@@ -145,6 +145,7 @@ function harness(
       if (llm?.chat === undefined) return Promise.reject(new Error('no chat'));
       return llm.chat(_slot, messages, task);
     },
+    chatStructured: () => Promise.reject(new Error('no chatStructured')),
   };
   const scheduler = new AgentScheduler({
     sim,

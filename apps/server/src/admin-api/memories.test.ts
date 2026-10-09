@@ -35,6 +35,8 @@ function stubLlm(vector: number[] | Error): MemoryLlm {
     embed: () =>
       vector instanceof Error ? Promise.reject(vector) : Promise.resolve({ vector, promptTokens: 0 }),
     chat: () => Promise.reject(new Error('测试桩不触发 chat')),
+    chatStructured: () => Promise.reject(new Error('测试桩不触发 chatStructured')),
+
   };
 }
 

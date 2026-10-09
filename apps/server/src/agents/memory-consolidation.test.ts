@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { extractPartners, parseConsolidation, resolveSourceIds } from './memory-consolidation.js';
+import type { StructuredParse } from '../llm/types.js';
+import {
+  extractPartners,
+  parseConsolidation,
+  resolveSourceIds,
+  type ConsolidationDraft,
+} from './memory-consolidation.js';
 
 const PARTNERS = new Set(['苏晚', '阿泽']);
 
@@ -9,9 +15,14 @@ const valid = {
   relations: [{ about: '苏晚', content: '可以信任' }],
 };
 
-describe('parseConsolidation(慢槽输出→固化草稿)', () => {
-  it('解析合法 JSON 对象并钳重要度/截条数', () => {
-    const raw = JSON.stringify({
+function unwrap(parsed: StructuredParse<ConsolidationDraft>): ConsolidationDraft {
+  if (!parsed.ok) throw new Error(`应为合法草稿: ${parsed.reason}`);
+  return parsed.value;
+}
+
+describe('parseConsolidation(工具入参→固化草稿)', () => {
+  it('解析合法工具入参并钳重要度/截条数(坏条目丢弃不整组否决)', () => {
+    const input = {
       dreams: [
         { content: 'a', importance: 99 },
         { content: 'b', importance: 2 },
@@ -30,8 +41,8 @@ describe('parseConsolidation(慢槽输出→固化草稿)', () => {
         { about: '苏晚', content: 'r3' },
         { about: '苏晚', content: 'r4' },
       ],
-    });
-    const draft = parseConsolidation(raw, { withDreams: true, partners: PARTNERS });
+    };
+    const draft = unwrap(parseConsolidation(input, { withDreams: true, partners: PARTNERS }));
     expect(draft.dreams).toHaveLength(3);
     expect(draft.dreams[0]?.importance).toBe(10);
     expect(draft.insights).toHaveLength(3);
@@ -40,62 +51,58 @@ describe('parseConsolidation(慢槽输出→固化草稿)', () => {
   });
 
   it('白天反思(withDreams=false)忽略 dreams 段', () => {
-    const raw = JSON.stringify(valid);
-    const draft = parseConsolidation(raw, { withDreams: false, partners: PARTNERS });
+    const draft = unwrap(parseConsolidation(valid, { withDreams: false, partners: PARTNERS }));
     expect(draft.dreams).toHaveLength(0);
     expect(draft.insights).toHaveLength(1);
     expect(draft.relations).toHaveLength(1);
   });
 
   it('无 sources 或空 sources 的 insight 丢弃(设计红线)', () => {
-    const raw = JSON.stringify({
+    const input = {
       insights: [
         { content: '有引用', importance: 5, sources: [' 证据 '] },
         { content: '没引用', importance: 5 },
         { content: '空引用', importance: 5, sources: [] },
         { content: '有空串引用', importance: 5, sources: ['  '] },
       ],
-    });
-    const draft = parseConsolidation(raw, { withDreams: true, partners: PARTNERS });
+    };
+    const draft = unwrap(parseConsolidation(input, { withDreams: true, partners: PARTNERS }));
     expect(draft.insights).toHaveLength(1);
     expect(draft.insights[0]?.content).toBe('有引用');
     expect(draft.insights[0]?.sources).toEqual(['证据']);
   });
 
   it('about 不在互动者白名单的 relation 丢弃(防编造关系)', () => {
-    const raw = JSON.stringify({
+    const input = {
       relations: [
         { about: '苏晚', content: 'r1' },
         { about: '路人甲', content: 'r2' },
       ],
-    });
-    const draft = parseConsolidation(raw, { withDreams: true, partners: PARTNERS });
+    };
+    const draft = unwrap(parseConsolidation(input, { withDreams: true, partners: PARTNERS }));
     expect(draft.relations).toHaveLength(1);
     expect(draft.relations[0]?.about).toBe('苏晚');
   });
 
-  it('不可解析/非对象输出返回全空草稿', () => {
-    expect(parseConsolidation('不是 JSON', { withDreams: true, partners: PARTNERS })).toEqual({
-      dreams: [],
-      insights: [],
-      relations: [],
-    });
-    expect(
-      parseConsolidation('[1,2,3]', { withDreams: true, partners: PARTNERS }).insights,
-    ).toHaveLength(0);
+  it('非对象输入返回 fail(触发 router 带错重试一次)', () => {
+    expect(parseConsolidation('不是 JSON', { withDreams: true, partners: PARTNERS }).ok).toBe(false);
+    expect(parseConsolidation([1, 2, 3], { withDreams: true, partners: PARTNERS }).ok).toBe(false);
+    expect(parseConsolidation(null, { withDreams: true, partners: PARTNERS }).ok).toBe(false);
   });
 
-  it('正文字段兼容 text 别名(kimi-for-coding 实测把 content 猜成 text)', () => {
-    const raw = JSON.stringify({
-      dreams: [{ text: '钟面裂成两半', importance: 4 }],
-      insights: [{ text: '金币不足就餐会中止', importance: 6, sources: ['我就餐了 0 分钟(金币不足中止)'] }],
-      relations: [{ about: '阿泽', text: '完成过探索的人' }],
-    });
-    const draft = parseConsolidation(raw, { withDreams: true, partners: PARTNERS });
-    expect(draft.dreams).toEqual([{ content: '钟面裂成两半', importance: 4 }]);
-    expect(draft.insights).toHaveLength(1);
-    expect(draft.insights[0]!.content).toBe('金币不足就餐会中止');
-    expect(draft.relations).toEqual([{ about: '阿泽', content: '完成过探索的人' }]);
+  it('字段类型不符的条目丢弃(content 缺失/重要度非数值),段缺失视为空', () => {
+    const draft = unwrap(
+      parseConsolidation(
+        {
+          dreams: [{ content: '只有正文' }, { importance: 3 }, '纯字符串'],
+          insights: [{ content: '好认知', importance: '高', sources: ['s'] }],
+        },
+        { withDreams: true, partners: PARTNERS },
+      ),
+    );
+    expect(draft.dreams).toHaveLength(0);
+    expect(draft.insights).toHaveLength(0);
+    expect(draft.relations).toHaveLength(0);
   });
 });
 

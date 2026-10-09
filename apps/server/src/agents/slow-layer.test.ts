@@ -73,6 +73,7 @@ function llmStub(opts: {
       embedCalls += 1;
       return Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 });
     },
+    chatStructured: () => Promise.reject(new Error('unused')),
     chat: (_slot, messages) => {
       chatMessages.push(...messages);
       if (opts.chatReject === true) return Promise.reject(new Error('slow 槽未配置'));
@@ -272,6 +273,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     const llm: MemoryLlm = {
       systemOne: () => Promise.reject(new Error('unused')) as never,
       embed: () => Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 }),
+      chatStructured: () => Promise.reject(new Error('unused')),
       chat: (_slot, messages, task) => {
         const isPolicy = task?.taskType === 'agent.persona_policy';
         if (isPolicy) personaPolicyCalls += 1;
@@ -307,6 +309,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     const llm: MemoryLlm = {
       systemOne: () => Promise.reject(new Error('unused')) as never,
       embed: () => Promise.resolve({ vector: [0.1, 0.2], promptTokens: 3 }),
+      chatStructured: () => Promise.reject(new Error('unused')),
       chat: (_slot, _messages, task) => {
         if (task?.taskType === 'agent.persona_policy') personaPolicyCalls += 1;
         return Promise.resolve({

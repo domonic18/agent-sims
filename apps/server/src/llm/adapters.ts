@@ -3,7 +3,9 @@ import {
   type LlmChatResult,
   type LlmEmbedResult,
   type LlmMessage,
+  type LlmStructuredResult,
   type SlotRuntimeConfig,
+  type StructuredToolSpec,
   type SystemOneQuestion,
   type SystemOneResult,
   LlmError,
@@ -170,6 +172,95 @@ export async function chatViaAnthropic(
     promptTokens: data.usage?.input_tokens ?? 0,
     completionTokens: data.usage?.output_tokens ?? 0,
   };
+}
+
+/** 结构化输出(anthropic 轨):tools+tool_choice 强制工具调用,取 tool_use 块的 input。
+ * kimi-for-coding 默认开 thinking 且与 tool_choice 互斥(实测 HTTP 400),须显式关闭。 */
+export async function chatViaAnthropicStructured(
+  cfg: SlotRuntimeConfig,
+  messages: LlmMessage[],
+  tool: StructuredToolSpec,
+  opts: LlmCallOptions,
+  fetchImpl: FetchImpl,
+): Promise<LlmStructuredResult> {
+  const system = messages
+    .filter((m) => m.role === 'system')
+    .map((m) => m.content)
+    .join('\n');
+  const data = (await postJson(
+    cfg.slot,
+    `${cfg.baseUrl}/messages`,
+    {
+      'x-api-key': cfg.apiKey,
+      authorization: `Bearer ${cfg.apiKey}`,
+      'anthropic-version': ANTHROPIC_VERSION,
+    },
+    {
+      model: cfg.model,
+      max_tokens: opts.maxTokens ?? 1024,
+      ...(system !== '' ? { system } : {}),
+      messages: serializeAnthropicMessages(messages),
+      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+      thinking: { type: 'disabled' },
+      tools: [{ name: tool.name, description: tool.description, input_schema: tool.inputSchema }],
+      tool_choice: { type: 'tool', name: tool.name },
+    },
+    opts.timeoutMs,
+    fetchImpl,
+  )) as {
+    content?: Array<{ type?: string; input?: unknown }>;
+    usage?: { input_tokens?: number; output_tokens?: number };
+  };
+  const block = (data.content ?? []).find((b) => b.type === 'tool_use' && b.input !== undefined);
+  if (block === undefined) {
+    throw new LlmError(cfg.slot, `未返回 tool_use 块: ${JSON.stringify(data.content ?? []).slice(0, 200)}`);
+  }
+  return {
+    input: block.input,
+    promptTokens: data.usage?.input_tokens ?? 0,
+    completionTokens: data.usage?.output_tokens ?? 0,
+  };
+}
+
+/** 结构化输出(openai 轨):function tools+tool_choice 强制,取首个 function call 的 arguments(JSON 串) */
+export async function chatViaOpenAiStructured(
+  cfg: SlotRuntimeConfig,
+  messages: LlmMessage[],
+  tool: StructuredToolSpec,
+  opts: LlmCallOptions,
+  fetchImpl: FetchImpl,
+): Promise<LlmStructuredResult> {
+  const data = (await postJson(
+    cfg.slot,
+    `${cfg.baseUrl}/chat/completions`,
+    { authorization: `Bearer ${cfg.apiKey}` },
+    {
+      model: cfg.model,
+      messages: serializeOpenAiMessages(messages),
+      ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
+      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+      tools: [
+        { type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } },
+      ],
+      tool_choice: { type: 'function', function: { name: tool.name } },
+    },
+    opts.timeoutMs,
+    fetchImpl,
+  )) as {
+    choices?: Array<{ message?: { tool_calls?: Array<{ function?: { arguments?: string } }> } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  const args = data.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+  if (typeof args !== 'string' || args === '') {
+    throw new LlmError(cfg.slot, '未返回 function call 参数');
+  }
+  let input: unknown;
+  try {
+    input = JSON.parse(args);
+  } catch {
+    throw new LlmError(cfg.slot, `function arguments 非 JSON: ${args.slice(0, 200)}`);
+  }
+  return { input, ...readOpenAiUsage(data) };
 }
 
 /** Jev 原生 /systemone:一次批量问多个类型化问题(自由生成不支持,调研实测) */

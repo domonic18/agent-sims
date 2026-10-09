@@ -7,7 +7,9 @@ import { env } from '../config/env.js';
 import { logTech } from '../telemetry.js';
 import {
   chatViaAnthropic,
+  chatViaAnthropicStructured,
   chatViaOpenAi,
+  chatViaOpenAiStructured,
   chatViaSystemOne,
   embedViaOpenAi,
   type FetchImpl,
@@ -16,7 +18,10 @@ import type {
   LlmChatResult,
   LlmEmbedResult,
   LlmMessage,
+  LlmStructuredResult,
   SlotRuntimeConfig,
+  StructuredParse,
+  StructuredToolSpec,
   SystemOneQuestion,
   SystemOneResult,
 } from './types.js';
@@ -154,6 +159,55 @@ export class ModelRouter {
         result = await call(baseMax * 2);
       }
       return result;
+    });
+  }
+
+  /** 结构化输出(工具强制调用):模型对 schema「填空」而非照 prompt 猜字段名。
+   * parse 校验失败→把原因追加进对话重试一次,两次均失败抛 LlmError(调用方走既有回落);
+   * 每次调用各记账一行。anthropic 轨须显式关 thinking(与 tool_choice 互斥,kimi 实测)。 */
+  async chatStructured<T>(
+    slot: ModelSlot,
+    messages: LlmMessage[],
+    tool: StructuredToolSpec,
+    task: ChatTask,
+    parse: (raw: unknown) => StructuredParse<T>,
+  ): Promise<T> {
+    return this.runLogged(slot, task.taskType, 'chatStructured', async () => {
+      const cfg = await this.loadConfig(slot);
+      if (cfg.protocol === 'systemone') {
+        throw new LlmError(slot, `槽位 ${slot} 协议为 systemone,不支持结构化对话`);
+      }
+      const maxTokens = cfg.maxTokens ?? task.maxTokens ?? MODEL_SLOT_MAX_TOKENS[slot] ?? undefined;
+      const call = async (msgs: LlmMessage[]): Promise<LlmStructuredResult> => {
+        const opts = { maxTokens, temperature: task.temperature, timeoutMs: env.LLM_TIMEOUT_MS };
+        const result =
+          cfg.protocol === 'anthropic'
+            ? await chatViaAnthropicStructured(cfg, msgs, tool, opts, this.fetchImpl)
+            : await chatViaOpenAiStructured(cfg, msgs, tool, opts, this.fetchImpl);
+        await this.persistUsage({
+          slot,
+          characterId: task.characterId ?? null,
+          taskType: task.taskType,
+          promptTokens: result.promptTokens,
+          completionTokens: result.completionTokens,
+        });
+        return result;
+      };
+      let result = await call(messages);
+      let parsed = parse(result.input);
+      if (parsed.ok) return parsed.value;
+      logTech('warn', 'llm', '结构化输出校验失败,带错重试一次', {
+        slot,
+        taskType: task.taskType,
+        reason: parsed.reason.slice(0, 200),
+      });
+      result = await call([
+        ...messages,
+        { role: 'user', content: `你上次提交的 JSON 未通过校验: ${parsed.reason}。请严格按工具定义的字段名与类型重新提交。` },
+      ]);
+      parsed = parse(result.input);
+      if (parsed.ok) return parsed.value;
+      throw new LlmError(slot, `结构化输出两次校验失败: ${parsed.reason.slice(0, 200)}`);
     });
   }
 

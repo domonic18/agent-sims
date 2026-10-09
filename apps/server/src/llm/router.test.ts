@@ -199,6 +199,152 @@ describe('ModelRouter.chat', () => {
   });
 });
 
+describe('ModelRouter.chatStructured', () => {
+  const tool = {
+    name: 'submit_thing',
+    description: '提交结果',
+    inputSchema: { type: 'object', required: ['answer'], properties: { answer: { type: 'string' } } },
+  };
+  const parseOk = (raw: unknown): { ok: true; value: string } | { ok: false; reason: string } => {
+    const answer = (raw as { answer?: unknown }).answer;
+    return answer === 'ok'
+      ? { ok: true, value: answer as string }
+      : { ok: false, reason: `answer=${String(answer)} 不合规` };
+  };
+
+  function seqRouter(
+    protocol: SlotRuntimeConfig['protocol'],
+    responses: unknown[],
+    persisted: TokenUsageEntry[],
+  ) {
+    const bodies: Array<Record<string, unknown>> = [];
+    let i = 0;
+    const fetchImpl = (async (_url: unknown, init: RequestInit) => {
+      bodies.push(JSON.parse(String(init.body)));
+      return new Response(JSON.stringify(responses[Math.min(i++, responses.length - 1)]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as FetchImpl;
+    const router = new ModelRouter({} as never, {
+      fetchImpl,
+      loadConfig: async () => cfg(protocol),
+      persistUsage: async (entry) => {
+        persisted.push(entry);
+      },
+    });
+    return { router, bodies };
+  }
+
+  it('anthropic 轨:强制 tool_use+关 thinking,校验通过返回 value 并记账', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    const { router, bodies } = seqRouter(
+      'anthropic',
+      [{ content: [{ type: 'tool_use', input: { answer: 'ok' } }], usage: { input_tokens: 20, output_tokens: 6 } }],
+      persisted,
+    );
+    const value = await router.chatStructured(
+      'slow',
+      [{ role: 'user', content: 'q' }],
+      tool,
+      { taskType: 'unit_test', characterId: 'c1' },
+      parseOk,
+    );
+    expect(value).toBe('ok');
+    expect(bodies[0]).toMatchObject({
+      thinking: { type: 'disabled' },
+      tool_choice: { type: 'tool', name: 'submit_thing' },
+      tools: [{ name: 'submit_thing', description: '提交结果', input_schema: tool.inputSchema }],
+    });
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]).toMatchObject({ slot: 'slow', characterId: 'c1', promptTokens: 20, completionTokens: 6 });
+  });
+
+  it('校验失败→带错误消息重试一次,两次均记账,二次成功返回 value', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    const { router, bodies } = seqRouter(
+      'anthropic',
+      [
+        { content: [{ type: 'tool_use', input: { answer: 'bad' } }], usage: { input_tokens: 10, output_tokens: 5 } },
+        { content: [{ type: 'tool_use', input: { answer: 'ok' } }], usage: { input_tokens: 10, output_tokens: 5 } },
+      ],
+      persisted,
+    );
+    const value = await router.chatStructured(
+      'slow',
+      [{ role: 'user', content: 'q' }],
+      tool,
+      { taskType: 'unit_test' },
+      parseOk,
+    );
+    expect(value).toBe('ok');
+    expect(persisted).toHaveLength(2);
+    const retryMsgs = bodies[1]!.messages as Array<{ role: string; content: string }>;
+    const last = retryMsgs[retryMsgs.length - 1]!;
+    expect(last.role).toBe('user');
+    expect(last.content).toContain('未通过校验');
+    expect(last.content).toContain('answer=bad 不合规');
+  });
+
+  it('两次校验均失败→抛错(调用方走回落),两次记账', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    const bad = {
+      choices: [{ message: { tool_calls: [{ function: { arguments: '{"answer":"bad"}' } }] } }],
+      usage: { prompt_tokens: 7, completion_tokens: 2 },
+    };
+    const { router } = seqRouter('openai', [bad, bad], persisted);
+    await expect(
+      router.chatStructured(
+        'slow',
+        [{ role: 'user', content: 'q' }],
+        tool,
+        { taskType: 'unit_test' },
+        () => ({ ok: false as const, reason: '永远不行' }),
+      ),
+    ).rejects.toThrow(/两次校验失败/);
+    expect(persisted).toHaveLength(2);
+  });
+
+  it('openai 轨:强制 function call,arguments JSON 串解析为入参', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    const { router, bodies } = seqRouter(
+      'openai',
+      [
+        {
+          choices: [{ message: { tool_calls: [{ function: { arguments: '{"answer":"ok"}' } }] } }],
+          usage: { prompt_tokens: 9, completion_tokens: 4 },
+        },
+      ],
+      persisted,
+    );
+    const value = await router.chatStructured(
+      'slow',
+      [{ role: 'user', content: 'q' }],
+      tool,
+      { taskType: 'unit_test' },
+      parseOk,
+    );
+    expect(value).toBe('ok');
+    expect(bodies[0]!.tool_choice).toEqual({ type: 'function', function: { name: 'submit_thing' } });
+    expect(persisted[0]).toMatchObject({ slot: 'slow', promptTokens: 9, completionTokens: 4 });
+  });
+
+  it('systemone 槽位拒绝结构化对话', async () => {
+    const persisted: TokenUsageEntry[] = [];
+    const { router } = seqRouter('systemone', [{}], persisted);
+    await expect(
+      router.chatStructured(
+        'jev',
+        [{ role: 'user', content: 'q' }],
+        tool,
+        { taskType: 'unit_test' },
+        () => ({ ok: true as const, value: 1 }),
+      ),
+    ).rejects.toThrow(/systemone/);
+    expect(persisted).toEqual([]);
+  });
+});
+
 describe('ModelRouter.systemOne', () => {
   it('systemone 槽位走 /systemone 并记账', async () => {
     const { router, persisted } = buildRouter(

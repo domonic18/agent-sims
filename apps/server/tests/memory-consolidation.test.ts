@@ -44,7 +44,8 @@ function dreamLlm(replies: Array<string | Error>): { llm: MemoryLlm; chats: Reco
   const llm: MemoryLlm = {
     systemOne: () => Promise.reject(new Error('unused')) as never,
     embed: async () => ({ vector: new Array(2048).fill(0.01), promptTokens: 3 }),
-    chat: (slot, messages, options) => {
+    // 桩语义=replies 即模型要提交的工具入参(JSON 串);非 JSON 字符串原样交 parse 判定(垃圾输出场景)
+    chatStructured: (slot, messages, _tool, options, parse) => {
       chats.push({
         slot: String(slot),
         messages: messages as Array<{ role: string; content: string }>,
@@ -52,8 +53,17 @@ function dreamLlm(replies: Array<string | Error>): { llm: MemoryLlm; chats: Reco
       });
       const next = queue.shift();
       if (next === undefined || next instanceof Error) return Promise.reject(new Error('桩耗尽'));
-      return Promise.resolve({ content: next, promptTokens: 1, completionTokens: 1 });
+      let raw: unknown;
+      try {
+        raw = JSON.parse(next);
+      } catch {
+        raw = next;
+      }
+      const parsed = parse(raw);
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
     },
+    chat: () => Promise.reject(new Error('unused')) as never,
   };
   return { llm, chats };
 }
@@ -355,19 +365,18 @@ describe.skipIf(!dbUp)('MemoryConsolidator(M5 梦境固化)', () => {
     const llm: MemoryLlm = {
       systemOne: () => Promise.reject(new Error('unused')) as never,
       embed: async () => ({ vector: new Array(2048).fill(0.01), promptTokens: 3 }),
-      chat: async (slot, messages, options) => {
+      chatStructured: async (slot, messages, _tool, options, parse) => {
         chats.push({
           slot: String(slot),
           messages: messages as Array<{ role: string; content: string }>,
           taskType: options?.taskType,
         });
         await gate;
-        return {
-          content: JSON.stringify({ dreams: [{ content: '迟到的梦', importance: 5 }] }),
-          promptTokens: 1,
-          completionTokens: 1,
-        };
+        const parsed = parse({ dreams: [{ content: '迟到的梦', importance: 5 }] });
+        if (!parsed.ok) throw new Error(`桩: 校验失败 ${parsed.reason}`);
+        return parsed.value;
       },
+      chat: () => Promise.reject(new Error('unused')) as never,
     };
     const writer = new MemoryWriter(sim, handle, llm);
     const consolidator = new MemoryConsolidator(sim, handle, llm, writer);

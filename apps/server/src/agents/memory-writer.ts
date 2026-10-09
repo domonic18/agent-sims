@@ -8,12 +8,14 @@ import type { ModelRouter } from '../llm/router.js';
 import { logTech } from '../telemetry.js';
 import type { Simulation } from '../world/simulation.js';
 
-/** 记忆管线只依赖这三个入口,测试以桩替换(app 侧传 ModelRouter) */
+/** 记忆管线只依赖这四个入口,测试以桩替换(app 侧传 ModelRouter) */
 export interface MemoryLlm {
   systemOne: ModelRouter['systemOne'];
   embed: ModelRouter['embed'];
   /** 自由文本对话(slow/light 槽);慢层日计划生成用 */
   chat: ModelRouter['chat'];
+  /** 结构化输出(工具强制调用+schema 校验);认知固化等强格式场景用 */
+  chatStructured: ModelRouter['chatStructured'];
 }
 
 /** 工作任务中文标签(events.ts workTaskIdSchema 同源,新增任务须同步) */
