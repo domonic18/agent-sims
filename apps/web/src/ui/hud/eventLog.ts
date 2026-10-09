@@ -41,8 +41,8 @@ export function eventParticipantsKnown(
   return true;
 }
 
-/** 事件类型 → 筛选分类(Record 键穷尽 WorldEvent 全部 type,新增事件漏配即编译错误);
- * 分类历史回填(CATEGORY_EVENT_TYPES)与展示过滤共用本表,单一事实源 */
+/** 事件类型 → 静态筛选分类基表(Record 键穷尽 WorldEvent 全部 type,新增事件漏配即编译错误);
+ * activity.started/finished 在 eventLogCategory 按活动岗位属性精分,此处保留 life 基准 */
 const CATEGORY_OF: Record<WorldEvent['type'], EventLogCategory> = {
   'work_task.accepted': 'work',
   'work_task.cancelled': 'work',
@@ -67,11 +67,17 @@ const CATEGORY_OF: Record<WorldEvent['type'], EventLogCategory> = {
   'world.reset': 'world',
 };
 
-export function eventLogCategory(type: WorldEvent['type']): EventLogCategory {
-  return CATEGORY_OF[type];
+/** 事件 → 筛选分类;活动事件按活动是否带岗位 category 双归属
+ * (杂工等岗位活动→工作,吃饭/休息等日常→生活,否则工作页签永远空) */
+export function eventLogCategory(event: WorldEvent): EventLogCategory {
+  if (event.type === 'activity.started' || event.type === 'activity.finished') {
+    return getActivityDefinition(event.activityId)?.category !== undefined ? 'work' : 'life';
+  }
+  return CATEGORY_OF[event.type];
 }
 
-/** 分类 → 事件类型清单(日志抽屉按分类回填历史时下发 types 过滤参数) */
+/** 分类 → 事件类型清单(日志抽屉按分类回填历史时下发 types 过滤参数);
+ * 服务端 types 只能按事件类型过滤,activity.* 双归属工作与生活,拉回后 eventLogCategory 精分 */
 export const CATEGORY_EVENT_TYPES: Record<EventLogCategory, WorldEvent['type'][]> = (
   Object.keys(CATEGORY_OF) as Array<WorldEvent['type']>
 ).reduce(
@@ -81,6 +87,7 @@ export const CATEGORY_EVENT_TYPES: Record<EventLogCategory, WorldEvent['type'][]
   },
   { work: [], social: [], life: [], world: [] } as Record<EventLogCategory, WorldEvent['type'][]>,
 );
+CATEGORY_EVENT_TYPES.work.push('activity.started', 'activity.finished');
 
 function activityIcon(activityId: string): string {
   return ACTIVITY_EMOJI[activityId as keyof typeof ACTIVITY_EMOJI] ?? '✨';

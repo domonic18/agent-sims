@@ -99,14 +99,14 @@ export function LogDrawer(): JSX.Element {
   const known = (id: string): boolean =>
     snapshot?.characters.some((item) => item.id === id) ?? false;
 
-  const byCategory = (type: WorldEvent['type']): boolean =>
-    filter === 'all' || eventLogCategory(type) === filter;
+  const byCategory = (event: WorldEvent): boolean =>
+    filter === 'all' || eventLogCategory(event) === filter;
 
   const history = historyByFilter.get(filter) ?? null;
   const historyVisible = (history ?? []).filter(
-    (entry) => byCategory(entry.event.type) && eventParticipantsKnown(entry.event, known),
+    (entry) => byCategory(entry.event) && eventParticipantsKnown(entry.event, known),
   );
-  const visible = events.filter((item) => byCategory(item.event.type));
+  const visible = events.filter((item) => byCategory(item.event));
 
   const renderRow = (key: number, event: WorldEvent, timeText: string): JSX.Element => {
     const label = eventLogLabel(event, nameOf);
