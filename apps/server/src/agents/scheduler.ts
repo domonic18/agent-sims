@@ -9,6 +9,8 @@ import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
 import { runIntent } from '../intents/execute.js';
+import { nearestWalkableAdjacent } from '../world/work-task.js';
+import { findPath } from '../world/pathfinding.js';
 import { relationKey } from '../world/social.js';
 import type { Simulation } from '../world/simulation.js';
 import type { WorldCharacter } from '../world/character.js';
@@ -210,20 +212,26 @@ export class AgentScheduler {
     };
   }
 
-  /** 最近有存量资源节点(曼哈顿距离;charges null=无限) */
+  /** 最近有存量资源节点(曼哈顿距离;charges null=无限)。返回节点**邻位可走格**
+   * (E4 两段式 move_to 目标,节点本体可能不可走;不可达节点跳过) */
   private nearestNodeOf(
     kinds: readonly string[],
     from: { x: number; y: number },
   ): { id: string; x: number; y: number } | null {
+    const { sim } = this.deps;
     let best: { id: string; x: number; y: number } | null = null;
     let bestDist = Number.POSITIVE_INFINITY;
-    for (const node of this.deps.sim.resourceNodes.values()) {
+    for (const node of sim.resourceNodes.values()) {
       if (!kinds.includes(node.kind)) continue;
       if (node.charges !== null && node.charges <= 0) continue;
-      const dist = Math.abs(node.x - from.x) + Math.abs(node.y - from.y);
+      const stand = nearestWalkableAdjacent(sim.map, node, from, (tile) =>
+        findPath(sim.map, from, tile) !== null,
+      );
+      if (stand === null) continue;
+      const dist = Math.abs(stand.x - from.x) + Math.abs(stand.y - from.y);
       if (dist < bestDist) {
         bestDist = dist;
-        best = { id: node.id, x: node.x, y: node.y };
+        best = { id: node.id, x: stand.x, y: stand.y };
       }
     }
     return best;

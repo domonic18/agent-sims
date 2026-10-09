@@ -59,6 +59,12 @@ export interface BalanceConfig {
   /** 贫困生存阀(E1):金币低于线且体力高于线的空闲角色按人设倾向选收入岗/卖货 */
   POVERTY_COIN_LINE: number;
   POVERTY_MIN_ENERGY: number;
+  /** 生存链路加固(E4):进食线提前于健康扣减线留缓冲;直采触发下界;
+   * 采食自救接单豁免线(饿死边缘摘果子不该被体力闸拦);两段式转直发的距离 */
+  HUNGER_EAT_ENERGY: number;
+  FORAGE_MIN_ENERGY: number;
+  FORAGE_EXEMPT_ENERGY: number;
+  FORAGE_MOVE_THRESHOLD: number;
   /** 快照数值保留小数位(协议序列化口径) */
   SNAPSHOT_DECIMALS: number;
   /** 携带/囤粮体积上限(M3.6g,数值文档 §3.2):背包随身,冰箱家中存取 */
@@ -162,6 +168,10 @@ export const BALANCE: BalanceConfig = {
   SELL_RATE: 0.6,
   POVERTY_COIN_LINE: 12,
   POVERTY_MIN_ENERGY: 45,
+  HUNGER_EAT_ENERGY: 30,
+  FORAGE_MIN_ENERGY: 6,
+  FORAGE_EXEMPT_ENERGY: 5,
+  FORAGE_MOVE_THRESHOLD: 2,
   SNAPSHOT_DECIMALS: 1,
   BACKPACK_VOLUME_LIMIT,
   FRIDGE_VOLUME_LIMIT,

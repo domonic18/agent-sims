@@ -167,8 +167,8 @@ describe('ruleDecide(快层 rule,零模型数值压力反应)', () => {
       activityId: 'sleep',
     });
 
-    // 白天体力在(饥饿线,白天线]区间才犯困:22 落在 (20,25]
-    const dayNap = decide2(char({ energy: 22, housing }), NOON);
+    // 白天体力在白天困线(25)之下且买不起(E4 进食线 30,饥饿阀买不起让行)才犯困
+    const dayNap = decide2(char({ energy: 22, coins: 0, housing }), NOON);
     expect(dayNap.action).toBe('react');
     expect(dayNap.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
     expect(dayNap.bubble).toContain('困');
@@ -233,23 +233,56 @@ describe('ruleDecide E1 生存阀(贫困变现/直采逃生/饥饿让行/长椅�
     expect(decideW(char({ coins: BALANCE.POVERTY_COIN_LINE, energy: 60 })).action).toBe('continue');
   });
 
-  it('直采逃生门:体力(20,30] 无食有节点→work_task 直发;≤接单线/无节点不动', () => {
-    const forage = decideW(char({ energy: 25, coins: 50 }), {
+  it('直采逃生门(E4 两段式):体力(6,30] 无食买不起——远处 move_to 邻位/贴身 work_task;≤下界/无节点不动', () => {
+    // 远节点((30,30)→(12,8) 距 30):先 move_to 邻位,到达经 arrived 重入再接单
+    const far = decideW(char({ energy: 25, coins: 0 }), {
       nearestEdibleNode: () => ({ id: 'berry_bush:12:8', x: 12, y: 8 }),
     });
-    expect(forage.intent).toEqual({
+    expect(far.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 12, y: 8 });
+    expect(far.bubble).toContain('采点吃的');
+
+    // 贴身节点(距 1):直发 work_task
+    const near = decideW(char({ energy: 25, coins: 0 }), {
+      nearestEdibleNode: () => ({ id: 'berry_bush:31:30', x: 31, y: 30 }),
+    });
+    expect(near.intent).toEqual({
       type: 'work_task',
       characterId: 'char-1',
-      targetId: 'berry_bush:12:8',
+      targetId: 'berry_bush:31:30',
     });
-    expect(forage.bubble).toContain('采点吃的');
 
-    // ≤20 在工单接单被拒线之下,白打意图
+    // 低体力自救(E4 下界 6):15 不再沉默,先走过去
     expect(
       decideW(char({ energy: 15, coins: 0 }), { nearestEdibleNode: () => ({ id: 'b', x: 1, y: 1 }) })
-        .action,
+        .intent?.type,
+    ).toBe('move_to');
+    // ≤直采下界(虚脱边缘)不动
+    expect(
+      decideW(char({ energy: BALANCE.FORAGE_MIN_ENERGY, coins: 0 }), {
+        nearestEdibleNode: () => ({ id: 'b', x: 1, y: 1 }),
+      }).action,
     ).toBe('continue');
-    expect(decideW(char({ energy: 25, coins: 50 })).action).toBe('continue'); // 无节点
+    expect(decideW(char({ energy: 25, coins: 0 })).action).toBe('continue'); // 无节点
+  });
+
+  it('进食线提前+选食策略(E4):体力 25 吃背包(旧码 20 才吃);能量降序,同能量价低优先', () => {
+    // 25 落在 (20,30]:吃背包(旧码沉默)
+    const eat = decideW(char({ energy: 25, coins: 50, backpack: { berry: 3 } }), {
+      shopStock: () => 0,
+    });
+    expect(eat.intent).toEqual({ type: 'eat_item', characterId: 'char-1', itemId: 'berry' });
+
+    // {apple(+4), berry(+2)} 选 apple:先脱离饥饿区
+    const dense = decideW(char({ energy: 25, coins: 50, backpack: { berry: 3, apple: 1 } }), {
+      shopStock: () => 0,
+    });
+    expect(dense.intent).toMatchObject({ type: 'eat_item', itemId: 'apple' });
+
+    // 同能量(+6)选价低: bread(4 币) 压过 milk(5 币)
+    const cheap = decideW(char({ energy: 25, coins: 50, backpack: { milk: 1, bread: 1 } }), {
+      shopStock: () => 0,
+    });
+    expect(cheap.intent).toMatchObject({ type: 'eat_item', itemId: 'bread' });
   });
 
   it('饥饿让行:店空/买不起 → continue(不再对着售罄货架撞墙)', () => {
@@ -481,17 +514,24 @@ describe('wantSelect explore want(散列目标,want 内粘性)', () => {
 describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () => {
   const noAnchors = (): Array<{ x: number; y: number }> => [];
 
-  it('采集 want:有节点→work_task 直发(自带寻路);无节点本轮跳过', () => {
+  it('采集 want(E4 两段式):远处 move_to 邻位/贴身 work_task;无节点本轮跳过;知识 0 放行', () => {
     const day = intents(1, [{ activityId: 'gather_berry', urgency: 0.9, why: '采点浆果' }]);
-    const go = wantSelect(char({ knowledge: 5 }), day, 1, TOWN_MAP, noAnchors, {}, {
+    // 远节点((30,30)→(12,8)):先 move_to 邻位
+    const far = wantSelect(char({ knowledge: 0 }), day, 1, TOWN_MAP, noAnchors, {}, {
       nearestNode: () => ({ id: 'berry_bush:12:8', x: 12, y: 8 }),
     });
-    expect(go!.intent).toEqual({
+    expect(far!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 12, y: 8 });
+    expect(far!.bubble).toContain('浆果丛');
+
+    // 贴身节点:直发 work_task(E4 起采集零门槛,知识 0 可接)
+    const near = wantSelect(char({ knowledge: 0 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      nearestNode: () => ({ id: 'berry_bush:31:30', x: 31, y: 30 }),
+    });
+    expect(near!.intent).toEqual({
       type: 'work_task',
       characterId: 'char-1',
-      targetId: 'berry_bush:12:8',
+      targetId: 'berry_bush:31:30',
     });
-    expect(go!.bubble).toContain('浆果丛');
 
     expect(wantSelect(char({ knowledge: 5 }), day, 1, TOWN_MAP, noAnchors)).toBeNull();
   });

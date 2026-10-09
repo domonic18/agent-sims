@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NODE_MAX_CHARGES, type WorldEvent } from '@sims/shared';
 import { applyWorldParams, BALANCE } from '../config/balance.js';
 import { Simulation } from './simulation.js';
+import { nearestWalkableAdjacent } from './work-task.js';
 
 const LITTER_ID = 'litter:10:14';
 const LITTER_SPOT = { id: LITTER_ID, kind: 'litter' as const, x: 10, y: 14, variant: 0 };
@@ -171,22 +172,57 @@ describe('work_task 采集两岗(M-G.6)', () => {
     const events: WorldEvent[] = [];
     sim.events.subscribe((event) => events.push(event));
     sim.spawnCharacter('mow', 8, 12, '小满');
-    sim.character('mow').knowledge = 3; // 采集类门槛 3 班
+    sim.character('mow').knowledge = 3;
     return { sim, events };
   }
 
-  it('直发 start_activity 拒绝;门槛/枯竭/背包满 逐环拒绝', () => {
+  it('直发 start_activity 拒绝;门槛(E4 采集零门槛)/枯竭/背包满 逐环拒绝', () => {
     const { sim } = simWithGatherer();
     expect(() => sim.requestStartActivity('mow', 'gather_berry')).toThrow(/work_task/);
     expect(() => sim.requestStartActivity('mow', 'scavenge')).toThrow(/work_task/);
+    // E4 采集零门槛:知识 0 可接(贫困逃生门)
     sim.character('mow').knowledge = 0;
-    expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/知识不足/);
-    sim.character('mow').knowledge = 3;
+    expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).not.toThrow(/知识不足/);
+    sim.character('mow').activity = null; // 接单成立,清态继续后续拒绝环
+    sim.character('mow').path = [];
     sim.resourceNodes.get('berry_bush:5:27')!.charges = 0;
     expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/已采完/);
     sim.resourceNodes.get('berry_bush:5:27')!.charges = NODE_MAX_CHARGES.berry_bush;
     sim.character('mow').backpack = { berry: 7 }; // 最坏产出 2 体积,7+2>8 放不下
     expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/背包/);
+  });
+
+  it('采食体力豁免(E4):背包无食体力 10 可采果;有食/非食物岗照常被体力闸拦', () => {
+    const { sim } = simWithGatherer();
+    sim.character('mow').energy = 10; // 常规接单线(20)之下、豁免线(5)之上
+    expect(() => sim.requestWorkTask('mow', 'berry_bush:5:27')).not.toThrow(); // 背包空,采食自救
+    const packed = simWithGatherer();
+    packed.sim.character('mow').energy = 10;
+    packed.sim.character('mow').backpack = { berry: 1 }; // 有食:先吃,不走豁免
+    expect(() => packed.sim.requestWorkTask('mow', 'berry_bush:5:27')).toThrow(/体力过低/);
+    const logger = simWithGatherer();
+    logger.sim.character('mow').energy = 10; // 伐木产木材(非食物),不豁免
+    logger.sim.resourceNodes.set('tree:9:13', {
+      id: 'tree:9:13',
+      kind: 'tree' as const,
+      x: 9,
+      y: 13,
+      charges: NODE_MAX_CHARGES.tree!,
+      respawnAtDay: null,
+    });
+    expect(() => logger.sim.requestWorkTask('mow', 'tree:9:13')).toThrow(/体力过低/);
+  });
+
+  it('nearestWalkableAdjacent(E4 两段式寻位):中心四邻中离 from 最近可行走格;全堵 null', () => {
+    const { sim } = simWithFixtures();
+    const from = { x: LITTER_SPOT.x, y: LITTER_SPOT.y + 1 };
+    const stand = nearestWalkableAdjacent(sim.map, LITTER_SPOT, from);
+    expect(stand).not.toBeNull();
+    expect(sim.map.isWalkable(stand!.x, stand!.y)).toBe(true);
+    expect(Math.abs(stand!.x - LITTER_SPOT.x) + Math.abs(stand!.y - LITTER_SPOT.y)).toBe(1);
+    expect(
+      nearestWalkableAdjacent({ isWalkable: () => false }, { x: 5, y: 5 }, { x: 5, y: 5 }),
+    ).toBeNull();
   });
 
   it('采集浆果闭环: 寻路在途不计时,作业 20 分浆果×2 入包,丛存量递减,以物代薪不发币', () => {

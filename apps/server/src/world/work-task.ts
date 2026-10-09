@@ -48,9 +48,17 @@ export function requestWorkTask(
   if (character.path.length > 0) {
     throw new Error(`${character.name} 移动中,到达后再接单`);
   }
-  if (character.energy <= LOW_ENERGY_THRESHOLD) {
+  // 体力线(E4 采食豁免):饿死边缘去采食物(背包无食)降到 FORAGE_EXEMPT_ENERGY——
+  // 自救通路不该被接单闸拦死;其余工单维持体力下限
+  const energyLine =
+    isGatherTask(task) &&
+    GATHER_TASKS[task].yields.some((y) => getItem(y.itemId)?.category === 'food') &&
+    !Object.keys(character.backpack).some((id) => getItem(id)?.category === 'food')
+      ? BALANCE.FORAGE_EXEMPT_ENERGY
+      : LOW_ENERGY_THRESHOLD;
+  if (character.energy <= energyLine) {
     throw new Error(
-      `${character.name} 体力过低(${Math.floor(character.energy)}≤${LOW_ENERGY_THRESHOLD}),先休息再接单`,
+      `${character.name} 体力过低(${Math.floor(character.energy)}≤${energyLine}),先休息再接单`,
     );
   }
   const required = JOB_CATEGORIES[taskCategory(task)].requiredKnowledge;
@@ -152,6 +160,31 @@ function ensureBackpackRoomForYields(character: WorldCharacter, task: GatherTask
   }
 }
 
+/** 目标四邻中离 from 最近的可行走格(E4 从 standTileFor 抽出,作业站位与 agent
+ * 两段式节点寻址共用):canReach 附加可达性过滤(默认只查可行走);全不可行返回 null */
+export function nearestWalkableAdjacent(
+  map: { isWalkable(x: number, y: number): boolean },
+  center: { x: number; y: number },
+  from: { x: number; y: number },
+  canReach?: (tile: Point) => boolean,
+): Point | null {
+  const neighbors: Point[] = [
+    { x: center.x - 1, y: center.y },
+    { x: center.x + 1, y: center.y },
+    { x: center.x, y: center.y - 1 },
+    { x: center.x, y: center.y + 1 },
+  ];
+  return (
+    neighbors
+      .filter((t) => map.isWalkable(t.x, t.y) && (canReach === undefined || canReach(t)))
+      .sort(
+        (a, b) =>
+          Math.abs(a.x - from.x) + Math.abs(a.y - from.y) -
+          (Math.abs(b.x - from.x) + Math.abs(b.y - from.y)),
+      )[0] ?? null
+  );
+}
+
 /** 作业站位:杂物站维护点格(不阻塞通行);其余按 meta.source 取目标中心后站四邻最近可行走格 */
 function standTileFor(
   sim: Simulation,
@@ -170,26 +203,13 @@ function standTileFor(
       : source === 'resources'
         ? sim.resourceNodes.get(targetId)!
         : sim.characters.get(targetId)!;
-  const neighbors: Point[] = [
-    { x: center.x - 1, y: center.y },
-    { x: center.x + 1, y: center.y },
-    { x: center.x, y: center.y - 1 },
-    { x: center.x, y: center.y + 1 },
-  ];
-  const reachable = neighbors
-    .filter((t) => sim.map.isWalkable(t.x, t.y))
-    .sort(
-      (a, b) =>
-        Math.abs(a.x - character.x) + Math.abs(a.y - character.y) -
-        (Math.abs(b.x - character.x) + Math.abs(b.y - character.y)),
-    );
-  for (const tile of reachable) {
-    if (findPath(sim.map, { x: character.x, y: character.y }, tile) !== null) {
-      return tile;
-    }
-  }
-  // 全部四邻不可达:抛最近格让 findPath 在外层给出「不可达」报错
-  return reachable[0] ?? { x: center.x, y: center.y };
+  return (
+    nearestWalkableAdjacent(sim.map, center, character, (tile) =>
+      findPath(sim.map, { x: character.x, y: character.y }, tile) !== null,
+    ) ??
+    // 全部四邻不可达:抛中心让 findPath 在外层给出「不可达」报错
+    { x: center.x, y: center.y }
+  );
 }
 
 /** 工单完成钩子上下文:debtFactor=缺觉系数(M-G.2,调用方按结算时刻计算传入) */

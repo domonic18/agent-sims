@@ -99,6 +99,19 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
     key: 'SURVIVAL_INJURY_REVIVE_HEALTH', label: '重伤苏醒恢复线', group: 'vitals', type: 'int', min: 0, max: 100,
     effect: 'live', desc: '生存模式重伤超时苏醒后的健康/体力值(救治复活仍满状态)',
   },
+  // —— 生存链路(E4:进食提前/直采下界/采食豁免) ——
+  {
+    key: 'HUNGER_EAT_ENERGY', label: '进食线体力', group: 'vitals', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: 'ruleHunger 触发线:体力低于该值吃背包食物/买食;应高于饥饿健康损耗线(留缓冲提前自救)',
+  },
+  {
+    key: 'FORAGE_MIN_ENERGY', label: '直采下界体力', group: 'vitals', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: 'ruleForage 直采逃生门的最低体力;低于则不再发采集意图(虚脱边缘)',
+  },
+  {
+    key: 'FORAGE_EXEMPT_ENERGY', label: '采食豁免体力', group: 'vitals', type: 'int', min: 0, max: 100,
+    effect: 'live', desc: '背包无食时采食物节点(work_task)的接单体力豁免线;其余工单仍按体力下限拒绝',
+  },
   // —— 经济 ——
   {
     key: 'START_COINS', label: '出生金币', group: 'economy', type: 'int', min: 0, max: 1000,

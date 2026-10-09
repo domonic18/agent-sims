@@ -77,12 +77,26 @@ export function ruleDecide(
   return { layer: 'rule', action: 'continue' };
 }
 
-/** 饥饿反应:体力≤饥饿线时 吃背包食物 → 店内买最便宜**有货**食物 → 前往商店;
+/** 选食(E4):能量降序、同能量价低优先——高密度先吃快速脱离饥饿区,低密度浆果留存可卖 */
+function pickBackpackFood(backpack: Record<string, number | undefined>): string | null {
+  const foods = Object.keys(backpack)
+    .filter((id) => (backpack[id] ?? 0) > 0 && getItem(id)?.category === 'food')
+    .map((id) => ({
+      id,
+      energy: getItem(id)?.effects?.energy ?? 0,
+      price: getItem(id)?.price ?? Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((a, b) => b.energy - a.energy || a.price - b.price);
+  return foods[0]?.id ?? null;
+}
+
+/** 饥饿反应(E4 进食线提前+选食策略):体力≤进食线(30,提前于健康扣减线留缓冲)时
+ * 吃背包食物(能量降序、同能量价低优先) → 店内买最便宜**有货**食物 → 前往商店;
  * 店空/买不起 → null 让行贫困/直采阀(E1,消灭买苹果撞墙循环) */
 function ruleHunger(char: WorldCharacter, map: TileMapDefinition, world: RuleWorldQueries): Decision | null {
-  if (char.energy > BALANCE.SURVIVAL_HUNGER_ENERGY_LINE) return null;
-  const foodId = Object.keys(char.backpack).find((id) => getItem(id)?.category === 'food');
-  if (foodId !== undefined) {
+  if (char.energy > BALANCE.HUNGER_EAT_ENERGY) return null;
+  const foodId = pickBackpackFood(char.backpack);
+  if (foodId !== null) {
     const food = getItem(foodId);
     return {
       layer: 'rule',
@@ -207,19 +221,30 @@ function povertyJob(char: WorldCharacter, world: RuleWorldQueries): string | nul
   return pool[0]?.id ?? null;
 }
 
-/** 直采逃生门(E1):饿着且买不起/店空 → 最近可食节点 work_task 直采(单内含
- * 寻路,产出入包可即食)。体力须在接单线(20)之上留缓冲(≤30 触发),再低只能扛 */
+/** 直采逃生门(E1;E4 两段式+窗口对齐进食线):饿着且买不起/店空 → 最近可食节点——
+ * 距离>阈值先 move_to 节点邻位(到达经 character.arrived 重入本阀),贴身直发
+ * work_task(单内含寻路,接单路径≈1 格消灭状态错位拒单);体力窗 (FORAGE_MIN_ENERGY,
+ * 进食线],接单侧另有采食豁免(E4)。 */
 function ruleForage(char: WorldCharacter, world: RuleWorldQueries): Decision | null {
-  if (char.energy > BALANCE.SURVIVAL_HUNGER_ENERGY_LINE + 10) return null;
-  if (char.energy <= BALANCE.LOW_ENERGY_THRESHOLD) return null; // 接单被拒线之下,白打意图
+  if (char.energy > BALANCE.HUNGER_EAT_ENERGY) return null;
+  if (char.energy <= BALANCE.FORAGE_MIN_ENERGY) return null;
   if (Object.keys(char.backpack).some((id) => getItem(id)?.category === 'food')) return null;
   const node = world.nearestEdibleNode?.({ x: char.x, y: char.y }) ?? null;
   if (node === null) return null;
+  const dist = Math.abs(char.x - node.x) + Math.abs(char.y - node.y);
+  if (dist > BALANCE.FORAGE_MOVE_THRESHOLD) {
+    return {
+      layer: 'rule',
+      action: 'react',
+      intent: { type: 'move_to', characterId: char.id, x: node.x, y: node.y },
+      bubble: '饿得不行,店也没的买,过去采点吃的',
+    };
+  }
   return {
     layer: 'rule',
     action: 'react',
     intent: { type: 'work_task', characterId: char.id, targetId: node.id },
-    bubble: '饿得不行,店也没的买,去采点吃的',
+    bubble: '饿得不行,店也没的买,采点吃的',
   };
 }
 
@@ -464,7 +489,8 @@ function needBoost(char: WorldCharacter, activityId: string): number {
  * 意图执行(D3,agent-design §3.3 慢思考产 want、快层择条执行;E1 三通路):
  * 空闲角色从当日 wants 中按 评分=urgency×(1+倾向分 bias)×数值需求 needBoost 择条。
  * - 基础/服务岗:两段式 start_activity(服务岗带知识门槛预检,不够跳过不打无效意图)
- * - 采集岗(E1):查最近有存量节点→work_task 直发(单内含寻路,产出入包)
+ * - 采集岗(E1;E4 两段式):查最近有存量节点邻位——远处 move_to、贴身 work_task
+ *   (接单即到位计时,消灭移动中/途中掉力的错位拒单)
  * - 制作岗(E1):背包含料预检→站点锚点 craft{recipeId}/先 move_to 站点
  * - 人指向社交(E2):带 target 的 socialize 远处 move_to 寻人,已贴身/对方不在
  *   则返回 null 让位空闲社交管线(want 由 social.chat 事件结算 done)
@@ -567,6 +593,19 @@ export function wantSelect(
     if (node === null) {
       // 节点刚被采空:本轮不动,want 留 pending 待重生
       return { layer: 'plan', action: 'continue', ...extra, wantId: picked.id };
+    }
+    // 两段式(E4):远处 move_to 节点邻位,到达经 character.arrived 重入再接单
+    // (消灭「移动中接单」与途中体力跌破的状态错位拒单)
+    const dist = Math.abs(char.x - node.x) + Math.abs(char.y - node.y);
+    if (dist > BALANCE.FORAGE_MOVE_THRESHOLD) {
+      return {
+        layer: 'plan',
+        action: 'react',
+        wantId: picked.id,
+        ...extra,
+        intent: { type: 'move_to', characterId: char.id, x: node.x, y: node.y },
+        bubble: `${picked.why},去${resourceNodeLabel(nodeKind)}`,
+      };
     }
     return {
       layer: 'plan',

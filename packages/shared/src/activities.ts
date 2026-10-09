@@ -61,7 +61,8 @@ export const JOB_CATEGORIES: Readonly<
 > = {
   fallback: { label: '兜底', requiredKnowledge: 0 },
   service: { label: '服务', requiredKnowledge: 3 },
-  gather: { label: '采集', requiredKnowledge: 3 },
+  // 采集零门槛(E4): 无技能体力工种=贫困逃生门,与兜底对齐(门槛 3 曾把零知识穷人锁在自救门外)
+  gather: { label: '采集', requiredKnowledge: 0 },
   build: { label: '建造', requiredKnowledge: 6 },
   medical: { label: '医疗', requiredKnowledge: 9 },
 };
