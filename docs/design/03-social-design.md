@@ -72,3 +72,33 @@ v1 冷启动死锁: 社交动机要求 familiarity>0,而关系只能由 chat 创
 - 公式配套: 初识面熟加成 +0.15(动机引擎),`SOCIAL_DESIRE_FIRE` 0.7→0.45——初识者动机可达点火线,解死锁后能自发开口;
 - 语义边界: 破冰≠成为朋友,只是把「认识」交给物理共处;聊不聊仍由动机引擎回答(10-cognition-design §7.2);
 - 配套容忍: 轻活动(stroll/meal/rest/socialize)可被搭话不打断(不 finishActivity,聊完继续),替代旧「忙碌即跳过」。
+
+## 9. E 系列社交强化(E1~E3,2026-10-09 落地)
+
+D 系列长跑暴露社交管线三泄漏(colocated 口径与 chat 校验不一致致大场所必走散、生成前烧冷却致走散 43% 不重试、死循环 rule 挤占社交),用户拍板「全面加码」,三批落地:
+
+### 9.1 口径拆分与走近再聊(E2)
+
+- **chatReady / samePlace 双口径**: `chatReady`=曼哈顿 ≤ `SOCIAL_CHAT_DISTANCE`(与 world chat 校验同一口径,动机共处加成仅此档享受);`samePlace`=同场所或同活动但未贴身(旧 colocated 拆开,消灭「大场所判可聊、执行必拒」的口径泄漏)。
+- **走近再聊**: samePlace 达点火线但未贴身 → 零 LLM 直接 `move_to` 对方当前位置(不簿记冷却不计数——走到才算主动);到场经 `character.arrived` 事件(triage self=3)自然重燃动机引擎,贴身即生成对话。
+- **走散不罚**: 簿记改为同步先于任何 await(防双发);生成期间距离复查,走散 → 冷却降级为 `SOCIAL_RETRY_COOLDOWN_MINUTES`(10 分)短窗+当日主动计数返还+trace `walkedAway`,期满可重试。聊天落地才算一次主动社交。
+
+### 9.2 人指向社交与即时印象(E2)
+
+- **人指向 want**: Want 增 `targetCharacterId`;意图生成 prompt 注入熟人清单(名字+称号+一条印象+多久没聊),LLM 可产「找 X 聊聊」;执行层对带 target 的 socialize 先 `move_to` 对方当前位置寻人,到场交动机引擎接管。
+- **聊后即时印象**: chat 落地后即时 upsert `character_impressions`——无印象建浅印象(「今天和 X 聊了几句:…」,规则拼接零 LLM),已有印象只刷新时刻不动文案;下次对话/意图 prompt 立即可见「刚聊过」,失败静默不影响聊天。
+
+### 9.3 自然终止多轮对话(E3,斯坦福做法)
+
+- **每轮 light 槽一次结构化调用**,顺带返回 `{ line, wantsMore }` 终止信号(零额外调用成本);双方 `wantsMore` 且未达 `CHAT_MAX_ROUNDS`(4)则续轮,奇数轮发起者/偶数轮对方。
+- **轮间复查距离**: 生成期间被拽走 → 以已生成句收束(不丢句不续轮);任一轮调用失败 → 已有句照发、后续句由调用方模板池保底(≥2 句),整场失败回落模板双句。
+- **协议**: chat 意图与 `social.chat` 事件由 `{line, reply}` 改 `lines: string[]`(2~4 句交替,发起者先说);world `chat()` 单场**结算一次**不按句数放大收益;`content` 保留(多句合并 `「l1」「l2」`)兼容旧渲染;web 气泡按句顺序在双方头顶交替冒泡(1.8s/句)。
+
+### 9.4 聚会邀约最小版(E3)
+
+- 发起方任意轮台词可顺带返回 `invitation?: { placeId, note }`(听者轮的邀约忽略);对话落地时**双方脑内**各记 `pendingInvitation { placeId, note, withId, day }`(InnerState 持久化,随 characters.inner_state 落库)。
+- **次晨兑现**: 晨间意图生成发现 `pendingInvitation.day < 当日` → prompt 注入「昨天的约定(地点+理由)」并 unshift 一条高优(urgency 0.9)socialize 赴约 want(带 target),随后消费置 null。纯 wants 通道零新协议;玩家角色无 intents 自然跳过。
+
+### 9.5 参数放宽(E2,数值权威 numerical-design §6.5)
+
+`SOCIAL_DESIRE_FIRE` 0.45→0.35、`SOCIAL_PAIR_COOLDOWN_MINUTES` 60→30、`SOCIAL_DAILY_INITIATE_CAP` 6→8、共处加成 0.2→0.3;新增 `SOCIAL_RETRY_COOLDOWN_MINUTES`=10、`CHAT_MAX_ROUNDS`=4。

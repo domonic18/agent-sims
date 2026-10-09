@@ -52,6 +52,17 @@
 | craft 意图 | 站点锚点+payload(recipeId);材料校验;复用活动计时框架 |
 | 快照 | 节点存量/损耗点照常下发;配方为每世界内容(GET /api/world/recipes+world.recipes 事件,缺省 shared 出厂默认),M4 规划可读 |
 
+## 5.1 Agent 消费侧(E1,2026-10-09,需求驱动的生产经济)
+
+引擎层(M-G.5/M-G.6)落地后曾整个闲置——意图慢槽词汇表只有 8 个基础活动,唯一收入活动是杂工 work,全镇千篇一律。E1 把生产链接进 Agent 意图通路(铁律不变: 一切仍出自 wants/意图通道,数值压力只通过 rule 生存阀表达):
+
+- **意图词汇表扩展**(slow-layer `INTENT_ACTIVITY_IDS`): +服务三岗(waiter/vendor/librarian,菜单标注知识门槛 ≥3)、采集岗(gather_berry/scavenge/pick_apple/harvest_wheat/chop_tree 等 growth 适用项)、制作岗(craft_berry_pie/craft_bread/craft_sandwich/craft_repair_kit)。
+- **wantSelect 执行通路**(fast-layer): 服务岗走 start_activity 通用路径+知识门槛预检(不够跳过该 want 不打无效意图);采集岗走 gatherDecision(活动→节点 kind 映射,查有 charges 的最近节点,邻位 `work_task{targetId}`/远处先 move_to);制作岗先背包验料(不足 abandoned),在站点锚 `craft{recipeId}`/远处先 move_to。
+- **小镇需求信号注入**(composeIntents prompt): 货架缺货清单(品类+余量)、待修损耗点数、可采节点余量、服务岗说明(时薪/门槛);「缺钱想打工」扩为「缺钱可打工/上岗/采集卖货」——LLM 按人设 × 需求产 wants(书虫→馆员、大牛→伐木/修补…)。
+- **sell_item 新意图**(协议 +1): 采集产物卖给商店(`SELL_RATE` 折价入袋,货架 +1),闭合「采集→卖货→商店有货→他人购买」镇内循环;玩家同通道(web 物品弹层「卖」钮)。
+- **rule 层生存阀**(数值权威 04 §5.6): rulePoverty/ruleForage/ruleHunger 让行/ruleSleepy 租约感知——穷到活不下去也得干,但干的是最合人设的活(activityBias 排序选岗)。
+- **兜底**: `SHOP_RESTOCK_DAILY=1`(只防死锁,主供给靠采集/制作/卖货循环)。
+
 ## 6. 素材需求
 
 - 浆果丛(bush 变体+果色)、拾荒堆(trash 堆,与杂物池区分)、灶台/木工台家具(阶段二家具 kind 扩展正好搭车: 炉灶已列)、浆果派/材料物品 icon
