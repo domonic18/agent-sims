@@ -172,41 +172,7 @@
   padding: 4px 2px;
 }
 
-.lab-memory-list {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 320px;
-  overflow-y: auto;
-}
-
-.lab-memory-item {
-  display: flex;
-  gap: 6px;
-  align-items: flex-start;
-  box-shadow: inset 0 0 0 2px var(--px-slate);
-  padding: 4px 6px;
-  font-size: 11px;
-}
-
-.lab-mem-badge {
-  flex: 0 0 auto;
-  font-size: 10px;
-  padding: 1px 4px;
-  color: var(--px-ink);
-  background: var(--px-dim);
-}
-
-.lab-mem-badge.event { background: #9ade8a; }
-.lab-mem-badge.insight { background: #7ec8ff; }
-.lab-mem-badge.dream { background: #c9a6ff; }
-.lab-mem-badge.dialogue { background: #ffd27a; }
-.lab-mem-badge.impression { background: #f4a4c0; }
-.lab-mem-badge.mood-up { background: #9ade8a; }
-.lab-mem-badge.mood-down { background: #ff9d9d; }
+/* 记忆条目/类型徽标样式上收 theme.css(与游戏页记忆弹窗共用) */
 
 /* 情绪倾向条(C2): 左端 -1 右端 +1,填充宽度=(valence+1)/2 */
 .lab-mood-bar {
@@ -220,23 +186,12 @@
   height: 100%;
 }
 
-.lab-mood-fill.up { background: #9ade8a; }
+.lab-mood-fill.up { background: var(--mem-mood-up); }
 
-.lab-mood-fill.down { background: #ff9d9d; }
+.lab-mood-fill.down { background: var(--mem-mood-down); }
 
 .lab-mem-sources {
   color: var(--px-blue);
-}
-
-.lab-memory-body {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.lab-memory-body small {
-  color: var(--px-dim);
 }
 
 /* ---- 参数热调 ---- */

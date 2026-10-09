@@ -28,6 +28,15 @@
   --px-ok: #8ee6a1;
   --px-bad: #ff9b9b;
 
+  /* 记忆类型徽标色(游戏页记忆弹窗 + /lab 记忆面板/情绪流水共用) */
+  --mem-event: #9ade8a;
+  --mem-insight: #7ec8ff;
+  --mem-dream: #c9a6ff;
+  --mem-dialogue: #ffd27a;
+  --mem-impression: #f4a4c0;
+  --mem-mood-up: #9ade8a;
+  --mem-mood-down: #ff9d9d;
+
   --px-font-ui: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
   --px-font-pixel: 'px-font', var(--px-font-ui);
 }
@@ -172,6 +181,54 @@
 .px-num {
   font-family: var(--px-font-pixel);
   letter-spacing: 1px;
+}
+
+/* ---- 记忆条目(游戏页记忆弹窗 + /lab 记忆面板/情绪流水共用) ---- */
+.memory-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-item {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.mem-badge {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 1px 4px;
+  color: var(--px-ink);
+  background: var(--px-dim);
+}
+
+.mem-badge.event { background: var(--mem-event); }
+.mem-badge.insight { background: var(--mem-insight); }
+.mem-badge.dream { background: var(--mem-dream); }
+.mem-badge.dialogue { background: var(--mem-dialogue); }
+.mem-badge.impression { background: var(--mem-impression); }
+.mem-badge.mood-up { background: var(--mem-mood-up); }
+.mem-badge.mood-down { background: var(--mem-mood-down); }
+
+.memory-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.memory-body small {
+  color: var(--px-dim);
 }
 
 /* 文字选区(复制记忆/日志等): 金底墨字,任何底色上对比度都够(浏览器默认选区色在深色面板上糊) */

@@ -851,16 +851,16 @@ export default function LabPage() {
                         ? `三因子检索 · 命中 ${memData.items.length} 条`
                         : `最近 ${memData.items.length} 条`}
                     </p>
-                    <ul className="lab-memory-list">
+                    <ul className="memory-list">
                       {memData.items.length === 0 ? (
                         <li className="hint">暂无记忆</li>
                       ) : (
                         memData.items.map((item) => (
-                          <li key={item.id} className="lab-memory-item">
-                            <span className={`lab-mem-badge ${item.type}`}>
+                          <li key={item.id} className="memory-item">
+                            <span className={`mem-badge ${item.type}`}>
                               {MEMORY_TYPE_LABELS[item.type]}
                             </span>
-                            <div className="lab-memory-body">
+                            <div className="memory-body">
                               <div>{item.content}</div>
                               <small>
                                 {formatGameMinutes(item.gameMinutes)} · 重要度 {item.importance}
@@ -889,11 +889,11 @@ export default function LabPage() {
                     <p className="hint" style={{ marginTop: 10 }}>
                       对其他人的印象({memImpressions.items.length} 人)
                     </p>
-                    <ul className="lab-memory-list">
+                    <ul className="memory-list">
                       {memImpressions.items.map((item) => (
-                        <li key={item.aboutId} className="lab-memory-item">
-                          <span className="lab-mem-badge impression">印象</span>
-                          <div className="lab-memory-body">
+                        <li key={item.aboutId} className="memory-item">
+                          <span className="mem-badge impression">印象</span>
+                          <div className="memory-body">
                             <div>
                               <b>{item.aboutName}</b>: {item.content}
                             </div>
@@ -933,15 +933,15 @@ export default function LabPage() {
                   </div>
                 )}
                 {moodData !== null && moodData.history.length > 0 && (
-                  <ul className="lab-memory-list">
+                  <ul className="memory-list">
                     {moodData.history.map((point, index) => (
-                      <li key={index} className="lab-memory-item">
+                      <li key={index} className="memory-item">
                         <span
-                          className={`lab-mem-badge ${point.delta >= 0 ? 'mood-up' : 'mood-down'}`}
+                          className={`mem-badge ${point.delta >= 0 ? 'mood-up' : 'mood-down'}`}
                         >
                           {point.delta >= 0 ? '振奋' : '受挫'}
                         </span>
-                        <div className="lab-memory-body">
+                        <div className="memory-body">
                           <div>{point.labels.join('、')}</div>
                           <small>
                             {formatGameMinutes(point.gameMinutes)} ·{' '}
@@ -975,13 +975,13 @@ export default function LabPage() {
                   </span>
                 </div>
                 {scheduleData !== null && scheduleData.day !== null && (
-                  <ul className="lab-memory-list">
+                  <ul className="memory-list">
                     {scheduleData.blocks.map((b) => (
-                      <li key={`${b.startMin}-${b.activityId}`} className="lab-memory-item">
-                        <span className={`lab-mem-badge ${b.status}`}>
+                      <li key={`${b.startMin}-${b.activityId}`} className="memory-item">
+                        <span className={`mem-badge ${b.status}`}>
                           {SCHEDULE_STATUS_LABELS[b.status]}
                         </span>
-                        <div className="lab-memory-body">
+                        <div className="memory-body">
                           <div>
                             {blockRange(b.startMin, b.endMin)} · {b.label}
                           </div>
