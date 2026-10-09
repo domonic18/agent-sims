@@ -183,10 +183,6 @@ export default function GamePage() {
           setMindTalkOpenId(id);
         }}
         onMemories={(id) => {
-          if (!isAdmin) {
-            setLoginOpen(true);
-            return;
-          }
           setHostingOpenId(null);
           setMindTalkOpenId(null);
           setMemoryOpenId(id);

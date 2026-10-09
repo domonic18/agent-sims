@@ -3,6 +3,9 @@
  * 的生产可用读写口(不同于 /debug 仅 development 注册),及历史事件查询。
  */
 import type {
+  MemoryImpressionsResponse,
+  MemoryPanelResponse,
+  MemoryType,
   UiMetaView,
   WorldEventsHistoryResponse,
   WorldRecipesView,
@@ -73,4 +76,29 @@ export const getWorldEvents = async (query: { limit?: number; characterId?: stri
     throw new Error(`/api/world/events 失败(${response.status})`);
   }
   return (await response.json()) as WorldEventsHistoryResponse;
+};
+
+/** 记忆面板公开只读镜像(游客/观众可看;与 admin 端 fetchCharacterMemories 同形) */
+export const getCharacterMemories = async (
+  characterId: string,
+  query: { q?: string; limit?: number; type?: MemoryType } = {},
+): Promise<MemoryPanelResponse> => {
+  const params = new URLSearchParams();
+  if (query.q !== undefined && query.q.trim() !== '') params.set('q', query.q.trim());
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  if (query.type !== undefined) params.set('type', query.type);
+  const qs = params.toString();
+  const response = await fetch(`/api/world/characters/${characterId}/memories${qs !== '' ? `?${qs}` : ''}`, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`/api/world/characters/${characterId}/memories 失败(${response.status})`);
+  }
+  return (await response.json()) as MemoryPanelResponse;
+};
+
+export const getCharacterImpressions = async (characterId: string): Promise<MemoryImpressionsResponse> => {
+  const response = await fetch(`/api/world/characters/${characterId}/impressions`, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`/api/world/characters/${characterId}/impressions 失败(${response.status})`);
+  }
+  return (await response.json()) as MemoryImpressionsResponse;
 };

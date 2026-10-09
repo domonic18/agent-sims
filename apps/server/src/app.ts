@@ -7,6 +7,7 @@ import { registerDebugRoutes } from './api/debug.js';
 import { registerWorldEventRoutes } from './api/world-events.js';
 import { registerWorldSettingsRoutes } from './api/world-settings.js';
 import { registerUiMetaRoutes } from './api/ui-meta.js';
+import { registerCharacterMemoryRoutes } from './api/character-memory.js';
 import { ClientRegistry } from './socket/clients.js';
 import { attachSocketGateway } from './socket/gateway.js';
 import { initTechLog, logTech, whenTechLogIdle } from './telemetry.js';
@@ -84,6 +85,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   registerWorldEventRoutes(app, handle);
   registerWorldSettingsRoutes(app, app.simulation);
   registerUiMetaRoutes(app, handle);
+  registerCharacterMemoryRoutes(app, handle, app.simulation);
   if (env.NODE_ENV === 'development') {
     registerDebugRoutes(app, app.simulation, app.clients);
   }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { formatCoins } from '../../format';
 import { getHosting } from '../../net/hostingApi';
+import { useAuthStore } from '../../store/authStore';
 import { useWorldStore } from '../../store/worldStore';
 import type { CharacterView } from '../side-panel/place';
 import { PixelAvatar } from './PixelAvatar';
@@ -45,6 +46,7 @@ export function CharacterHud({
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
   const hostingMap = useWorldStore((state) => state.hostingMap);
   const applyHosting = useWorldStore((state) => state.applyHosting);
+  const isAdmin = useAuthStore((state) => state.token !== null);
   const [collapsed, setCollapsed] = useState(false);
 
   // 选中即拉托管状态兜底(hosting_changed 事件只保在线期间,首帧/重连/他人已托管时徽标不丢)
@@ -172,26 +174,31 @@ export function CharacterHud({
         </div>
 
         <div className="hud-char-agent">
+          {/* 操控类入口(托管/访谈)admin 专属;记忆只读对游客开放(直播观众了解角色内心) */}
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                className="px-btn"
+                title={hostingMode !== null ? '查看/修改托管状态或接管' : '把角色托管给 Agent 自主生活'}
+                onClick={() => onHosting?.(character.id)}
+              >
+                🤖 {hostingMode !== null ? '托管中' : '托管'}
+              </button>
+              <button
+                type="button"
+                className="px-btn"
+                title="和 TA 聊聊——TA 基于自己的记忆与经历第一人称回答"
+                onClick={() => onMindTalk?.(character.id)}
+              >
+                🗣 意识访谈
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="px-btn"
-            title={hostingMode !== null ? '查看/修改托管状态或接管' : '把角色托管给 Agent 自主生活'}
-            onClick={() => onHosting?.(character.id)}
-          >
-            🤖 {hostingMode !== null ? '托管中' : '托管'}
-          </button>
-          <button
-            type="button"
-            className="px-btn"
-            title="和 TA 聊聊——TA 基于自己的记忆与经历第一人称回答"
-            onClick={() => onMindTalk?.(character.id)}
-          >
-            🗣 意识访谈
-          </button>
-          <button
-            type="button"
-            className="px-btn"
-            title="查看 TA 的记忆流(只读,需管理员)"
+            title="查看 TA 的记忆流(只读)"
             onClick={() => onMemories?.(character.id)}
           >
             🧠 记忆

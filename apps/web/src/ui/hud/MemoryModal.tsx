@@ -5,10 +5,10 @@ import type {
   MemoryType,
 } from '@sims/shared';
 import { MEMORY_TYPES, MEMORY_TYPE_LABELS } from '@sims/shared';
-import { fetchCharacterImpressions, fetchCharacterMemories } from '../../admin/api';
+import { getCharacterImpressions, getCharacterMemories } from '../../net/worldApi';
 import { formatGameMinutes } from '../../format';
 
-/** 记忆查看弹窗(只读): 管理员在游戏页直接翻看 TA 的记忆流;
+/** 记忆查看弹窗(只读): 游戏页直接翻看 TA 的记忆流(游客/观众同样可见,直播观察姿态);
  * 缺省按时间倒序最近 50 条,输入检索词走三因子语义检索(命中带综合分/相关度);
  * 层过滤(事件/洞察/梦境/对话)+洞察溯源+关系印象区(10-cognition §3 全员人可见)。 */
 export function MemoryModal({
@@ -32,7 +32,7 @@ export function MemoryModal({
       setLoading(true);
       try {
         const [panel, imp] = await Promise.all([
-          fetchCharacterMemories(
+          getCharacterMemories(
             characterId,
             {
               limit: 50,
@@ -40,7 +40,7 @@ export function MemoryModal({
               ...(t === null ? {} : { type: t }),
             },
           ),
-          fetchCharacterImpressions(characterId).catch(() => null),
+          getCharacterImpressions(characterId).catch(() => null),
         ]);
         setData(panel);
         if (imp !== null) setImpressions(imp);

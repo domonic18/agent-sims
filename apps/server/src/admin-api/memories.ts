@@ -7,7 +7,7 @@ import {
   type MemoryType,
 } from '@sims/shared';
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { retrieveMemories } from '../agents/memory-retrieval.js';
 import type { DbHandle } from '../db/client.js';
@@ -75,16 +75,17 @@ async function fallbackGameMinutes(handle: DbHandle, characterId: string): Promi
   return row?.max ?? 0;
 }
 
-/** M4b/A3 记忆面板 API:q 缺省按时间倒序浏览;q 存在走三因子检索(embed 失败降级双因子+notice);
- * type=层过滤(事件/洞察/梦境/对话);洞察条目带 sourceIds/sources 溯源链。
- * C1 另注册 GET /impressions: 关系印象列表(10-cognition §4.2)。 */
-export function registerMemoryRoutes(
+type PanelRoute = (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>;
+
+/** 记忆面板查询处理器(q 缺省=时间倒序浏览;q 存在=三因子检索,embed 失败降级双因子+notice;
+ * type=层过滤;洞察带溯源)。admin 路由与公开只读路由(/api/world,游客可看)共用同一实现,
+ * 鉴权差异由各路由层自行把关 */
+export function memoriesPanelHandler(
   app: FastifyInstance,
   handle: DbHandle,
   sim: Simulation,
-): void {
-  app.get('/api/admin/characters/:id/memories', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
+): PanelRoute {
+  return async (request, reply) => {
     const { id } = request.params as { id: string };
     const parsed = querySchema.safeParse(request.query);
     if (!parsed.success) {
@@ -169,10 +170,12 @@ export function registerMemoryRoutes(
       items,
     };
     return await reply.send(body);
-  });
+  };
+}
 
-  app.get('/api/admin/characters/:id/impressions', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
+/** 关系印象处理器(10-cognition §4.2;admin 与公开只读路由共用) */
+export function impressionsHandler(handle: DbHandle): PanelRoute {
+  return async (request, reply) => {
     const { id } = request.params as { id: string };
     const [character] = await handle.db
       .select({ name: characters.name })
@@ -203,5 +206,22 @@ export function registerMemoryRoutes(
     }));
     const body: MemoryImpressionsResponse = { characterId: id, name: character.name, items };
     return await reply.send(body);
+  };
+}
+
+/** M4b/A3 记忆面板 admin API(公开只读镜像见 api/character-memory.ts) */
+export function registerMemoryRoutes(
+  app: FastifyInstance,
+  handle: DbHandle,
+  sim: Simulation,
+): void {
+  app.get('/api/admin/characters/:id/memories', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    await memoriesPanelHandler(app, handle, sim)(request, reply);
+  });
+
+  app.get('/api/admin/characters/:id/impressions', async (request, reply) => {
+    if (!requireAdmin(request, reply)) return;
+    await impressionsHandler(handle)(request, reply);
   });
 }
