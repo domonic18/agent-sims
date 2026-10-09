@@ -6,8 +6,8 @@ import { innerState } from './cognition.js';
 import type { Simulation } from '../world/simulation.js';
 
 /**
- * 统一内心状态持久化(D2):cognition.innerState 的 focus/wants/lastEvaluation
- * 写穿 characters.inner_state,重启灌回。写穿由变更方(D3 意图生成/D4 评价引擎)
+ * 统一内心状态持久化(D2):cognition.innerState 的 focus/intents/lastEvaluation
+ * 写穿 characters.inner_state,重启灌回。写穿由变更方(D3 意图生成/结算)
  * 落笔后触发,fire-and-forget 不阻塞决策;关停再全量兜底一次。
  */
 

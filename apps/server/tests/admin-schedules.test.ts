@@ -2,8 +2,7 @@ import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { issueAdminToken } from '../src/utils/token.js';
 import { env } from '../src/config/env.js';
-import { schedule } from '../src/agents/cognition.js';
-import type { DayPlan } from '../src/agents/slow-layer.js';
+import { innerState, type DayIntents } from '../src/agents/cognition.js';
 import { registerScheduleRoutes } from '../src/admin-api/schedules.js';
 import type { Simulation } from '../src/world/simulation.js';
 
@@ -25,62 +24,74 @@ function authHeader(): string {
   return `Bearer ${issued.token}`;
 }
 
-describe('GET/POST /api/admin/characters/:id/schedule|replan(M4d 日程面板)', () => {
+describe('GET/POST /api/admin/characters/:id/schedule|replan(D3 意图面板)', () => {
   let app: Awaited<ReturnType<typeof Fastify>>;
 
   beforeEach(async () => {
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     app = Fastify();
     registerScheduleRoutes(app, buildSim(600)); // 10:00
     await app.ready();
   });
 
   afterEach(async () => {
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     await app.close();
   });
 
-  it('无计划:day=null/blocks=[]', async () => {
+  it('无意图:day=null/wants=[]', async () => {
     const res = await app.inject({
       method: 'GET',
       url: `/api/admin/characters/${CHAR_ID}/schedule`,
       headers: { authorization: authHeader() },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ characterId: CHAR_ID, day: null, source: null, blocks: [] });
+    expect(res.json()).toEqual({ characterId: CHAR_ID, day: null, source: null, wants: [] });
   });
 
-  it('有计划:label 取活动名,status 按当前时刻派生(done/active/pending)', async () => {
-    const plan: DayPlan = {
+  it('有意图:wants 视图带 label/statusLabel,why/urgency 原样透出', async () => {
+    const intents: DayIntents = {
       day: 3,
       source: 'llm',
-      blocks: [
-        { startMin: 480, endMin: 540, activityId: 'study' },
-        { startMin: 540, endMin: 660, activityId: 'work' },
-        { startMin: 1080, endMin: 1200, activityId: 'stroll' },
+      wants: [
+        { id: 'w3-0', activityId: 'study', why: '想学新东西', urgency: 0.9, status: 'done', createdAtMin: 480 },
+        { id: 'w3-1', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'doing', createdAtMin: 500 },
+        { id: 'w3-2', activityId: 'stroll', why: '透透气', urgency: 0.3, status: 'pending', createdAtMin: 520 },
       ],
     };
-    schedule.set(CHAR_ID, plan);
+    innerState.setIntents(CHAR_ID, intents);
     const res = await app.inject({
       method: 'GET',
       url: `/api/admin/characters/${CHAR_ID}/schedule`,
       headers: { authorization: authHeader() },
     });
-    const body = res.json() as { day: number; source: string; blocks: Array<{ label: string; status: string }> };
+    const body = res.json() as {
+      day: number;
+      source: string;
+      wants: Array<{ id: string; label: string; statusLabel: string; urgency: number; why: string }>;
+    };
     expect(body.day).toBe(3);
     expect(body.source).toBe('llm');
-    expect(body.blocks.map((b) => b.status)).toEqual(['done', 'active', 'pending']);
-    expect(body.blocks.map((b) => b.label)).toEqual(['学习', '杂工', '散步']);
+    expect(body.wants.map((w) => [w.id, w.label, w.statusLabel])).toEqual([
+      ['w3-0', '学习', '已完成'],
+      ['w3-1', '杂工', '进行中'],
+      ['w3-2', '散步', '未做'],
+    ]);
+    expect(body.wants.map((w) => [w.why, w.urgency])).toEqual([
+      ['想学新东西', 0.9],
+      ['挣钱', 0.8],
+      ['透透气', 0.3],
+    ]);
   });
 
-  it('角色不在活跃世界 → 404;replan 清计划后泵自动重生成(此处只验 cleared)', async () => {
+  it('角色不在活跃世界 → 404;replan 清意图交泵重生成(此处只验 cleared)', async () => {
     const missing = await app.inject({
       method: 'GET',
       url: '/api/admin/characters/char-404/schedule',
       headers: { authorization: authHeader() },
     });
     expect(missing.statusCode).toBe(404);
-    schedule.set(CHAR_ID, { day: 1, source: 'fallback', blocks: [] });
+    innerState.setIntents(CHAR_ID, { day: 1, source: 'fallback', wants: [] });
     const res = await app.inject({
       method: 'POST',
       url: `/api/admin/characters/${CHAR_ID}/replan`,
@@ -88,7 +99,7 @@ describe('GET/POST /api/admin/characters/:id/schedule|replan(M4d 日程面板)',
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ characterId: CHAR_ID, cleared: true });
-    expect(schedule.get(CHAR_ID)).toBeUndefined();
+    expect(innerState.get(CHAR_ID)?.intents ?? null).toBeNull();
     const missingReplan = await app.inject({
       method: 'POST',
       url: '/api/admin/characters/char-404/replan',

@@ -11,25 +11,34 @@ import {
   type TileMapDefinition,
 } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
+import type { DayIntents } from './cognition.js';
 import type { WorldCharacter } from '../world/character.js';
-import { planBlockAt, type DayPlan } from './slow-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 
-/** 快层判定输出(agent-design §4.3):continue=当前行为仍有效零模型;react=产出一个意图交执行 */
+/** 快层判定输出(agent-design §4.3):continue=当前行为仍有效零模型;react=产出一个意图交执行。
+ * D3:plan 层改执行弹性意图(wantSelect),wantId 标记本条决策对应的 want,
+ * abandonedWantIds 收录当场判不可执行须废弃的 want(调度泵落库) */
 export interface Decision {
   layer: 'rule' | 'plan' | 'jev' | 'triage';
   action: 'continue' | 'react';
   intent?: Intent;
   /** react 时的决策气泡文案(意图+理由模板) */
   bubble?: string;
+  /** plan 层:本条决策对应的 want(调度泵标 doing 并落库) */
+  wantId?: string;
+  /** plan 层:当场判不可执行须标 abandoned 的 want 列表(调度泵落库) */
+  abandonedWantIds?: string[];
 }
 
 /** 阈值巡检的 rule 判定(agent-design §4.3 rule 层,零模型):数值压力反应,
- * 规则先行、命中即止。只对空闲角色反应——移动/活动进行中不打断(等下轮巡检)。 */
+ * 规则先行、命中即止。优先级 饥饿→房租→困倦。只对空闲角色反应——
+ * 移动/活动进行中不打断(等下轮巡检)。D3 起睡眠由困倦压力接管(替代夜间强制)。 */
 export function ruleDecide(
   char: WorldCharacter,
   day: number,
+  minuteOfDay: number,
   map: TileMapDefinition,
+  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
 ): Decision {
   if (!char.alive || char.collapsed) return { layer: 'rule', action: 'continue' };
   if (char.activity !== null || char.path.length > 0) {
@@ -39,6 +48,8 @@ export function ruleDecide(
   if (hunger !== null) return hunger;
   const rent = ruleRent(char, day);
   if (rent !== null) return rent;
+  const sleepy = ruleSleepy(char, minuteOfDay, map, anchorsOf);
+  if (sleepy !== null) return sleepy;
   return { layer: 'rule', action: 'continue' };
 }
 
@@ -93,6 +104,41 @@ function ruleRent(char: WorldCharacter, day: number): Decision | null {
     action: 'react',
     intent: { type: 'rent_property', characterId: char.id, propertyId: housing.propertyId },
     bubble: `房租快到期了,续租${property.name}`,
+  };
+}
+
+/** 困倦压力(D3,纯数值替代夜间强制):夜间/白天各有体力犯困线,越线即回家睡;
+ * 无居所/家里无床不强排(压力留着,角色自己扛)。睡多久交给活动时长与自然醒,
+ * 缺觉结算仍在 06:00(settlement)。 */
+function ruleSleepy(
+  char: WorldCharacter,
+  minuteOfDay: number,
+  map: TileMapDefinition,
+  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+): Decision | null {
+  const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
+  const line = night ? BALANCE.SLEEPY_NIGHT_ENERGY : BALANCE.SLEEPY_DAY_ENERGY;
+  if (char.energy > line) return null;
+  if (char.housing === null) return null;
+  const homePlaceId = getPropertyDefinition(char.housing.propertyId)?.placeId;
+  if (homePlaceId === undefined) return null;
+  const beds = anchorsOf('sleep', homePlaceId);
+  if (beds.length === 0) return null;
+  if (onSpot(char, beds)) {
+    return {
+      layer: 'rule',
+      action: 'react',
+      intent: { type: 'start_activity', characterId: char.id, activityId: 'sleep' },
+      bubble: night ? '夜深了,困得睁不开眼,上床睡觉' : '困意上头,回去补一觉',
+    };
+  }
+  const home = findPlaceByRef(map, homePlaceId);
+  if (home === null) return null;
+  return {
+    layer: 'rule',
+    action: 'react',
+    intent: { type: 'move_to', characterId: char.id, x: beds[0]!.x, y: beds[0]!.y },
+    bubble: `困了,回${home.name}睡觉`,
   };
 }
 
@@ -213,8 +259,8 @@ function activitySpot(
   return { x: place.entrance.x, y: place.entrance.y, placeName: place.name };
 }
 
-/** 探索目标:FNV-1a 按(角色,日,块)散列在场所集合内确定性选点——同块重复决策
- * 命中同一目标(粘性,到位即开始),跨块/跨日自然换地方,不引入额外随机状态 */
+/** 探索目标:FNV-1a 按(角色,want)散列在场所集合内确定性选点——同一 want 重复决策
+ * 命中同一目标(粘性,到位即开始),跨 want 自然换地方,不引入额外随机状态 */
 export function exploreTarget(
   key: string,
   placeIds: readonly string[],
@@ -230,28 +276,23 @@ export function exploreTarget(
   return places[Math.abs(hash) % places.length]!;
 }
 
-/** 探索块执行:目标场所内即就地开始;不在则走向目标入口 */
+/** 探索 want 执行:目标场所内即就地开始;不在则走向目标入口 */
 function exploreDecision(
   char: WorldCharacter,
   map: TileMapDefinition,
-  day: number,
-  blockStartMin: number,
+  wantKey: string,
   placeIds: readonly string[],
-): Decision | null {
-  const target = exploreTarget(`${char.id}|${day}|${blockStartMin}`, placeIds, map);
+): { bubble: string; intent: Intent } | null {
+  const target = exploreTarget(`${char.id}|${wantKey}`, placeIds, map);
   if (target === null) return null;
   const here = findPlaceAt(map, char.x, char.y);
   if (here?.id === target.id) {
     return {
-      layer: 'plan',
-      action: 'react',
       intent: { type: 'start_activity', characterId: char.id, activityId: 'explore' },
       bubble: `就在${target.name}逛逛,探索一下`,
     };
   }
   return {
-    layer: 'plan',
-    action: 'react',
     intent: { type: 'move_to', characterId: char.id, x: target.entrance.x, y: target.entrance.y },
     bubble: `去${target.name}一带探索`,
   };
@@ -261,92 +302,118 @@ function onSpot(char: WorldCharacter, spots: Array<{ x: number; y: number }>): b
   return spots.some((s) => s.x === char.x && s.y === char.y);
 }
 
+function inAnyPlace(map: TileMapDefinition, char: WorldCharacter, placeIds: readonly string[]): boolean {
+  return placeIds.some((id) => findPlaceAt(map, char.x, char.y)?.id === id);
+}
+
+function hasAnyPlace(map: TileMapDefinition, placeIds: readonly string[]): boolean {
+  return placeIds.some((id) => findPlaceByRef(map, id) !== null);
+}
+
+/** 数值需求增益(D3 弹性意图择行):缺钱工作欲↑钱多↓,疲惫休息就餐↑,没学识想学 */
+function needBoost(char: WorldCharacter, activityId: string): number {
+  if (activityId === 'work') {
+    if (char.coins < BALANCE.WANT_WORK_COIN_PRESSURE) return 1.5;
+    if (char.coins >= BALANCE.WANT_WORK_COIN_SATIETY) return 0.6;
+  }
+  if ((activityId === 'rest' || activityId === 'meal') && char.energy <= BALANCE.WANT_TIRED_ENERGY) {
+    return 1.4;
+  }
+  if (activityId === 'study' && char.knowledge <= BALANCE.WANT_KNOWLEDGE_LOW) return 1.3;
+  return 1;
+}
+
 /**
- * 日程执行(agent-design §3.3 慢思考产块、快层执行):空闲角色按当日计划块
- * 两段式行动——不在目标格先 move_to,到位后 start_activity。夜间(22:00~6:00)
- * 空闲强制回家睡(有住房才安排);体力过低只放行基础活动块。无计划/空档/无锚点
- * 返回 null,交还 jev/continue,日程压力绝不阻塞快层。
+ * 意图执行(D3,agent-design §3.3 慢思考产 want、快层择条执行):空闲角色从当日
+ * wants 中按 评分=urgency×(1+倾向分 bias)×数值需求 needBoost 择一条两段式行动——
+ * 不在目标格先 move_to,到位后 start_activity(气泡带第一人称 why)。
+ * 不可执行的 want 当场废弃(rest 无居所/活动无锚点无场所);体力见底时非基础块
+ * 让位生存压力(pending 保留,下轮再评)。无意图/意图耗尽返回 null,交还 jev/continue。
  */
-export function planDecide(
+export function wantSelect(
   char: WorldCharacter,
-  plan: DayPlan | undefined,
+  intents: DayIntents | null | undefined,
   day: number,
-  minuteOfDay: number,
   map: TileMapDefinition,
   anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+  bias: Readonly<Record<string, number>> = {},
 ): Decision | null {
   if (!char.alive || char.collapsed) return null;
   if (char.activity !== null || char.path.length > 0) return null; // 忙碌不越权打断(rule/jev 同门槛)
-  if (plan === undefined || plan.day !== day) return null;
-  const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
-  if (night) return planNight(char, map, anchorsOf);
-  const block = planBlockAt(plan, minuteOfDay);
-  if (block === null) return null;
-  if (block.activityId === 'rest' && char.housing === null) {
-    return null; // rest 锚点=住宅床(须本人租约),无居所角色走过去必被拒,直接跳过
+  if (intents === undefined || intents === null || intents.day !== day) return null;
+  const abandoned: string[] = [];
+  const candidates = intents.wants.filter((w) => {
+    if (w.status !== 'pending' && w.status !== 'doing') return false;
+    const definition = getActivityDefinition(w.activityId);
+    if (definition === null) {
+      abandoned.push(w.id);
+      return false;
+    }
+    if (w.activityId === 'rest' && char.housing === null) {
+      abandoned.push(w.id); // rest 锚点=住宅床(须本人租约),无居所角色走过去必被拒
+      return false;
+    }
+    if (w.activityId !== 'explore' && anchorsOf(w.activityId, null).length === 0 && !hasAnyPlace(map, definition.placeIds)) {
+      abandoned.push(w.id); // 既无锚点又无可达场所,这条 want 永远无法执行
+      return false;
+    }
+    return true;
+  });
+  const eligible = candidates.filter(
+    (w) =>
+      char.energy > BALANCE.LOW_ENERGY_THRESHOLD ||
+      (BASIC_ACTIVITY_IDS as readonly string[]).includes(w.activityId),
+  );
+  if (eligible.length === 0) {
+    // 全被体力闸拦下:wants 保留(pending 不动),rule 层生存/困倦压力先行
+    return abandoned.length > 0 ? { layer: 'plan', action: 'continue', abandonedWantIds: abandoned } : null;
   }
-  if (
-    char.energy <= BALANCE.LOW_ENERGY_THRESHOLD &&
-    !(BASIC_ACTIVITY_IDS as readonly string[]).includes(block.activityId)
-  ) {
-    return null; // 体力见底:日程让位生存压力(rule 链),非基础块不硬排
+  const scored = eligible
+    .map((w) => ({
+      want: w,
+      score:
+        w.urgency *
+        (1 + (bias[w.activityId] ?? 0)) *
+        needBoost(char, w.activityId) *
+        (0.95 + Math.random() * 0.1),
+    }))
+    .sort((a, b) => b.score - a.score);
+  const picked = scored[0]!.want;
+  const definition = getActivityDefinition(picked.activityId)!;
+  const extra: Pick<Decision, 'abandonedWantIds'> = {};
+  if (abandoned.length > 0) extra.abandonedWantIds = abandoned;
+  if (picked.activityId === 'explore') {
+    const decision = exploreDecision(char, map, picked.id, definition.placeIds);
+    if (decision === null) {
+      return { layer: 'plan', action: 'continue', abandonedWantIds: [...abandoned, picked.id], wantId: picked.id };
+    }
+    return { layer: 'plan', action: 'react', wantId: picked.id, ...extra, ...decision };
   }
-  const definition = getActivityDefinition(block.activityId);
-  if (definition === null) return null;
-  if (block.activityId === 'explore') {
-    return exploreDecision(char, map, day, block.startMin, definition.placeIds);
-  }
-  const anchors = anchorsOf(block.activityId, null);
+  const anchors = anchorsOf(picked.activityId, null);
   const atTarget = anchors.length > 0 ? onSpot(char, anchors) : inAnyPlace(map, char, definition.placeIds);
   if (atTarget) {
     return {
       layer: 'plan',
       action: 'react',
-      intent: { type: 'start_activity', characterId: char.id, activityId: block.activityId },
-      bubble: `到地方了,按日程开始${definition.name}`,
+      wantId: picked.id,
+      ...extra,
+      intent: { type: 'start_activity', characterId: char.id, activityId: picked.activityId },
+      bubble: `开始${definition.name}:${picked.why}`,
     };
   }
-  const spot = activitySpot(map, block.activityId, definition.placeIds, anchors);
-  if (spot === null) return null;
+  const spot = activitySpot(map, picked.activityId, definition.placeIds, anchors);
+  if (spot === null) {
+    return { layer: 'plan', action: 'continue', abandonedWantIds: [...abandoned, picked.id], wantId: picked.id };
+  }
+  const placePart = spot.placeName === '' ? definition.name : `${spot.placeName}${definition.name}`;
   return {
     layer: 'plan',
     action: 'react',
+    wantId: picked.id,
+    ...extra,
     intent: { type: 'move_to', characterId: char.id, x: spot.x, y: spot.y },
-    bubble: spot.placeName === '' ? `按日程去${definition.name}` : `按日程去${spot.placeName}${definition.name}`,
+    bubble: `${picked.why},去${placePart}`,
   };
-}
-
-/** 夜间空闲:有住房且家里有床锚点→就位睡觉;否则交还(无居所不强排) */
-function planNight(
-  char: WorldCharacter,
-  map: TileMapDefinition,
-  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
-): Decision | null {
-  if (char.housing === null) return null;
-  const homePlaceId = getPropertyDefinition(char.housing.propertyId)?.placeId;
-  if (homePlaceId === undefined) return null;
-  const beds = anchorsOf('sleep', homePlaceId);
-  if (beds.length === 0) return null;
-  if (onSpot(char, beds)) {
-    return {
-      layer: 'plan',
-      action: 'react',
-      intent: { type: 'start_activity', characterId: char.id, activityId: 'sleep' },
-      bubble: '夜深了,按日程上床睡觉',
-    };
-  }
-  const home = findPlaceByRef(map, homePlaceId);
-  if (home === null) return null;
-  return {
-    layer: 'plan',
-    action: 'react',
-    intent: { type: 'move_to', characterId: char.id, x: beds[0]!.x, y: beds[0]!.y },
-    bubble: `夜深了,按日程回${home.name}睡觉`,
-  };
-}
-
-function inAnyPlace(map: TileMapDefinition, char: WorldCharacter, placeIds: readonly string[]): boolean {
-  return placeIds.some((id) => findPlaceAt(map, char.x, char.y)?.id === id);
 }
 
 /** lab 观测辅助:地点列表(气泡文案/测试用) */

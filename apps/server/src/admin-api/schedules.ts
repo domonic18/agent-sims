@@ -1,31 +1,32 @@
 import type { FastifyInstance } from 'fastify';
 import { getActivityDefinition } from '@sims/shared';
-import { schedule } from '../agents/cognition.js';
+import { innerState } from '../agents/cognition.js';
+import { WANT_STATUS_LABEL } from '../agents/slow-layer.js';
 import type { Simulation } from '../world/simulation.js';
 
-/** M4d 日程面板:读当日计划脑状态(纯只读),replan 清计划由泵 2s 内自动重生成 */
+/** D3 意图面板:读当日 wants 脑状态(纯只读),replan 清意图由泵 2s 内自动重生成 */
 export function registerScheduleRoutes(app: FastifyInstance, sim: Simulation): void {
   app.get('/api/admin/characters/:id/schedule', async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
     }
-    const plan = schedule.get(id);
-    if (plan === undefined) {
-      return await reply.send({ characterId: id, day: null, source: null, blocks: [] });
+    const intents = innerState.get(id)?.intents;
+    if (intents === undefined || intents === null) {
+      return await reply.send({ characterId: id, day: null, source: null, wants: [] });
     }
-    const minuteOfDay = sim.clock.minuteOfDay;
     return await reply.send({
       characterId: id,
-      day: plan.day,
-      source: plan.source,
-      blocks: plan.blocks.map((b) => ({
-        startMin: b.startMin,
-        endMin: b.endMin,
-        activityId: b.activityId,
-        label: getActivityDefinition(b.activityId)?.name ?? b.activityId,
-        status:
-          minuteOfDay < b.startMin ? 'pending' : minuteOfDay < b.endMin ? 'active' : 'done',
+      day: intents.day,
+      source: intents.source,
+      wants: intents.wants.map((w) => ({
+        id: w.id,
+        activityId: w.activityId,
+        label: getActivityDefinition(w.activityId)?.name ?? w.activityId,
+        why: w.why,
+        urgency: w.urgency,
+        status: w.status,
+        statusLabel: WANT_STATUS_LABEL[w.status],
       })),
     });
   });
@@ -35,7 +36,7 @@ export function registerScheduleRoutes(app: FastifyInstance, sim: Simulation): v
     if (!sim.characters.has(id)) {
       return await reply.code(404).send({ error: '角色不在当前活跃世界' });
     }
-    schedule.clear(id);
+    innerState.clearIntents(id);
     return await reply.send({ characterId: id, cleared: true });
   });
 }

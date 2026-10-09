@@ -1,10 +1,8 @@
-import type { DayPlan } from './slow-layer.js';
-
 /**
  * 脑状态(agent-design §3.2):角色"脑内"的东西存本模块内存结构,
  * 不进 WorldCharacter——世界侧角色只保留模拟必需的数值/位置/库存。
- * M4c 自治开关;M4d 日程计划;M4e 托管状态(含方针缓存);D2 起统一内心
- * 状态(innerState)承接 mood 镜像与 focus/wants/lastEvaluation。
+ * M4c 自治开关;M4e 托管状态(含方针缓存);D2 起统一内心状态(innerState)
+ * 承接 mood 镜像与 focus/intents/lastEvaluation(D3 起日程 DayPlan 由 intents 取代)。
  */
 
 /** 方针编译产物(agent-design §4.5 Talker-Reasoner):慢思考把方针文本编译为
@@ -61,20 +59,7 @@ export const autonomy = {
   },
 };
 
-/** 日程脑状态(M4d 慢层):characterId→当日计划;重规划/角色移除时清 */
-const plans = new Map<string, DayPlan>();
-
-export const schedule = {
-  set(characterId: string, plan: DayPlan): void {
-    plans.set(characterId, plan);
-  },
-  get(characterId: string): DayPlan | undefined {
-    return plans.get(characterId);
-  },
-  clear(characterId: string): void {
-    plans.delete(characterId);
-  },
-};
+/** 日程脑状态(M4d 慢层)已删除:D3 弹性意图模型起,当日 wants 存 innerState.intents */
 
 /** 情绪脑状态(10-cognition §4.4,L5): valence -1~1(负=低落正=愉快,半衰期衰减),
  * labels=近期情绪事件标签,since=本轮情绪起点(游戏分钟)。
@@ -95,6 +80,13 @@ export interface Want {
   urgency: number;
   status: 'pending' | 'doing' | 'done' | 'abandoned';
   createdAtMin: number;
+}
+
+/** 当日意图集(慢层产出):D3 起取代刚性时间表 DayPlan */
+export interface DayIntents {
+  day: number;
+  wants: Want[];
+  source: 'llm' | 'fallback';
 }
 
 /** 关注点:最近一次决策理由的一句话(访谈/叙事/jev 题面注入) */
@@ -119,18 +111,15 @@ export interface ActivityEvaluation {
 export interface InnerState {
   mood: MoodState;
   focus: FocusState | null;
-  wants: Want[];
+  /** 当日意图集(慢层 composeIntents 写,快层 wantSelect 择条执行;跨日/重规划由 scheduler 管理) */
+  intents: DayIntents | null;
   lastEvaluation: ActivityEvaluation | null;
 }
 
 /** jsonb 持久化载荷(mood 除外:重启由 MoodTracker 按冲量流水重算) */
 export type PersistedInnerState = Omit<InnerState, 'mood'>;
 
-const innerStates = new Map<string, InnerState>();
-
-function emptyMood(): MoodState {
-  return { valence: 0, labels: [], since: null };
-}
+const WANT_STATUSES: readonly Want['status'][] = ['pending', 'doing', 'done', 'abandoned'];
 
 /** 形状校验式灌回:库值残缺/类型不对逐字段兜默认,防脏数据毒化脑状态 */
 function hydrate(saved: unknown): PersistedInnerState {
@@ -142,7 +131,37 @@ function hydrate(saved: unknown): PersistedInnerState {
     typeof (raw.focus as Record<string, unknown>).sinceMin === 'number'
       ? { text: (raw.focus as { text: string }).text, sinceMin: (raw.focus as { sinceMin: number }).sinceMin }
       : null;
-  const wants = Array.isArray(raw.wants) ? raw.wants : [];
+  const rawIntents =
+    typeof raw.intents === 'object' && raw.intents !== null ? (raw.intents as Record<string, unknown>) : null;
+  const intents: DayIntents | null =
+    rawIntents !== null &&
+    typeof rawIntents.day === 'number' &&
+    (rawIntents.source === 'llm' || rawIntents.source === 'fallback') &&
+    Array.isArray(rawIntents.wants)
+      ? {
+          day: rawIntents.day,
+          source: rawIntents.source,
+          wants: (rawIntents.wants as unknown[]).flatMap((entry) => {
+            if (typeof entry !== 'object' || entry === null) return [];
+            const w = entry as Record<string, unknown>;
+            if (typeof w.id !== 'string' || typeof w.activityId !== 'string' || typeof w.why !== 'string') return [];
+            if (typeof w.urgency !== 'number' || typeof w.createdAtMin !== 'number') return [];
+            const status = WANT_STATUSES.find((s) => s === w.status);
+            if (status === undefined) return [];
+            return [
+              {
+                id: w.id,
+                activityId: w.activityId,
+                why: w.why,
+                urgency: w.urgency,
+                status,
+                createdAtMin: w.createdAtMin,
+                ...(typeof w.placeId === 'string' ? { placeId: w.placeId } : {}),
+              } satisfies Want,
+            ];
+          }),
+        }
+      : null;
   const evaluation =
     typeof raw.lastEvaluation === 'object' &&
     raw.lastEvaluation !== null &&
@@ -150,18 +169,24 @@ function hydrate(saved: unknown): PersistedInnerState {
     typeof (raw.lastEvaluation as Record<string, unknown>).reason === 'string'
       ? (raw.lastEvaluation as ActivityEvaluation)
       : null;
-  return { focus, wants, lastEvaluation: evaluation };
+  return { focus, intents, lastEvaluation: evaluation };
+}
+
+const innerStates = new Map<string, InnerState>();
+
+function emptyMood(): MoodState {
+  return { valence: 0, labels: [], since: null };
 }
 
 export const innerState = {
   get(characterId: string): InnerState | undefined {
     return innerStates.get(characterId);
   },
-  /** 取或建(默认中性情绪+无关注+空意图) */
+  /** 取或建(默认中性情绪+无关注+无意图) */
   ensure(characterId: string): InnerState {
     let state = innerStates.get(characterId);
     if (state === undefined) {
-      state = { mood: emptyMood(), focus: null, wants: [], lastEvaluation: null };
+      state = { mood: emptyMood(), focus: null, intents: null, lastEvaluation: null };
       innerStates.set(characterId, state);
     }
     return state;
@@ -173,6 +198,14 @@ export const innerState = {
   moodOf(characterId: string): MoodState | undefined {
     return innerStates.get(characterId)?.mood;
   },
+  /** 慢层产出当日意图集(整体替换) */
+  setIntents(characterId: string, intents: DayIntents): void {
+    this.ensure(characterId).intents = intents;
+  },
+  /** 清空意图(拒绝退避 3 连/托管变更/角色下线):快层回退数值压力决策 */
+  clearIntents(characterId: string): void {
+    this.ensure(characterId).intents = null;
+  },
   clear(characterId: string): void {
     innerStates.delete(characterId);
   },
@@ -182,16 +215,17 @@ export const innerState = {
     if (state === undefined) return null;
     return {
       focus: state.focus === null ? null : { ...state.focus },
-      wants: [...state.wants],
+      intents:
+        state.intents === null ? null : { ...state.intents, wants: state.intents.wants.map((w) => ({ ...w })) },
       lastEvaluation: state.lastEvaluation === null ? null : { ...state.lastEvaluation },
     };
   },
-  /** 启动恢复灌回(只补 focus/wants/lastEvaluation,mood 等 MoodTracker 重算) */
+  /** 启动恢复灌回(只补 focus/intents/lastEvaluation,mood 等 MoodTracker 重算) */
   restore(characterId: string, saved: unknown): void {
     const persisted = hydrate(saved);
     const state = this.ensure(characterId);
     state.focus = persisted.focus;
-    state.wants = persisted.wants;
+    state.intents = persisted.intents;
     state.lastEvaluation = persisted.lastEvaluation;
   },
 };

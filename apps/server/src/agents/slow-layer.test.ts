@@ -4,12 +4,12 @@ import type { WorldCharacter } from '../world/character.js';
 import type { MemoryLlm } from './memory-writer.js';
 import {
   compilePersonaPolicy,
-  DEFAULT_PLAN_TEMPLATE,
-  parseDayPlan,
+  composeIntents,
+  fallbackIntents,
+  parseIntents,
   parsePolicy,
-  planBlockAt,
-  planDay,
-  type DayPlan,
+  biasOf,
+  describeIntents,
 } from './slow-layer.js';
 
 const DAY = 5;
@@ -93,93 +93,139 @@ function llmStub(opts: {
   return { llm, handle, chatMessages, get embedCalls() { return embedCalls; } };
 }
 
-describe('parseDayPlan(工具入参→计划块)', () => {
-  it('{blocks:[...]} 入参解析成块并按 start 排序(chatStructured 交付整个工具入参对象)', () => {
+describe('parseIntents(工具入参→wants)', () => {
+  it('合法行解析成 wants(activity 白名单+urgency 截断 0~1+id 按序生成)', () => {
     expect(
-      parseDayPlan({
-        blocks: [{ start: 14, end: 18, activity: 'work' }, { start: 8, end: 12, activity: 'study' }],
-      }),
+      parseIntents(
+        {
+          wants: [
+            { activity: 'work', urgency: 0.8, why: '挣钱' },
+            { activity: 'study', urgency: 2, why: '想学新东西' },
+            { activity: 'stroll', urgency: -1, why: '透透气' },
+          ],
+        },
+        DAY,
+        500,
+      ),
     ).toEqual({
       ok: true,
       value: [
-        { startMin: 480, endMin: 720, activityId: 'study' },
-        { startMin: 840, endMin: 1080, activityId: 'work' },
+        { id: 'w5-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-1', activityId: 'study', why: '想学新东西', urgency: 1, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-2', activityId: 'stroll', why: '透透气', urgency: 0, status: 'pending', createdAtMin: 500 },
       ],
     });
   });
 
-  it('非法行剔除(sleep 不在白名单);重叠合法行保留由执行层取首块;blocks 缺失/非数组/无有效行判失败', () => {
+  it('非法行剔除(sleep 不在白名单/urgency 非数字/why 缺省兜措辞);wants 缺失或无有效行判失败', () => {
     expect(
-      parseDayPlan({
-        blocks: [
-          { start: 8, end: 12, activity: 'study' },
-          { start: 12, end: 13, activity: 'sleep' },
-          { start: 9, end: 10, activity: 'stroll' },
+      parseIntents(
+        {
+          wants: [
+            { activity: 'sleep', urgency: 1, why: '困' },
+            { activity: 'rest', urgency: 'high', why: '累' },
+            { activity: 'meal', urgency: 0.5 },
+          ],
+        },
+        DAY,
+        500,
+      ),
+    ).toEqual({
+      ok: true,
+      value: [
+        { id: 'w5-0', activityId: 'meal', why: '随性而为', urgency: 0.5, status: 'pending', createdAtMin: 500 },
+      ],
+    });
+    expect(parseIntents({ wants: [] }, DAY, 500).ok).toBe(false);
+    expect(parseIntents([{ activity: 'work' }], DAY, 500).ok).toBe(false);
+    expect(parseIntents('我想想', DAY, 500).ok).toBe(false);
+    expect(parseIntents(null, DAY, 500).ok).toBe(false);
+  });
+});
+
+describe('fallbackIntents(个性化回落)', () => {
+  it('3~4 条、全在白名单、avoid(bias=-1)绝不出现、id 带 fallback 标记', () => {
+    const wants = fallbackIntents(DAY, 500, { study: 1, work: 1, stroll: -1, socialize: -1 });
+    expect(wants.length).toBeGreaterThanOrEqual(3);
+    expect(wants.length).toBeLessThanOrEqual(4);
+    const ids = wants.map((w) => w.activityId);
+    expect(ids).not.toContain('stroll');
+    expect(ids).not.toContain('socialize');
+    for (const w of wants) {
+      expect(w.status).toBe('pending');
+      expect(w.urgency).toBeGreaterThan(0);
+      expect(w.urgency).toBeLessThanOrEqual(0.9);
+      expect(w.id).toMatch(/^w5-f\d$/);
+      expect(w.why.trim()).not.toBe('');
+    }
+  });
+
+  it('无 bias 时也能产出(全白名单候选)', () => {
+    const wants = fallbackIntents(DAY, 500, {});
+    expect(wants.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('describeIntents(昨日对照措辞)', () => {
+  it('活动名+状态标签+why 拼接', () => {
+    expect(
+      describeIntents({
+        day: 4,
+        source: 'llm',
+        wants: [
+          { id: 'w4-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'done', createdAtMin: 100 },
+          { id: 'w4-1', activityId: 'study', why: '想学新东西', urgency: 0.5, status: 'pending', createdAtMin: 100 },
         ],
       }),
-    ).toEqual({
-      ok: true,
-      value: [
-        { startMin: 480, endMin: 720, activityId: 'study' },
-        { startMin: 540, endMin: 600, activityId: 'stroll' },
-      ],
-    });
-    expect(parseDayPlan({ blocks: [] }).ok).toBe(false);
-    expect(parseDayPlan([{ start: 8, end: 12, activity: 'study' }]).ok).toBe(false);
-    expect(parseDayPlan('{"start":8}').ok).toBe(false);
-    expect(parseDayPlan('今天想休息').ok).toBe(false);
-    expect(parseDayPlan({ blocks: [{ start: 25, end: 26, activity: 'study' }] }).ok).toBe(false);
-    expect(parseDayPlan({ blocks: [{ start: 12, end: 8, activity: 'study' }] }).ok).toBe(false);
+    ).toBe('杂工(已完成): 挣钱;学习(未做): 想学新东西');
   });
 });
 
-describe('planBlockAt(分钟→当前块)', () => {
-  const plan: DayPlan = { day: 1, blocks: [...DEFAULT_PLAN_TEMPLATE], source: 'fallback' };
-  it('命中含头不含尾;空档/越界返回 null', () => {
-    expect(planBlockAt(plan, 480)?.activityId).toBe('study');
-    expect(planBlockAt(plan, 719)?.activityId).toBe('study');
-    expect(planBlockAt(plan, 720)?.activityId).toBe('meal');
-    expect(planBlockAt(plan, 100)).toBeNull();
-    expect(planBlockAt(plan, 1400)).toBeNull();
-  });
-});
-
-describe('planDay(慢层日计划生成)', () => {
-  it('LLM 正常输出→source llm,记忆证据进 prompt(embed+检索各一次)', async () => {
+describe('composeIntents(慢层意图生成)', () => {
+  it('LLM 正常输出→source llm,记忆证据进 prompt(embed+检索各一次),bias 随 compiled 返回', async () => {
     const s = llmStub({
-      chatContent: '{"blocks":[{"start":8,"end":12,"activity":"study"},{"start":12,"end":13,"activity":"meal"}]}',
+      chatContent:
+        '{"wants":[{"activity":"work","urgency":0.8,"why":"挣钱"},{"activity":"study","urgency":0.5,"why":"想学新东西"}]}',
       memoryRows: [{ content: '我学习了 60 分钟' }, { content: '我和阿泽聊了天' }],
     });
-    const plan = await planDay(s.llm, s.handle, char({}), { day: DAY, gameMinutes: 500 });
-    expect(plan.day).toBe(DAY);
-    expect(plan.source).toBe('llm');
-    expect(plan.blocks).toHaveLength(2);
+    const { intents, bias, compiled } = await composeIntents(s.llm, s.handle, char({}), {
+      day: DAY,
+      gameMinutes: 500,
+    });
+    expect(intents.day).toBe(DAY);
+    expect(intents.source).toBe('llm');
+    expect(intents.wants).toHaveLength(2);
+    expect(bias).toEqual({});
+    expect(compiled).toBeNull();
     expect(s.chatMessages).toHaveLength(2);
     expect(s.chatMessages[1]!.content).toContain('我学习了 60 分钟');
     expect(s.chatMessages[1]!.content).toContain('金币 50');
-    expect(s.chatMessages[1]!.content).toContain('study');
+    expect(s.chatMessages[1]!.content).toContain('work');
     expect(s.embedCalls).toBe(1);
   });
 
-  it('LLM 输出垃圾→回落模板(source fallback,计划仍可用)', async () => {
+  it('LLM 输出垃圾→个性化回落(source fallback,avoid 不出现)', async () => {
     const { llm, handle } = llmStub({ chatContent: '我想想……说不太清楚' });
-    const plan = await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 });
-    expect(plan.source).toBe('fallback');
-    expect(plan.blocks).toEqual([...DEFAULT_PLAN_TEMPLATE]);
+    const { intents } = await composeIntents(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, {
+      compiled: { focus: ['study'], avoid: ['stroll'] },
+    });
+    expect(intents.source).toBe('fallback');
+    expect(intents.wants.some((w) => w.activityId === 'stroll')).toBe(false);
   });
 
-  it('slow 槽不可用(chat 拒绝)→回落模板,绝不外抛', async () => {
+  it('slow 槽不可用(chat 拒绝)→回落,绝不外抛', async () => {
     const { llm, handle } = llmStub({ chatReject: true });
-    const plan = await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 });
-    expect(plan.source).toBe('fallback');
+    const { intents } = await composeIntents(llm, handle, char({}), { day: DAY, gameMinutes: 500 });
+    expect(intents.source).toBe('fallback');
+    expect(intents.wants.length).toBeGreaterThanOrEqual(3);
   });
 
   it('无住房角色的状态行提示居无定所;租客带房源名', async () => {
-    const { llm, handle, chatMessages } = llmStub({ chatContent: '{"blocks":[]}' });
-    await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 });
+    const { llm, handle, chatMessages } = llmStub({ chatContent: '{"wants":[]}' });
+    await composeIntents(llm, handle, char({}), { day: DAY, gameMinutes: 500 });
     expect(chatMessages[1]!.content).toContain('居无定所');
-    const renter = llmStub({ chatContent: '{"blocks":[]}' });
-    await planDay(
+    const renter = llmStub({ chatContent: '{"wants":[]}' });
+    await composeIntents(
       renter.llm,
       renter.handle,
       char({ housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 5 } }),
@@ -206,10 +252,22 @@ describe('parsePolicy(工具入参→方针偏好)', () => {
   });
 });
 
-describe('planDay ctx 注入(M4e 方针+人设)', () => {
+describe('biasOf(编译偏好→活动倾向分)', () => {
+  it('focus=+1,avoid=-1 压过 focus,未提及缺 0', () => {
+    expect(biasOf({ focus: ['study', 'work'], avoid: ['stroll', 'work'] })).toEqual({
+      study: 1,
+      work: -1,
+      stroll: -1,
+    });
+    expect(biasOf(null)).toEqual({});
+    expect(biasOf(undefined)).toEqual({});
+  });
+});
+
+describe('composeIntents ctx 注入(M4e 方针+人设)', () => {
   it('方针原文+编译缓存+人设进 prompt;avoid 提示语带白名单活动', async () => {
-    const s = llmStub({ chatContent: '{"blocks":[{"start":8,"end":12,"activity":"study"}]}' });
-    await planDay(
+    const s = llmStub({ chatContent: '{"wants":[{"activity":"study","urgency":0.7,"why":"按方针来"}]}' });
+    const { bias } = await composeIntents(
       s.llm,
       s.handle,
       char({}),
@@ -222,78 +280,80 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     );
     const prompt = s.chatMessages[1]!.content;
     expect(prompt).toContain('生活方针: 专注学习攒钱,少到处闲逛');
-    expect(prompt).toContain('禁止安排: stroll');
-    expect(prompt).toContain('重点: study、work');
-    expect(prompt).toContain('人设: 性格: 内向勤奋');
+    expect(prompt).toContain('不要提: stroll');
+    expect(prompt).toContain('优先考虑: study、work');
+    expect(s.chatMessages[0]!.content).toContain('你的人设: 性格: 内向勤奋');
+    expect(bias).toEqual({ study: 1, work: 1, stroll: -1 });
   });
 
-  it('昨日计划+风味提示进 prompt:对照引导不照搬', async () => {
-    const s = llmStub({ chatContent: '{"blocks":[{"start":8,"end":12,"activity":"study"}]}' });
-    await planDay(s.llm, s.handle, char({}), { day: DAY, gameMinutes: 500 }, {
+  it('昨日意图+关注点进 prompt:对照引导不照搬', async () => {
+    const s = llmStub({ chatContent: '{"wants":[{"activity":"study","urgency":0.7,"why":"换换口味"}]}' });
+    await composeIntents(s.llm, s.handle, char({}), { day: DAY, gameMinutes: 500 }, {
       previous: {
         day: DAY - 1,
-        blocks: [
-          { startMin: 480, endMin: 720, activityId: 'work' },
-          { startMin: 720, endMin: 780, activityId: 'meal' },
+        wants: [
+          { id: 'w4-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'done', createdAtMin: 100 },
+          { id: 'w4-1', activityId: 'stroll', why: '透气', urgency: 0.3, status: 'pending', createdAtMin: 100 },
         ],
         source: 'llm',
       },
+      focus: '想把欠的房租挣出来',
     });
     const prompt = s.chatMessages[1]!.content;
-    expect(prompt).toContain('你昨天的安排');
-    expect(prompt).toContain('至少有 1~2 个时间段与昨天不同');
-    expect(prompt).toContain('今日风味提示');
+    expect(prompt).toContain('你昨天想做的事');
+    expect(prompt).toContain('杂工(已完成): 挣钱');
+    expect(prompt).toContain('结合昨天的完成情况调整');
+    expect(prompt).toContain('想把欠的房租挣出来');
   });
 
   it('LLM 输出含 avoid 活动→硬过滤剔除', async () => {
     const s = llmStub({
       chatContent:
-        '{"blocks":[{"start":8,"end":12,"activity":"study"},{"start":12,"end":14,"activity":"stroll"}]}',
+        '{"wants":[{"activity":"study","urgency":0.7,"why":"学"},{"activity":"stroll","urgency":0.6,"why":"走"}]}',
     });
-    const plan = await planDay(
+    const { intents } = await composeIntents(
       s.llm,
       s.handle,
       char({}),
       { day: DAY, gameMinutes: 500 },
       { policyText: '不散步', compiled: { focus: [], avoid: ['stroll'] } },
     );
-    expect(plan.source).toBe('llm');
-    expect(plan.blocks).toEqual([{ startMin: 480, endMin: 720, activityId: 'study' }]);
+    expect(intents.source).toBe('llm');
+    expect(intents.wants).toHaveLength(1);
+    expect(intents.wants[0]!.activityId).toBe('study');
   });
 
-  it('LLM 输出全被滤空→回落模板且模板同样滤 avoid', async () => {
-    const s = llmStub({
-      chatContent: '{"blocks":[{"start":10,"end":12,"activity":"stroll"}]}',
-    });
-    const plan = await planDay(
+  it('LLM 输出全被滤空→个性化回落且回落同样滤 avoid', async () => {
+    const s = llmStub({ chatContent: '{"wants":[{"activity":"stroll","urgency":0.6,"why":"走"}]}' });
+    const { intents } = await composeIntents(
       s.llm,
       s.handle,
       char({}),
       { day: DAY, gameMinutes: 500 },
       { policyText: '不散步', compiled: { focus: [], avoid: ['stroll'] } },
     );
-    expect(plan.source).toBe('fallback');
-    expect(plan.blocks.some((b) => b.activityId === 'stroll')).toBe(false);
-    expect(plan.blocks.length).toBe(DEFAULT_PLAN_TEMPLATE.length - 1);
+    expect(intents.source).toBe('fallback');
+    expect(intents.wants.some((w) => w.activityId === 'stroll')).toBe(false);
+    expect(intents.wants.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('slow 槽挂且有方针→回落模板滤 avoid;无方针模板原样', async () => {
+  it('slow 槽挂且有方针→回落滤 avoid;无方针回落原样个性化', async () => {
     const rejected = llmStub({ chatReject: true });
-    const plan = await planDay(
+    const { intents } = await composeIntents(
       rejected.llm,
       rejected.handle,
       char({}),
       { day: DAY, gameMinutes: 500 },
       { policyText: '不散步', compiled: { focus: [], avoid: ['stroll'] } },
     );
-    expect(plan.source).toBe('fallback');
-    expect(plan.blocks.some((b) => b.activityId === 'stroll')).toBe(false);
+    expect(intents.source).toBe('fallback');
+    expect(intents.wants.some((w) => w.activityId === 'stroll')).toBe(false);
     const plain = llmStub({ chatReject: true });
-    const noCtx = await planDay(plain.llm, plain.handle, char({}), { day: DAY, gameMinutes: 500 });
-    expect(noCtx.blocks).toEqual([...DEFAULT_PLAN_TEMPLATE]);
+    const noCtx = await composeIntents(plain.llm, plain.handle, char({}), { day: DAY, gameMinutes: 500 });
+    expect(noCtx.intents.wants.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('full 托管(无方针)有人设→自动编译人格偏好进 prompt;persona 未变走缓存,变了重编', async () => {
+  it('full 托管(无方针)有人设→自动编译人格偏好进 prompt 并随产物返回;persona 未变走缓存,变了重编', async () => {
     const chats: string[] = [];
     let personaPolicyCalls = 0;
     const llm: MemoryLlm = {
@@ -306,8 +366,8 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
         chats.push(messages[messages.length - 1]!.content);
         const parsed = parse(
           isPolicy
-            ? { focus: ['study', 'sleep'], avoid: ['stroll'] }
-            : { blocks: [{ start: 8, end: 12, activity: 'study' }] },
+            ? { focus: ['study'], avoid: ['stroll'] }
+            : { wants: [{ activity: 'study', urgency: 0.7, why: '喜欢读书' }] },
         );
         if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
         return Promise.resolve(parsed.value);
@@ -317,16 +377,18 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
       db: { select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }) },
     } as unknown as DbHandle;
     const persona = '性格: 内向勤奋;目标: 攒钱买房';
-    const plan = await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona });
-    expect(plan.source).toBe('llm');
+    const first = await composeIntents(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona });
+    expect(first.intents.source).toBe('llm');
+    expect(first.compiled).toEqual({ focus: ['study'], avoid: ['stroll'] });
+    expect(first.bias).toEqual({ study: 1, stroll: -1 });
     expect(personaPolicyCalls).toBe(1);
-    expect(chats[chats.length - 1]).toContain('以下活动是人设重点: study,请优先安排');
-    expect(chats[chats.length - 1]).toContain('禁止安排: stroll');
-    // persona 文本未变→第二次计划直接命中缓存,不再调编译
-    await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona });
+    expect(chats[chats.length - 1]).toContain('以下活动是人设重点,优先考虑: study');
+    expect(chats[chats.length - 1]).toContain('不要提: stroll');
+    // persona 文本未变→第二次生成直接命中缓存,不再调编译
+    await composeIntents(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona });
     expect(personaPolicyCalls).toBe(1);
     // persona 变了(C5 叙事更新场景)→重编译
-    await planDay(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona: '性格: 外向爱热闹' });
+    await composeIntents(llm, handle, char({}), { day: DAY, gameMinutes: 500 }, { persona: '性格: 外向爱热闹' });
     expect(personaPolicyCalls).toBe(2);
   });
 
@@ -338,7 +400,7 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
       chat: () => Promise.reject(new Error('unused')) as never,
       chatStructured: (_slot, _messages, _tool, task, parse) => {
         if (task?.taskType === 'agent.persona_policy') personaPolicyCalls += 1;
-        const parsed = parse({ blocks: [{ start: 8, end: 12, activity: 'study' }] });
+        const parsed = parse({ wants: [{ activity: 'work', urgency: 0.8, why: '挣钱' }] });
         if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
         return Promise.resolve(parsed.value);
       },
@@ -346,14 +408,14 @@ describe('planDay ctx 注入(M4e 方针+人设)', () => {
     const handle = {
       db: { select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }) },
     } as unknown as DbHandle;
-    const plan = await planDay(
+    const { intents } = await composeIntents(
       llm,
       handle,
       char({}),
       { day: DAY, gameMinutes: 500 },
       { policyText: '专心打工攒钱', persona: '性格: 内向勤奋' },
     );
-    expect(plan.source).toBe('llm');
+    expect(intents.source).toBe('llm');
     expect(personaPolicyCalls).toBe(0);
   });
 });

@@ -2,7 +2,7 @@ import type { HostingStateView } from '@sims/shared';
 import type { FastifyInstance } from 'fastify';
 import { and, eq, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { hosting, schedule, type HostingState } from '../agents/cognition.js';
+import { hosting, innerState, type HostingState } from '../agents/cognition.js';
 import { compilePolicy } from '../agents/slow-layer.js';
 import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/index.js';
@@ -91,7 +91,7 @@ export async function restoreHostingFromDb(
 /**
  * 托管切换(M4e):指令来源玩家⇄Agent 原子切换,世界状态零触碰。
  * policy 模式先落状态(编译完成前 compiled=null 只用原文兜底),异步编译完成后
- * 校验 policyText 未变才写缓存(防竞态);计划清空交泵按方针重规划。
+ * 校验 policyText 未变才写缓存(防竞态);意图清空交泵按方针重新生成。
  */
 export function registerHostingRoutes(app: FastifyInstance, handle: DbHandle, sim: Simulation): void {
   app.get('/api/admin/characters/:id/hosting', async (request, reply) => {
@@ -134,7 +134,7 @@ export function registerHostingRoutes(app: FastifyInstance, handle: DbHandle, si
         compiled: changed ? null : (prev?.compiled ?? null),
       });
       if (changed) {
-        schedule.clear(id);
+        innerState.clearIntents(id);
         void compilePolicy(app.llm, policyText).then((compiled) => {
           const cur = hosting.get(id);
           if (cur !== undefined && cur.mode === 'policy' && cur.policyText === policyText) {

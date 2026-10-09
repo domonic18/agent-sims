@@ -28,13 +28,13 @@ describe('托管注册表(M4e 单一事实源)', () => {
   });
 });
 
-describe('innerState 统一内心状态(D2 地基)', () => {
-  it('ensure 默认中性情绪+空意图,同实例复用', () => {
+describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
+  it('ensure 默认中性情绪+无意图,同实例复用', () => {
     const state = innerState.ensure('char-1');
     expect(state).toEqual({
       mood: { valence: 0, labels: [], since: null },
       focus: null,
-      wants: [],
+      intents: null,
       lastEvaluation: null,
     });
     expect(innerState.ensure('char-1')).toBe(state);
@@ -48,26 +48,46 @@ describe('innerState 统一内心状态(D2 地基)', () => {
     expect(innerState.get('char-1')).toBeUndefined();
   });
 
-  it('persistedOf 只含 focus/wants/lastEvaluation 且为数组拷贝', () => {
+  it('setIntents 整体替换,clearIntents 归 null', () => {
+    innerState.setIntents('char-1', {
+      day: 3,
+      source: 'llm',
+      wants: [{ id: 'w1', activityId: 'work', why: '挣钱', urgency: 0.7, status: 'pending', createdAtMin: 100 }],
+    });
+    expect(innerState.get('char-1')!.intents?.day).toBe(3);
+    innerState.clearIntents('char-1');
+    expect(innerState.get('char-1')!.intents).toBeNull();
+  });
+
+  it('persistedOf 只含 focus/intents/lastEvaluation 且为深拷贝', () => {
     const state = innerState.ensure('char-1');
     state.focus = { text: '想去做工', sinceMin: 50 };
-    state.wants.push({
-      id: 'w1',
-      activityId: 'work',
-      why: '挣钱',
-      urgency: 0.7,
-      status: 'pending',
-      createdAtMin: 50,
+    innerState.setIntents('char-1', {
+      day: 2,
+      source: 'fallback',
+      wants: [
+        { id: 'w1', activityId: 'work', why: '挣钱', urgency: 0.7, status: 'pending', createdAtMin: 50 },
+        { id: 'w2', activityId: 'stroll', why: '散步', urgency: 0.3, status: 'done', createdAtMin: 40 },
+      ],
     });
     const saved = innerState.persistedOf('char-1');
     expect(saved).toEqual({
       focus: { text: '想去做工', sinceMin: 50 },
-      wants: [expect.objectContaining({ id: 'w1' })],
+      intents: {
+        day: 2,
+        source: 'fallback',
+        wants: [
+          expect.objectContaining({ id: 'w1' }),
+          expect.objectContaining({ id: 'w2', status: 'done' }),
+        ],
+      },
       lastEvaluation: null,
     });
     expect(saved).not.toHaveProperty('mood'); // mood 真源 character_moods,不落此列
-    saved!.wants.pop();
-    expect(state.wants).toHaveLength(1);
+    saved!.intents!.wants.pop();
+    saved!.intents!.wants[0]!.status = 'abandoned';
+    expect(state.intents!.wants).toHaveLength(2);
+    expect(state.intents!.wants[0]!.status).toBe('pending');
   });
 
   it('persistedOf 无记录返回 null', () => {
@@ -78,19 +98,29 @@ describe('innerState 统一内心状态(D2 地基)', () => {
     innerState.setMood('char-1', { valence: -0.5, labels: ['被打断'], since: 10 });
     innerState.restore('char-1', {
       focus: { text: '想休息', sinceMin: 30 },
-      wants: [
-        { id: 'w2', activityId: 'rest', why: '累了', urgency: 0.5, status: 'pending', createdAtMin: 30 },
-      ],
+      intents: {
+        day: 1,
+        source: 'llm',
+        wants: [
+          { id: 'w2', activityId: 'rest', why: '累了', urgency: 0.5, status: 'pending', createdAtMin: 30 },
+          { id: 'bad', activityId: 42, why: '坏了', urgency: 0.5, status: 'pending', createdAtMin: 30 }, // 脏条目剔除
+        ],
+      },
       lastEvaluation: { activityId: 'work', verdict: 'bad', reason: '太累', atMin: 40 },
       mood: { valence: 1, labels: [], since: 0 }, // 库值若含 mood 一律忽略
     });
     const state = innerState.get('char-1')!;
     expect(state.focus).toEqual({ text: '想休息', sinceMin: 30 });
-    expect(state.wants).toHaveLength(1);
+    expect(state.intents!.day).toBe(1);
+    expect(state.intents!.wants).toHaveLength(1);
+    expect(state.intents!.wants[0]!.id).toBe('w2');
     expect(state.lastEvaluation).toEqual({ activityId: 'work', verdict: 'bad', reason: '太累', atMin: 40 });
     expect(state.mood.valence).toBe(-0.5);
-    innerState.restore('char-1', { focus: { text: 42, sinceMin: 'x' }, wants: 'nope' });
+    innerState.restore('char-1', {
+      focus: { text: 42, sinceMin: 'x' },
+      intents: { day: 'x', source: 'llm', wants: [] },
+    });
     expect(innerState.get('char-1')!.focus).toBeNull();
-    expect(innerState.get('char-1')!.wants).toEqual([]);
+    expect(innerState.get('char-1')!.intents).toBeNull();
   });
 });

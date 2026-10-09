@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { issueAdminToken } from '../src/utils/token.js';
 import { env } from '../src/config/env.js';
-import { autonomy, hosting, schedule } from '../src/agents/cognition.js';
+import { autonomy, hosting, innerState } from '../src/agents/cognition.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
 import { adminGuard } from '../src/admin-api/auth.js';
 import { registerHostingRoutes } from '../src/admin-api/hosting.js';
@@ -75,13 +75,13 @@ describe('GET/POST /api/admin/characters/:id/hosting(M4e 托管切换)', () => {
 
   beforeEach(() => {
     hosting.delete(CHAR_ID);
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     h = harness('{"focus":["study"],"avoid":["stroll"]}');
   });
 
   afterEach(async () => {
     hosting.delete(CHAR_ID);
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     await h.app.close();
   });
 
@@ -124,8 +124,8 @@ describe('GET/POST /api/admin/characters/:id/hosting(M4e 托管切换)', () => {
     ]);
   });
 
-  it('开方针托管: 先落状态(编译异步),编译完成后写缓存;计划清空触发重规划', async () => {
-    schedule.set(CHAR_ID, { day: 1, source: 'fallback', blocks: [] });
+  it('开方针托管: 先落状态(编译异步),编译完成后写缓存;意图清空触发重规划', async () => {
+    innerState.setIntents(CHAR_ID, { day: 1, source: 'fallback', wants: [] });
     const res = await h.app.inject({
       method: 'POST',
       url: `/api/admin/characters/${CHAR_ID}/hosting`,
@@ -134,7 +134,7 @@ describe('GET/POST /api/admin/characters/:id/hosting(M4e 托管切换)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ characterId: CHAR_ID, hosted: true, mode: 'policy', policyText: POLICY });
-    expect(schedule.get(CHAR_ID)).toBeUndefined();
+    expect(innerState.get(CHAR_ID)?.intents ?? null).toBeNull();
     expect(h.chatCalls).toBe(1);
     await flush();
     expect(hosting.get(CHAR_ID)?.compiled).toEqual({ focus: ['study'], avoid: ['stroll'] });
@@ -150,11 +150,11 @@ describe('GET/POST /api/admin/characters/:id/hosting(M4e 托管切换)', () => {
       });
     await post();
     await flush();
-    schedule.set(CHAR_ID, { day: 1, source: 'fallback', blocks: [] });
+    innerState.setIntents(CHAR_ID, { day: 1, source: 'fallback', wants: [] });
     await post();
     await flush();
     expect(h.chatCalls).toBe(1);
-    expect(schedule.get(CHAR_ID)).toBeDefined();
+    expect(innerState.get(CHAR_ID)?.intents).not.toBeNull();
     await h.app.inject({
       method: 'POST',
       url: `/api/admin/characters/${CHAR_ID}/hosting`,
@@ -163,7 +163,7 @@ describe('GET/POST /api/admin/characters/:id/hosting(M4e 托管切换)', () => {
     });
     await flush();
     expect(h.chatCalls).toBe(2);
-    expect(schedule.get(CHAR_ID)).toBeUndefined();
+    expect(innerState.get(CHAR_ID)?.intents ?? null).toBeNull();
     expect(hosting.get(CHAR_ID)?.policyText).toBe('改成多锻炼');
   });
 
@@ -200,9 +200,15 @@ describe('GET/POST /api/admin/characters/:id/hosting(M4e 托管切换)', () => {
     expect(hosting.has(CHAR_ID)).toBe(false);
   });
 
-  it('接管(disable): 状态删除+广播 hosted=false 事件,当日计划保留', async () => {
+  it('接管(disable): 状态删除+广播 hosted=false 事件,当日意图保留', async () => {
     hosting.set(CHAR_ID, { mode: 'policy', policyText: POLICY, compiled: null });
-    schedule.set(CHAR_ID, { day: 1, source: 'fallback', blocks: [{ startMin: 480, endMin: 720, activityId: 'study' }] });
+    innerState.setIntents(CHAR_ID, {
+      day: 1,
+      source: 'fallback',
+      wants: [
+        { id: 'w1-0', activityId: 'study', why: '想学点东西', urgency: 0.8, status: 'pending', createdAtMin: 480 },
+      ],
+    });
     const res = await h.app.inject({
       method: 'POST',
       url: `/api/admin/characters/${CHAR_ID}/hosting`,
@@ -211,7 +217,7 @@ describe('GET/POST /api/admin/characters/:id/hosting(M4e 托管切换)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ characterId: CHAR_ID, hosted: false, mode: null, policyText: null });
-    expect(schedule.get(CHAR_ID)).toBeDefined();
+    expect(innerState.get(CHAR_ID)?.intents).not.toBeNull();
     expect(h.events).toHaveLength(1);
     expect(h.events[0]).toMatchObject({ type: 'character.hosting_changed', hosted: false, mode: null });
     const again = await h.app.inject({

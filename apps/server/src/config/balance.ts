@@ -107,6 +107,14 @@ export interface BalanceConfig {
   ACQUAINTANCE_THRESHOLD_MINUTES: number;
   ACQUAINTANCE_DAILY_CAP: number;
   ACQUAINTANCE_FAMILIARITY: number;
+  /** 弹性意图择行(D3):数值需求增益——金币低工作需求×1.5/高×0.6,体力低休息就餐×1.4,知识低学习×1.3 */
+  WANT_WORK_COIN_PRESSURE: number;
+  WANT_WORK_COIN_SATIETY: number;
+  WANT_TIRED_ENERGY: number;
+  WANT_KNOWLEDGE_LOW: number;
+  /** 困倦压力(D3,纯数值替代 planNight 时间表):夜间/白天开始犯困的体力线,越困越想睡 */
+  SLEEPY_NIGHT_ENERGY: number;
+  SLEEPY_DAY_ENERGY: number;
   /** 资源节点存量上限(04 §5.4 表值=出厂默认;junk -1=无限不枯竭) */
   NODE_MAX_CHARGES_BERRY: number;
   NODE_MAX_CHARGES_JUNK: number;
@@ -185,6 +193,12 @@ export const BALANCE: BalanceConfig = {
   ACQUAINTANCE_THRESHOLD_MINUTES: 120,
   ACQUAINTANCE_DAILY_CAP: 2,
   ACQUAINTANCE_FAMILIARITY: 5,
+  WANT_WORK_COIN_PRESSURE: 30,
+  WANT_WORK_COIN_SATIETY: 150,
+  WANT_TIRED_ENERGY: 50,
+  WANT_KNOWLEDGE_LOW: 30,
+  SLEEPY_NIGHT_ENERGY: 60,
+  SLEEPY_DAY_ENERGY: 25,
   NODE_MAX_CHARGES_BERRY: 3,
   NODE_MAX_CHARGES_JUNK: -1,
   NODE_MAX_CHARGES_TREE: 5,

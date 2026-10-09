@@ -6,67 +6,36 @@ import type { LlmMessage, StructuredParse, StructuredToolSpec } from '../llm/typ
 import { renderPrompt } from '../prompts/registry.js';
 import type { WorldCharacter } from '../world/character.js';
 import { retrieveMemories } from './memory-retrieval.js';
-import type { CompiledPolicy } from './cognition.js';
+import type { CompiledPolicy, DayIntents, Want } from './cognition.js';
 import type { MemoryLlm } from './memory-writer.js';
 
-/** 计划块(agent-design §3.3):当日分钟区间 + 意图活动,块内由快层 rule 执行 */
-export interface PlanBlock {
-  /** 当日分钟(0~1440),含头不含尾 */
-  startMin: number;
-  endMin: number;
-  activityId: string;
-}
+/**
+ * 慢层意图生成(D3 弹性意图模型):替代刚性时间表 DayPlan——慢思考产出当日
+ * 3~6 条 wants(活动+urgency+第一人称 why),执行时序交快层按数值压力实时择条,
+ * 计划-实际偏差自动成为记忆素材。睡眠不进意图,由困倦压力(ruleSleepy)接管。
+ */
 
-export interface DayPlan {
-  day: number;
-  blocks: PlanBlock[];
-  /** llm=慢槽生成;fallback=模板回落(LLM 不可用/输出非法) */
-  source: 'llm' | 'fallback';
-}
-
-/** 计划白名单:免门槛/无条件可直接 start_activity 的活动
- * (sleep 由执行层按夜强制,不进计划;带 category 岗位与工单须接单,不排程;
+/** 意图活动白名单:免门槛/无条件可直接 start_activity 的活动
+ * (sleep 由困倦压力驱动,不进意图;带 category 岗位与工单须接单,不排程;
  * socialize 为 C4 闲聚类块,聊天本身由动机引擎驱动) */
-export const PLAN_ACTIVITY_IDS = ['study', 'work', 'workout', 'stroll', 'socialize', 'explore', 'meal', 'rest'] as const;
-
-/** 回落模板:LLM 不可用时的通用作息(8~22 点,夜间由执行层强制回家睡) */
-export const DEFAULT_PLAN_TEMPLATE: readonly PlanBlock[] = [
-  { startMin: 480, endMin: 720, activityId: 'study' },
-  { startMin: 720, endMin: 780, activityId: 'meal' },
-  { startMin: 780, endMin: 840, activityId: 'rest' },
-  { startMin: 840, endMin: 1080, activityId: 'work' },
-  { startMin: 1080, endMin: 1200, activityId: 'stroll' },
-  { startMin: 1200, endMin: 1320, activityId: 'rest' },
-];
+export const INTENT_ACTIVITY_IDS = ['study', 'work', 'workout', 'stroll', 'socialize', 'explore', 'meal', 'rest'] as const;
 
 const EVIDENCE_LIMIT = 6;
 
-/** 每日随机抽一条的风味提示:给计划注入变化方向,避免逐日雷同(执行器与校验链兜底,提示只影响倾向) */
-const PLAN_FLAVORS: readonly string[] = [
-  '今天至少安排一段平时不常做的活动,给日子添点新意',
-  '今天可以去个平时少去的地方走走,公园/餐馆/商店/健身房都行',
-  '状态允许的话留一段轻松随性的时间,别把日程排太满',
-  '结合你的兴趣,今天安排一点你真正喜欢的小事',
-  '昨天怎么过的今天不必照搬,按今天的心情微调时段',
-];
-
-function pickFlavor(): string {
-  return PLAN_FLAVORS[Math.floor(Math.random() * PLAN_FLAVORS.length)]!;
-}
-
-/** 计划生成上下文(M4e):生活方针(原文+编译缓存)与人设卡,均可缺省
- * (full 托管无玩家方针时,planDay 会从人设自动编译 focus/avoid 偏好并缓存) */
-export interface PlanContext {
+/** 意图生成上下文:方针(原文+编译缓存)/人设/昨日意图/当前关注点,均可缺省 */
+export interface IntentsContext {
   policyText?: string;
   compiled?: CompiledPolicy | null;
   persona?: string;
-  /** 昨日计划:注入 prompt 做对照,避免逐日复制粘贴(缺省=首日/无旧计划) */
-  previous?: DayPlan | null;
+  /** 昨日意图:注入 prompt 做对照,避免逐日复制粘贴(缺省=首日/无旧意图) */
+  previous?: DayIntents | null;
+  /** 当前关注点(innerState.focus,最近一次决策理由) */
+  focus?: string | null;
 }
 
 /** 方针偏好工具规格(结构化输出):provider 层 schema 约束字段名与活动白名单 */
 export function policyTool(): StructuredToolSpec {
-  const ids = { type: 'string', enum: [...PLAN_ACTIVITY_IDS] };
+  const ids = { type: 'string', enum: [...INTENT_ACTIVITY_IDS] };
   return {
     name: 'submit_policy',
     description: '提交活动偏好编译结果(focus=鼓励,avoid=排斥)',
@@ -108,10 +77,10 @@ export async function compilePolicy(
   }
 }
 
-/** 人设偏好缓存(full 托管):persona 文本为键,文本未变不重编;编译失败不缓存(次日计划再试) */
+/** 人设偏好缓存(full 托管):persona 文本为键,文本未变不重编;编译失败不缓存(次日意图再试) */
 const personaPolicies = new Map<string, { key: string; compiled: CompiledPolicy }>();
 
-/** 人设偏好编译(slow 槽):人格卡→活动偏好集,full 托管(无玩家方针)时提供差异化计划倾向。
+/** 人设偏好编译(slow 槽):人格卡→活动偏好集,full 托管(无玩家方针)时提供差异化意图倾向。
  * 调用/校验失败返回 null(当天只用原文人设,不缓存) */
 export async function compilePersonaPolicy(
   llm: MemoryLlm,
@@ -150,9 +119,19 @@ export function parsePolicy(raw: unknown): StructuredParse<CompiledPolicy> {
   const record = raw as Record<string, unknown>;
   const pick = (value: unknown): string[] =>
     Array.isArray(value)
-      ? value.filter((id): id is string => typeof id === 'string' && (PLAN_ACTIVITY_IDS as readonly string[]).includes(id))
+      ? value.filter((id): id is string => typeof id === 'string' && (INTENT_ACTIVITY_IDS as readonly string[]).includes(id))
       : [];
   return { ok: true, value: { focus: pick(record.focus), avoid: pick(record.avoid) } };
+}
+
+/** 编译偏好→活动倾向分(D3 评分用):focus=+1,avoid=-1(avoid 压过 focus),
+ * 未提及的活动缺 0(中性);快层 wantSelect 与 fallbackIntents 共用同一口径 */
+export function biasOf(compiled: CompiledPolicy | null | undefined): Record<string, number> {
+  const bias: Record<string, number> = {};
+  if (compiled === null || compiled === undefined) return bias;
+  for (const id of compiled.focus) bias[id] = 1;
+  for (const id of compiled.avoid) bias[id] = -1;
+  return bias;
 }
 
 /** 人设卡上下文:读 characters.persona 拼人设段;无卡/查询失败返回 undefined(静默降级) */
@@ -197,31 +176,48 @@ export async function loadPersonaContext(
   }
 }
 
-const ACTIVITY_MENU = PLAN_ACTIVITY_IDS.map((id) => {
+const ACTIVITY_MENU = INTENT_ACTIVITY_IDS.map((id) => {
   const def = getActivityDefinition(id);
   return `${def?.name ?? id}(${id})`;
 }).join('、');
 
-function fallbackPlan(day: number): DayPlan {
-  return { day, blocks: [...DEFAULT_PLAN_TEMPLATE], source: 'fallback' };
+/** want 状态的人类可读标签(昨日对照/面板共用) */
+export const WANT_STATUS_LABEL: Record<Want['status'], string> = {
+  pending: '未做',
+  doing: '进行中',
+  done: '已完成',
+  abandoned: '放弃了',
+};
+
+/** 意图集人类可读摘要:「工作(已完成):挣钱;学习(未做):想学新东西」 */
+export function describeIntents(intents: DayIntents): string {
+  return intents.wants
+    .map((w) => {
+      const name = getActivityDefinition(w.activityId)?.name ?? w.activityId;
+      return `${name}(${WANT_STATUS_LABEL[w.status]}): ${w.why}`;
+    })
+    .join(';');
 }
 
-/** 日计划工具规格(结构化输出):start/end 为小时(0~24),activity 白名单 */
-function dayPlanTool(): StructuredToolSpec {
-  const hour = { type: 'number', minimum: 0, maximum: 24 };
+/** 意图工具规格(结构化输出):activity 白名单,urgency 0~1,why 一句第一人称理由 */
+function intentsTool(): StructuredToolSpec {
   return {
-    name: 'submit_day_plan',
-    description: '提交当日日程(blocks 时间段首尾相接)',
+    name: 'submit_day_intents',
+    description: '提交今天真正想做的几件事(3~6 条,不必覆盖全天)',
     inputSchema: {
       type: 'object',
-      required: ['blocks'],
+      required: ['wants'],
       properties: {
-        blocks: {
+        wants: {
           type: 'array',
           items: {
             type: 'object',
-            required: ['start', 'end', 'activity'],
-            properties: { start: hour, end: hour, activity: { type: 'string', enum: [...PLAN_ACTIVITY_IDS] } },
+            required: ['activity', 'urgency', 'why'],
+            properties: {
+              activity: { type: 'string', enum: [...INTENT_ACTIVITY_IDS] },
+              urgency: { type: 'number', minimum: 0, maximum: 1 },
+              why: { type: 'string' },
+            },
           },
         },
       },
@@ -229,57 +225,72 @@ function dayPlanTool(): StructuredToolSpec {
   };
 }
 
-/** 工具入参→计划块:入参为 {blocks:[...]}(chatStructured 交付整个工具入参对象);
- * 剔除非法行(活动不在白名单/区间越界/倒挂),按 start 排序;
- * blocks 缺失非数组或无有效行判失败(触发带错重试,调用方回落模板)。 */
-export function parseDayPlan(raw: unknown): StructuredParse<PlanBlock[]> {
+/** 工具入参→wants:入参为 {wants:[...]}(chatStructured 交付整个工具入参对象);
+ * 剔除非法行(活动不在白名单/urgency 非数字),urgency 截断到 0~1,why 缺省兜「随性而为」;
+ * wants 缺失非数组或无有效行判失败(触发带错重试,调用方回落 fallback)。 */
+export function parseIntents(raw: unknown, day: number, nowMin: number): StructuredParse<Want[]> {
   const rows =
-    typeof raw === 'object' && raw !== null && Array.isArray((raw as { blocks?: unknown }).blocks)
-      ? (raw as { blocks: unknown[] }).blocks
+    typeof raw === 'object' && raw !== null && Array.isArray((raw as { wants?: unknown }).wants)
+      ? (raw as { wants: unknown[] }).wants
       : null;
   if (rows === null) {
-    return { ok: false, reason: 'blocks 须为时间段的 JSON 数组' };
+    return { ok: false, reason: 'wants 须为意图的 JSON 数组' };
   }
-  const blocks: PlanBlock[] = [];
+  const wants: Want[] = [];
   for (const row of rows) {
     if (typeof row !== 'object' || row === null) continue;
     const r = row as Record<string, unknown>;
-    const start = Number(r.start);
-    const end = Number(r.end);
     const activity = r.activity;
-    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-    if (
-      typeof activity !== 'string' ||
-      !(PLAN_ACTIVITY_IDS as readonly string[]).includes(activity)
-    ) {
-      continue;
-    }
-    if (start < 0 || end > 24 || end <= start) continue;
-    blocks.push({
-      startMin: Math.round(start * 60),
-      endMin: Math.round(end * 60),
+    if (typeof activity !== 'string' || !(INTENT_ACTIVITY_IDS as readonly string[]).includes(activity)) continue;
+    const urgency = Number(r.urgency);
+    if (!Number.isFinite(urgency)) continue;
+    const why = typeof r.why === 'string' && r.why.trim() !== '' ? r.why.trim() : '随性而为';
+    wants.push({
+      id: `w${day}-${wants.length}`,
       activityId: activity,
+      why,
+      urgency: Math.min(1, Math.max(0, urgency)),
+      status: 'pending',
+      createdAtMin: nowMin,
     });
   }
-  if (blocks.length === 0) {
-    return { ok: false, reason: '无合法计划块(start/end 须 0~24 且 end>start,activity 须在可选活动内)' };
+  if (wants.length === 0) {
+    return { ok: false, reason: '无合法意图(activity 须在可选活动内,urgency 须为 0~1 数字)' };
   }
-  blocks.sort((a, b) => a.startMin - b.startMin);
-  return { ok: true, value: blocks };
+  return { ok: true, value: wants };
 }
 
-/** 当前分钟落在哪个计划块(含头不含尾);空档/无计划返回 null */
-export function planBlockAt(plan: DayPlan, minuteOfDay: number): PlanBlock | null {
-  return plan.blocks.find((b) => b.startMin <= minuteOfDay && minuteOfDay < b.endMin) ?? null;
-}
+/** fallback 意图的 why 池:按活动给第一人称措辞,消灭「同款模板」 */
+const FALLBACK_WHY: Record<string, readonly string[]> = {
+  study: ['脑子里墨水不够了', '想学点新东西', '静下心读读书挺踏实'],
+  work: ['口袋空着心里发慌', '总得挣点金币', '闲太久不是办法'],
+  workout: ['出出汗整个人都通了', '身体是本钱', '想活动活动筋骨'],
+  stroll: ['出去走走透透气', '天气不错正适合遛弯', '漫无目的逛逛说不定有惊喜'],
+  socialize: ['找个人说说话', '凑凑热闹', '人多的地方有人气'],
+  explore: ['镇上还有没去过的地方', '想去没走过的角落看看', '好奇心又犯了'],
+  meal: ['嘴里有点馋', '肚子在抗议了', '该犒劳一下自己'],
+  rest: ['累了歇会儿', '发会儿呆也好', '想慢下来喘口气'],
+};
 
-/** 计划的人类可读摘要(记忆写回/日程面板共用):「学习(08:00~12:00)、就餐(12:00~13:00)」 */
-export function describePlan(plan: DayPlan): string {
-  const hhmm = (m: number): string =>
-    `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-  return plan.blocks
-    .map((b) => `${getActivityDefinition(b.activityId)?.name ?? b.activityId}(${hhmm(b.startMin)}~${hhmm(b.endMin)})`)
-    .join('、');
+/** 回落意图(LLM 不可用/输出非法):按 bias 分+随机扰动排序取 3~4 条,
+ * avoid(bias=-1)活动绝不出现;urgency 随倾向分浮动——个性化替代同款模板 */
+export function fallbackIntents(day: number, nowMin: number, bias: Readonly<Record<string, number>>): Want[] {
+  const candidates = INTENT_ACTIVITY_IDS
+    .filter((id) => (bias[id] ?? 0) > -1)
+    .map((id) => ({ id, score: (bias[id] ?? 0) + Math.random() * 0.8 }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3 + Math.floor(Math.random() * 2));
+  return candidates.map((c, i) => {
+    const whys = FALLBACK_WHY[c.id] ?? ['随性而为'];
+    return {
+      id: `w${day}-f${i}`,
+      activityId: c.id,
+      why: whys[Math.floor(Math.random() * whys.length)]!,
+      urgency: Math.round(Math.min(0.9, Math.max(0.2, 0.4 + c.score * 0.3)) * 100) / 100,
+      status: 'pending' as const,
+      createdAtMin: nowMin,
+    };
+  });
 }
 
 function housingLine(char: WorldCharacter): string {
@@ -289,25 +300,24 @@ function housingLine(char: WorldCharacter): string {
   return `租住${name}`;
 }
 
-function buildPlanMessages(
+function buildIntentsMessages(
   char: WorldCharacter,
   evidence: string[],
   day: number,
-  ctx?: PlanContext,
+  ctx?: IntentsContext,
 ): LlmMessage[] {
   const memoryLines = evidence.length > 0
     ? evidence.map((c) => `- ${c}`).join('\n')
     : '- (暂无记忆)';
   const contextLines: string[] = [];
-  if (typeof ctx?.persona === 'string' && ctx.persona.trim() !== '') {
-    contextLines.push(`你的人设: ${ctx.persona.trim()}——日程安排要符合这个人设。`);
-  }
   if (ctx?.previous !== null && ctx?.previous !== undefined) {
     contextLines.push(
-      `你昨天的安排: ${describePlan(ctx.previous)}——今天别照搬,至少有 1~2 个时间段与昨天不同。`,
+      `你昨天想做的事: ${describeIntents(ctx.previous)}——今天不必照搬,结合昨天的完成情况调整。`,
     );
   }
-  contextLines.push(`今日风味提示: ${pickFlavor()}。`);
+  if (typeof ctx?.focus === 'string' && ctx.focus.trim() !== '') {
+    contextLines.push(`你眼下最挂在心上的事: ${ctx.focus.trim()}。`);
+  }
   if (typeof ctx?.policyText === 'string' && ctx.policyText.trim() !== '') {
     contextLines.push(`玩家给你的生活方针: ${ctx.policyText.trim()}`);
   }
@@ -315,31 +325,38 @@ function buildPlanMessages(
     // compiled 来源两途:玩家方针编译,或 full 托管下的人设偏好
     const basis = typeof ctx.policyText === 'string' && ctx.policyText.trim() !== '' ? '方针' : '人设';
     if (ctx.compiled.avoid.length > 0) {
-      contextLines.push(`以下活动被${basis}明确排斥,禁止安排: ${ctx.compiled.avoid.join('、')}。`);
+      contextLines.push(`以下活动被${basis}明确排斥,不要提: ${ctx.compiled.avoid.join('、')}。`);
     }
     if (ctx.compiled.focus.length > 0) {
-      contextLines.push(`以下活动是${basis}重点: ${ctx.compiled.focus.join('、')},请优先安排。`);
+      contextLines.push(`以下活动是${basis}重点,优先考虑: ${ctx.compiled.focus.join('、')}。`);
     }
   }
   return [
     {
       role: 'system',
-      content: renderPrompt('plan.system', { name: char.name, day }),
+      content: renderPrompt('intents.system', {
+        name: char.name,
+        day,
+        persona_line:
+          typeof ctx?.persona === 'string' && ctx.persona.trim() !== ''
+            ? `你的人设: ${ctx.persona.trim()}`
+            : '',
+      }),
     },
     {
       role: 'user',
-      content: renderPrompt('plan.user', {
+      content: renderPrompt('intents.user', {
         status_line: `状态: 金币 ${char.coins},体力 ${char.energy},健康 ${char.health},知识 ${char.knowledge},${housingLine(char)}。`,
         context_lines: contextLines.join('\n'),
         memory_lines: memoryLines,
         activity_menu: ACTIVITY_MENU,
-        submit_line: '请调用 submit_day_plan 工具提交今天的日程(start/end 用小时)。',
+        submit_line: '请调用 submit_day_intents 工具提交今天想做的事。',
       }),
     },
   ];
 }
 
-/** 记忆证据:状态摘要做语义查询,embed 失败退双因子,检索失败退空证据(绝不阻塞计划) */
+/** 记忆证据:状态摘要做语义查询,embed 失败退双因子,检索失败退空证据(绝不阻塞意图) */
 async function loadEvidence(
   llm: MemoryLlm,
   handle: DbHandle,
@@ -350,7 +367,7 @@ async function loadEvidence(
     const emb = await llm.embed(
       'embedding',
       [`${char.name}的日常生活、工作与人际经历`],
-      { taskType: 'agent.day_plan', characterId: char.id },
+      { taskType: 'agent.day_intents', characterId: char.id },
     );
     const scored = await retrieveMemories(handle, {
       characterId: char.id,
@@ -364,26 +381,28 @@ async function loadEvidence(
   }
 }
 
-/** 方针硬过滤:剔除 avoid 块,首尾空档不回填(快层空档自然空闲);全滤空回落模板 */
-function applyAvoid(blocks: PlanBlock[], avoid: readonly string[]): PlanBlock[] {
-  if (avoid.length === 0) return blocks;
-  return blocks.filter((b) => !avoid.includes(b.activityId));
+/** 慢层意图生成产物:当日意图集 + 活动倾向分(快层评分/fallback 口径)+
+ * 本轮生效的编译偏好(调度泵回填托管缓存) */
+export interface ComposedIntents {
+  intents: DayIntents;
+  bias: Record<string, number>;
+  compiled: CompiledPolicy | null;
 }
 
 /**
- * 慢层日计划(agent-design §4.3 slow):检索记忆证据(top-6)→ slow 槽 chat
- * 生成当日作息(JSON,白名单活动)→解析失败/调用失败回落通用模板。
- * M4e: ctx 注入方针(原文+编译缓存)与人设;avoid 对 LLM 输出与回落模板都硬过滤。
- * full 托管(无玩家方针)有人设时,先经慢槽编译人格偏好(按 persona 文本缓存)注入。
- * 纯生成器,不写脑状态不落库——装配与时序归调度泵(M4d-C2)。
+ * 慢层意图生成(D3,agent-design §4.3 slow):检索记忆证据(top-6)→ slow 槽 chat
+ * 生成当日 wants(activity/urgency/why)→解析失败/调用失败回落个性化 fallback。
+ * avoid(bias=-1)对 LLM 输出硬过滤,全滤空退 fallback。纯生成器,不写脑状态不落库——
+ * 装配与时序归调度泵(M4d-C2)。full 托管(无玩家方针)有人设时,先经慢槽编译
+ * 人格偏好(按 persona 文本缓存)注入。
  */
-export async function planDay(
+export async function composeIntents(
   llm: MemoryLlm,
   handle: DbHandle,
   char: WorldCharacter,
   clock: { day: number; gameMinutes: number },
-  ctx?: PlanContext,
-): Promise<DayPlan> {
+  ctx?: IntentsContext,
+): Promise<ComposedIntents> {
   const evidence = await loadEvidence(llm, handle, char, clock.gameMinutes);
   let compiled = ctx?.compiled ?? null;
   if (compiled === null && (ctx?.policyText === undefined || ctx.policyText.trim() === '')) {
@@ -396,26 +415,30 @@ export async function planDay(
       if (compiled !== null) personaPolicies.set(char.id, { key: persona, compiled });
     }
   }
-  const avoid = compiled?.avoid ?? [];
+  const bias = biasOf(compiled);
   try {
-    const blocks = await llm.chatStructured(
+    const wants = await llm.chatStructured(
       'slow',
-      buildPlanMessages(char, evidence, clock.day, { ...ctx, compiled }),
-      dayPlanTool(),
-      { taskType: 'agent.day_plan', characterId: char.id, temperature: 0.9 },
-      parseDayPlan,
+      buildIntentsMessages(char, evidence, clock.day, { ...ctx, compiled }),
+      intentsTool(),
+      { taskType: 'agent.day_intents', characterId: char.id, temperature: 0.9 },
+      (raw) => parseIntents(raw, clock.day, clock.gameMinutes),
     );
-    const kept = applyAvoid(blocks, avoid);
-    return kept.length > 0
-      ? { day: clock.day, blocks: kept, source: 'llm' }
-      : applyAvoidFallback(clock.day, avoid);
+    const kept = wants.filter((w) => (bias[w.activityId] ?? 0) > -1);
+    return {
+      intents: {
+        day: clock.day,
+        wants: kept.length > 0 ? kept : fallbackIntents(clock.day, clock.gameMinutes, bias),
+        source: kept.length > 0 ? 'llm' : 'fallback',
+      },
+      bias,
+      compiled,
+    };
   } catch {
-    return applyAvoidFallback(clock.day, avoid);
+    return {
+      intents: { day: clock.day, wants: fallbackIntents(clock.day, clock.gameMinutes, bias), source: 'fallback' },
+      bias,
+      compiled,
+    };
   }
-}
-
-/** 回落模板同样过滤 avoid;全滤空=空计划(方针硬保证优先,角色当日空闲) */
-function applyAvoidFallback(day: number, avoid: readonly string[]): DayPlan {
-  const plan = fallbackPlan(day);
-  return { day, blocks: applyAvoid(plan.blocks, avoid), source: 'fallback' };
 }

@@ -2,12 +2,14 @@ import { TOWN_MAP, SHOP_ITEMS } from '@sims/shared';
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
-import { exploreTarget, jevDecide, planDecide, ruleDecide, type Decision } from './fast-layer.js';
-import type { DayPlan } from './slow-layer.js';
+import type { DayIntents } from './cognition.js';
+import { exploreTarget, jevDecide, wantSelect, ruleDecide, type Decision } from './fast-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 
 const DAY = 4;
 const SHOP_ENTRANCE = TOWN_MAP.places.find((p) => p.id === 'shop')!.entrance;
+const NOON = 12 * 60;
+const NIGHT = 22 * 60;
 
 function char(overrides: Partial<WorldCharacter>): WorldCharacter {
   return {
@@ -42,6 +44,21 @@ function sleeping(): WorldCharacter['activity'] {
   return { activityId: 'sleep', elapsed: 0, anchorKind: 'bed', targetId: null };
 }
 
+function intents(day: number, wants: Array<Partial<DayIntents['wants'][number]> & { activityId: string }>): DayIntents {
+  return {
+    day,
+    source: 'llm',
+    wants: wants.map((w, i) => ({
+      id: w.id ?? `w${day}-${i}`,
+      activityId: w.activityId,
+      why: w.why ?? '想这么做',
+      urgency: w.urgency ?? 0.5,
+      status: w.status ?? 'pending',
+      createdAtMin: w.createdAtMin ?? 480,
+    })),
+  };
+}
+
 function stubLlm(choice: string): MemoryLlm {
   return {
     systemOne: () =>
@@ -59,25 +76,29 @@ function stubLlm(choice: string): MemoryLlm {
 }
 
 describe('ruleDecide(快层 rule,零模型数值压力反应)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const decide = (c: WorldCharacter, minuteOfDay = NOON): Decision =>
+    ruleDecide(c, DAY, minuteOfDay, TOWN_MAP, noAnchors);
+
   it('数值健康且空闲 → continue', () => {
-    expect(ruleDecide(char({}), DAY, TOWN_MAP)).toEqual({ layer: 'rule', action: 'continue' });
+    expect(decide(char({}))).toEqual({ layer: 'rule', action: 'continue' });
   });
 
   it('忙(活动/移动)与失能(死亡/虚脱)一律 continue,不打断不越权', () => {
-    expect(ruleDecide(char({ activity: { id: 'rest', startedAtGameMinutes: 0 } as never }), DAY, TOWN_MAP).action).toBe('continue');
-    expect(ruleDecide(char({ path: [{ x: 1, y: 1 }] }), DAY, TOWN_MAP).action).toBe('continue');
-    expect(ruleDecide(char({ alive: false, energy: 0 }), DAY, TOWN_MAP).action).toBe('continue');
-    expect(ruleDecide(char({ collapsed: true }), DAY, TOWN_MAP).action).toBe('continue');
+    expect(decide(char({ activity: { id: 'rest', startedAtGameMinutes: 0 } as never })).action).toBe('continue');
+    expect(decide(char({ path: [{ x: 1, y: 1 }] })).action).toBe('continue');
+    expect(decide(char({ alive: false, energy: 0 })).action).toBe('continue');
+    expect(decide(char({ collapsed: true })).action).toBe('continue');
   });
 
   it('饥饿链:背包有食物吃食物 → 无食物去商店 → 店内买最便宜 → 没钱 continue', () => {
     const hungry = BALANCE.SURVIVAL_HUNGER_ENERGY_LINE;
-    const eat = ruleDecide(char({ energy: hungry, backpack: { apple: 1, wood: 2 } }), DAY, TOWN_MAP);
+    const eat = decide(char({ energy: hungry, backpack: { apple: 1, wood: 2 } }));
     expect(eat.action).toBe('react');
     expect(eat.intent).toEqual({ type: 'eat_item', characterId: 'char-1', itemId: 'apple' });
     expect(eat.bubble).toContain('苹果');
 
-    const goShop = ruleDecide(char({ energy: hungry }), DAY, TOWN_MAP);
+    const goShop = decide(char({ energy: hungry }));
     expect(goShop.intent).toEqual({
       type: 'move_to',
       characterId: 'char-1',
@@ -87,27 +108,25 @@ describe('ruleDecide(快层 rule,零模型数值压力反应)', () => {
 
     const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
     const cheapest = [...SHOP_ITEMS].sort((a, b) => a.price! - b.price!)[0]!;
-    const buy = ruleDecide(char({ energy: hungry, x: shopXY.x, y: shopXY.y, coins: cheapest.price! }), DAY, TOWN_MAP);
+    const buy = decide(char({ energy: hungry, x: shopXY.x, y: shopXY.y, coins: cheapest.price! }));
     expect(buy.intent).toEqual({ type: 'buy_item', characterId: 'char-1', itemId: cheapest.id });
 
-    const broke = ruleDecide(char({ energy: hungry, coins: 0 }), DAY, TOWN_MAP);
+    const broke = decide(char({ energy: hungry, coins: 0 }));
     expect(broke.action).toBe('continue');
   });
 
   it('房租链:租约次日到期且有钱续租;自持有房/钱不够/租期充裕均 continue', () => {
-    const due = ruleDecide(
+    const due = decide(
       char({ housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 } }),
-      DAY,
-      TOWN_MAP,
     );
     expect(due.action).toBe('react');
     expect(due.intent).toEqual({ type: 'rent_property', characterId: 'char-1', propertyId: 'home-a' });
     expect(due.bubble).toContain('公寓 A');
 
     const owned = char({ housing: { propertyId: 'home-a', ownership: 'owned', paidThroughDay: DAY + 1 } });
-    expect(ruleDecide(owned, DAY, TOWN_MAP).action).toBe('continue');
+    expect(decide(owned).action).toBe('continue');
     const broke = char({ coins: 0, housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 } });
-    expect(ruleDecide(broke, DAY, TOWN_MAP).action).toBe('continue');
+    expect(decide(broke).action).toBe('continue');
   });
 
   it('饥饿优先于房租(生存压力先行)', () => {
@@ -115,7 +134,52 @@ describe('ruleDecide(快层 rule,零模型数值压力反应)', () => {
       energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE,
       housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 },
     });
-    expect(ruleDecide(both, DAY, TOWN_MAP).intent?.type).toBe('move_to');
+    expect(decide(both).intent?.type).toBe('move_to');
+  });
+
+  it('困倦压力(D3):夜间体力≤夜间线→回家睡;白天线更低(25);不困/无居所/无床 continue', () => {
+    const beds = [{ x: 5, y: 6 }];
+    const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+      activityId === 'sleep' && placeId === 'home-a' ? beds : [];
+    const decide2 = (c: WorldCharacter, minuteOfDay: number): Decision =>
+      ruleDecide(c, DAY, minuteOfDay, TOWN_MAP, homeAnchors);
+    const housing = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY + 5 };
+
+    const night = decide2(char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY, housing }), NIGHT);
+    expect(night.action).toBe('react');
+    expect(night.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
+    expect(night.bubble).toContain('困');
+
+    const inBed = decide2(char({ x: 5, y: 6, energy: BALANCE.SLEEPY_NIGHT_ENERGY, housing }), NIGHT);
+    expect(inBed.intent).toEqual({
+      type: 'start_activity',
+      characterId: 'char-1',
+      activityId: 'sleep',
+    });
+
+    // 白天体力在(饥饿线,白天线]区间才犯困:22 落在 (20,25]
+    const dayNap = decide2(char({ energy: 22, housing }), NOON);
+    expect(dayNap.action).toBe('react');
+    expect(dayNap.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
+    expect(dayNap.bubble).toContain('困');
+
+    // 夜间精力充沛(>60)不困
+    expect(decide2(char({ energy: 70, housing }), NIGHT).action).toBe('continue');
+    // 无居所不强排(体力 40:够饿线之上、够夜间困线之下,排除饥饿干扰)
+    expect(
+      ruleDecide(char({ energy: 40, housing: null }), DAY, NIGHT, TOWN_MAP, homeAnchors).action,
+    ).toBe('continue');
+  });
+
+  it('饥饿优先于困倦(生存压力先行)', () => {
+    const beds = [{ x: 5, y: 6 }];
+    const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+      activityId === 'sleep' && placeId === 'home-a' ? beds : [];
+    const starving = char({
+      energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE,
+      housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 5 },
+    });
+    expect(ruleDecide(starving, DAY, NIGHT, TOWN_MAP, homeAnchors).intent?.type).toBe('move_to');
   });
 });
 
@@ -173,97 +237,117 @@ describe('jevDecide(systemone choice 候选选一)', () => {
   });
 });
 
-describe('planDecide(日程执行,慢层计划快层两段式)', () => {
-  const plan: DayPlan = {
-    day: 1,
-    blocks: [{ startMin: 480, endMin: 720, activityId: 'study' }],
-    source: 'llm',
-  };
+describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', () => {
   const studyAnchors = [{ x: 11, y: 12 }];
   const anchorsOf = (activityId: string): Array<{ x: number; y: number }> =>
     activityId === 'study' ? studyAnchors : [];
 
-  it('无计划/异日计划 → null(日程不越日生效)', () => {
-    expect(planDecide(char({}), undefined, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
-    expect(planDecide(char({}), plan, 2, 480, TOWN_MAP, anchorsOf)).toBeNull();
+  it('无意图/异日意图 → null(意图不越日生效)', () => {
+    expect(wantSelect(char({}), undefined, 1, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(wantSelect(char({}), intents(2, [{ activityId: 'study' }]), 1, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(wantSelect(char({}), intents(1, []), 1, TOWN_MAP, anchorsOf)).toBeNull();
   });
 
-  it('块内:不在锚点先 move_to 使用格;到位→start_activity(气泡带活动名)', () => {
-    const far = planDecide(char({}), plan, 1, 480, TOWN_MAP, anchorsOf);
+  it('高分 want 优先:两段式先 move_to 锚点(气泡带第一人称 why)', () => {
+    const day = intents(1, [
+      { activityId: 'stroll', urgency: 0.3, why: '透透气' },
+      { activityId: 'study', urgency: 0.9, why: '想学新东西' },
+    ]);
+    const far = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf);
     expect(far).not.toBeNull();
     expect(far!.layer).toBe('plan');
+    expect(far!.wantId).toBe('w1-1');
     expect(far!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 11, y: 12 });
-    const near = planDecide(char({ x: 11, y: 12 }), plan, 1, 480, TOWN_MAP, anchorsOf);
+    expect(far!.bubble).toContain('想学新东西');
+  });
+
+  it('到位→start_activity;bias 加成可翻盘低 urgency want', () => {
+    const day = intents(1, [
+      { activityId: 'stroll', urgency: 0.4 },
+      { activityId: 'study', urgency: 0.9, why: '想学新东西' },
+    ]);
+    const near = wantSelect(char({ x: 11, y: 12 }), day, 1, TOWN_MAP, anchorsOf);
     expect(near!.intent).toEqual({
       type: 'start_activity',
       characterId: 'char-1',
       activityId: 'study',
     });
     expect(near!.bubble).toContain('学习');
+
+    // bias: study=-1(被方针排斥)×0 → 落选;stroll 胜出
+    const flipped = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf, { study: -1, stroll: 1 });
+    expect(flipped!.wantId).toBe('w1-0');
+    expect(flipped!.intent?.type).toBe('move_to');
   });
 
-  it('忙(活动/移动)与失能 → null,日程不越权打断进行中行为', () => {
-    expect(planDecide(char({ activity: sleeping() }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
-    expect(planDecide(char({ path: [{ x: 1, y: 1 }] }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
-    expect(planDecide(char({ alive: false }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
-    expect(planDecide(char({ collapsed: true }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
+  it('doing 粘性:进行中的 want 仍是候选(被打断后可续)', () => {
+    const day = intents(1, [{ activityId: 'study', urgency: 0.8, status: 'doing' }]);
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf);
+    expect(decision!.wantId).toBe('w1-0');
   });
 
-  it('无居所角色的 rest 块 → null(住宅床须本人租约,走过去必被拒)', () => {
-    const restPlan: DayPlan = {
-      day: 1,
-      blocks: [{ startMin: 480, endMin: 720, activityId: 'rest' }],
-      source: 'fallback',
-    };
-    expect(planDecide(char({ housing: null }), restPlan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
-  });
-
-  it('空档(计划外时间)→ null,交还后续层级', () => {
-    expect(planDecide(char({}), plan, 1, 900, TOWN_MAP, anchorsOf)).toBeNull();
-  });
-
-  it('体力过低(≤20)只放行基础活动块,非基础块→ null 让位生存压力', () => {
-    expect(planDecide(char({ energy: 10 }), plan, 1, 480, TOWN_MAP, anchorsOf)).toBeNull();
-  });
-
-  it('夜间(22 点起):有房走向床锚点,就位→sleep;无房→ null 不强排', () => {
-    const beds = [{ x: 5, y: 6 }];
-    const nightAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
-      activityId === 'sleep' && placeId === 'home-a' ? beds : [];
-    const housing = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: 6 };
-    const goBed = planDecide(char({ housing }), plan, 1, 1320, TOWN_MAP, nightAnchors);
-    expect(goBed!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
-    expect(goBed!.bubble).toContain('睡觉');
-    const inBed = planDecide(char({ x: 5, y: 6, housing }), plan, 1, 1320, TOWN_MAP, nightAnchors);
-    expect(inBed!.intent).toEqual({
-      type: 'start_activity',
-      characterId: 'char-1',
-      activityId: 'sleep',
+  it('不可执行 want 当场废弃:无居所 rest→abandonedWantIds;体力闸拦下非基础块→pending 保留', () => {
+    const restDay = intents(1, [{ activityId: 'rest', urgency: 0.9 }]);
+    const none = wantSelect(char({ housing: null }), restDay, 1, TOWN_MAP, anchorsOf);
+    expect(none).toEqual({
+      layer: 'plan',
+      action: 'continue',
+      abandonedWantIds: ['w1-0'],
     });
-    expect(planDecide(char({ housing: null }), plan, 1, 1320, TOWN_MAP, nightAnchors)).toBeNull();
+
+    const workDay = intents(1, [
+      { activityId: 'rest', urgency: 0.9 },
+      { activityId: 'work', urgency: 0.8 },
+    ]);
+    const mixed = wantSelect(char({ housing: null, energy: 10 }), workDay, 1, TOWN_MAP, anchorsOf);
+    // rest 废弃 + work 被体力闸拦下(≤20 非基础块)→ continue 携废弃列表
+    expect(mixed).toEqual({ layer: 'plan', action: 'continue', abandonedWantIds: ['w1-0'] });
+
+    // 基础块(stroll)体力闸放行
+    const strollDay = intents(1, [{ activityId: 'stroll', urgency: 0.9 }]);
+    const stroll = wantSelect(char({ energy: 10 }), strollDay, 1, TOWN_MAP, anchorsOf);
+    expect(stroll!.action).toBe('react');
+  });
+
+  it('数值需求增益:缺钱时 work 压过同 urgency 的 stroll', () => {
+    const day = intents(1, [
+      { activityId: 'stroll', urgency: 0.9 },
+      { activityId: 'work', urgency: 0.8 },
+    ]);
+    const broke = wantSelect(char({ coins: 5 }), day, 1, TOWN_MAP, anchorsOf);
+    // work: 0.8×1.5=1.2 > stroll: 0.9(±5% 抖动不改序)
+    expect(broke!.wantId).toBe('w1-1');
+    const rich = wantSelect(char({ coins: 500 }), day, 1, TOWN_MAP, anchorsOf);
+    // work: 0.8×0.6=0.48 < stroll: 0.9
+    expect(rich!.wantId).toBe('w1-0');
+  });
+
+  it('忙(活动/移动)与失能 → null,意图不越权打断进行中行为', () => {
+    const day = intents(1, [{ activityId: 'study', urgency: 0.9 }]);
+    expect(wantSelect(char({ activity: sleeping() }), day, 1, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(wantSelect(char({ path: [{ x: 1, y: 1 }] }), day, 1, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(wantSelect(char({ alive: false }), day, 1, TOWN_MAP, anchorsOf)).toBeNull();
+    expect(wantSelect(char({ collapsed: true }), day, 1, TOWN_MAP, anchorsOf)).toBeNull();
   });
 });
 
-describe('planDecide explore 块(散列目标,块内粘性)', () => {
-  const explorePlan: DayPlan = {
-    day: 3,
-    blocks: [{ startMin: 600, endMin: 630, activityId: 'explore' }],
-    source: 'llm',
-  };
+describe('wantSelect explore want(散列目标,want 内粘性)', () => {
   const anchorsOf = (): Array<{ x: number; y: number }> => [];
+  const exploreDay = intents(3, [{ activityId: 'explore', urgency: 0.9, id: 'w3-0' }]);
   const targetOf = (key: string) =>
     exploreTarget(key, ['park', 'shop', 'restaurant', 'gym', 'library', 'office'], TOWN_MAP);
 
   it('同键散列确定性:重复取目标命中同一场所', () => {
-    expect(targetOf('char-1|3|600')!.id).toBe(targetOf('char-1|3|600')!.id);
-    expect(targetOf('苏晚|3|600')!.id).toBe(targetOf('苏晚|3|600')!.id);
+    expect(targetOf('char-1|w3-0')!.id).toBe(targetOf('char-1|w3-0')!.id);
+    expect(targetOf('苏晚|w3-0')!.id).toBe(targetOf('苏晚|w3-0')!.id);
   });
 
-  it('异地→move_to 散列目标入口(气泡带场所名);换块/换人可换目标', () => {
-    const first = planDecide(char({}), explorePlan, 3, 600, TOWN_MAP, anchorsOf);
+  it('异地→move_to 散列目标入口(气泡带场所名);换 want/换人可换目标', () => {
+    const first = wantSelect(char({}), exploreDay, 3, TOWN_MAP, anchorsOf);
     expect(first).not.toBeNull();
     expect(first!.layer).toBe('plan');
-    const target = targetOf('char-1|3|600')!;
+    expect(first!.wantId).toBe('w3-0');
+    const target = targetOf('char-1|w3-0')!;
     expect(first!.intent).toEqual({
       type: 'move_to',
       characterId: 'char-1',
@@ -271,18 +355,17 @@ describe('planDecide explore 块(散列目标,块内粘性)', () => {
       y: target.entrance.y,
     });
     expect(first!.bubble).toContain(target.name);
-    // 不同(角色,日,块)键进池分布:六个键至少命中两种场所(纯粘性退化=全部同地)
-    const keys = ['char-1|3|600', 'char-1|4|600', 'char-1|5|600', 'char-2|3|600', 'char-2|4|600', 'char-2|5|600'];
+    // 不同(角色,want)键进池分布:六个键至少命中两种场所(纯粘性退化=全部同地)
+    const keys = ['char-1|w3-0', 'char-1|w3-1', 'char-1|w3-2', 'char-2|w3-0', 'char-2|w3-1', 'char-2|w3-2'];
     expect(new Set(keys.map((k) => targetOf(k)!.id)).size).toBeGreaterThan(1);
   });
 
   it('已在目标场所→就地 start_activity explore', () => {
-    const target = targetOf('char-1|3|600')!;
-    const started = planDecide(
+    const target = targetOf('char-1|w3-0')!;
+    const started = wantSelect(
       char({ x: target.entrance.x, y: target.entrance.y }),
-      explorePlan,
+      exploreDay,
       3,
-      600,
       TOWN_MAP,
       anchorsOf,
     );

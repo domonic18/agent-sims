@@ -1,7 +1,8 @@
 import { TOWN_MAP } from '@sims/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
-import { autonomy, schedule } from './cognition.js';
+import { autonomy, innerState } from './cognition.js';
+import type { DayIntents } from './cognition.js';
 import type { DbHandle } from '../db/client.js';
 import type { runIntent } from '../intents/execute.js';
 import type { Simulation } from '../world/simulation.js';
@@ -63,8 +64,18 @@ function activity(activityId: string): CharacterActivity {
   return { activityId, elapsed: 0, anchorKind: null, targetId: null };
 }
 
+function finishedEvent(tick: number, activityId: string, reason: string): WorldEvent {
+  return {
+    type: 'activity.finished',
+    characterId: CHAR_ID,
+    activityId,
+    tick,
+    elapsedMinutes: 30,
+    reason,
+  } as WorldEvent;
+}
+
 interface HarnessOpts {
-  memoryWriter?: { writeManual: (characterId: string, content: string, importance: number) => Promise<void> };
   runIntent?: typeof runIntent;
   /** 额外世界角色(died/revived 事件的主体、救援者等,供 positionOf/距离判定) */
   extraCharacters?: WorldCharacter[];
@@ -122,6 +133,12 @@ function harness(
           return Promise.resolve();
         },
       }),
+      // 内心状态写穿(fire-and-forget):静默成功
+      update: () => ({
+        set: () => ({
+          where: () => Promise.resolve(),
+        }),
+      }),
       // 记忆/印象定点查询(dialogue 上下文等):空结果集
       select: () => ({
         from: () => ({
@@ -154,7 +171,6 @@ function harness(
     sim,
     handle,
     llm: llmStub,
-    ...(opts?.memoryWriter === undefined ? {} : { memoryWriter: opts.memoryWriter }),
     onBubble: (m) => bubbles.push(m),
     runIntent: runIntentStub,
   });
@@ -178,7 +194,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
 
@@ -197,6 +213,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
 
   it('同一 15 分块只巡检一次;continue 采样每 20 次记 1 条 trace', () => {
     const h = harness(0, char({}));
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] }); // 屏蔽回落意图,专注巡检节拍
     for (let i = 0; i < 25; i += 1) {
       h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES;
       vi.advanceTimersByTime(2_000);
@@ -228,6 +245,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
         }) as never,
     };
     const h = harness(0, char({}), llm);
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] }); // 屏蔽回落意图
     h.onEvent(chatEvent(1));
     await vi.advanceTimersByTimeAsync(0);
     expect(h.jevCalls).toBe(1);
@@ -246,6 +264,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
 
   it('jev 槽不可用: 回落 continue 并记一条 jev trace,不产意图不阻塞', async () => {
     const h = harness(0, char({}));
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] }); // 屏蔽回落意图
     h.onEvent(chatEvent(1));
     await vi.advanceTimersByTimeAsync(0);
     expect(h.intents).toHaveLength(0);
@@ -270,50 +289,56 @@ describe('AgentScheduler(M4c 认知泵)', () => {
   });
 });
 
-describe('AgentScheduler(M4d 日程执行)', () => {
+describe('AgentScheduler(D3 意图执行)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     autonomy.enable(CHAR_ID);
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
 
-  const studyPlanLlm: Partial<MemoryLlm> = {
+  const studyIntentsLlm: Partial<MemoryLlm> = {
     chatStructured: (_slot, _messages, _tool, _task, parse) => {
-      const parsed = parse({ blocks: [{ start: 8, end: 12, activity: 'study' }] });
+      const parsed = parse({ wants: [{ activity: 'study', urgency: 0.8, why: '想学点东西' }] });
       if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
       return Promise.resolve(parsed.value);
     },
   };
 
-  it('无当日计划即生成:slow chat 合法 JSON→计划落脑+day_rollover trace+记忆直写', async () => {
-    const writes: string[] = [];
-    const h = harness(480, char({}), studyPlanLlm, {
-      memoryWriter: {
-        writeManual: (_id, content) => {
-          writes.push(content);
-          return Promise.resolve();
-        },
-      },
-    });
+  it('无当日意图即生成:slow chat 合法 JSON→wants 落脑+day_rollover trace(不再写记忆)', async () => {
+    const h = harness(480, char({}), studyIntentsLlm);
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(schedule.get(CHAR_ID)?.source).toBe('llm');
-    expect(writes).toHaveLength(1);
-    expect(writes[0]!).toContain('学习');
-    expect(h.traceRows.some((r) => r.triggerType === 'day_rollover')).toBe(true);
+    const state = innerState.get(CHAR_ID)?.intents;
+    expect(state?.source).toBe('llm');
+    expect(state?.day).toBe(0);
+    expect(state?.wants[0]).toMatchObject({ activityId: 'study', why: '想学点东西', status: 'pending' });
+    const rollover = h.traceRows.find((r) => r.triggerType === 'day_rollover');
+    expect((rollover!.perception as { wants: number }).wants).toBe(1);
     h.scheduler.dispose();
   });
 
-  it('块内两段式:不在场所先 move_to 合法场所随机入口,trace 记 plan 层 react', async () => {
+  it('slow 槽不可用→个性化回落 wants 照样驱动行动(消灭空转)', async () => {
+    const h = harness(0, char({})); // llm 未配置 chatStructured→composeIntents 回落
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(innerState.get(CHAR_ID)?.intents?.source).toBe('fallback');
+    expect(innerState.get(CHAR_ID)?.intents?.wants.length).toBeGreaterThanOrEqual(3);
+    h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents.length).toBeGreaterThanOrEqual(1);
+    expect(h.intents[0]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
+    h.scheduler.dispose();
+  });
+
+  it('意图两段式:高分 want 先 move_to 合法场所入口,执行即标 doing', async () => {
     const studyPlaces = ['library', 'home-a']
       .map((id) => TOWN_MAP.places.find((p) => p.id === id)!)
       .filter((p) => p !== undefined);
-    const h = harness(480, char({}), studyPlanLlm);
-    await vi.advanceTimersByTimeAsync(2_000); // 计划生成
-    h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 495,块内
+    const h = harness(480, char({}), studyIntentsLlm);
+    await vi.advanceTimersByTimeAsync(2_000); // 意图生成
+    h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 495,巡检块边界
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
     expect(h.intents[0]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
@@ -321,28 +346,63 @@ describe('AgentScheduler(M4d 日程执行)', () => {
     // 执行器随机选点:命中学习合法场所(library/home-a)之一
     const legal = new Set(studyPlaces.map((p) => `${p.entrance.x},${p.entrance.y}`));
     expect(legal.has(`${spot.x},${spot.y}`)).toBe(true);
+    expect(h.bubbles[0]!.text).toContain('想学点东西');
     expect(h.bubbles[0]!.text).toMatch(/图书馆|公寓/);
     const react = h.traceRows.find((r) => (r.decision as { layer?: string }).layer === 'plan');
     expect(react).toBeDefined();
+    expect(innerState.get(CHAR_ID)?.intents?.wants[0]?.status).toBe('doing');
     h.scheduler.dispose();
   });
 
-  it('rule 压力优先于日程:饥饿时先吃苹果,计划块不抢跑', async () => {
-    const h = harness(480, char({ energy: 20, backpack: { apple: 1 } }), studyPlanLlm);
-    await vi.advanceTimersByTimeAsync(2_000); // 计划生成
+  it('rule 压力优先于意图:饥饿时先吃苹果,want 不抢跑', async () => {
+    const h = harness(480, char({ energy: 20, backpack: { apple: 1 } }), studyIntentsLlm);
+    await vi.advanceTimersByTimeAsync(2_000); // 意图生成
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES;
     await vi.advanceTimersByTimeAsync(2_000);
-    // 桩不改数值,rule 每个巡检块都先于日程 react 吃苹果
+    // 桩不改数值,rule 每个巡检块都先于意图 react 吃苹果
     expect(h.intents[0]).toEqual({ type: 'eat_item', characterId: CHAR_ID, itemId: 'apple' });
     expect(h.intents.every((i) => i.type === 'eat_item')).toBe(true);
     h.scheduler.dispose();
   });
 
-  it('计划意图被拒:30 分退避跳过,连续 3 拒清计划并记 replan trace', async () => {
-    const h = harness(480, char({}), studyPlanLlm, {
+  it('不可执行 want 当场废弃:无居所 rest→abandoned 落库', async () => {
+    const h = harness(480, char({ housing: null }), studyIntentsLlm);
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [{ id: 'w0-0', activityId: 'rest', why: '累了', urgency: 0.9, status: 'pending', createdAtMin: 480 }],
+    });
+    h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 跨出首巡检块
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents).toHaveLength(0);
+    expect(innerState.get(CHAR_ID)?.intents?.wants[0]?.status).toBe('abandoned');
+    h.scheduler.dispose();
+  });
+
+  it('activity.finished 结算 want:完成 done/欠费 abandoned/中断回 pending', () => {
+    const h = harness(480, char({}), studyIntentsLlm);
+    const intentsOf = (): DayIntents => innerState.get(CHAR_ID)!.intents!;
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [{ id: 'w0-0', activityId: 'meal', why: '馋了', urgency: 0.8, status: 'doing', createdAtMin: 480 }],
+    });
+    h.onEvent(finishedEvent(500, 'meal', 'completed'));
+    expect(intentsOf().wants[0]!.status).toBe('done');
+    intentsOf().wants[0]!.status = 'doing';
+    h.onEvent(finishedEvent(520, 'meal', 'insufficient_coins'));
+    expect(intentsOf().wants[0]!.status).toBe('abandoned');
+    intentsOf().wants[0]!.status = 'doing';
+    h.onEvent(finishedEvent(540, 'meal', 'interrupted'));
+    expect(intentsOf().wants[0]!.status).toBe('pending');
+    h.scheduler.dispose();
+  });
+
+  it('意图被拒:30 分退避,连续 3 拒清当日意图并记 replan trace', async () => {
+    const h = harness(480, char({}), studyIntentsLlm, {
       runIntent: (() => ({ ok: false, message: '知识不足,须先学习' })) as unknown as typeof runIntent,
     });
-    await vi.advanceTimersByTimeAsync(2_000); // 计划生成
+    await vi.advanceTimersByTimeAsync(2_000); // 意图生成
     for (let i = 0; i < 5; i += 1) {
       h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 495/510/525/540/555
       await vi.advanceTimersByTimeAsync(2_000);
@@ -350,7 +410,20 @@ describe('AgentScheduler(M4d 日程执行)', () => {
     const planReacts = h.traceRows.filter((r) => (r.decision as { layer?: string }).layer === 'plan');
     expect(planReacts.length).toBe(3); // 退避吞掉 510/540 两块
     expect(h.traceRows.some((r) => (r.perception as { replan?: boolean }).replan === true)).toBe(true);
-    expect(schedule.get(CHAR_ID)).toBeUndefined(); // 第 3 拒后已清,待重生成
+    expect(innerState.get(CHAR_ID)?.intents).toBeNull(); // 第 3 拒后已清,待重生成
+    h.scheduler.dispose();
+  });
+
+  it('跨日重生成:次日意图按新 day 生成并恢复执行', async () => {
+    const h = harness(480, char({}), studyIntentsLlm);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(innerState.get(CHAR_ID)?.intents?.day).toBe(0);
+    h.clock.gameMinutes = 1440 + 480; // 次日 08:00
+    await vi.advanceTimersByTimeAsync(2_000); // ensureIntents 生成次日意图
+    expect(innerState.get(CHAR_ID)?.intents?.day).toBe(1);
+    h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 跨出巡检块边界
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(h.intents[0]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
     h.scheduler.dispose();
   });
 });
@@ -362,7 +435,7 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
 
@@ -383,18 +456,15 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
   const diedEvent = (tick: number): WorldEvent =>
     ({ type: 'character.died', characterId: 'other-1', tick, revivable: true }) as WorldEvent;
 
-  it('忙碌漫步中有人倒下: ⑤评估 respond→move_to 打断,被中断块退避至块末回计划', async () => {
+  it('忙碌漫步中有人倒下: ⑤评估 respond→move_to 打断,want 固定退避期满回意图', async () => {
     const worldChar = char({ activity: activity('stroll') });
     const h = harness(480, worldChar, respondLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
     });
-    schedule.set(CHAR_ID, {
+    innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      blocks: [
-        { startMin: 480, endMin: 720, activityId: 'stroll' },
-        { startMin: 720, endMin: 900, activityId: 'stroll' },
-      ],
+      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
     });
     h.onEvent(diedEvent(480));
     await vi.advanceTimersByTimeAsync(0);
@@ -407,48 +477,40 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
         (r.decision as { conclusion?: string }).conclusion === 'react',
     );
     expect((react!.perception as { gate?: string }).gate).toBe('pass_assess');
-    // 回计划:块末 720 前日程静默,块末起下一块自然衔接
+    // 退避期内(480+30=510 前)want 层静默
     worldChar.activity = null;
-    h.clock.gameMinutes = 705;
+    h.clock.gameMinutes = 500;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
-    h.clock.gameMinutes = 720;
+    // 期满:重新评分择条,回意图(去散步)
+    h.clock.gameMinutes = 510;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(2);
+    expect(h.intents[1]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
     h.scheduler.dispose();
   });
 
-  it('中断退避跨日不残留: 绝对 gameMinutes 语义,次日同刻照常回计划', async () => {
-    const planAndRespondLlm: Partial<MemoryLlm> = {
-      ...respondLlm,
-      chatStructured: (_slot, _messages, _tool, _task, parse) => {
-        const parsed = parse({ blocks: [{ start: 8, end: 12, activity: 'study' }] });
-        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
-        return Promise.resolve(parsed.value);
-      },
-    };
+  it('退避为绝对 gameMinutes 语义:次日同时刻不误判仍在退避', async () => {
     const worldChar = char({ activity: activity('stroll') });
-    const h = harness(480, worldChar, planAndRespondLlm, {
+    const h = harness(480, worldChar, respondLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
     });
-    schedule.set(CHAR_ID, {
+    innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      blocks: [{ startMin: 480, endMin: 720, activityId: 'stroll' }],
+      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
     });
     h.onEvent(diedEvent(480));
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.intents).toHaveLength(1); // respond 打断生效,退避至块末(绝对 720)
-    worldChar.activity = null;
-    h.clock.gameMinutes = 705;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(1); // 当日块末前仍静默
-    h.clock.gameMinutes = 1440 + 480; // 次日 08:00,与中断同 minuteOfDay——旧实现会误判仍在退避
-    await vi.advanceTimersByTimeAsync(2_000); // ensurePlan 生成次日计划
+    expect(h.intents).toHaveLength(1); // respond 打断生效,退避至 510(绝对值)
+    worldChar.activity = null; // 世界侧活动已终止
+    h.clock.gameMinutes = 1440 + 480; // 次日 08:00,与中断同 minuteOfDay
+    await vi.advanceTimersByTimeAsync(2_000); // ensureIntents 生成次日意图
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 跨出巡检块边界
-    await vi.advanceTimersByTimeAsync(2_000); // 巡检回计划
+    await vi.advanceTimersByTimeAsync(2_000); // 巡检回意图
     expect(h.intents.length).toBeGreaterThan(1);
-    expect(h.intents[1]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
+    // 次日意图为 fallback 随机候选,产出的可能是 move_to 或就地 start_activity
+    expect(h.intents[1]).toMatchObject({ characterId: CHAR_ID });
     h.scheduler.dispose();
   });
 
@@ -527,7 +589,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
 
@@ -546,9 +608,9 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     });
   }
 
-  /** 空当日计划: 屏蔽 fallback 日程块抢占 plan 层,专注社交通路 */
-  function withEmptyPlan(): void {
-    schedule.set(CHAR_ID, { day: 0, source: 'llm', blocks: [] });
+  /** 空当日意图: 屏蔽回落意图抢占 want 层,专注社交通路 */
+  function withEmptyIntents(): void {
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] });
   }
 
   const dialogueLlm: Partial<MemoryLlm> = {
@@ -561,7 +623,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
-    withEmptyPlan();
+    withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000); // 阈值巡检块 0
     expect(h.intents).toEqual([
       {
@@ -587,7 +649,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
-    withEmptyPlan();
+    withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000);
     const intent = h.intents[0] as { type: string; line?: string; reply?: string } | undefined;
     expect(intent?.type).toBe('chat');
@@ -603,7 +665,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
-    withEmptyPlan();
+    withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
     h.clock.gameMinutes += 30;
@@ -620,7 +682,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
-    withEmptyPlan();
+    withEmptyIntents();
     for (let i = 0; i < 7; i += 1) {
       if (i > 0) h.clock.gameMinutes += 60; // 跨出同对冷却
       await vi.advanceTimersByTimeAsync(2_000);
@@ -641,7 +703,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 50, y: 50 })],
     });
     withRelation(h);
-    withEmptyPlan();
+    withEmptyIntents();
     h.onEvent({ type: 'work_task.cancelled', characterId: CHAR_ID, targetId: 'spot-1', tick: 1 } as WorldEvent);
     await vi.advanceTimersByTimeAsync(0);
     expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 50, y: 50 }]);
@@ -654,7 +716,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
-    withEmptyPlan();
+    withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
     h.clock.gameMinutes += 60;

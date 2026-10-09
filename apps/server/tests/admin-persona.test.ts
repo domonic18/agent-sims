@@ -3,7 +3,7 @@ import type { PersonaDraft, PersonaView } from '@sims/shared';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import type { MemoryLlm } from '../src/agents/memory-writer.js';
-import { hosting, schedule } from '../src/agents/cognition.js';
+import { hosting, innerState } from '../src/agents/cognition.js';
 import { setupIntegrationDb } from './helpers/integration.js';
 import { characters, worlds } from '../src/db/schema/index.js';
 
@@ -85,7 +85,7 @@ describe.skipIf(!dbUp)('预置人设 API(查看/保存/LLM 随机草稿)', () =>
 
   beforeEach(() => {
     hosting.delete(CHAR_ID);
-    schedule.clear(CHAR_ID);
+    innerState.clear(CHAR_ID);
   });
 
   afterAll(async () => {
@@ -130,15 +130,15 @@ describe.skipIf(!dbUp)('预置人设 API(查看/保存/LLM 随机草稿)', () =>
     expect(persona.modelSlot).toBe('light');
   });
 
-  it('托管中保存清日程交泵重规划;未托管不动 schedule', async () => {
-    schedule.set(CHAR_ID, { day: 1, blocks: [], source: 'fallback' });
+  it('托管中保存清意图交泵重规划;未托管不动 intents', async () => {
+    innerState.setIntents(CHAR_ID, { day: 1, wants: [], source: 'fallback' });
     await put({ bio: '未托管保存' });
-    expect(schedule.get(CHAR_ID)).toBeDefined(); // 未托管: 日程保留
+    expect(innerState.get(CHAR_ID)?.intents).not.toBeNull(); // 未托管: 意图保留
 
     hosting.set(CHAR_ID, { mode: 'policy', policyText: 'x', compiled: null });
-    schedule.set(CHAR_ID, { day: 1, blocks: [], source: 'fallback' });
+    innerState.setIntents(CHAR_ID, { day: 1, wants: [], source: 'fallback' });
     await put({ bio: '托管中保存' });
-    expect(schedule.get(CHAR_ID)).toBeUndefined(); // 清日程,泵按新人设重规划
+    expect(innerState.get(CHAR_ID)?.intents ?? null).toBeNull(); // 清意图,泵按新人设重规划
   });
 
   it('校验: 空 body 400;card 字段缺失 400;401/404', async () => {

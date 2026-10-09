@@ -1,4 +1,4 @@
-import type { AgentDecisionMessage, WorldEvent } from '@sims/shared';
+import type { ActivityFinishedEvent, AgentDecisionMessage, WorldEvent } from '@sims/shared';
 import { getActivityDefinition } from '@sims/shared';
 import { and, desc, eq, ilike } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
@@ -8,12 +8,13 @@ import { relationKey } from '../world/social.js';
 import type { Simulation } from '../world/simulation.js';
 import type { WorldCharacter } from '../world/character.js';
 import { BALANCE } from '../config/balance.js';
-import { autonomy, hosting, innerState, schedule } from './cognition.js';
+import { autonomy, hosting, innerState } from './cognition.js';
 import { describeMood } from './mood.js';
-import { jevDecide, planDecide, ruleDecide, type Decision } from './fast-layer.js';
+import { jevDecide, wantSelect, ruleDecide, type Decision } from './fast-layer.js';
 import { ResponseRegistry } from './responses.js';
+import { persistInnerState } from './inner-state-db.js';
 import type { ScoredCandidate } from './social-motive.js';
-import { loadPersonaContext, planBlockAt, planDay, describePlan } from './slow-layer.js';
+import { biasOf, composeIntents, loadPersonaContext } from './slow-layer.js';
 import {
   isTriagedEvent,
   triageEvent,
@@ -21,21 +22,19 @@ import {
   type TriageContext,
   type TriageVerdict,
 } from './triage.js';
-import type { MemoryLlm, MemoryWriter } from './memory-writer.js';
+import type { MemoryLlm } from './memory-writer.js';
 import { logTech } from '../telemetry.js';
 import { SocialLoop } from './social-loop.js';
 import { TraceRecorder, type TraceEntry } from './trace.js';
 
-/** 阈值巡检周期(游戏分钟):数值压力(饥饿/房租)的反应节拍 */
+/** 阈值巡检周期(游戏分钟):数值压力(饥饿/房租/困倦)的反应节拍 */
 export const AUTONOMY_CHECK_INTERVAL_MINUTES = 15;
 /** jev 微决策冷却(游戏分钟/角色):事件风暴下不烧 LLM */
 export const JEV_COOLDOWN_MINUTES = 30;
-/** 计划意图被拒后的退避(游戏分钟):跳过当前压力,等下个窗口再试 */
-export const PLAN_RETRY_BACKOFF_MINUTES = 30;
-/** 连续被拒上限:清当日计划,下轮巡检重新规划(agent-design §3.3 矛盾局部重规划) */
-export const PLAN_MAX_CONSECUTIVE_REJECTS = 3;
-/** 计划写回记忆流的重要性(中等影响:影响近期选择) */
-const PLAN_MEMORY_IMPORTANCE = 6;
+/** 意图被拒/被打断后的退避(游戏分钟):固定短退避,期满重新评分择条 */
+export const INTENT_RETRY_BACKOFF_MINUTES = 30;
+/** 连续被拒上限:清当日意图,下轮巡检重新生成(agent-design §3.3 矛盾局部重规划) */
+export const INTENT_MAX_CONSECUTIVE_REJECTS = 3;
 /** rule continue 的 trace 采样周期(每 N 次 continue 记 1 次,防日志洪水;react 全量) */
 const RULE_CONTINUE_SAMPLE = 20;
 /** triage ignore 的 trace 采样周期(每 N 次记 1 次;门①消化近半事件,防洪水) */
@@ -46,8 +45,6 @@ export interface AgentSchedulerDeps {
   sim: Simulation;
   handle: DbHandle;
   llm: MemoryLlm;
-  /** 直写记忆(计划生成后写回记忆流);缺省跳过(测试) */
-  memoryWriter?: Pick<MemoryWriter, 'writeManual'>;
   /** 决策气泡出流(意图+理由模板);缺省静默(测试) */
   onBubble?: (message: AgentDecisionMessage) => void;
   /** 意图执行入口(默认统一出口 runIntent;测试可注入桩) */
@@ -58,11 +55,12 @@ export interface AgentSchedulerDeps {
  * Agent 调度泵(agent-design §3.1/§4.6;10-cognition §7.1 事件响应层):
  * 异步认知泵,不进 tick 循环。事件侧走 C3 分级管道——EventBus → isTriagedEvent
  * 过滤(管理面事件零惊动)→ ResponseRegistry 簿记(救援台账)→ 逐自治角色
- * triageEvent 四关分级:ignore(采样 trace)/idle(放行既有 rule→plan→jev 管线)/
+ * triageEvent 四关分级:ignore(采样 trace)/idle(放行既有 rule→want→jev 管线)/
  * respond(注册表动作直执)/assess(⑤ 中断评估:预算三闸已过,systemOne choice
- * 一词判定)/defer(不可打断,排事后处理,巡检空闲补执行)。move 响应打断当前块后
- * skipCurrentBlock(退避至块末),下个块边界自然衔接=「回计划」。
- * 时间侧=2s 定时器(计划补齐+defer 巡检)+15 游戏分阈值巡检(rule→plan)。
+ * 一词判定)/defer(不可打断,排事后处理,巡检空闲补执行)。move 响应打断当前
+ * want 执行后固定短退避,期满重新评分择条=「回意图」。
+ * 时间侧=2s 定时器(意图补齐+defer 巡检)+15 游戏分阈值巡检(rule→want);
+ * activity.finished 结算 want 生命周期(完成 done/中断 pending/欠费 abandoned)。
  * 输出统一经 runIntent;trace:triage 分级记录(ignore 采样),执行/模型全量。
  */
 export class AgentScheduler {
@@ -70,9 +68,9 @@ export class AgentScheduler {
   private readonly jevLastAt = new Map<string, number>();
   private readonly continueCount = new Map<string, number>();
   private readonly triageIgnoreCount = new Map<string, number>();
-  private readonly planRejects = new Map<string, number>();
-  /** 计划退避期(绝对 gameMinutes):被中断块跳至块末/计划意图被拒短退避 */
-  private readonly planSkipUntil = new Map<string, number>();
+  private readonly intentRejects = new Map<string, number>();
+  /** 意图退避期(绝对 gameMinutes):被打断/被拒后固定短退避,期内 want 层静默 */
+  private readonly intentSkipUntil = new Map<string, number>();
   private readonly planning = new Set<string>();
   private readonly registry = new ResponseRegistry();
   /** ⑤ 预算簿记(scheduler 独占写,triage 只读快照):日/当日次数/最近评估时刻 */
@@ -112,13 +110,13 @@ export class AgentScheduler {
     this.unsubscribe();
   }
 
-  /** 阈值巡检(threshold):补齐当日计划+defer 事后处理,跨 15 游戏分边界即共处破冰+rule→plan 判定 */
+  /** 阈值巡检(threshold):补齐当日意图+defer 事后处理,跨 15 游戏分边界即共处破冰+rule→want 判定 */
   private inspect(): void {
     const { sim } = this.deps;
     this.processDeferred();
     for (const id of autonomy.list()) {
       const char = sim.characters.get(id);
-      if (char !== undefined) this.ensurePlan(char);
+      if (char !== undefined) this.ensureIntents(char);
     }
     const block = Math.floor(sim.clock.gameMinutes / AUTONOMY_CHECK_INTERVAL_MINUTES);
     if (block === this.lastInspectedBlock) return;
@@ -127,18 +125,18 @@ export class AgentScheduler {
     for (const id of autonomy.list()) {
       const char = sim.characters.get(id);
       if (char === undefined) continue;
-      const rule = ruleDecide(char, sim.clock.day, sim.map.definition);
+      const rule = ruleDecide(char, sim.clock.day, sim.clock.minuteOfDay, sim.map.definition, this.anchorsAt());
       if (rule.action === 'react') {
         this.apply(char, rule, 'threshold', {
           block: `${block}(${AUTONOMY_CHECK_INTERVAL_MINUTES}min)`,
         });
         continue;
       }
-      const plan = this.planDecision(char);
-      if (plan !== null) {
-        this.apply(char, plan, 'threshold', {
+      const want = this.wantDecision(char);
+      if (want !== null) {
+        this.apply(char, want, 'threshold', {
           block: `${block}(${AUTONOMY_CHECK_INTERVAL_MINUTES}min)`,
-          plan: true,
+          want: true,
         });
         continue;
       }
@@ -149,12 +147,22 @@ export class AgentScheduler {
     }
   }
 
+  /** 锚点解析(快层用):活动使用格,可按场所过滤 */
+  private anchorsAt(): (activityId: string, placeId: string | null) => Array<{ x: number; y: number }> {
+    return (activityId, placeId) =>
+      this.deps.sim.map
+        .activityAnchors(activityId)
+        .filter((a) => placeId === null || a.placeId === placeId)
+        .map((a) => ({ x: a.x, y: a.y }));
+  }
+
   /**
    * 事件触发(C3 分级主管道):非叙事事件零惊动;叙事事件先喂救援台账,
    * 再逐角色分级分发。预算簿记在 assessInterrupt 首个 await 前同步提交,
-   * 同一事件循环内多事件不会双耗预算。
+   * 同一事件循环内多事件不会双耗预算。活动结束先行结算 want 生命周期。
    */
   private onEvent(event: WorldEvent): void {
+    if (event.type === 'activity.finished') this.settleWant(event);
     if (!isTriagedEvent(event)) return;
     this.registry.observe(event);
     const { sim } = this.deps;
@@ -206,17 +214,17 @@ export class AgentScheduler {
     });
   }
 
-  /** 空闲放行的既有管线(rule→plan→社交→jev,冷却护栏原样保留) */
+  /** 空闲放行的既有管线(rule→want→社交→jev,冷却护栏原样保留) */
   private runIdlePipeline(char: WorldCharacter, event: WorldEvent): void {
     const { sim } = this.deps;
-    const rule = ruleDecide(char, sim.clock.day, sim.map.definition);
+    const rule = ruleDecide(char, sim.clock.day, sim.clock.minuteOfDay, sim.map.definition, this.anchorsAt());
     if (rule.action === 'react') {
       this.apply(char, rule, 'eventbus', { event: event.type });
       return;
     }
-    const plan = this.planDecision(char);
-    if (plan !== null) {
-      this.apply(char, plan, 'eventbus', { event: event.type, plan: true });
+    const want = this.wantDecision(char);
+    if (want !== null) {
+      this.apply(char, want, 'eventbus', { event: event.type, want: true });
       return;
     }
     const socialCandidates = this.socialLoop.idleSocialStep(char, 'eventbus');
@@ -226,7 +234,7 @@ export class AgentScheduler {
     void this.jevReact(char, event, socialCandidates);
   }
 
-  /** respond 直执:move 响应若打断了忙碌角色,退避当前块至块末(回计划) */
+  /** respond 直执:move 响应若打断了忙碌角色,固定短退避后期望回意图 */
   private executeResponse(char: WorldCharacter, event: WorldEvent, verdict: TriageVerdict): void {
     const action = verdict.action;
     if (action === undefined) return;
@@ -237,7 +245,7 @@ export class AgentScheduler {
       'eventbus',
       { event: event.type, gate: verdict.gate },
     );
-    if (wasBusy && action.kind === 'move') this.skipCurrentBlock(char);
+    if (wasBusy && action.kind === 'move') this.intentBackoff(char.id);
   }
 
   /**
@@ -296,7 +304,7 @@ export class AgentScheduler {
         'eventbus',
         { event: event.type, gate: verdict.gate, assess: 'respond' },
       );
-      if (action.kind === 'move') this.skipCurrentBlock(char);
+      if (action.kind === 'move') this.intentBackoff(char.id);
     } catch (err) {
       logTech('warn', 'agent', '中断评估失败', {
         characterId: char.id,
@@ -365,17 +373,40 @@ export class AgentScheduler {
     return '正闲着';
   }
 
-  /** 回计划:被中断块标记跳过至块末(绝对 gameMinutes),下个块边界由既有日程执行自然衔接 */
-  private skipCurrentBlock(char: WorldCharacter): void {
-    const { sim } = this.deps;
-    const plan = schedule.get(char.id);
-    if (plan === undefined || plan.day !== sim.clock.day) return;
-    const block = planBlockAt(plan, sim.clock.minuteOfDay);
-    if (block === null) return;
-    this.planSkipUntil.set(
-      char.id,
-      sim.clock.gameMinutes + Math.max(block.endMin - sim.clock.minuteOfDay, 0),
+  /** 回意图:被中断的 want 执行进入固定短退避(绝对 gameMinutes),期满重新评分择条 */
+  private intentBackoff(characterId: string): void {
+    this.intentSkipUntil.set(
+      characterId,
+      this.deps.sim.clock.gameMinutes + INTENT_RETRY_BACKOFF_MINUTES,
     );
+  }
+
+  /** want 结算(activity.finished):完成 done/欠费 abandoned/其余(中断·停止·倒下)
+   * 回 pending 由评分重新裁决;进行中的 doing 找不到匹配则忽略(rule 层触发的睡眠等) */
+  private settleWant(event: ActivityFinishedEvent): void {
+    const id = event.characterId;
+    if (!autonomy.has(id)) return;
+    const intents = innerState.get(id)?.intents;
+    if (intents === undefined || intents === null) return;
+    const want = intents.wants.find((w) => w.status === 'doing' && w.activityId === event.activityId);
+    if (want === undefined) return;
+    want.status =
+      event.reason === 'completed'
+        ? 'done'
+        : event.reason === 'insufficient_coins'
+          ? 'abandoned'
+          : 'pending';
+    persistInnerState(this.deps.handle, id);
+    this.trace.record(id, this.deps.sim.clock.gameMinutes, {
+      trigger: 'eventbus',
+      perception: {
+        event: event.type,
+        want: want.id,
+        reason: event.reason,
+        elapsedMinutes: event.elapsedMinutes,
+      },
+      decision: { layer: 'plan', conclusion: 'continue' },
+    });
   }
 
   /** defer 队列巡检(2s):空闲且保鲜期内补执行响应;过期记一行 trace 出队 */
@@ -484,36 +515,39 @@ export class AgentScheduler {
     };
   }
 
-  /** 无当日计划即异步生成(slow 槽,2s 检查每次兜底;自治开启当轮即有计划) */
-  private ensurePlan(char: WorldCharacter): void {
+  /** 无当日意图即异步生成(slow 槽,2s 检查每次兜底;自治开启当轮即有意图) */
+  private ensureIntents(char: WorldCharacter): void {
     if (this.planning.has(char.id)) return;
-    if (schedule.get(char.id)?.day === this.deps.sim.clock.day) return;
+    const existing = innerState.get(char.id)?.intents;
+    if (existing?.day === this.deps.sim.clock.day) return;
     this.planning.add(char.id);
-    const state = hosting.get(char.id);
+    const previous = existing?.day === this.deps.sim.clock.day - 1 ? existing : null;
     void loadPersonaContext(this.deps.handle, char.id)
       .then((persona) =>
-        planDay(this.deps.llm, this.deps.handle, char, this.deps.sim.clock, {
-          policyText: state?.policyText ?? undefined,
-          compiled: state?.compiled ?? null,
+        composeIntents(this.deps.llm, this.deps.handle, char, this.deps.sim.clock, {
+          policyText: hosting.get(char.id)?.policyText ?? undefined,
+          compiled: hosting.get(char.id)?.compiled ?? null,
           persona,
-          previous: schedule.get(char.id) ?? null,
+          previous,
+          focus: innerState.get(char.id)?.focus?.text ?? null,
         }),
       )
-      .then((plan) => {
-        schedule.set(char.id, plan);
+      .then(({ intents, compiled }) => {
+        // full 托管无方针缓存:人设现编译回填 hosting,快层 wantSelect 评分同一口径
+        const hosted = hosting.get(char.id);
+        if (hosted !== undefined && hosted.compiled === null && compiled !== null) {
+          hosting.set(char.id, { ...hosted, compiled });
+        }
+        innerState.setIntents(char.id, intents);
+        persistInnerState(this.deps.handle, char.id);
         this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
           trigger: 'day_rollover',
-          perception: { day: plan.day, source: plan.source, blocks: plan.blocks.length },
+          perception: { day: intents.day, source: intents.source, wants: intents.wants.length },
           decision: { layer: 'slow', conclusion: 'continue' },
         });
-        void this.deps.memoryWriter?.writeManual(
-          char.id,
-          `我制定了今天的计划:${describePlan(plan)}`,
-          PLAN_MEMORY_IMPORTANCE,
-        );
       })
       .catch((err: unknown) => {
-        logTech('warn', 'agent', '日计划生成失败', {
+        logTech('warn', 'agent', '当日意图生成失败', {
           characterId: char.id,
           err: err instanceof Error ? err.message : String(err),
         });
@@ -523,24 +557,50 @@ export class AgentScheduler {
       });
   }
 
-  /** 日程执行判定:退避期内静默;无计划/空档返回 null 交还后续层级 */
-  private planDecision(char: WorldCharacter): Decision | null {
+  /** 意图执行判定:退避期内静默;无意图/意图耗尽返回 null 交还后续层级;
+   * 不可执行 want 当场废弃落库 */
+  private wantDecision(char: WorldCharacter): Decision | null {
     const { sim } = this.deps;
-    // planSkipUntil 存绝对 gameMinutes:minuteOfDay 语义会被次日同一时刻误读成"仍在退避"
-    const skipUntil = this.planSkipUntil.get(char.id) ?? Number.NEGATIVE_INFINITY;
+    // intentSkipUntil 存绝对 gameMinutes:跨日不会被同一 minuteOfDay 误读成"仍在退避"
+    const skipUntil = this.intentSkipUntil.get(char.id) ?? Number.NEGATIVE_INFINITY;
     if (sim.clock.gameMinutes < skipUntil) return null;
-    return planDecide(
+    const decision = wantSelect(
       char,
-      schedule.get(char.id),
+      innerState.get(char.id)?.intents,
       sim.clock.day,
-      sim.clock.minuteOfDay,
       sim.map.definition,
-      (activityId, placeId) =>
-        sim.map
-          .activityAnchors(activityId)
-          .filter((a) => placeId === null || a.placeId === placeId)
-          .map((a) => ({ x: a.x, y: a.y })),
+      this.anchorsAt(),
+      biasOf(hosting.get(char.id)?.compiled ?? null),
     );
+    if (decision === null) return null;
+    if (decision.abandonedWantIds !== undefined && decision.abandonedWantIds.length > 0) {
+      this.abandonWants(char.id, decision.abandonedWantIds);
+    }
+    return decision;
+  }
+
+  /** want 当场废弃落库(fast 层判不可执行:无居所 rest/无锚点无场所) */
+  private abandonWants(characterId: string, wantIds: readonly string[]): void {
+    const intents = innerState.get(characterId)?.intents;
+    if (intents === undefined || intents === null) return;
+    let changed = false;
+    for (const w of intents.wants) {
+      if (wantIds.includes(w.id) && w.status === 'pending') {
+        w.status = 'abandoned';
+        changed = true;
+      }
+    }
+    if (changed) persistInnerState(this.deps.handle, characterId);
+  }
+
+  /** 意图出执行口即标 doing 并落库(activity.finished 再按原因终裁) */
+  private markWantDoing(characterId: string, wantId: string): void {
+    const intents = innerState.get(characterId)?.intents;
+    if (intents === undefined || intents === null) return;
+    const want = intents.wants.find((w) => w.id === wantId);
+    if (want === undefined || want.status !== 'pending') return;
+    want.status = 'doing';
+    persistInnerState(this.deps.handle, characterId);
   }
 
   private async jevReact(
@@ -599,7 +659,8 @@ export class AgentScheduler {
     }
     const result = this.runIntentFn(this.deps.sim, decision.intent);
     if (result.ok) {
-      this.planRejects.delete(char.id);
+      this.intentRejects.delete(char.id);
+      if (decision.wantId !== undefined) this.markWantDoing(char.id, decision.wantId);
       this.deps.onBubble?.({
         characterId: char.id,
         name: char.name,
@@ -607,16 +668,14 @@ export class AgentScheduler {
         gameMinutes: this.deps.sim.clock.gameMinutes,
       });
     } else if (decision.layer === 'plan') {
-      // 计划意图被校验链拒绝:退避跳过当前压力,连续达上限清计划重生成(局部重规划)
-      const rejects = (this.planRejects.get(char.id) ?? 0) + 1;
-      this.planRejects.set(char.id, rejects);
-      this.planSkipUntil.set(
-        char.id,
-        this.deps.sim.clock.gameMinutes + PLAN_RETRY_BACKOFF_MINUTES,
-      );
-      if (rejects >= PLAN_MAX_CONSECUTIVE_REJECTS) {
-        schedule.clear(char.id);
-        this.planRejects.delete(char.id);
+      // 意图被校验链拒绝:短退避,连续达上限清当日意图重生成(局部重规划)
+      const rejects = (this.intentRejects.get(char.id) ?? 0) + 1;
+      this.intentRejects.set(char.id, rejects);
+      this.intentBackoff(char.id);
+      if (rejects >= INTENT_MAX_CONSECUTIVE_REJECTS) {
+        innerState.clearIntents(char.id);
+        persistInnerState(this.deps.handle, char.id);
+        this.intentRejects.delete(char.id);
         this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
           trigger: 'day_rollover',
           perception: { replan: true, rejects, rejectReason: result.message },

@@ -21,8 +21,8 @@ export interface PromptMeta {
 }
 
 const META: readonly PromptMeta[] = [
-  { id: 'plan.system', title: '日计划 · 系统提示', description: '慢层日计划生成的 system 段(角色代入)', slot: 'slow', taskType: 'agent.day_plan', variables: ['name', 'day'] },
-  { id: 'plan.user', title: '日计划 · 用户消息', description: '慢层日计划的状态/方针/记忆/要求骨架(上下文行由代码组装)', slot: 'slow', taskType: 'agent.day_plan', variables: ['status_line', 'context_lines', 'memory_lines', 'activity_menu', 'submit_line'] },
+  { id: 'intents.system', title: '意图生成 · 系统提示', description: '慢层当日 wants 生成的 system 段(角色代入+persona 全文)', slot: 'slow', taskType: 'agent.day_intents', variables: ['name', 'day', 'persona_line'] },
+  { id: 'intents.user', title: '意图生成 · 用户消息', description: '慢层意图生成的状态/方针/记忆/要求骨架(上下文行由代码组装)', slot: 'slow', taskType: 'agent.day_intents', variables: ['status_line', 'context_lines', 'memory_lines', 'activity_menu', 'submit_line'] },
   { id: 'policy.compile.system', title: '方针编译 · 系统提示', description: '玩家生活方针→活动偏好编译的 system 段', slot: 'slow', taskType: 'agent.policy_compile', variables: [] },
   { id: 'policy.compile.user', title: '方针编译 · 用户消息', description: '玩家方针原文+可选活动+语义说明', slot: 'slow', taskType: 'agent.policy_compile', variables: ['policy_text', 'activity_menu', 'rule_line', 'submit_line'] },
   { id: 'persona.policy.system', title: '人设偏好编译 · 系统提示', description: 'full 托管下人设卡→活动偏好编译的 system 段', slot: 'slow', taskType: 'agent.persona_policy', variables: [] },

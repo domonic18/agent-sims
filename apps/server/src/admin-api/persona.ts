@@ -10,7 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { applyRevision, buildInitMessages, narrativeTool, parseNarrativeDraft } from '../agents/narrator.js';
-import { hosting, schedule } from '../agents/cognition.js';
+import { hosting, innerState } from '../agents/cognition.js';
 import type { MemoryLlm } from '../agents/memory-writer.js';
 import type { DbHandle } from '../db/client.js';
 import type { StructuredParse, StructuredToolSpec } from '../llm/types.js';
@@ -184,7 +184,7 @@ export function registerPersonaRoutes(
       return await reply.code(400).send({ error: 'bio/card/selfNarrative 至少提供一项' });
     }
     await writePersona(handle, id, parsed.data, sim.clock.gameMinutes);
-    if (hosting.has(id)) schedule.clear(id); // 托管中: 清日程交泵按新人设重规划
+    if (hosting.has(id)) innerState.clearIntents(id); // 托管中: 清意图交泵按新人设重新生成
     const rows = await handle.db
       .select({ persona: characters.persona })
       .from(characters)

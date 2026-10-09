@@ -219,6 +219,11 @@
 .mem-badge.impression { background: var(--mem-impression); }
 .mem-badge.mood-up { background: var(--mem-mood-up); }
 .mem-badge.mood-down { background: var(--mem-mood-down); }
+/* D3 意图面板 want 状态徽标 */
+.mem-badge.pending { background: var(--px-dim); }
+.mem-badge.active { background: var(--mem-mood-up); }
+.mem-badge.done { background: var(--px-ok); }
+.mem-badge.dropped { background: var(--px-warn, #e0a06a); }
 
 .memory-body {
   min-width: 0;

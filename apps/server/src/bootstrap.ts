@@ -32,12 +32,11 @@ export function bootstrap(app: FastifyInstance): void {
   const narrator = attachNarrator(sim, handle, app.llm, memoryWriter);
   // 情绪打标(C2):订阅世界事件按规则表写冲量流水,零模型,离线照常
   const moodTracker = attachMoodTracker(sim, handle);
-  // Agent 调度泵(M4c/M4d):自治角色默认空集(开关走 admin API),react 气泡经独立 socket 事件广播
+  // Agent 调度泵(M4c/D3):自治角色默认空集(开关走 admin API),react 气泡经独立 socket 事件广播
   const agentScheduler = new AgentScheduler({
     sim,
     handle,
     llm: app.llm,
-    memoryWriter,
     onBubble: (message) => {
       app.io.emit(SOCKET_EVENTS.decision, message satisfies AgentDecisionMessage);
     },

@@ -1,19 +1,21 @@
-/** 角色当日日程块视图(M4d 日程面板;status 由服务端按当前时刻派生) */
-export interface CharacterScheduleBlockView {
-  startMin: number;
-  endMin: number;
+/** 角色当日意图(want)视图(D3 弹性意图;status 为意图生命周期真实状态) */
+export interface CharacterWantView {
+  id: string;
   activityId: string;
   label: string;
-  status: 'pending' | 'active' | 'done';
+  /** 第一人称理由(慢层生成/fallback 模板) */
+  why: string;
+  urgency: number;
+  status: 'pending' | 'doing' | 'done' | 'abandoned';
 }
 
-/** GET /api/admin/characters/:id/schedule 响应(无计划时 day=null/blocks=[]) */
+/** GET /api/admin/characters/:id/schedule 响应(当日无意图时 day=null/wants=[]) */
 export interface CharacterScheduleView {
   characterId: string;
   day: number | null;
   /** llm=慢槽生成;fallback=模板回落 */
   source: 'llm' | 'fallback' | null;
-  blocks: CharacterScheduleBlockView[];
+  wants: CharacterWantView[];
 }
 
 /** 托管模式(M4e):full=Agent 完全自主;policy=生活方针约束(主推) */
