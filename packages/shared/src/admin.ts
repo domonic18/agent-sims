@@ -315,7 +315,18 @@ export const ADMIN_API = {
   characterPersonaNarrativeGenerate: (id: string) => `/api/admin/characters/${id}/persona/narrative/generate`,
   characterMindTalk: (id: string) => `/api/admin/characters/${id}/mindtalk`,
   prompts: '/api/admin/prompts',
+  uiSettings: '/api/admin/ui-settings',
 } as const;
+
+/** GET /api/world/ui-meta 响应(公开): 游戏页左下角模型徽标;
+ * showModels 由后台「模型配置」页开关控制,模型名取自各槽位启用配置(未启用为 null) */
+export interface UiMetaView {
+  showModels: boolean;
+  /** 慢思考 LLM(slow 槽)模型名 */
+  slowModel: string | null;
+  /** SystemOne(jev 槽)模型名 */
+  jevModel: string | null;
+}
 
 /** 外置提示词查看视图(GET /api/admin/prompts,只读): 元数据+模板全文 */
 export interface PromptView {

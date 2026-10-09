@@ -37,6 +37,7 @@ import {
   type TokenUsageSummary,
   type TokenUsageWindow,
   type SysConfigView,
+  type UiMetaView,
   type WorldArchiveView,
   type WorldEventEntriesResponse,
   type WorldRecipesView,
@@ -111,6 +112,14 @@ export async function login(payload: AdminLoginRequest): Promise<AdminLoginRespo
 
 export async function fetchModelConfigs(): Promise<ModelConfigView[]> {
   return await adminFetch<ModelConfigView[]>(ADMIN_API.modelConfigs);
+}
+
+/** 游戏页模型徽标开关(PUT ui-settings,回传最新 UiMetaView) */
+export async function updateUiSettings(showModels: boolean): Promise<UiMetaView> {
+  return await adminFetch<UiMetaView>(ADMIN_API.uiSettings, {
+    method: 'PUT',
+    body: JSON.stringify({ showModels }),
+  });
 }
 
 export async function fetchPrompts(): Promise<PromptView[]> {

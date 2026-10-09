@@ -1,6 +1,7 @@
 import {
   boolean,
   integer,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -9,6 +10,14 @@ import {
 } from 'drizzle-orm/pg-core';
 import type { ModelProtocol, ModelSlot } from '@sims/shared';
 import { characters } from './agent.js';
+
+/** 全局应用设置(kv): UI 开关等轻量运行配置(后台写,公开端点按白名单键只读),
+ * 首个消费键 ui.showModels——后续同类开关沿用本表,不再各开一列 */
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const modelConfigs = pgTable('model_configs', {
   id: uuid('id').primaryKey().defaultRandom(),

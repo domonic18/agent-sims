@@ -28,8 +28,10 @@ import {
   type ModelConfigView,
   type ModelProtocol,
   type ModelSlot,
+  type UiMetaView,
 } from '@sims/shared';
-import { invokeModelConfig, testModelConfig, updateModelConfig } from './api';
+import { getUiMeta } from '../net/worldApi';
+import { invokeModelConfig, testModelConfig, updateModelConfig, updateUiSettings } from './api';
 
 interface SlotCardProps {
   view: ModelConfigView;
@@ -322,6 +324,53 @@ interface ModelConfigPanelProps {
   onChanged: () => void;
 }
 
+/** 游戏页左下角模型徽标开关(app_settings ui.showModels,公开 GET 读/此处 PUT 写) */
+function UiBadgeCard() {
+  const { message } = AntdApp.useApp();
+  const [uiMeta, setUiMeta] = useState<UiMetaView | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getUiMeta()
+      .then((meta) => {
+        if (!cancelled) setUiMeta(meta);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggle = async (next: boolean): Promise<void> => {
+    setSaving(true);
+    try {
+      setUiMeta(await updateUiSettings(next));
+      message.success(next ? '已开启游戏页模型徽标' : '已关闭游戏页模型徽标');
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card size="small" title="游戏页模型徽标">
+      <Space size={12}>
+        <Switch
+          size="small"
+          checked={uiMeta?.showModels === true}
+          loading={saving}
+          onChange={(v) => void toggle(v)}
+        />
+        <Typography.Text style={{ fontSize: 13 }}>
+          在游戏页左下角向游客展示当前 LLM / SystemOne 模型名
+        </Typography.Text>
+      </Space>
+    </Card>
+  );
+}
+
 export function ModelConfigPanel({ configs, onChanged }: ModelConfigPanelProps) {
   const [views, setViews] = useState<Record<ModelSlot, ModelConfigView>>(
     () => Object.fromEntries(configs.map((view) => [view.slot, view])) as Record<ModelSlot, ModelConfigView>,
@@ -335,6 +384,7 @@ export function ModelConfigPanel({ configs, onChanged }: ModelConfigPanelProps) 
 
   return (
     <Flex vertical gap={24}>
+      <UiBadgeCard />
       {MODEL_SLOT_GROUPS.map((group) => (
         <Card
           key={group.id}

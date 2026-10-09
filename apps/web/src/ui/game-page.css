@@ -8,10 +8,17 @@
   color: var(--px-text);
 }
 
-/* 画布铺满视口(Phaser Scale.RESIZE 随窗口自适应,相机跟随角色) */
+/* 画布铺满视口(相机跟随角色)。栅格=视口×DPR(WorldCanvas NONE 模式不接管样式),
+ * CSS 拉伸回 100% 使 Retina 逐设备像素渲染;窗口变化由 WorldCanvas 监听 resize 重设栅格 */
 .game-page > .canvas-host {
   position: absolute;
   inset: 0;
+}
+
+.game-page > .canvas-host > canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* ---- 左上 角色面板 ---- */
@@ -19,7 +26,8 @@
   position: absolute;
   left: 16px;
   top: 16px;
-  width: 276px;
+  /* 300px: 容纳「居民 · N 人在镇」与托管徽标单行不溢出(‹头像›+收起共 140px 固定占位) */
+  width: 300px;
   z-index: 10;
 }
 
@@ -170,6 +178,12 @@
   background: #3a2d10;
   color: var(--px-gold);
   margin-left: 6px;
+  /* 徽标超宽时省略号收口,不越出面板压到切换按钮 */
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
 }
 
 .hud-char-home {
@@ -183,7 +197,13 @@
 .hud-char-agent {
   margin-top: 8px;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+/* 按钮自身不收缩(px-btn 已 nowrap),放不下时整钮换行而非文字竖排 */
+.hud-char-agent .px-btn {
+  flex: none;
 }
 
 /* ---- 顶中 时钟/倍率 ---- */
@@ -235,6 +255,24 @@
   padding: 3px 10px;
 }
 
+/* 左下 模型徽标(问题⑦): 低存在感提示,后台开关裁定,游客可见不可交互 */
+.hud-model-badge {
+  position: absolute;
+  left: 16px;
+  bottom: 18px;
+  z-index: 9;
+  display: flex;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--px-dim);
+  background: rgba(26, 28, 44, 0.55);
+  border: 2px solid rgba(86, 108, 134, 0.35);
+  padding: 3px 8px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+
 /* ---- 右上 按钮 ---- */
 .hud-topright {
   position: absolute;
@@ -276,6 +314,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 窄视口放不下整排按钮时整钮换行(px-btn 已 nowrap,文字不再竖排) */
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 /* 下拉列表/物品弹层溢出面板顶部,px-box/px-inner 的 clip-path 会把它连同命中区一起裁掉;
@@ -485,23 +526,33 @@
   font-size: 12px;
 }
 
-/* 已登录管理员徽标(右上) */
+/* 已登录管理员徽标(右上): 与 px-btn.big 同高同框,保证顶栏一排等高整齐 */
 .hud-user {
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 10px;
   background: var(--px-navy);
-  box-shadow: inset 0 0 0 2px var(--px-slate);
+  border: 2px solid var(--px-ink);
+  box-shadow: 0 3px 0 var(--px-ink);
   color: var(--px-gold);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
-/* 在线查看人数(直播访客数,presence 驱动) */
+/* 在线查看人数(直播访客数,presence 驱动): 同上等高框 */
 .hud-viewers {
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 10px;
   background: var(--px-navy);
-  box-shadow: inset 0 0 0 2px var(--px-slate);
+  border: 2px solid var(--px-ink);
+  box-shadow: 0 3px 0 var(--px-ink);
   color: var(--px-cyan);
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 

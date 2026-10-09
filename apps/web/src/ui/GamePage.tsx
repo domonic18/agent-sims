@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { WORLD_TIME_SCALES } from '@sims/shared';
+import { WORLD_TIME_SCALES, type UiMetaView } from '@sims/shared';
 import { connectWorld } from '../net/socket';
-import { updateWorldSettings } from '../net/worldApi';
+import { getUiMeta, updateWorldSettings } from '../net/worldApi';
 import { useAuthStore } from '../store/authStore';
 import { useWorldStore } from '../store/worldStore';
 import { WorldCanvas } from '../game/WorldCanvas';
@@ -50,8 +50,22 @@ export default function GamePage() {
   const [mindTalkOpenId, setMindTalkOpenId] = useState<string | null>(null);
   const [memoryOpenId, setMemoryOpenId] = useState<string | null>(null);
   const [controlError, setControlError] = useState<string | null>(null);
+  // 模型徽标(公开读,后台开关裁定显隐):加载失败静默,不影响游戏
+  const [uiMeta, setUiMeta] = useState<UiMetaView | null>(null);
   // 弹窗打开前世界在运行则自动暂停,关闭时恢复(若期间被他人恢复则不双写)
   const resumeOnCloseRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getUiMeta()
+      .then((meta) => {
+        if (!cancelled) setUiMeta(meta);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const character =
     snapshot?.characters.find((item) => item.id === selectedCharacterId) ?? null;
@@ -193,7 +207,9 @@ export default function GamePage() {
             </button>
             {snapshot !== null ? (
               <div className="hud-clock-date">
-                <small>DAY {snapshot.clock.day}</small>
+                <small>
+                  DAY {snapshot.clock.day} {snapshot.clock.isNight ? '🌙' : '☀️'}
+                </small>
                 <b className="px-num">{snapshot.clock.time}</b>
               </div>
             ) : (
@@ -313,6 +329,14 @@ export default function GamePage() {
           }
         }}
       />
+
+      {uiMeta?.showModels === true &&
+        (uiMeta.slowModel !== null || uiMeta.jevModel !== null) && (
+          <div className="hud-model-badge">
+            {uiMeta.slowModel !== null && <span>LLM {uiMeta.slowModel}</span>}
+            {uiMeta.jevModel !== null && <span>SystemOne {uiMeta.jevModel}</span>}
+          </div>
+        )}
 
       <Toasts />
     </main>

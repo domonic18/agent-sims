@@ -2,7 +2,12 @@
  * /api/world 常开控制通道(游戏内设置菜单):暂停/倍率/世界参数/世界规则
  * 的生产可用读写口(不同于 /debug 仅 development 注册),及历史事件查询。
  */
-import type { WorldEventsHistoryResponse, WorldRecipesView, WorldSettingsView } from '@sims/shared';
+import type {
+  UiMetaView,
+  WorldEventsHistoryResponse,
+  WorldRecipesView,
+  WorldSettingsView,
+} from '@sims/shared';
 import { useAuthStore } from '../store/authStore';
 
 export interface WorldSettingsUpdate {
@@ -46,6 +51,15 @@ export const getWorldRecipes = async (): Promise<WorldRecipesView> => {
     throw new Error(`/api/world/recipes 失败(${response.status})`);
   }
   return (await response.json()) as WorldRecipesView;
+};
+
+/** 游戏页模型徽标(公开读):开关与模型名由服务端裁定,失败静默由调用方处理 */
+export const getUiMeta = async (): Promise<UiMetaView> => {
+  const response = await fetch('/api/world/ui-meta', { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`/api/world/ui-meta 失败(${response.status})`);
+  }
+  return (await response.json()) as UiMetaView;
 };
 
 export const getWorldEvents = async (query: { limit?: number; characterId?: string; type?: string } = {}): Promise<WorldEventsHistoryResponse> => {
