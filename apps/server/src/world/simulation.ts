@@ -1,14 +1,9 @@
 import type {
   ActivityDefinition,
   CharacterArrivedEvent,
-  CharacterDiedEvent,
-  CraftCompletedEvent,
   MaintenanceSpot,
   ResourceNode,
   TraitVector,
-  WorkTaskCancelledEvent,
-  WorkTaskCompletedEvent,
-  WorkTaskId,
   WorldControlEvent,
   WorldEvent,
   GameType,
@@ -20,16 +15,11 @@ import type {
 } from '@sims/shared';
 import {
   DEFAULT_WORLD_RULES,
-  MAINTENANCE_TASKS,
   PROPERTY_IDS,
-  REVIVE_WINDOW_MINUTES,
-  SHOP_ITEM_IDS,
   TOWN_MAP,
-  WORK_TARGETS,
   cloneRecipes,
   defaultRecipes,
   getActivityDefinition,
-  isGatherTask,
   type CraftRecipeId,
   type RecipeDef,
   type TileMapDefinition,
@@ -39,7 +29,6 @@ import {
   applyWorldParams,
   BALANCE,
   currentWorldParams,
-  type BalanceConfig,
 } from '../config/balance.js';
 import {
   finishActivity,
@@ -51,7 +40,6 @@ import { GameClock } from './clock.js';
 import {
   applyHealthTick,
   applyVitalDecay,
-  clearCollapseIfRecovered,
   reviveCharacter,
   stepMovement,
   type WorldCharacter,
@@ -64,7 +52,7 @@ import { stepMaintenance, type RandomFn } from './maintenance.js';
 import { TileMap } from './map.js';
 import { findPath } from './pathfinding.js';
 import { debtFactor, inSleepWindow, settleSleep } from './settlement.js';
-import { completeWorkTask, requestWorkTask } from './work-task.js';
+import { requestWorkTask } from './work-task.js';
 import { worldSnapshot } from './snapshot.js';
 import {
   applySocialDailyRollover,
@@ -72,23 +60,14 @@ import {
   randomTraits,
   type SocialRelation,
 } from './social.js';
-
-/** 节点 kind → 热调参数键(SYS_CONFIG resources 组);-1 哨兵=null 无限 */
-type NodeChargeKey = Extract<keyof BalanceConfig, `NODE_MAX_CHARGES_${string}`>;
-const NODE_CHARGE_KEYS: Record<ResourceNode['kind'], NodeChargeKey> = {
-  berry_bush: 'NODE_MAX_CHARGES_BERRY',
-  junk_pile: 'NODE_MAX_CHARGES_JUNK',
-  tree: 'NODE_MAX_CHARGES_TREE',
-  rock: 'NODE_MAX_CHARGES_ROCK',
-  metal_pile: 'NODE_MAX_CHARGES_METAL',
-  apple_tree: 'NODE_MAX_CHARGES_APPLE',
-  wheat_patch: 'NODE_MAX_CHARGES_WHEAT',
-};
-
-function nodeMaxCharges(kind: ResourceNode['kind']): number | null {
-  const value = BALANCE[NODE_CHARGE_KEYS[kind]];
-  return value < 0 ? null : value;
-}
+import { checkCollapse, checkDeath, checkReviveWindow } from './death.js';
+import {
+  completeCraft,
+  initShopStock,
+  rebuildResourceNodes,
+  respawnResourceNodes,
+  stepWorkTask,
+} from './work-dispatch.js';
 
 /**
  * 世界存档载荷(C6):serialize() 产出、restoreArchive() 消费。
@@ -117,6 +96,7 @@ export interface SimulationArchive {
  * 推进来源有二:实时驱动器(TickDriver,暂停时冻结)与手动推进
  * (调试端点/headless,不受暂停限制)。
  * 请求类 API 按域委托(activity/inventory/housing 模块,M3.6h 拆分),
+ * 死亡闸门与工单/资源结算委托 death/work-dispatch 模块,
  * 本类保留 tick 循环、出生、移动与控制面。
  */
 export class Simulation {
@@ -569,218 +549,35 @@ export class Simulation {
     }
   }
 
-  /**
-   * 维护/采集工单逐分钟结算(M-G.5/M-G.6):在途不计时;到位先验目标仍有效——
-   * 维护点被清/幽灵被抢先救治或窗口超时/节点被采空→无薪中断发 work_task.cancelled;
-   * 完成→世界侧变更走完成钩子注册表(TD-1,work-task.ts),此后统一结算尾段:
-   * 采集以物代薪 pay=0,维护岗按单入账,金币均乘缺觉系数(M-G.2)。
-   */
   private _stepWorkTask(character: WorldCharacter, definition: ActivityDefinition): void {
-    const activity = character.activity;
-    if (activity === null || character.path.length > 0) {
-      return; // 在途不结算
-    }
-    const targetId = activity.targetId!;
-    const task = activity.activityId as WorkTaskId;
-    const cancel = (): void => {
-      const event: WorkTaskCancelledEvent = {
-        type: 'work_task.cancelled',
-        characterId: character.id,
-        targetId,
-        tick: this.tick,
-      };
-      this.events.emit(event);
-      finishActivity(this, character, 'interrupted');
-    };
-    if (!this._workTargetValid(task, targetId)) {
-      cancel();
-      return;
-    }
-    const result = settleActivityMinute(activity, character, definition);
-    if (result !== 'completed') {
-      return;
-    }
-    const outcome = completeWorkTask({
-      sim: this,
-      character,
-      task,
-      targetId,
-      debtFactor: debtFactor(character, this.clock.gameMinutes),
-    });
-    if (outcome === 'cancelled') {
-      cancel();
-      return;
-    }
-    const pay =
-      (isGatherTask(task) ? 0 : MAINTENANCE_TASKS[task].pay) * debtFactor(character, this.clock.gameMinutes);
-    character.coins += pay;
-    const event: WorkTaskCompletedEvent = {
-      type: 'work_task.completed',
-      characterId: character.id,
-      targetId,
-      task,
-      pay,
-      tick: this.tick,
-    };
-    this.events.emit(event);
-    finishActivity(this, character, 'completed');
+    stepWorkTask(this, character, definition);
   }
 
-  /** 配方完成(M-G.6):产出凭开始时快照入包+craft.completed;中断退料在
-   * finishActivity 凭快照分流(配方热改不追溯在制单)。
-   * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(材料已扣不退,有意) */
   private _completeCraft(character: WorldCharacter): void {
-    const recipeId = character.activity?.craftRecipeId;
-    if (recipeId === undefined) {
-      return;
-    }
-    const outputs = character.activity?.craftOutputs ?? this.recipe(recipeId)?.outputs ?? [];
-    const factor = debtFactor(character, this.clock.gameMinutes);
-    for (const output of outputs) {
-      character.backpack[output.itemId] =
-        (character.backpack[output.itemId] ?? 0) + Math.floor(output.count * factor);
-    }
-    const event: CraftCompletedEvent = {
-      type: 'craft.completed',
-      characterId: character.id,
-      recipeId,
-      tick: this.tick,
-    };
-    this.events.emit(event);
+    completeCraft(this, character);
   }
 
-  /** 工单目标仍有效(TD-1 按 WORK_TARGETS.source 分派):维护点在场;
-   * 待救角色仍处幽灵救治窗口内;节点存在且未枯竭 */
-  private _workTargetValid(task: WorkTaskId, targetId: string): boolean {
-    const source = WORK_TARGETS[task].source;
-    if (source === 'characters') {
-      const target = this.characters.get(targetId);
-      return (
-        target !== undefined &&
-        !target.alive &&
-        target.diedAtGameMinutes !== null &&
-        this.clock.gameMinutes - target.diedAtGameMinutes < REVIVE_WINDOW_MINUTES
-      );
-    }
-    if (source === 'resources') {
-      const node = this.resourceNodes.get(targetId);
-      return node !== undefined && (node.charges === null || node.charges > 0);
-    }
-    return this.maintenanceSpots.has(targetId);
-  }
-
-  /** 资源节点从地图种子重建(构造/setMap/reset 共用):存量按热调参数
-   * NODE_MAX_CHARGES_*(出厂默认 04 §5.4 表值,拾荒堆 -1=无限) */
   private _rebuildResourceNodes(): void {
-    this.resourceNodes.clear();
-    for (const seed of this._map.resourceSeeds) {
-      const id = `${seed.kind}:${seed.x}:${seed.y}`;
-      this.resourceNodes.set(id, {
-        id,
-        kind: seed.kind,
-        x: seed.x,
-        y: seed.y,
-        charges: nodeMaxCharges(seed.kind),
-        respawnAtDay: null,
-      });
-    }
+    rebuildResourceNodes(this);
   }
 
-  /** 商店货架初始化(构造/reset 共用):8 货架食物按 SHOP_INITIAL_FOOD_STOCK 各置份数;
-   * 售罄即止,无任何补货路径(食物经济 2026-10-07,数值文档 §3.2) */
   private _initShopStock(): void {
-    this.shopStock.clear();
-    for (const itemId of SHOP_ITEM_IDS) {
-      this.shopStock.set(itemId, BALANCE.SHOP_INITIAL_FOOD_STOCK);
-    }
+    initShopStock(this);
   }
 
-  /** 跨日 00:00 重生(design/09 §2):到日枯竭节点按热调重生天数回满;拾荒堆无需重生 */
   private _respawnResourceNodes(): void {
-    for (const node of this.resourceNodes.values()) {
-      if (node.respawnAtDay !== null && this.clock.day >= node.respawnAtDay) {
-        node.charges = nodeMaxCharges(node.kind);
-        node.respawnAtDay = null;
-      }
-    }
+    respawnResourceNodes(this);
   }
 
-  /**
-   * 健康归零→幽灵态(numerical §2.3 唯一死亡闸门):仅 survival 重伤休整触发,
-   * 清路径/打断活动,得分扣减**挂起**——窗口内救治/debug 免扣,超时 growth 按现值生效
-   * (survival 免扣、数值回恢复线,见 reviveCharacter 分支)。
-   */
   private _checkDeath(character: WorldCharacter): void {
-    // 世界规则关闭死亡(M5):健康卡 1 不入重伤(survival);
-    if (!this.rules.allowDeath) {
-      if (this.gameType === 'survival' && character.health <= 0) {
-        character.health = 1;
-      }
-      return;
-    }
-    const injured = this.gameType === 'survival' && character.health <= 0;
-    if (!character.alive || !injured) {
-      return;
-    }
-    character.alive = false;
-    character.collapsed = false; // 重伤优先于虚脱(复活统一清标)
-    character.path = [];
-    character.diedAtGameMinutes = this.clock.gameMinutes;
-    finishActivity(this, character, 'died');
-    const event: CharacterDiedEvent = {
-      type: 'character.died',
-      characterId: character.id,
-      tick: this.tick,
-      revivable: true,
-    };
-    this.events.emit(event);
+    checkDeath(this, character);
   }
 
-  /**
-   * 体力虚脱判定(numerical §2.3):体力归零不再死亡——
-   * growth(allowDeath=true)累倒送医:复用幽灵态骨架挂救治窗口,救治满状态回归、
-   * 超时苏醒回恢复线并按比例扣分;survival 与 allowDeath=false 原地虚脱倒地,
-   * 意图门禁只放行休息/睡觉/进食,体力回升即爬起。健康照跑饥饿线,可滑向重伤休整。
-   */
   private _checkCollapse(character: WorldCharacter): void {
-    clearCollapseIfRecovered(character);
-    if (!character.alive || character.energy > 0) {
-      return;
-    }
-    if (this.gameType === 'growth' && this.rules.allowDeath) {
-      character.alive = false;
-      character.path = [];
-      character.diedAtGameMinutes = this.clock.gameMinutes;
-      finishActivity(this, character, 'died');
-      const event: CharacterDiedEvent = {
-        type: 'character.died',
-        characterId: character.id,
-        tick: this.tick,
-        revivable: true,
-      };
-      this.events.emit(event);
-      return;
-    }
-    character.collapsed = true;
-    character.path = [];
-    if (character.activity !== null) {
-      finishActivity(this, character, 'collapsed');
-    }
+    checkCollapse(this, character);
   }
 
-  /** 救治窗口超时结算(M-G.5):挂起扣减按超时时刻现值 ×(1-比例) 生效,自动复活;
-   * survival 重伤休整(M-S/S1)软惩罚原则——超时苏醒不扣得分,数值回恢复线 */
   private _checkReviveWindow(character: WorldCharacter): void {
-    if (character.alive || character.diedAtGameMinutes === null) {
-      return;
-    }
-    if (this.clock.gameMinutes - character.diedAtGameMinutes < REVIVE_WINDOW_MINUTES) {
-      return;
-    }
-    // 累倒苏醒扣分(numerical §2.3/§2.5): 比例扣,仅 growth 送医窗口;survival 不扣
-    if (this.gameType !== 'survival') {
-      character.score *= 1 - BALANCE.SCORE_WAKE_DEDUCTION;
-    }
-    reviveCharacter(this, character, 'timeout');
+    checkReviveWindow(this, character);
   }
 }
