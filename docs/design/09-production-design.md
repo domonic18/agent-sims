@@ -63,6 +63,15 @@
 - **rule 层生存阀**(数值权威 04 §5.6): rulePoverty/ruleForage/ruleHunger 让行/ruleSleepy 租约感知——穷到活不下去也得干,但干的是最合人设的活(activityBias 排序选岗)。
 - **兜底**: `SHOP_RESTOCK_DAILY=1`(只防死锁,主供给靠采集/制作/卖货循环)。
 
+### §5.1.1 E4 加固注记(2026-10-10,长跑复验驱动)
+
+E1 通路首跑 25.2 游戏日暴露三缺口(饿死×4/work_task 438 次仅 5 成功/sell_item 0 次),E4 两批修复(参数细则见 04 §5.6.1):
+
+- **采集岗零门槛**: `gather.requiredKnowledge` 3→0(craft 食物链随动)——采集是无门槛底层工种,零知识角色恰是最需要逃生门的人;wantSelect 表驱动预检与 work-task 校验自动跟随。
+- **采集两段式**: ruleForage/wantSelect 采集分支命中节点后,距离 > `FORAGE_MOVE_THRESHOLD(2)` 先 `move_to` 节点 stand 坐标(`nearestWalkableAdjacent` 四邻可走格,节点本体可能不可走会 throw),`character.arrived` 重入再发 `work_task`——决策与接单时刻的状态错位窗口压到最小。work_task 采食体力豁免: 无食角色体力 ≥5 即可接采集岗(其余岗 20 不动)。
+- **卖货 want 通路**: 新活动 `sell_goods`(纯 want 载体,直发 `start_activity` 拒绝,收益走 sell_item 结算)入 `INTENT_ACTIVITY_IDS`,prompt 文案指名可卖;wantSelect 卖货分支: 背包有带价物→在店 sell(总售价最高者全量)/不在店 move_to 商店;needBoost 缺钱扩容 work/sell ×1.5、gather ×1.3。
+- **长跑结论**: 27+ 游戏日 0 死亡(E3 9 死),sell_item 0→6 次,小林单人跑通「采集→制作→卖货」全链;遗留「公园吸引子」(move_to 公园入口霸榜压制 want 执行)另立 E5。
+
 ## 6. 素材需求
 
 - 浆果丛(bush 变体+果色)、拾荒堆(trash 堆,与杂物池区分)、灶台/木工台家具(阶段二家具 kind 扩展正好搭车: 炉灶已列)、浆果派/材料物品 icon

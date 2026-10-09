@@ -270,9 +270,24 @@ E1 激活采集/制作/服务岗的消费通路,食物供给从「商店初始�
 | SHOP_RESTOCK_DAILY | **1**(原 3) | 日翻转每品类补货份数,封顶初始货架量;只防死锁,主供给靠采集/制作 |
 | SELL_RATE | **0.6** | 商店收购价 = 售价 × 0.6(`sell_item {characterId,itemId,count}`,校验在场商店+背包足量,库存 +1 金币入袋;web 物品弹层「卖」钮同通道) |
 | POVERTY_COIN_LINE | **12** | 贫困线: coins < 12 触发 rulePoverty 生存阀 |
-| POVERTY_MIN_ENERGY | **45** | rulePoverty 体力下限(低于则交棒休息/觅食,不做无效打工) |
+| POVERTY_MIN_ENERGY | **35**(E4: 原 45) | rulePoverty 体力下限(低于则交棒休息/觅食,不做无效打工);E4 进食线提前到 30 后,45 显得过高——刚脱离饥饿区即可谋收入 |
 
-- **生存阀三 rule(E1,保人设选岗)**: `rulePoverty`(贫困+体力≥45+空闲 → 岗位池=[服务岗(知识够)/work] 按 activityBias 排序取最高,两段式执行);`ruleForage`(体力≤20+背包无食+买不起或店空 → 最近可食节点 work_task 直采逃生门);`ruleHunger` 让行(店空/没钱返 null 交棒);`ruleSleepy` 租约感知(无有效租约 → park 长椅 rest,消灭撞床循环)。
+- **生存阀三 rule(E1,保人设选岗;E4 窗口加固)**: `rulePoverty`(贫困+体力≥**35**+空闲 → 岗位池=[服务岗(知识够)/work] 按 activityBias 排序取最高,两段式执行);`ruleForage`(体力∈(**6**,**30**]+背包无食 → 最近可食节点**两段式**逃生门: 距离>2 先 move_to 节点 stand 位,到达经 arrived 重入再 work_task);`ruleHunger` 让行(店空/没钱返 null 交棒);`ruleSleepy` 租约感知(无有效租约 → park 长椅 rest,消灭撞床循环)。
+
+#### §5.6.1 生存链路加固参数(E4,2026-10-10)
+
+E3 长跑(25.2 日)三未达项同根: 体力死区(≤20 时四路全断)+直发无两段式+采集岗知识门槛锁死零知识穷人。E4 新参数:
+
+| 参数(BALANCE 热调) | 值 | 说明 |
+|---|---|---|
+| HUNGER_EAT_ENERGY | **30** | 进食线: ruleHunger 触发阈值,提前于健康扣减线 SURVIVAL_HUNGER_ENERGY_LINE(20)留缓冲;选食按 effects.energy 降序、同能量价低优先(高密度先吃快脱饥饿区,berry 留存进卖货池) |
+| FORAGE_MIN_ENERGY | **6** | ruleForage 直采下界(原 ≤20 关阀→饿死边缘仍可自救) |
+| FORAGE_EXEMPT_ENERGY | **5** | work_task 采食豁免: gather 类且 yields 含 food 且背包无食时,体力门槛降为此值(其余岗维持 20) |
+| FORAGE_MOVE_THRESHOLD | **2**(仅 balance,不进热调) | 两段式切换距离: 节点 stand 位曼哈顿距离超过则先 move_to,≤2 直发 work_task |
+
+- **采集岗知识门槛 3→0**(shared activities.ts JOB_CATEGORIES.gather): 采集=无技能体力工种,是贫困逃生门的正确语义;制作链(craft_berry_pie/bread/sandwich 挂 gather 类)随动降至 0(与逃生链一致,记录在案)。work-task 与 wantSelect 表驱动预检自动跟随。
+- **nearestNodeOf 返回 stand 坐标**: 节点格可能不可走,requestMoveTo 对不可走目标直接 throw;抽 `nearestWalkableAdjacent`(work-task.ts)四邻可走+可达过滤,采集与 want 通路共用。
+- **sell_goods want 载体**(数值面): 无 effects 收益,卖货经 sell_item 结算;INTENT_ACTIVITY_IDS 词汇表对齐后 LLM 可自发产出卖货 want(E4 验收镇实测苏晚 d11 产出「把浆果花草换成现钱存着备用」)。
 - 供货循环意义: 采集物可卖(`SELL_RATE` 折价)→ 商店货架有货 → 他人可购 → 收入再流通;`SHOP_RESTOCK_DAILY=1` 保证极端断供次日仍能解冻。
 - 验收指标(见 01-development-plan E 系列): 分工分化 ≥3 种收入活动在跑、采集卖货 ≥1 次/日(稳定后)。
 
@@ -344,6 +359,7 @@ E1 激活采集/制作/服务岗的消费通路,食物供给从「商店初始�
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-10-10 | **E4 生产经济闭环加固(两批)**: 新增 §5.6.1 生存链路参数(HUNGER_EAT_ENERGY **30**/FORAGE_MIN_ENERGY **6**/FORAGE_EXEMPT_ENERGY **5**/FORAGE_MOVE_THRESHOLD **2**);POVERTY_MIN_ENERGY **45→35**;采集岗知识门槛 **3→0**(制作食物链随动,§5.6 注记);ruleForage 两段式+选食策略(能量降序价低优先);sell_goods want 载体+needBoost 缺钱扩容(work/sell ×1.5/gather ×1.3)。E4 验收镇长跑 27+ 日: 饿死 0(原 4)/苏晚 d3.9 起 settled+租约日常化(原 0+112 败)/sell_item 6 次(原 0);遗留: 公园吸引子挤占 want 执行(debt 0.48 超线/熵 0.727 边缘)立 E5 | E3 长跑 8✓/3✗ 三未达项同一根因链(体力死区四路全断+直发无两段式+采集门槛锁死零知识穷人)+sell 词汇缺失;用户拍板「文档收口+push,公园吸引子立 E5」 |
 | 2026-10-09 | **E 系列三批(E1 生产经济激活/E2 社交口径与主动社交/E3 多轮对话与邀约)**: 新增 §5.6 需求驱动的生产经济(SHOP_RESTOCK_DAILY 3→**1** 兜底化/SELL_RATE **0.6** 收购/POVERTY_COIN_LINE **12**/POVERTY_MIN_ENERGY **45**+生存阀三 rule);新增 §6.5 社交节奏参数表(FIRE 0.45→**0.35**/同对冷却 60→**30**/日主动上限 6→**8**/贴身加成 0.2→**0.3**/走散短冷 **10** 分/CHAT_MAX_ROUNDS **4**);§6.4 模板池降级为回落保底(E3 多轮对话为主来源,单场结算一次不按句数放大) | E 系列: 经济死循环(全员断租死亡 8 次/生产系统闲置)+社交管线三泄漏;用户拍板「需求驱动分工+社交全面加码+自然终止多轮」(详见 03-social-design §9/09-production-design §5.1/01-development-plan 变更记录) |
 |------|------|------|
 | 2026-10-07 | **食物经济重构(商店初始存量售罄即止+苹果/小麦采集制作链)**: 新增 §3.2 商店库存——SHOP_INITIAL_FOOD_STOCK=3 份/食物(8 货架零删改为初始存量限定),售罄即止无补货,快照 shopStock 透传;§3.1 苹果/面包/三明治补「亦可采集/制作」注记;§5.1 采集类增苹果采摘(苹果×1/20 分)与麦子收割(小麦×2/20 分)两行(浆果 15→20 分勘误对齐 §5.4/代码);§5.4 节点表增苹果树(charges 4,苹果×1)与麦丛(charges 3,小麦×2),浆果丛加密 3~6→4~7(生存 4~8→5~9);物品表增小麦(原料不可食);配方表增 小麦×2→面包(20 分)与 面包+苹果→三明治(25 分),直采<制作铁律注记(同 20 分直采 +4 < 面包 +6 < 三明治 +8) | 用户定稿: 食物为系统预制、金币够即无限买与 agent 采集/工作交互预期不符,生存模式采集价值未体现——食物长期来源只能是①直接采集②采集原料制作(直采恢复<制作),商店保留可配置初始存量免开局挨饿;四分叉按推荐档: 售罄即止/8 货架全保留/苹果+小麦链/growth 密度同步加密 |
