@@ -28,6 +28,8 @@ export interface TraceDecision {
   intent?: string;
   /** react 时的气泡文案(意图+理由模板) */
   bubble?: string;
+  /** jev 层选中候选标签(E5 观测口径:decision->>'choice' 聚合选择分布) */
+  choice?: string;
   /** react 意图被意图层拒绝时的原因(执行回执) */
   rejectReason?: string;
 }

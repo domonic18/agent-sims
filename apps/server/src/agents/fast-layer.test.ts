@@ -1,4 +1,4 @@
-import { TOWN_MAP, SHOP_ITEMS } from '@sims/shared';
+import { TOWN_MAP, SHOP_ITEMS, getActivityDefinition } from '@sims/shared';
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
@@ -9,6 +9,7 @@ import {
   wantSelect,
   ruleDecide,
   type Decision,
+  type JevContext,
   type RuleWorldQueries,
 } from './fast-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
@@ -317,35 +318,104 @@ describe('ruleDecide E1 生存阀(贫困变现/直采逃生/饥饿让行/长椅�
 });
 
 describe('jevDecide(systemone choice 候选选一)', () => {
-  it('选中候选 → 去对应场所 entrance 的 react;排除当前所在', async () => {
-    const park = TOWN_MAP.places.find((p) => p.id === 'park')!;
-    const decision: Decision | null = await jevDecide(stubLlm('公园'), char({}), TOWN_MAP);
+  const park = TOWN_MAP.places.find((p) => p.id === 'park')!;
+  const captureLlm = (choice: string) => {
+    const captured: { prompt?: string; criteria?: Record<string, string> } = {};
+    const llm: MemoryLlm = {
+      systemOne: (_slot, prompt, questions) => {
+        captured.prompt = prompt;
+        captured.criteria = (
+          questions as unknown as { next: { criteria: Record<string, string> } }
+        ).next.criteria;
+        return Promise.resolve({
+          model: 'stub',
+          answers: { next: { type: 'choice', choice, probabilities: {}, confidence: 1 } },
+        }) as never;
+      },
+      embed: () => Promise.reject(new Error('unused')),
+      chat: () => Promise.reject(new Error('unused')),
+      chatStructured: () => Promise.reject(new Error('unused')),
+    };
+    return { llm, captured };
+  };
+  const ctx = (overrides: Partial<JevContext> = {}) => ({
+    night: false,
+    valence: 0,
+    hasSellable: false,
+    wantWhys: [],
+    nowMin: 0,
+    ...overrides,
+  });
+
+  it('选中候选 → 去对应场所 entrance 的 react;排除当前所在;选中标签落 choice', async () => {
+    const { llm } = captureLlm('公园');
+    const decision: Decision | null = await jevDecide(llm, char({}), TOWN_MAP);
     expect(decision).not.toBeNull();
     expect(decision!.layer).toBe('jev');
+    expect(decision!.choice).toBe('公园');
     expect(decision!.intent).toEqual({
       type: 'move_to',
       characterId: 'char-1',
       x: park.entrance.x,
       y: park.entrance.y,
     });
-    // 角色站在商店门口时,候选不再含「商店」
-    const atShop = char({ x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y });
-    let asked: Record<string, string> | undefined;
-    const llm: MemoryLlm = {
-      systemOne: (_slot, _prompt, questions) => {
-        asked = (questions as unknown as { next: { criteria: Record<string, string> } }).next.criteria;
-        return Promise.resolve({
-          model: 'stub',
-          answers: { next: { type: 'choice', choice: '公园', probabilities: {}, confidence: 1 } },
-        }) as never;
-      },
-      embed: () => Promise.reject(new Error('unused')),
-      chat: () => Promise.reject(new Error('unused')),
-      chatStructured: () => Promise.reject(new Error('unused')),
+    // 角色站在商店门口时,候选不再含「商店」;E5 起候选池=商店/公园/出去转转(家宅死端候选移除)
+    const { llm: llm2, captured: captured2 } = captureLlm('公园');
+    await jevDecide(llm2, char({ x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y }), TOWN_MAP);
+    expect(Object.keys(captured2.criteria!)).toEqual(['公园', '出去转转']);
+  });
 
-    };
-    await jevDecide(llm, atShop, TOWN_MAP);
-    expect(Object.keys(asked!)).not.toContain('商店');
+  it('E5 状态感知: 深夜公园降权/低落散心加权/有货卖货导向/wants 注入题面', async () => {
+    const { llm: nightLlm, captured: nightCaptured } = captureLlm('公园');
+    await jevDecide(nightLlm, char({}), TOWN_MAP, [], undefined, ctx({ night: true }));
+    expect(nightCaptured.criteria!['公园']).toContain('夜深了');
+
+    const { llm: sadLlm, captured: sadCaptured } = captureLlm('公园');
+    await jevDecide(sadLlm, char({}), TOWN_MAP, [], undefined, ctx({ valence: -0.5 }));
+    expect(sadCaptured.criteria!['公园']).toContain('心情');
+    expect(sadCaptured.criteria!['公园']).not.toContain('夜深了');
+
+    const { llm: sellLlm, captured: sellCaptured } = captureLlm('商店');
+    await jevDecide(sellLlm, char({}), TOWN_MAP, [], undefined, ctx({ hasSellable: true }));
+    expect(sellCaptured.criteria!['商店']).toContain('卖');
+
+    const { llm: wantLlm, captured: wantCaptured } = captureLlm('公园');
+    await jevDecide(wantLlm, char({}), TOWN_MAP, [], '书虫', ctx({ wantWhys: ['想采浆果换钱'] }));
+    expect(wantCaptured.prompt).toContain('惦记着');
+    expect(wantCaptured.prompt).toContain('想采浆果换钱');
+    expect(wantCaptured.prompt).toContain('书虫');
+  });
+
+  it('公园终点化(E5):在园内选公园 → start_activity stroll 就地散步,不再到门口站着', async () => {
+    const decision = await jevDecide(
+      stubLlm('公园'),
+      char({ x: park.entrance.x, y: park.entrance.y }),
+      TOWN_MAP,
+    );
+    expect(decision!.intent).toEqual({
+      type: 'start_activity',
+      characterId: 'char-1',
+      activityId: 'stroll',
+    });
+    expect(decision!.bubble).toContain('散会儿步');
+    expect(decision!.choice).toBe('公园');
+  });
+
+  it('「出去转转」(E5) → explore 两段式:远处 move_to 小时粘性目标/到位即开始', async () => {
+    const decision = await jevDecide(stubLlm('出去转转'), char({}), TOWN_MAP, [], undefined, ctx({ nowMin: 90 }));
+    expect(decision).not.toBeNull();
+    expect(decision!.choice).toBe('出去转转');
+    const target = exploreTarget(
+      'char-1|jev|1',
+      getActivityDefinition('explore')!.placeIds,
+      TOWN_MAP,
+    )!;
+    const intent = decision!.intent!;
+    if (intent.type === 'move_to') {
+      expect({ x: intent.x, y: intent.y }).toEqual({ x: target.entrance.x, y: target.entrance.y });
+    } else {
+      expect(intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'explore' });
+    }
   });
 
   it('回答不在候选内/调用失败 → null(回落 continue,不阻塞泵)', async () => {

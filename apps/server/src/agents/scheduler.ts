@@ -18,10 +18,12 @@ import { BALANCE } from '../config/balance.js';
 import { autonomy, hosting, innerState } from './cognition.js';
 import { describeMood } from './mood.js';
 import {
+  bestSellable,
   jevDecide,
   wantSelect,
   ruleDecide,
   type Decision,
+  type JevContext,
   type RuleWorldQueries,
   type WantWorldQueries,
 } from './fast-layer.js';
@@ -862,7 +864,21 @@ export class AgentScheduler {
       })
       .filter((c): c is NonNullable<typeof c> => c !== null);
     const persona = await loadPersonaContext(this.deps.handle, char.id);
-    const decision = await jevDecide(this.deps.llm, char, sim.map.definition, feed, persona);
+    // E5 状态感知上下文:数值状态/当日 wants 只影响候选措辞与题面(文案级倾向),无硬规则
+    const state = innerState.get(char.id);
+    const context: JevContext = {
+      night:
+        sim.clock.minuteOfDay >= BALANCE.NIGHT_START_MINUTE ||
+        sim.clock.minuteOfDay < BALANCE.NIGHT_END_MINUTE,
+      valence: state?.mood.valence ?? 0,
+      hasSellable: bestSellable(char.backpack) !== null,
+      wantWhys: (state?.intents?.wants ?? [])
+        .filter((w) => w.status === 'pending' || w.status === 'doing')
+        .slice(0, 3)
+        .map((w) => w.why),
+      nowMin: sim.clock.gameMinutes,
+    };
+    const decision = await jevDecide(this.deps.llm, char, sim.map.definition, feed, persona, context);
     if (decision === null) {
       // jev 槽不可用/无有效候选:观测层面记一次 continue,快层静默回落
       this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
@@ -928,6 +944,7 @@ export class AgentScheduler {
         conclusion: 'react',
         intent: intentSummary(decision.intent),
         bubble: decision.bubble,
+        ...(decision.choice !== undefined ? { choice: decision.choice } : {}),
         ...(result.ok ? {} : { rejectReason: result.message }),
       },
     });

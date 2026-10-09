@@ -35,6 +35,8 @@ export interface Decision {
   wantId?: string;
   /** plan 层:当场判不可执行须标 abandoned 的 want 列表(调度泵落库) */
   abandonedWantIds?: string[];
+  /** jev 层:选中候选标签(E5 观测口径,进 trace 供选择分布聚合) */
+  choice?: string;
 }
 
 /** rule 层世界查询(E1 依赖注入,与 anchorsOf 同款):货架余量/可食节点/倾向分,
@@ -323,44 +325,89 @@ export interface JevSocialCandidate {
   y: number;
 }
 
+/** jev 上下文(E5 状态感知):候选文案与题面按数值状态/当日意图动态化——
+ * 散心加权/卖货导向/深夜降权全是文案级倾向(数值压力表达),无硬规则禁令 */
+export interface JevContext {
+  /** 深夜(NIGHT_START~NIGHT_END):公园文案降权 */
+  night: boolean;
+  /** 情绪效价(-1~1):低落时散心文案加权 */
+  valence: number;
+  /** 背包有带价物:商店文案导向卖货变现 */
+  hasSellable: boolean;
+  /** 当日未完成 wants 的第一人称理由(顶 3):惦记的事进题面参与直觉竞争 */
+  wantWhys: string[];
+  /** 当前游戏分钟(探索粘性键按小时桶,同小时内重入命中同一目标) */
+  nowMin: number;
+}
+
+const EMPTY_JEV_CONTEXT: JevContext = {
+  night: false,
+  valence: 0,
+  hasSellable: false,
+  wantWhys: [],
+  nowMin: 0,
+};
+
+/** 低落效价线:≤ 此值时公园候选改「散心加权」文案(情绪压力→行动倾向,非强制) */
+const JEV_SAD_VALENCE = -0.3;
+
+type JevCandidate =
+  | { kind: 'place'; ref: string; label: string; desc: string }
+  | { kind: 'wander'; label: string; desc: string }
+  | { kind: 'social'; characterId: string; label: string; desc: string };
+
 /** jev 微决策(agent-design §4.3):空闲角色在事件触发时用 systemone choice
- * 题「现在去哪」候选选一,产出去某处的 move_to。C4 起社交候选与地点同池竞争
- * (好感≥65 文案加权);选中熟人即走向 TA,到位后由动机引擎直执聊天。
- * 调用失败返回 null(回落 continue)。 */
+ * 题「现在去哪」候选选一。C4 起社交候选与地点同池竞争(好感≥65 文案加权);
+ * E5 起状态感知——题面注入惦记的 wants,候选按情绪/背包/昼夜动态措辞;
+ * 公园候选终点化(入园即 start_activity stroll,消灭「到门口站着」的死端),
+ * 别人家候选移除(无活动/购买/社交接应,纯站立终点);新样「出去转转」
+ * 走 explore 两段式(时段粘性目标,到位即开始)。选中标签落 decision.choice
+ * 供 trace 聚合。调用失败返回 null(回落 continue)。 */
 export async function jevDecide(
   llm: MemoryLlm,
   char: WorldCharacter,
   map: TileMapDefinition,
   socialCandidates: readonly JevSocialCandidate[] = [],
   persona?: string,
+  context: JevContext = EMPTY_JEV_CONTEXT,
 ): Promise<Decision | null> {
   if (!char.alive || char.collapsed) return null; // 失能不越权(与 ruleDecide 同门槛)
   if (char.activity !== null || char.path.length > 0) return null; // jev 只服务空闲角色,忙角色不白烧 LLM
   const here = findPlaceAt(map, char.x, char.y)?.id ?? null;
-  const placeCandidates = [
-    { ref: 'shop', label: '商店', desc: '去商店看看,补充食物' },
-    { ref: 'park', label: '公园', desc: '去公园走走散心' },
-    ...(['home-a', 'home-b', 'home-c', 'home-d'] as const)
-      .map((ref) => {
-        const property = getPropertyDefinition(ref);
-        return { ref, label: property?.name ?? ref, desc: '回家休息' };
-      })
-      .filter((c) => c.ref !== housingRef(char)),
-  ]
-    .filter((c) => c.ref !== here)
-    .map((c) => ({ kind: 'place' as const, ...c }));
-  const social = socialCandidates.map((c) => ({
-    kind: 'social' as const,
-    characterId: c.characterId,
-    label: `找${c.name}聊天`,
-    desc: c.affinity >= 65 ? `去找${c.name}聊聊,你们很投缘` : `去找${c.name}聊聊天`,
-  }));
-  const candidates = [...placeCandidates, ...social];
+  const parkPlace = findPlaceByRef(map, 'park');
+  const atPark = parkPlace !== null && here === parkPlace.id;
+  const parkDesc = atPark
+    ? '就在公园散会儿步'
+    : context.night
+      ? '夜深了,公园不是好去处'
+      : context.valence <= JEV_SAD_VALENCE
+        ? '心情有点沉,去公园透透气会舒服些'
+        : '去公园走走散心';
+  const shopDesc = context.hasSellable ? '背包有货,拿去商店卖掉换钱' : '去商店看看,补充食物';
+  const placeCandidates: JevCandidate[] = [
+    { kind: 'place', ref: 'shop', label: '商店', desc: shopDesc },
+    { kind: 'place', ref: 'park', label: '公园', desc: parkDesc },
+    { kind: 'wander', label: '出去转转', desc: '换个地方随便看看' },
+  ];
+  const candidates = [
+    // 当前所在处不再候选——公园例外:在园内候选语义变为「就地散步」(终点化)
+    ...placeCandidates.filter((c) => c.kind !== 'place' || c.ref !== here || c.ref === 'park'),
+    ...socialCandidates.map(
+      (c): JevCandidate => ({
+        kind: 'social',
+        characterId: c.characterId,
+        label: `找${c.name}聊天`,
+        desc: c.affinity >= 65 ? `去找${c.name}聊聊,你们很投缘` : `去找${c.name}聊聊天`,
+      }),
+    ),
+  ];
   if (candidates.length === 0) return null;
+  const wantPart =
+    context.wantWhys.length > 0 ? `(心里还惦记着: ${context.wantWhys.join(';')})` : '';
   try {
     const result = await llm.systemOne(
       'jev',
-      `${char.name}${persona !== undefined ? `(人设: ${persona})` : ''}现在空闲,凭直觉选一个此刻最想做的事`,
+      `${char.name}${persona !== undefined ? `(人设: ${persona})` : ''}现在空闲${wantPart},凭直觉选一个此刻最想做的事`,
       {
         next: {
           type: 'choice',
@@ -380,27 +427,43 @@ export async function jevDecide(
       return {
         layer: 'jev',
         action: 'react',
+        choice: picked.label,
         intent: { type: 'move_to', characterId: char.id, x: target.x, y: target.y },
         bubble: `去找${target.name}聊聊`,
       };
     }
+    if (picked.kind === 'wander') {
+      const decision = exploreDecision(
+        char,
+        map,
+        `jev|${Math.floor(context.nowMin / 60)}`,
+        getActivityDefinition('explore')?.placeIds ?? [],
+      );
+      return decision === null
+        ? null
+        : { layer: 'jev', action: 'react', choice: picked.label, ...decision };
+    }
     const place = findPlaceByRef(map, picked.ref);
     if (place === null) return null;
+    if (picked.ref === 'park' && atPark) {
+      return {
+        layer: 'jev',
+        action: 'react',
+        choice: picked.label,
+        intent: { type: 'start_activity', characterId: char.id, activityId: 'stroll' },
+        bubble: `${picked.desc}(${picked.label})`,
+      };
+    }
     return {
       layer: 'jev',
       action: 'react',
+      choice: picked.label,
       intent: { type: 'move_to', characterId: char.id, x: place.entrance.x, y: place.entrance.y },
       bubble: `${picked.desc}(${picked.label})`,
     };
   } catch {
     return null; // jev 槽不可用:快层回落 rule/continue,绝不阻塞泵
   }
-}
-
-function housingRef(char: WorldCharacter): string | null {
-  return char.housing === null
-    ? null
-    : getPropertyDefinition(char.housing.propertyId)?.placeId ?? null;
 }
 
 /** 活动目标格:锚点活动(书桌/床/跑步机)取使用格,无锚点取首个场所入口 */
@@ -488,8 +551,8 @@ function needBoost(char: WorldCharacter, activityId: string): number {
   return 1;
 }
 
-/** 背包最值钱带价物(E4 卖货 want):总价(价×量)最高者优先变现 */
-function bestSellable(backpack: Record<string, number | undefined>): { id: string; count: number } | null {
+/** 背包最值钱带价物(E4 卖货 want;E5 jev 商店文案导向复用):总价(价×量)最高者优先变现 */
+export function bestSellable(backpack: Record<string, number | undefined>): { id: string; count: number } | null {
   let best: { id: string; count: number; total: number } | null = null;
   for (const [id, count] of Object.entries(backpack)) {
     const item = getItem(id);
