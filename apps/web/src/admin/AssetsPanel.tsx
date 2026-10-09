@@ -4,13 +4,10 @@ import {
   Badge,
   Button,
   Card,
-  Descriptions,
-  Drawer,
   Dropdown,
   Empty,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -52,7 +49,9 @@ import {
   updateAsset,
   updateAssetIssue,
 } from './api';
-import { SpriteInspector } from './SpriteInspector';
+import { AssetAiReviewModal } from './AssetAiReviewModal';
+import { AssetDetailDrawer, type AssetIssueState } from './AssetDetailDrawer';
+import { GridPreview } from './AssetGridPreview';
 
 const STATUS_LABELS: Record<AssetStatus, { text: string; color: string }> = {
   draft: { text: '待校验', color: 'orange' },
@@ -67,41 +66,8 @@ interface CategoryTreeNode extends TreeDataNode {
   category: AssetCategoryView;
 }
 
-/** 占地预览:图按 16px/格 网格叠加,红框 = gridW×gridH 占地(锚点换算),图错/占地错一眼即见 */
-function GridPreview({ asset, url, scale }: { asset: AssetAdminView; url: string; scale: number }) {
-  const cell = 16 * scale;
-  const w = asset.width * scale;
-  const h = asset.height * scale;
-  const gw = asset.gridW * cell;
-  const gh = asset.gridH * cell;
-  const left = asset.anchor === 'top-left' ? 0 : (w - gw) / 2;
-  const top = asset.anchor === 'top-left' ? 0 : h - gh;
-  return (
-    <div style={{ position: 'relative', width: w, height: h, flex: 'none' }}>
-      <img src={url} width={w} height={h} alt={asset.slug} style={{ imageRendering: 'pixelated', display: 'block' }} />
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          backgroundImage: `repeating-linear-gradient(0deg, rgba(64,120,255,.28) 0 1px, transparent 1px ${cell}px), repeating-linear-gradient(90deg, rgba(64,120,255,.28) 0 1px, transparent 1px ${cell}px)`,
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          left,
-          top,
-          width: gw,
-          height: gh,
-          border: '2px solid rgba(217,45,32,.9)',
-          boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.55)',
-        }}
-      />
-    </div>
-  );
-}
-
-/** 素材管理面板(M-L.2):左树(分类 CRUD)右表(筛选/批量/详情校验/发布) */
+/** 素材管理面板(M-L.2):左树(分类 CRUD)右表(筛选/批量/详情校验/发布);
+ * 详情抽屉/AI 审核弹窗/占地预览拆至 AssetDetailDrawer/AssetAiReviewModal/AssetGridPreview */
 export function AssetsPanel() {
   const { message, modal } = AntdApp.useApp();
   const [categories, setCategories] = useState<AssetCategoryView[] | null>(null);
@@ -115,7 +81,7 @@ export function AssetsPanel() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [detail, setDetail] = useState<AssetAdminView | null>(null);
   const [detailImage, setDetailImage] = useState<string | null>(null);
-  const [issueState, setIssueState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
+  const [issueState, setIssueState] = useState<AssetIssueState>('idle');
   const [aiOpen, setAiOpen] = useState(false);
   const [aiRunning, setAiRunning] = useState(false);
   const [aiItems, setAiItems] = useState<AssetAiReviewItem[]>([]);
@@ -688,211 +654,29 @@ export function AssetsPanel() {
         )}
       </Card>
 
-      <Drawer
-        title={detail === null ? '' : `${detail.name}(${detail.slug})`}
-        width={480}
-        open={detail !== null}
+      <AssetDetailDrawer
+        detail={detail}
+        detailImage={detailImage}
+        editing={editing}
+        issueState={issueState}
+        aiRunning={aiRunning}
+        categories={categories}
+        form={form}
         onClose={() => setDetail(null)}
-        destroyOnClose
-      >
-        {detail !== null && (
-          <>
-            {detailImage !== null ? (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0' }}>
-                  <GridPreview asset={detail} url={detailImage} scale={3} />
-                </div>
-                <div style={{ fontSize: 12, color: '#8b949e', textAlign: 'center' }}>
-                  红框 = 占地 {detail.gridW}×{detail.gridH} 格(16px/格)
-                </div>
-                <SpriteInspector
-                  url={detailImage}
-                  width={detail.width}
-                  height={detail.height}
-                  anim={detail.anim}
-                />
-              </>
-            ) : (
-              <p style={{ color: '#999' }}>图片加载中…</p>
-            )}
-            {editing ? (
-              <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-                <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-                <Space size="middle">
-                  <Form.Item name="gridW" label="占地宽(格)">
-                    <InputNumber min={1} max={20} />
-                  </Form.Item>
-                  <Form.Item name="gridH" label="占地高(格)">
-                    <InputNumber min={1} max={20} />
-                  </Form.Item>
-                  <Form.Item name="tier" label="等级">
-                    <InputNumber min={1} max={10} />
-                  </Form.Item>
-                </Space>
-                <Form.Item name="anchor" label="锚点">
-                  <Select
-                    options={[
-                      { value: 'bottom-center', label: '底边中心' },
-                      { value: 'top-left', label: '左上角(tile)' },
-                      { value: 'char-082', label: '角色(0.5,0.82)' },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item name="tags" label="标签(逗号分隔)">
-                  <Input placeholder="如: 卧室, 木色" />
-                </Form.Item>
-                <Form.Item name="status" label="状态">
-                  <Select
-                    options={[
-                      { value: 'draft', label: '待校验' },
-                      { value: 'active', label: '已启用(进入发布)' },
-                      { value: 'retired', label: '已下架' },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item name="categoryId" label="分类迁移(改 kind,决定进哪个 worldgen 池)">
-                  <Select
-                    showSearch
-                    optionFilterProp="label"
-                    options={(categories ?? [])
-                      .filter((cat) => cat.level === 2)
-                      .map((cat) => {
-                        const parent = (categories ?? []).find((p) => p.id === cat.parentId);
-                        return { value: cat.id, label: `${parent?.name ?? '?'}/${cat.name}` };
-                      })}
-                  />
-                </Form.Item>
-                <Space>
-                  <Button type="primary" onClick={() => void saveEdit()}>
-                    保存
-                  </Button>
-                  <Button onClick={() => setEditing(false)}>取消</Button>
-                </Space>
-              </Form>
-            ) : (
-              <>
-                <Descriptions
-                  size="small"
-                  column={2}
-                  style={{ marginTop: 16 }}
-                  items={[
-                    { key: 'domain', label: '域', children: detail.domain },
-                    { key: 'cat', label: '分类', children: detail.categorySlug },
-                    { key: 'grid', label: '占地', children: `${detail.gridW}×${detail.gridH} 格` },
-                    { key: 'tier', label: '等级', children: detail.tier },
-                    { key: 'anchor', label: '锚点', children: detail.anchor },
-                    { key: 'tags', label: '标签', children: detail.tags.join(' / ') || '—' },
-                    { key: 'source', label: '来源', children: detail.source, span: 2 },
-                  ]}
-                />
-                <Space style={{ marginTop: 12 }} wrap>
-                  <Button type="primary" onClick={startEdit}>
-                    编辑元数据
-                  </Button>
-                  <Button
-                    icon={<WarningOutlined />}
-                    disabled={issueState === 'sending'}
-                    onClick={() => void reportDetailIssue()}
-                  >
-                    {issueState === 'done'
-                      ? '✓ 已上报'
-                      : issueState === 'error'
-                        ? '✕ 失败,重试'
-                        : '⚠ 标记问题'}
-                  </Button>
-                  <Tooltip title="视觉模型识别这张图,校验 slug/元数据是否相符">
-                    <Button
-                      icon={<RobotOutlined />}
-                      loading={aiRunning}
-                      onClick={() => void runAiReview([detail.id])}
-                    >
-                      AI 识别
-                    </Button>
-                  </Tooltip>
-                </Space>
-              </>
-            )}
-          </>
-        )}
-      </Drawer>
-      <Modal
-        title="AI 审核结果"
+        onStartEdit={startEdit}
+        onCancelEdit={() => setEditing(false)}
+        onSave={saveEdit}
+        onReportIssue={reportDetailIssue}
+        onRunAi={runAiReview}
+      />
+      <AssetAiReviewModal
         open={aiOpen}
-        onCancel={() => setAiOpen(false)}
-        footer={[
-          <Button key="close" type="primary" onClick={() => setAiOpen(false)}>
-            关闭
-          </Button>,
-        ]}
-        width={760}
-      >
-        <p style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
-          结论由视觉模型(vision 槽)生成,仅供参考;「上报」会把结论写入素材问题清单。
-        </p>
-        <Table<AssetAiReviewItem>
-          rowKey="id"
-          size="small"
-          loading={aiRunning}
-          dataSource={aiItems}
-          pagination={false}
-          columns={[
-            {
-              title: '图',
-              width: 64,
-              render: (_, item) =>
-                thumbUrls[item.id] !== undefined ? (
-                  <img src={thumbUrls[item.id]} alt="" style={{ imageRendering: 'pixelated', width: 48 }} />
-                ) : (
-                  '—'
-                ),
-            },
-            { title: 'slug', dataIndex: 'slug', width: 160, ellipsis: true },
-            {
-              title: '结论',
-              width: 84,
-              render: (_, item) => {
-                if (!item.ok) return <Tag>失败</Tag>;
-                const match = item.result?.match ?? 'unsure';
-                return match === 'yes' ? (
-                  <Tag color="green">匹配</Tag>
-                ) : match === 'no' ? (
-                  <Tag color="red">不匹配</Tag>
-                ) : (
-                  <Tag color="orange">不确定</Tag>
-                );
-              },
-            },
-            {
-              title: '模型判断',
-              render: (_, item) => {
-                if (!item.ok) return <span style={{ color: '#c00' }}>{item.error}</span>;
-                const r = item.result;
-                if (r === undefined) return '—';
-                return (
-                  <div style={{ fontSize: 12 }}>
-                    <div>图里是: {r.see || '—'}</div>
-                    {r.kindGuess !== null && <div>kind 猜测: {r.kindGuess}</div>}
-                    {r.problems.length > 0 && <div>问题: {r.problems.join(';')}</div>}
-                    {r.suggestion !== null && <div>建议: {r.suggestion}</div>}
-                  </div>
-                );
-              },
-            },
-            {
-              title: '操作',
-              width: 84,
-              render: (_, item) =>
-                item.ok && item.result !== undefined && item.result.match !== 'yes' ? (
-                  <Button size="small" icon={<WarningOutlined />} onClick={() => void reportAiIssue(item)}>
-                    上报
-                  </Button>
-                ) : null,
-            },
-          ]}
-        />
-      </Modal>
+        running={aiRunning}
+        items={aiItems}
+        thumbUrls={thumbUrls}
+        onClose={() => setAiOpen(false)}
+        onReport={reportAiIssue}
+      />
       <Modal
         title={`新增${categoryModal?.parent ? `${LEVEL_NAMES[categoryModal.parent.level]}的子` : '顶层'}分类`}
         open={categoryModal !== null}

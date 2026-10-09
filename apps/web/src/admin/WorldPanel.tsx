@@ -4,18 +4,12 @@ import {
   App as AntdApp,
   Button,
   Card,
-  Col,
-  Collapse,
   Empty,
   Flex,
   Form,
   Input,
-  InputNumber,
-  List,
-  Modal,
   Popconfirm,
   Radio,
-  Row,
   Select,
   Space,
   Steps,
@@ -23,7 +17,6 @@ import {
   Table,
   Tag,
   Tooltip,
-  Typography,
   type TableColumnsType,
 } from 'antd';
 import { DeleteOutlined, PlusOutlined, ThunderboltOutlined } from '@ant-design/icons';
@@ -33,26 +26,21 @@ import {
   GAME_TYPE_LABELS,
   GENDERS,
   GENDER_LABELS,
-  SYS_CONFIG_FIELDS,
-  SYS_CONFIG_GROUP_LABELS,
-  SYS_CONFIG_GROUPS,
   WORLD_CHARACTER_LIMITS,
   WORLD_TIME_SCALES,
   pickRandomName,
-  type Gender,
   type GameType,
   type WorldCharacterConfig,
   type WorldRules,
   type WorldPreviewResponse,
   type WorldView,
 } from '@sims/shared';
-import { ApiError, addWorldCharacter, closeWorld, createWorld, deleteWorld, fetchSysConfig, fetchWorlds, previewWorld } from './api';
+import { ApiError, closeWorld, createWorld, deleteWorld, fetchSysConfig, fetchWorlds, previewWorld } from './api';
+import { CurrentWorldCard, formatTime, type CharacterRow } from './CurrentWorldCard';
+import { WorldParamsCollapse } from './WorldParamsCollapse';
 
-interface CharacterRow {
-  name: string;
-  gender: Gender;
-  persona?: string;
-}
+/** 世界管理面板(M-L.5):当前世界卡/五步创建向导/历史归档;
+ * 参数折叠区与当前世界卡拆至 WorldParamsCollapse/CurrentWorldCard */
 
 interface WorldFormValues {
   mode?: 'builtin' | 'random';
@@ -62,192 +50,6 @@ interface WorldFormValues {
   name: string;
   characters: CharacterRow[];
   rules: WorldRules;
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString('zh-CN', { hour12: false });
-}
-
-/** 世界参数折叠区(默认收起):17 项随本世界创建定格,defaults 由挂载时回填 form store */
-function WorldParamsCollapse({ busy }: { busy: boolean }) {
-  return (
-    <Collapse
-      ghost
-      style={{ marginTop: 8 }}
-      items={[
-        {
-          key: 'params',
-          label: '世界参数(展开调整;默认值已是最优,改动随本世界存档)',
-          children: (
-            <>
-              {SYS_CONFIG_GROUPS.map((group) => (
-                <div key={group} style={{ marginBottom: 12 }}>
-                  <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
-                    {SYS_CONFIG_GROUP_LABELS[group]}
-                  </Typography.Text>
-                  <Row gutter={[16, 0]}>
-                    {SYS_CONFIG_FIELDS.filter((field) => field.group === group).map((field) => (
-                      <Col xs={24} sm={12} lg={8} key={field.key}>
-                        <Form.Item
-                          name={['rules', 'params', field.key]}
-                          label={<Tooltip title={field.desc}>{field.label}</Tooltip>}
-                          style={{ marginBottom: 8 }}
-                        >
-                          <InputNumber
-                            min={field.min}
-                            max={field.max}
-                            step={field.step}
-                            style={{ width: '100%' }}
-                            disabled={busy}
-                          />
-                        </Form.Item>
-                      </Col>
-                    ))}
-                  </Row>
-                </div>
-              ))}
-              <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>
-                参数随本世界创建定格并随 config 存档;运行中修改请到 /lab 调试台控制面板。
-              </p>
-            </>
-          ),
-        },
-      ]}
-    />
-  );
-}
-
-function CurrentWorldCard({
-  active,
-  busy,
-  onClose,
-  onAdded,
-}: {
-  active: WorldView;
-  busy: boolean;
-  onClose: () => void;
-  onAdded: () => void;
-}) {
-  const { message } = AntdApp.useApp();
-  const [addOpen, setAddOpen] = useState(false);
-  const [addBusy, setAddBusy] = useState(false);
-  const [addForm] = Form.useForm<CharacterRow & { gender: Gender }>();
-
-  const submitAdd = async (): Promise<void> => {
-    const values = await addForm.validateFields();
-    setAddBusy(true);
-    try {
-      const spawned = await addWorldCharacter({
-        name: values.name.trim(),
-        gender: values.gender,
-        ...(values.persona?.trim() ? { persona: values.persona.trim() } : {}),
-      });
-      message.success(`「${spawned.name}」已入驻小镇 (${spawned.x},${spawned.y})`);
-      setAddOpen(false);
-      addForm.resetFields();
-      onAdded();
-    } catch (err) {
-      message.error(err instanceof ApiError ? err.message : '添加失败');
-    } finally {
-      setAddBusy(false);
-    }
-  };
-
-  return (
-    <Card
-      title="当前世界"
-      extra={
-        <Space>
-          <Button
-            size="small"
-            icon={<PlusOutlined />}
-            disabled={busy || active.characters.length >= WORLD_CHARACTER_LIMITS.max}
-            onClick={() => setAddOpen(true)}
-          >
-            添加居民
-          </Button>
-          <Popconfirm title="关闭并归档该世界?模拟将暂停" okText="关闭" onConfirm={onClose}>
-            <Button size="small" disabled={busy}>
-              关闭世界
-            </Button>
-          </Popconfirm>
-        </Space>
-      }
-    >
-      <Space direction="vertical" size="small" style={{ width: '100%' }}>
-        <Space wrap>
-          <strong>{active.name}</strong>
-          <Tag color="success">运行中</Tag>
-          <span style={{ fontSize: 12, color: '#8c8c8c' }}>创建于 {formatTime(active.createdAt)}</span>
-        </Space>
-        <List
-          size="small"
-          split={false}
-          dataSource={active.characters}
-          renderItem={(c) => (
-            <List.Item style={{ padding: '2px 0' }}>
-              <span>
-                {c.name}
-                <small style={{ color: '#8c8c8c' }}>
-                  {' '}
-                  · {GENDER_LABELS[c.gender]}
-                  {c.persona ? ` · ${c.persona}` : ''}
-                </small>
-              </span>
-            </List.Item>
-          )}
-        />
-        <Flex gap={6} wrap="wrap">
-          <Tag color={active.rules.allowDeath ? 'success' : 'default'}>
-            死亡 {active.rules.allowDeath ? '开' : '关'}
-          </Tag>
-          <Tag color={active.rules.allowChat ? 'success' : 'default'}>
-            聊天 {active.rules.allowChat ? '开' : '关'}
-          </Tag>
-          <Tag color="default">倍率 {active.rules.initialTimeScale}x</Tag>
-        </Flex>
-      </Space>
-      <Modal
-        title="添加居民"
-        open={addOpen}
-        okText="入驻"
-        onCancel={() => setAddOpen(false)}
-        confirmLoading={addBusy}
-        onOk={() => void submitAdd()}
-      >
-        <Form form={addForm} layout="vertical" requiredMark={false}>
-          <Form.Item
-            name="name"
-            label="名字"
-            rules={[
-              { required: true, whitespace: true, message: '名字不能为空' },
-              { max: 20, message: '至多 20 字' },
-            ]}
-          >
-            <Input
-              maxLength={20}
-              placeholder="居民名"
-              suffix={
-                <Button
-                  size="small"
-                  type="link"
-                  onClick={() => addForm.setFieldValue('name', pickRandomName('unspecified'))}
-                >
-                  随机
-                </Button>
-              }
-            />
-          </Form.Item>
-          <Form.Item name="gender" label="性别" initialValue="unspecified">
-            <Select options={GENDERS.map((g) => ({ value: g, label: GENDER_LABELS[g] }))} />
-          </Form.Item>
-          <Form.Item name="persona" label="人设(预留)" >
-            <Input maxLength={100} placeholder="一句话人设,预留字段" />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </Card>
-  );
 }
 
 export function WorldPanel() {
