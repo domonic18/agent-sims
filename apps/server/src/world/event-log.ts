@@ -15,9 +15,12 @@ export function eventCharacterId(event: WorldEvent): string | null {
  * 世界事件落库订阅(M-G.1①):EventBus 承诺纯逻辑零 I/O,落库挂在宿主侧;
  * 串行异步链写入(事件高峰不并发挤爆连接),写失败仅记 console 不回灌世界。
  */
-export function attachWorldEventLog(handle: DbHandle, events: EventBus<WorldEvent>): void {
+export function attachWorldEventLog(
+  handle: DbHandle,
+  events: EventBus<WorldEvent>,
+): { dispose(): void } {
   let chain: Promise<void> = Promise.resolve();
-  events.subscribe((event) => {
+  const unsubscribe = events.subscribe((event) => {
     chain = chain
       .then(async () => {
         await handle.db.insert(worldEvents).values({
@@ -31,4 +34,5 @@ export function attachWorldEventLog(handle: DbHandle, events: EventBus<WorldEven
         console.error('[event-log] 世界事件落库失败', err);
       });
   });
+  return { dispose: unsubscribe };
 }

@@ -12,9 +12,12 @@ import type { EventBus } from './event-bus.js';
  */
 let tail: Promise<void> = Promise.resolve();
 
-export function attachWorldParamPersist(handle: DbHandle, events: EventBus<WorldEvent>): void {
+export function attachWorldParamPersist(
+  handle: DbHandle,
+  events: EventBus<WorldEvent>,
+): { dispose(): void } {
   let chain: Promise<void> = Promise.resolve();
-  events.subscribe((event) => {
+  const unsubscribe = events.subscribe((event) => {
     if (
       event.type !== 'world.params' &&
       event.type !== 'world.rules' &&
@@ -53,6 +56,7 @@ export function attachWorldParamPersist(handle: DbHandle, events: EventBus<World
       });
     tail = chain;
   });
+  return { dispose: unsubscribe };
 }
 
 /** 测试用:等待串行持久化链冲刷完毕 */
