@@ -1,7 +1,7 @@
 import { TOWN_MAP } from '@sims/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
-import { autonomy, innerState } from './cognition.js';
+import { autonomy, hosting, innerState } from './cognition.js';
 import type { DayIntents } from './cognition.js';
 import type { DbHandle } from '../db/client.js';
 import type { runIntent } from '../intents/execute.js';
@@ -194,6 +194,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
     innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
@@ -296,6 +297,7 @@ describe('AgentScheduler(D3 意图执行)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
     innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
@@ -321,10 +323,19 @@ describe('AgentScheduler(D3 意图执行)', () => {
   });
 
   it('slow 槽不可用→个性化回落 wants 照样驱动行动(消灭空转)', async () => {
+    // bias 钉死 study:回落按倾向分去随机化(否则随机挑中就地可开的活动会直接 start_activity)
+    hosting.set(CHAR_ID, {
+      mode: 'policy',
+      policyText: null,
+      compiled: {
+        focus: ['study'],
+        avoid: ['work', 'workout', 'stroll', 'socialize', 'explore', 'meal', 'rest'],
+      },
+    });
     const h = harness(0, char({})); // llm 未配置 chatStructured→composeIntents 回落
     await vi.advanceTimersByTimeAsync(2_000);
     expect(innerState.get(CHAR_ID)?.intents?.source).toBe('fallback');
-    expect(innerState.get(CHAR_ID)?.intents?.wants.length).toBeGreaterThanOrEqual(3);
+    expect(innerState.get(CHAR_ID)?.intents?.wants.map((w) => w.activityId)).toEqual(['study']);
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents.length).toBeGreaterThanOrEqual(1);
@@ -437,6 +448,7 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
     innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
@@ -591,6 +603,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
     innerState.clear(CHAR_ID);
     vi.useRealTimers();
   });
