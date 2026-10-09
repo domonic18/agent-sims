@@ -112,9 +112,13 @@ export function PixelAvatar({ characterId, size = 48 }: { characterId: string; s
     };
   }, [characterId]);
 
-  // 实测包围盒 ×2 整数放大居中;无实测(加载中/失败)先整格 1 倍居中兜底,测完再放大
+  // 实测包围盒 ×2 整数放大居中;无实测(加载中/失败)先整格 1 倍居中兜底,测完再放大。
+  // 平移量=格原点(行×格高)+格内 bbox,写在 scale 之前——写在后面会被放大且盖不掉行偏移
+  // (曾因此恒显示 walk 组背面行,错位恰被同布局首行「补位」而未察觉)
   const crop = bounds ?? { x: 0, y: 0, w: frame?.frameWidth ?? 32, h: frame?.frameHeight ?? 32 };
   const scale = bounds === null ? Math.max(1, Math.floor(size / crop.h)) : ART_SCALE;
+  const originX = (frame?.col ?? 0) * (frame?.frameWidth ?? 32) + crop.x;
+  const originY = (frame?.row ?? 0) * (frame?.frameHeight ?? 32) + crop.y;
   const drawW = crop.w * scale;
   const drawH = crop.h * scale;
   return (
@@ -124,9 +128,7 @@ export function PixelAvatar({ characterId, size = 48 }: { characterId: string; s
           src={frame.url}
           alt=""
           style={{
-            left: (size - drawW) / 2,
-            top: (size - drawH) / 2,
-            transform: `scale(${scale}) translate(${(-crop.x).toFixed(1)}px, ${(-crop.y).toFixed(1)}px)`,
+            transform: `translate(${((size - drawW) / 2 - originX * scale).toFixed(1)}px, ${((size - drawH) / 2 - originY * scale).toFixed(1)}px) scale(${scale})`,
             transformOrigin: 'top left',
             imageRendering: 'pixelated',
           }}

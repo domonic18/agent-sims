@@ -531,30 +531,40 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 44px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 8px;
   background: var(--px-navy);
   border: 2px solid var(--px-ink);
-  box-shadow: 0 3px 0 var(--px-ink);
+  box-shadow: 0 2px 0 var(--px-ink);
   color: var(--px-gold);
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
 /* 在线查看人数(直播访客数,presence 驱动): 同上等高框 */
+
 .hud-viewers {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 44px;
-  padding: 0 10px;
+  height: 32px;
+  padding: 0 8px;
   background: var(--px-navy);
   border: 2px solid var(--px-ink);
-  box-shadow: 0 3px 0 var(--px-ink);
+  box-shadow: 0 2px 0 var(--px-ink);
   color: var(--px-cyan);
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
 }
+
+/* 右上按钮轻量化(用户反馈 44px 方钮过大): 32px 小钮细阴影,与状态框同高 */
+.hud-topright .px-btn.big {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+  box-shadow: 0 2px 0 var(--px-ink);
+}
+
 
 /* 管理员登录弹窗(游戏端零依赖,像素风) */
 .login-overlay {

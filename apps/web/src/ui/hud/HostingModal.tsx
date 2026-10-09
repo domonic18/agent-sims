@@ -140,7 +140,7 @@ export function HostingModal({
           {hosted ? (
             <button
               type="button"
-              className="px-btn big"
+              className="px-btn go"
               disabled={busy}
               onClick={() => void submit(false)}
             >
@@ -149,7 +149,7 @@ export function HostingModal({
           ) : (
             <button
               type="button"
-              className="px-btn big"
+              className="px-btn go"
               disabled={busy || (mode === 'policy' && policyText.trim() === '')}
               onClick={() => void submit(true)}
             >
