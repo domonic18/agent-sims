@@ -37,6 +37,10 @@ export const hosting = {
   has(characterId: string): boolean {
     return hosted.has(characterId);
   },
+  /** 全量现状(连接期托管同步 world.hosting 用) */
+  entries(): Array<[string, HostingState]> {
+    return [...hosted.entries()];
+  },
 };
 
 /** 自治角色注册表(M4c 语义保留):=托管中的角色,泵只处理这些角色 */

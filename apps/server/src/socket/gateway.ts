@@ -6,6 +6,7 @@ import {
   type IntentAck,
   type SocketRole,
   type WorldEventMessage,
+  type WorldHostingMessage,
   type WorldPresenceMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
@@ -55,6 +56,14 @@ export function attachSocketGateway(
     const role = resolveSocketRole(socket.handshake.auth);
     clients.add({ socketId: socket.id, role, connectedAt: new Date().toISOString() });
     socket.emit(SOCKET_EVENTS.snapshot, sim.snapshot() satisfies WorldSnapshotMessage);
+    // 托管现状整表同步(M4e):hosting_changed 事件只保在线期间,重启恢复或
+    // 离线期间的托管变更不会重放——不发这条,新开页面徽标会全部显示「未托管」
+    socket.emit(
+      SOCKET_EVENTS.hostingSync,
+      {
+        entries: hosting.entries().map(([characterId, state]) => ({ characterId, mode: state.mode })),
+      } satisfies WorldHostingMessage,
+    );
     broadcastPresence();
     socket.on(CLIENT_EVENTS.intent, (payload: unknown, ack?: (response: IntentAck) => void) => {
       const reply = (response: IntentAck): boolean => (ack ? (ack(response), true) : false);

@@ -71,9 +71,11 @@ export interface WorldStore {
   /** 连续作业开关(M-G.5/M-G.6):key=characterId,开启后该角色空闲即自动接最近同岗单(含采集岗) */
   continuousWork: Record<string, WorkTaskId>;
   toggleContinuousWork: (characterId: string, task: WorkTaskId | null) => void;
-  /** 托管徽标视图(M4e):key=characterId→托管模式;hosting_changed 事件驱动 */
+  /** 托管徽标视图(M4e):key=characterId→托管模式;hosting_changed 事件驱动,
+   * world.hosting 连接期整表对齐 */
   hostingMap: Record<string, HostingMode>;
   applyHosting: (characterId: string, hosted: boolean, mode: HostingMode | null) => void;
+  applyHostingSync: (entries: Array<{ characterId: string; mode: HostingMode }>) => void;
   setStatus: (status: ConnectionStatus) => void;
   setMap: (map: TileMapDefinition) => void;
   applySnapshot: (snapshot: WorldSnapshotMessage) => void;
@@ -156,5 +158,9 @@ export const useWorldStore = create<WorldStore>((set) => ({
         hostingMap[characterId] = mode;
       }
       return { hostingMap };
+    }),
+  applyHostingSync: (entries) =>
+    set({
+      hostingMap: Object.fromEntries(entries.map((entry) => [entry.characterId, entry.mode])),
     }),
 }));

@@ -7,6 +7,7 @@ import {
   type IntentAck,
   type SocketRole,
   type WorldEventMessage,
+  type WorldHostingMessage,
   type WorldPresenceMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
@@ -23,6 +24,7 @@ const {
   applyRules,
   applyRecipes,
   applyHosting,
+  applyHostingSync,
   setViewers,
 } = useWorldStore.getState();
 
@@ -45,6 +47,9 @@ export function connectWorld(): Socket {
   socket.on('disconnect', () => setStatus('disconnected'));
   socket.on('connect_error', () => setStatus('disconnected'));
   socket.on(SOCKET_EVENTS.snapshot, (snapshot: WorldSnapshotMessage) => applySnapshot(snapshot));
+  socket.on(SOCKET_EVENTS.hostingSync, (message: WorldHostingMessage) =>
+    applyHostingSync(message.entries),
+  );
   socket.on(SOCKET_EVENTS.tick, (snapshot: WorldSnapshotMessage) => applySnapshot(snapshot));
   socket.on(SOCKET_EVENTS.presence, (message: WorldPresenceMessage) => setViewers(message.viewers));
   // Agent 决策气泡(M4c):进 Phaser 侧队列,不落 React store

@@ -20,6 +20,9 @@ export const SOCKET_EVENTS = {
   presence: 'world.presence',
   /** server→client Agent 自治决策气泡(M4c):意图+理由,头顶气泡渲染 */
   decision: 'agent.decision',
+  /** server→client 连接即发:托管现状整表(仅含托管中角色;hosting_changed 事件
+   * 只保在线期间,重启恢复/离线期间的变更靠此对齐,免逐角色选中兜底) */
+  hostingSync: 'world.hosting',
 } as const;
 
 export type SocketEventName = (typeof SOCKET_EVENTS)[keyof typeof SOCKET_EVENTS];
@@ -119,6 +122,11 @@ export interface WorldSnapshotMessage {
 /** world.event 消息封装:事件本体即 shared WorldEvent */
 export interface WorldEventMessage {
   event: WorldEvent;
+}
+
+/** world.hosting 消息(M4e):连接时托管现状整表;未托管角色不在 entries 里 */
+export interface WorldHostingMessage {
+  entries: Array<{ characterId: string; mode: 'full' | 'policy' }>;
 }
 
 /** 连接角色标志:spectator 只读(参观入口 M8,机制此处具备) */
