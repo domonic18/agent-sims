@@ -87,6 +87,9 @@ export function CharacterHud({
   const chip = activityChip(character);
   const housing = character.housing;
   const hostingMode = hostingMap[character.id] ?? null;
+  // 废弃 want 折叠为计数(驱力/事件 want 半衰期 churn 一天能刷出上百条,红墙曾淹没面板)
+  const wantDropped =
+    character.intents?.filter((want) => want.status === 'abandoned').length ?? 0;
 
   return (
     <aside className="px-box hud-character">
@@ -176,21 +179,28 @@ export function CharacterHud({
           )}
         </div>
 
-        {character.intents !== null && character.intents.length > 0 && (
+        {character.intents !== null && character.intents.length > wantDropped && (
           <div className="hud-char-wants">
             <span className="hud-wants-head">今天想做</span>
             <ul>
-              {character.intents.map((want) => (
-                <li key={`${want.activityId}-${want.why}`} className={`want ${want.status}`}>
-                  <i title={WANT_STATUS_TITLE[want.status]} />
-                  <span className="want-name">
-                    {getActivityDefinition(want.activityId)?.name ?? want.activityId}
-                  </span>
-                  <span className="want-why" title={want.why}>
-                    {want.why}
-                  </span>
+              {character.intents
+                .filter((want) => want.status !== 'abandoned')
+                .map((want) => (
+                  <li key={`${want.activityId}-${want.why}`} className={`want ${want.status}`}>
+                    <i title={WANT_STATUS_TITLE[want.status]} />
+                    <span className="want-name">
+                      {getActivityDefinition(want.activityId)?.name ?? want.activityId}
+                    </span>
+                    <span className="want-why" title={want.why}>
+                      {want.why}
+                    </span>
+                  </li>
+                ))}
+              {wantDropped > 0 && (
+                <li className="want dropped" title="已放弃的念头(含驱力/事件半衰期回收)不再逐条展示">
+                  ……另有 {wantDropped} 个念头已放弃
                 </li>
-              ))}
+              )}
             </ul>
           </div>
         )}

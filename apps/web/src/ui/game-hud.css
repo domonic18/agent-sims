@@ -213,6 +213,12 @@
   background: var(--px-green);
 }
 
+/* 废弃折叠行: 弱化计数,不逐条展示 */
+.hud-char-wants .want.dropped {
+  color: var(--px-dim);
+  font-size: 11px;
+}
+
 .hud-char-wants .want.abandoned i {
   background: var(--px-red);
 }
