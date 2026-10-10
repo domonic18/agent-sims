@@ -511,6 +511,24 @@ describe('AgentScheduler(D3 意图执行)', () => {
     expect(wants.find((w) => w.id === 'w0-work')?.status).toBe('doing');
     h.scheduler.dispose();
   });
+
+  it('doing want 过期同样回收: 半衰僵尸在契 want 不再永久占位(2026-10-10 苏晚案例)', async () => {
+    // 过期 doing want 会被过期过滤清出候选池并列入废弃名单;若 abandonWants 只清
+    // pending,它便不可见、不退位、还占死同活动去重名额。用 plan want 隔离
+    // (驱力 want 有压力缓解收口 done 的先行路径,轮不到过期回收)
+    const h = harness(600, char({ energy: 80 }));
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [
+        { id: 'w0-study', activityId: 'study', why: '得空继续攒学问', origin: 'plan', urgency: 0.5, status: 'doing', createdAtMin: 500, expiresAtMin: 599 },
+      ],
+    });
+    vi.advanceTimersByTime(2_000);
+    const wants = innerState.get(CHAR_ID)?.intents?.wants ?? [];
+    expect(wants[0]?.status).toBe('abandoned');
+    h.scheduler.dispose();
+  });
 });
 
 describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {

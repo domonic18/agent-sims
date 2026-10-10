@@ -14,6 +14,7 @@ import {
   type DrivePressure,
   type JevContext,
   type RuleWorldQueries,
+  type WantCandidateDebug,
   type WantWorldQueries,
 } from './fast-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
@@ -449,10 +450,28 @@ describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', 
       abandonedWantIds: ['w1-0'],
     });
 
-    // 基础块(stroll)体力闸放行
-    const strollDay = intents(1, [{ activityId: 'stroll', urgency: 0.9 }]);
-    const stroll = wantSelect(char({ energy: 10 }), strollDay, 1, TOWN_MAP, anchorsOf);
-    expect(stroll!.action).toBe('react');
+    // 闲逛不是生存活动(2026-10-10 老周案例:在位闲逛压过进食驱力直到饿死):
+    // 体力危急时 stroll 被闸外,eat 驱力夺回决策槽
+    const strollDay = intents(1, [
+      { activityId: 'stroll', urgency: 0.5, status: 'doing' },
+      { activityId: 'eat', urgency: 0.9, origin: 'drive', why: '体力低了,得吃点东西' },
+    ]);
+    const debug: { candidates: WantCandidateDebug[] } = { candidates: [] };
+    const starved = wantSelect(
+      char({ energy: 10 }),
+      strollDay,
+      1,
+      TOWN_MAP,
+      anchorsOf,
+      { stroll: 1 },
+      {},
+      debug,
+    );
+    expect(starved!.wantId).toBe('w1-1'); // eat 驱力胜出
+    expect(debug.candidates.find((c) => c.activityId === 'stroll')).toMatchObject({
+      score: 0,
+      reject: 'energy',
+    });
   });
 
   it('数值需求增益:缺钱时 work 压过同 urgency 的 stroll', () => {

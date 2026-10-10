@@ -44,8 +44,10 @@ export type ActivityId = (typeof ACTIVITY_IDS)[number];
 /**
  * 基础活动集合(M3.6f 体力区段):低体力(≤阈值)时仅可执行,
  * 高强度活动(学习/打工/健身)被拒绝。
+ * 闲逛不是生存活动(2026-10-10 观测镇老周案例:饿着肚子在位闲逛到倒地)——
+ * 体力危急时必须给 eat/sleep 驱力让位,故不列入。
  */
-export const BASIC_ACTIVITY_IDS = ['rest', 'sleep', 'stroll', 'meal'] as const;
+export const BASIC_ACTIVITY_IDS = ['rest', 'sleep', 'meal'] as const;
 
 export interface ActivityEffects {
   energy: number;

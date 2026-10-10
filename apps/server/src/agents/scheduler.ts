@@ -936,13 +936,15 @@ export class AgentScheduler {
     if (changed) persistInnerState(this.deps.handle, characterId);
   }
 
-  /** want 当场废弃落库(fast 层判不可执行:无居所 rest/无锚点无场所/驱力通道消失) */
+  /** want 当场废弃落库(fast 层判不可执行:无居所 rest/无锚点无场所/驱力通道消失;
+   * doing 也要收——过期半衰/寻址目标亡故发生在位者身上时,若只清 pending,
+   * 僵尸在契 want 永不可见也永不退位,还占死同活动去重名额(2026-10-10 苏晚案例) */
   private abandonWants(characterId: string, wantIds: readonly string[]): void {
     const intents = innerState.get(characterId)?.intents;
     if (intents === undefined || intents === null) return;
     let changed = false;
     for (const w of intents.wants) {
-      if (wantIds.includes(w.id) && w.status === 'pending') {
+      if (wantIds.includes(w.id) && (w.status === 'pending' || w.status === 'doing')) {
         w.status = 'abandoned';
         changed = true;
       }
