@@ -781,6 +781,19 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
     expect(ready!.chatWith).toBe('npc-9');
   });
 
+  it('对方在途(走路中): continue 等静置再开口,不点火不寻人', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
+    ]);
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛', onPath: true } : null),
+    });
+    expect(decision!.action).toBe('continue');
+    expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.chatWith).toBeUndefined();
+    expect(decision!.intent).toBeUndefined();
+  });
+
   it('对方不在(下线/亡故): continue 跳过且 want 废弃', () => {
     const day = intents(1, [
       { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'ghost' },

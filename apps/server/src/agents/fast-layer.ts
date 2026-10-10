@@ -680,6 +680,11 @@ export function wantSelect(
         bubble: `${picked.why},去找${pos.name}`,
       };
     }
+    // 贴身:目标在途不点火(E6 产线观察补)——走路中的人转眼就走远,
+    // 等对方静置再开口,want 留 pending 零成本等待
+    if (pos.onPath === true) {
+      return { layer: 'plan', action: 'continue', wantId: picked.id, ...extra };
+    }
     // 贴身:短冷却口径(E6 产线观察补)——落地聊天/走散降级都先簿记,
     // 簿记未出短窗(生成在途或刚走散)本轮不重入聊天,want 留待下轮再评
     const lastChatAt =
@@ -821,8 +826,9 @@ export interface WantWorldQueries {
   nearestNode?: (kind: string, from: { x: number; y: number }) => { id: string; x: number; y: number } | null;
   /** 配方就绪(存在+启用+背包含料;缺省按 shared 源表验料,不查每世界启用位) */
   recipeReady?: (recipeId: string) => boolean;
-  /** 存活角色位置(E2 人指向社交寻人;null=不存在/已亡故,want 跳过) */
-  positionOf?: (characterId: string) => { x: number; y: number; name: string } | null;
+  /** 存活角色位置(E2 人指向社交寻人;null=不存在/已亡故,want 跳过;
+   * onPath=对方正在走路——开口前对方须静置,否则生成窗口里必然走散空烧模型) */
+  positionOf?: (characterId: string) => { x: number; y: number; name: string; onPath?: boolean } | null;
   /** 当前游戏分钟(E6):冲动 want 半衰期(expiresAtMin)判定 */
   nowMin?: number;
   /** 我→TA 最近一次主动社交簿记时刻(E6:贴身 chatWith 的短冷却口径——

@@ -211,7 +211,7 @@ export class AgentScheduler {
         const target = sim.characters.get(id);
         return target === undefined || !target.alive
           ? null
-          : { x: target.x, y: target.y, name: target.name };
+          : { x: target.x, y: target.y, name: target.name, onPath: target.path.length > 0 };
       },
       nowMin: sim.clock.gameMinutes,
       pairLastChatAt: (aId, bId) => this.socialLoop.lastChatAtBetween(aId, bId),
