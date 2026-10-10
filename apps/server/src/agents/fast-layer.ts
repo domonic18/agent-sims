@@ -772,7 +772,22 @@ export function wantSelect(
         (0.95 + Math.random() * 0.1),
     }))
     .sort((a, b) => b.score - a.score);
-  const picked = scored[0]!.want;
+  // 执行契约(E6.3): 曾被选中(doing)=在契——空闲重评走「挑战者 vs 在位者」,
+  // 挑战者须显著更高分(WANT_SEIZE_RATIO)才许插队,否则在契者免评续做(从当前
+  // 进度重放执行分支,已走近则重新寻路更短,进度天然保留)。无记忆每拍贪心在
+  // urgency 密集池里每拍换王,复合行为(寻人会合/采集→制作→出售)被逐拍拆散;
+  // 契约把调度升级为带抢占阈值的优先级调度——抢占仍纯评分裁决(E6 哲学),只是
+  // 把「更高分」从隐含 1.01 倍显式为比例阈值。doing 多条并存=历次插队残留,
+  // 在契集中评分最高者为在位者;死契由上方过期/失效过滤清出,不占坑。
+  const incumbent = scored.find((s) => s.want.status === 'doing');
+  let picked = scored[0]!.want;
+  if (
+    incumbent !== undefined &&
+    incumbent !== scored[0] &&
+    scored[0]!.score <= incumbent.score * BALANCE.WANT_SEIZE_RATIO
+  ) {
+    picked = incumbent.want;
+  }
   // 驱力 want 执行(E6.2):「怎么做」归专属分支——压力已过收口 done,通道消失
   // 废弃改道(写侧巡检重评),其余两段式动作;want 生命周期与其他来源同轨
   if (picked.origin === 'drive' && isDriveActivity(picked.activityId)) {

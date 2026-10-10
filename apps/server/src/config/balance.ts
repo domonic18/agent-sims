@@ -154,6 +154,10 @@ export interface BalanceConfig {
   WANT_WORK_COIN_SATIETY: number;
   WANT_TIRED_ENERGY: number;
   WANT_KNOWLEDGE_LOW: number;
+  /** 执行契约(E6.3):曾被选中(doing)=在契,空闲重评走「挑战者 vs 在位者」——挑战者
+   * 评分须达在位者×此比例才许插队,否则在契者免评续做;抢占仍纯评分裁决(E6 哲学),
+   * 只是把「更高分」从隐含 1.01 倍显式为比例阈值 */
+  WANT_SEIZE_RATIO: number;
   /** 困倦压力(D3,纯数值替代 planNight 时间表):夜间/白天开始犯困的体力线,越困越想睡 */
   SLEEPY_NIGHT_ENERGY: number;
   SLEEPY_DAY_ENERGY: number;
@@ -278,6 +282,7 @@ export const BALANCE: BalanceConfig = {
   WANT_WORK_COIN_SATIETY: 150,
   WANT_TIRED_ENERGY: 50,
   WANT_KNOWLEDGE_LOW: 30,
+  WANT_SEIZE_RATIO: 1.4,
   SLEEPY_NIGHT_ENERGY: 60,
   SLEEPY_DAY_ENERGY: 25,
   RETROSPECT_MAX_PER_DAY: 4,

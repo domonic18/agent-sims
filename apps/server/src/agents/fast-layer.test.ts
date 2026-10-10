@@ -69,6 +69,7 @@ function intents(day: number, wants: Array<Partial<DayIntents['wants'][number]> 
       status: w.status ?? 'pending',
       createdAtMin: w.createdAtMin ?? 480,
       ...(w.targetCharacterId !== undefined ? { targetCharacterId: w.targetCharacterId } : {}),
+      ...(w.expiresAtMin !== undefined ? { expiresAtMin: w.expiresAtMin } : {}),
     })),
   };
 }
@@ -831,6 +832,73 @@ describe('wantSelect 驱力分支(E6.2 rule→驱力,伪活动 id 专属执行)'
     const odd = wantSelect(char({ energy: 80 }), alien, 1, TOWN_MAP, noAnchors);
     expect(odd!.action).toBe('continue');
     expect(odd!.abandonedWantIds).toEqual(['w1-0']);
+  });
+});
+
+describe('wantSelect 执行契约(E6.3: 在契免评续做+显式抢占)', () => {
+  const studyAnchors = [{ x: 11, y: 12 }];
+  const anchorsOf = (activityId: string): Array<{ x: number; y: number }> =>
+    activityId === 'study' ? studyAnchors : [];
+
+  it('在契(doing)免评续做:挑战者小幅领先不换王,复合行为不被逐拍拆散', () => {
+    // 最坏情况仍确定: 挑战者 max 0.6×1.05=0.63 < 在契 min 0.5×0.95×1.4=0.665
+    const day = intents(1, [
+      { activityId: 'study', urgency: 0.5, why: '想学新东西', status: 'doing' },
+      { activityId: 'stroll', urgency: 0.6, why: '透透气' },
+    ]);
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf);
+    expect(decision!.action).toBe('react');
+    expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 11, y: 12 });
+  });
+
+  it('显式抢占:挑战者显著更高分(×WANT_SEIZE_RATIO)才许插队', () => {
+    // 挑战者 min 0.9×0.95=0.855 > 在契 max 0.4×1.05×1.4=0.588,恒抢占
+    const day = intents(1, [
+      { activityId: 'study', urgency: 0.4, status: 'doing' },
+      { activityId: 'stroll', urgency: 0.9, why: '急着想出去' },
+    ]);
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf);
+    expect(decision!.action).toBe('react');
+    expect(decision!.wantId).toBe('w1-1');
+  });
+
+  it('救援可打断低分在契(契约不挡救急)', () => {
+    // 挑战者 min 0.85×0.95=0.8075 > 在契 max 0.45×1.05×1.4=0.6615
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.45, status: 'doing', targetCharacterId: 'npc-2' },
+      { activityId: 'rescue', urgency: 0.85, origin: 'event', why: '过去看看苏晚', targetCharacterId: 'npc-9' },
+    ]);
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf, {}, {
+      posOfAny: () => ({ x: 20, y: 20, name: '苏晚', alive: false }),
+    });
+    expect(decision!.action).toBe('react');
+    expect(decision!.wantId).toBe('w1-1');
+  });
+
+  it('多条 doing 并存=历次插队残留,在契集内最高分者续做', () => {
+    // 挑战者 max 0.55×1.05=0.5775 < 在契最高 min 0.5×0.95×1.4=0.665
+    const day = intents(1, [
+      { activityId: 'study', urgency: 0.5, why: '想学新东西', status: 'doing' },
+      { activityId: 'stroll', urgency: 0.3, status: 'doing' },
+      { activityId: 'rest', urgency: 0.55, why: '歇会儿' },
+    ]);
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf);
+    expect(decision!.wantId).toBe('w1-0');
+  });
+
+  it('在契过期即出契:TTL 到点照旧废弃,契约不留陈年旧念', () => {
+    const day = intents(1, [
+      {
+        activityId: 'study', urgency: 0.9, status: 'doing',
+        expiresAtMin: 480, createdAtMin: 400,
+      },
+      { activityId: 'stroll', urgency: 0.3, why: '透透气' },
+    ]);
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf, {}, { nowMin: 600 });
+    expect(decision!.action).toBe('react');
+    expect(decision!.wantId).toBe('w1-1');
+    expect(decision!.abandonedWantIds).toEqual(['w1-0']);
   });
 });
 
