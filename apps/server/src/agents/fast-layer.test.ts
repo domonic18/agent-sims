@@ -204,6 +204,10 @@ describe('driveSatisfied(驱力收口口径)', () => {
     expect(driveSatisfied(char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY + 1 }), 'sleep', NIGHT)).toBe(true);
     expect(driveSatisfied(char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY }), 'sleep', NIGHT)).toBe(false);
   });
+  it('非驱力词汇活动 id(socialize 等)不属驱力收口范畴——恒 false,防一拍吞 want', () => {
+    expect(driveSatisfied(char({ energy: 100, coins: 999 }), 'socialize', NOON)).toBe(false);
+    expect(driveSatisfied(char({ energy: 100, coins: 999 }), 'stroll', NOON)).toBe(false);
+  });
 });
 
 describe('jevDecide(systemone choice 候选选一)', () => {

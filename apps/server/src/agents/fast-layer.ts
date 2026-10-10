@@ -199,7 +199,11 @@ export function driveSatisfied(
       return char.energy > (night ? BALANCE.SLEEPY_NIGHT_ENERGY : BALANCE.SLEEPY_DAY_ENERGY);
     }
     default:
-      return true;
+      // 非驱力词汇活动 id(socialize 等真实活动)不属驱力收口范畴——曾有
+      // default:true 把 idleSocialStep 点火的 drive 源社交 want 在写入后一个
+      // fast 步就结算 done,聊天执行链永远拿不到它(对话结构性零落地),
+      // hasSocialWant 去重随之失效变 2 秒点火循环;其终裁归 social.chat/寻人失败
+      return false;
   }
 }
 
