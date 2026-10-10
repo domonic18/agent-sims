@@ -104,3 +104,29 @@ D 系列长跑暴露社交管线三泄漏(colocated 口径与 chat 校验不一�
 ### 9.5 参数放宽(E2,数值权威 numerical-design §6.5)
 
 `SOCIAL_DESIRE_FIRE` 0.45→0.35、`SOCIAL_PAIR_COOLDOWN_MINUTES` 60→30、`SOCIAL_DAILY_INITIATE_CAP` 6→8、共处加成 0.2→0.3;新增 `SOCIAL_RETRY_COOLDOWN_MINUTES`=10、`CHAT_MAX_ROUNDS`=4。
+
+## 10. 两阶段会合协议(E6.2-S1,2026-10-10 落地)
+
+E6.1 产线观察(2026-10-10,2h trace): 聊天生成被丢弃 133 次/2h(62%),烧掉 62% 的 dialogue prompt token(≈23 万/2h)——根因是「先烧模型、后会合」的顺序倒挂: 动机点火即发起完整生成,生成期间任一方移动即走散,已烧的台词全部作废。修法是把会合**前移到生成之前**,拆成三拍,只有第三拍烧模型:
+
+### 10.1 三拍
+
+1. **召唤(零模型)**: wantSelect socialize 分支判贴身可聊,但执行时无会合(对方没在等我)→ 不生成,改为——给对方写一条 **event want**(origin=event,urgency=`SOCIAL_SUMMON_URGENCY`=0.9 赴约档,`SOCIAL_SUMMON_TTL_MINUTES`=90 半衰;E6 统一意图架构下 event 是合法 want 来源,这是 event→want 通道的首个消费者)+ 建会合台账(rendezvous),即返回。
+2. **应答(agent 自裁)**: 对方的 wantSelect 评分自然竞争——召唤 want(0.9 赴约档)通常胜出;被更高分让位即婉拒,TTL 到期自然过期。召唤方在台账在册期间对目标 `executeWants(target)` 即时 kick,贴身且空闲即应答,不等对方空闲管线节拍。
+3. **生成(唯一烧模型口)**: 双方就位(贴身 + 对方静置)才进 `runChatGeneration`。原先「生成后」的距离复查前移为「生成前」校验——走散空烧通道闭合。**应答方成为生成执行者**(chat 意图/气泡/lines/印象归应答方名下),主动社交记账(日计数+冷却)归发起方。
+
+### 10.2 门控与护栏(wantSelect socialize 贴身分支,顺序判定)
+
+- `chatGeneratingWith`: 该对生成在途 → 原地静候(对级 Set 护栏);
+- `summonAwaiting`: 我召唤的对方尚未应答 → 不重复点火、不代答(台账去重);
+- `pairLastChatAt` 短冷却: 簿记后 `SOCIAL_RETRY_COOLDOWN_MINUTES` 内不重开;
+- **onPath 门控退役**: 「对方在途不点火」(E6.1 补丁 89c374c)撤销——走路中正是被召唤的好时机,召唤成本为零模型,应答由对方自己裁决。角色级生成护栏(一人同时只进一场,防三方对撞双烧)保留。
+- **会合挂起**: 召唤后对方仍忙(非轻活动)→ 发起方 want 留 doing 原地静候(trace 采样),不空转不生成。
+- **rendezvousSweep**: 15 游戏分一拍,`SOCIAL_SUMMON_GIVE_UP_MINUTES`=120 未会合 → 发起方 want 标 abandoned + 台账散场,零 token;替换旧「走散 walkedAway 降级短窗冷却」语义(§9.1 走散不罚的簿记保留用于真实走散残余场景)。
+- **召唤不簿记**: 写召唤不写 pairLastChatAt(否则短冷却会挡住应答方即时 commit)。
+
+### 10.3 参数与配套修复
+
+- 新参数(数值权威随 numerical-design 落值): `SOCIAL_SUMMON_URGENCY`=0.9、`SOCIAL_SUMMON_TTL_MINUTES`=90、`SOCIAL_SUMMON_GIVE_UP_MINUTES`=120。
+- **bookSocial pair 修复**(双代理测试暴露的生产 bug): 应答方执行生成时冷却被记到 self-pair(`initiatorId|initiatorId`),同对冷却永不生效 → settle 后动机引擎无限重烧。修法: 记账按发起方视角取同伴。
+- 双代理对等语义: 双方都有动机引擎,互相召唤/反向寻人/在各自日预算内发起是合法生产行为,观察口径按发起方过滤。
