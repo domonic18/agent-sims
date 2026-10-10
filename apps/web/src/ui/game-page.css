@@ -1,7 +1,6 @@
 /* 游戏主界面(UI-1): 全屏画布打底,像素 HUD 悬浮——左上角色/顶中时钟/右上按钮/底部动作条。
- * HUD/对话记录/日志抽屉三域样式拆分件按原级联顺序在此汇入,页面骨架与弹窗样式留本文件 */
+ * HUD/日志抽屉两域样式拆分件按原级联顺序在此汇入,页面骨架与弹窗样式留本文件 */
 @import './game-hud.css';
-@import './game-chat-log.css';
 @import './game-log-drawer.css';
 
 .game-page {

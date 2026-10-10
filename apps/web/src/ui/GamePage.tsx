@@ -15,7 +15,6 @@ import { MemoryModal } from './hud/MemoryModal';
 import { ActionBar } from './hud/ActionBar';
 import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
-import { ChatLog } from './hud/ChatLog';
 import { BootScreen } from './BootScreen';
 import { useGoAndDo } from './side-panel/useGoAndDo';
 import { useCharacterLookup } from './hud/useCharacterLookup';
@@ -329,7 +328,6 @@ export default function GamePage() {
         }}
       />
 
-      <ChatLog />
 
       {uiMeta?.showModels === true &&
         (uiMeta.slowModel !== null || uiMeta.lightModel !== null || uiMeta.jevModel !== null) && (
