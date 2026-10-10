@@ -301,6 +301,7 @@ export function parseIntents(
     wants.push({
       id: `w${day}-${wants.length}`,
       activityId: activity,
+      origin: 'plan',
       why,
       urgency: Math.min(1, Math.max(0, urgency)),
       status: 'pending',
@@ -350,6 +351,7 @@ export function fallbackIntents(day: number, nowMin: number, bias: Readonly<Reco
     return {
       id: `w${day}-f${i}`,
       activityId: c.id,
+      origin: 'plan' as const,
       why: whys[Math.floor(Math.random() * whys.length)]!,
       urgency: Math.round(Math.min(0.9, Math.max(0.2, 0.4 + c.score * 0.3)) * 100) / 100,
       status: 'pending' as const,

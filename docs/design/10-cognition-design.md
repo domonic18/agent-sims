@@ -178,6 +178,16 @@ character_impressions: id, character_id(FK), about_id(FK characters),
 
 唯一新增的 LLM 调用=§7.1 ⑤中断评估(systemOne,预算护栏内 ≤4 次/角色/日);其余全部是规则与既有调用的 prompt 改造——成本分级原则(01 §1.3)不破。
 
+### 7.5 统一意图架构修订(E6,2026-10-10 定稿)
+
+C/D 系列落地后系统长出**五种行为来源**(slow wants/jev/社交动机引擎/rule/triage respond),其中四种绕过意图存储直接执行——症状一致: 到达即死(E5 验收 stroll=0、sell 死在门口、走近朋友被截断的共同根因)、trace 只剩一行 react 不可审计、被 want 层截胡。E6 统一为「双系统产欲、单通道执行」,总设计见 01-agent-design §3.3;对本节各段的修订:
+
+- **§7.1 修订(E6.2 生效)**: ④处置的 respond/assess 产物从「注册表动作直执」改为「**冲动 want**」(origin=event,高 urgency,带 expiresAtMin——defer 队列溶解为冲动消退);抢占由评分裁决(冲动 urgency vs doing want),活动容忍度门照旧为硬闸;⑤中断评估照旧,其 respond 答案=写冲动 want 而非直接执行。响应注册表保留,产出从 intent 改为「事件语义→冲动 want」映射(救人→rescue want,urgency 由好感加权)。②强度门由静态表(EVENT_STRENGTH)升级为预算内 jev score 评价,静态表降级为预算外/低冲击兜底
+- **§7.2 修订(E6.1 生效)**: 动机引擎归入 want 通路——「动机」段降为驱力生成器(欲望分→socialize want,urgency 映射,封顶剔除/冷却/日预算照旧在动机段把门),「触发」段 jev 池候选照旧但产物=冲动 want,「执行」段由 wantSelect socialize 分支承担(远处 move_to 两段式走到身边,贴身触发 light 台词双调用);**共处破冰(acquaintanceStep)属感知/数值通道,不属决策层,保持不动**。「想不想聊天由规则引擎回答,不问模型」红线不变——动机只产欲望分,LLM 不参与点火判定
+- **§4.4 修订(E6.2 生效)**: mood 冲量来源由「规则映射」升级为**评价式**(预算内 jev score 题:「这件事对你来说多糟/多好」),同一事件因人(印象/记忆)因状态(valence/数值)冲击分化——评价理论(OCC/EMA)的 jev 化,memory importance 打分(memory-writer.ts)已是同款先例;规则映射表降级为预算外/低冲击兜底
+- **习惯化(S2→S1 下沉)与内在言语**列为观察项:E6.2 长跑数据说话后再决定,当前不排期(防过度设计)
+- **成本红线不变**: 新增评估调用全部在预算护栏内;E6.1 零新增 LLM 调用
+
 ## 8. 验收标准: 行为对照实验
 
 营销指标退役。C 系列各步验收以下列为准(全部经 trace/面板可取证):
@@ -221,11 +231,14 @@ character_impressions: id, character_id(FK), about_id(FK characters),
 | 01-agent-design §4.3/§4.6 | 决策周期增事件分级与中断评估节(引用本文 §7.1);忙守卫语义修订(忙碌≠零反应) | C3 |
 | 01-agent-design §6 | 「邻近+动机→chat」标注为本文 §7.2 通路的执行段,补动机引擎与固化回路 | C4 |
 | development plan | C 系列重排为 C1~C5(C3 事件响应/C4 社交闭环);NPC(M6) 延后注记;M5 完成标记保留 | 随本文 v2 |
+| 01-agent-design §3.3/§4.3/§4.6/§6 | 统一意图架构重写(生成器只写不执行/Want.origin/jeev=System 1 通道/社交动机归入 want 通路);引用本文 §7.5 | E6 定稿随更 |
+| 03-social-design §8 | 共处破冰保持感知通道注记+动机归入 want 通路指针 | E6.1 |
 
 ## 变更记录
 
 | 日期 | 内容 |
 |---|---|
+| 2026-10-10 | E6 统一意图架构定稿(新增 §7.5): C/D 系列后五种行为来源四种绕过意图存储直执(E5 验收 stroll=0/sell 死在门口/走近被截断的共因),统一为「双系统产欲、单通道执行」——§7.1 respond/assess 改冲动 want+评分抢占(E6.2)、强度门升级评价式;§7.2 动机引擎归入 want 通路: 欲望分→socialize want,执行归 wantSelect socialize 分支(远处两段式/贴身 light 台词),破冰留感知侧,「不问模型」红线不变(E6.1);§4.4 mood 冲量评价化(E6.2,规则表兜底);习惯化/内在言语列观察项;成本红线不变,E6.1 零新增调用;总设计权威在 01-agent-design §3.3 |
 | 2026-10-09 | D 系列运行机制深度重构随更: §7.2 计划词汇表段注记 DayPlan 已由弹性意图 wants 替代(D3),socialize 语义保留、载体变更;动机段前置缺口补记——初识者 familiarity=0 冷启动死锁由共处破冰通道解(D1: acquaintanceStep 共处计时→阈值建交+first.met,SOCIAL_DESIRE_FIRE 0.7→0.45),见 03-social-design §8;另 D4 记忆评价化后 §7.3 消费点总表中「日计划」行改读「意图生成+评价引擎产物」(evidence query 动态化: focus+昨日 wants 替代固定串) |
 | 2026-10-09 | C5 落地(§4.3/§6/§9 收官): narrator.ts 事件订阅——settled/debt 每日恰一互斥事件为周级锚(7 游戏日),里程碑三键 first_rescued/first_friend/sleep_debt_3(台账去重,不受周级闸),二选一先到修订;初始叙事双轨(bio 兜底 v1 不烧模型+面板 light 槽生成草稿,§6 访谈方案相应修订);防漂移三闸落全(prompt 明令微调+版本链环形 10+无素材不修订),每次修订写「我对自己的看法变了」insight(里程碑带起因);消费端 loadPersonaContext 叙事顶替 bio(日计划/对话自动受益);persona GET/PUT/narrative/generate 三端点+lab 面板叙事块与演化史;零 DB 迁移(persona jsonb 扩展 selfNarrative/narrativeHistory/milestones/sleepDebtCount) |
 | 2026-10-08 | 初稿: 用户定性 M5 梦境现行实现为营销手段,从「agent 逐步形成人格/有感受/过往影响行为」出发点系统性重评——现状六缺口盘点(无认知沉淀/人格静态/关系标量化/接线单一/情绪数值化)、认知分层梯子目标架构(L0~L4+L5 横切)、数据形态(insight 复用+溯源/impressions 表/selfNarrative 版本链/mood 脑状态)、固化管线 v2(睡眠=爬梯工厂,一次慢调用产 dreams+insights+relations)、决策接线(prompt 证据+规则调权,零新增调用)、验收换轨行为对照实验(分化/一致/演化/恢复/情绪可见)、C1~C4 串行路线 |

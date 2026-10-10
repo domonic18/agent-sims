@@ -50,11 +50,11 @@ interface Harness {
 }
 
 /** 相关叙事事件(self 视角强度 4,空闲即放行既有管线)——C3 起 world.reset 等管理面事件不进分级 */
-function chatEvent(tick: number): WorldEvent {
+function chatEvent(tick: number, toId = 'npc-1'): WorldEvent {
   return {
     type: 'social.chat',
     fromId: CHAR_ID,
-    toId: 'npc-1',
+    toId,
     tick,
     content: '你好',
     affinityDelta: 0,
@@ -260,6 +260,7 @@ describe('AgentScheduler(M4c 认知泵)', () => {
       { type: 'move_to', characterId: CHAR_ID, x: park.entrance.x, y: park.entrance.y },
     ]);
     expect(h.bubbles[0]!.text).toContain('公园');
+    innerState.get(CHAR_ID)!.intents!.wants[0]!.status = 'done'; // 桩无 activity.finished,手动结算冲动 want
     // 冷却内再来事件:静默(不再调 jev、不再产意图)
     h.clock.gameMinutes += JEV_COOLDOWN_MINUTES - 1;
     h.onEvent(chatEvent(2));
@@ -389,7 +390,7 @@ describe('AgentScheduler(D3 意图执行)', () => {
     innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      wants: [{ id: 'w0-0', activityId: 'rest', why: '累了', urgency: 0.9, status: 'pending', createdAtMin: 480 }],
+      wants: [{ id: 'w0-0', activityId: 'rest', why: '累了', origin: 'plan', urgency: 0.9, status: 'pending', createdAtMin: 480 }],
     });
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 跨出首巡检块
     await vi.advanceTimersByTimeAsync(2_000);
@@ -404,7 +405,7 @@ describe('AgentScheduler(D3 意图执行)', () => {
     innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      wants: [{ id: 'w0-0', activityId: 'meal', why: '馋了', urgency: 0.8, status: 'doing', createdAtMin: 480 }],
+      wants: [{ id: 'w0-0', activityId: 'meal', why: '馋了', origin: 'plan', urgency: 0.8, status: 'doing', createdAtMin: 480 }],
     });
     h.onEvent(finishedEvent(500, 'meal', 'completed'));
     expect(intentsOf().wants[0]!.status).toBe('done');
@@ -493,7 +494,7 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
+      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
     });
     h.onEvent(diedEvent(480));
     await vi.advanceTimersByTimeAsync(0);
@@ -536,7 +537,7 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
+      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
     });
     h.onEvent(diedEvent(480));
     await vi.advanceTimersByTimeAsync(0);
@@ -674,12 +675,17 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     expect(intent?.targetId).toBe('other-1');
     expect(intent?.lines![0]).toBe('今天天气真好呀'); // 发起者先说
     expect(intent?.lines).toHaveLength(2); // 终止后听者句模板保底
-    expect(h.bubbles[0]?.text).toContain('想找苏晚聊聊天');
+    expect(h.bubbles[0]?.text).toContain('苏晚'); // 聊天落地气泡(和苏晚聊聊天)
+    const wantTrace = h.traceRows.find(
+      (r) => (r.decision as { intent?: string }).intent === 'want:socialize',
+    );
+    expect(wantTrace).toBeDefined(); // E6: 动机先写驱力 want,不直执
     const react = h.traceRows.find(
-      (r) => (r.perception as { motive?: string }).motive === 'social',
+      (r) =>
+        (r.perception as { motive?: string; llm?: boolean }).motive === 'social' &&
+        (r.perception as { llm?: boolean }).llm === true,
     );
     expect(react).toBeDefined();
-    expect((react!.perception as { llm?: boolean }).llm).toBe(true);
     expect((react!.decision as { layer: string }).layer).toBe('rule');
     h.scheduler.dispose();
   });
@@ -696,8 +702,13 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     expect(intent?.lines).toHaveLength(2);
     expect(intent?.lines![0]).toBeTruthy();
     expect(intent?.lines![1]).toBeTruthy();
-    expect((h.traceRows.find((r) => (r.perception as { motive?: string }).motive === 'social')!
-      .perception as { llm?: boolean }).llm).toBe(false);
+    expect(
+      (h.traceRows.find(
+        (r) =>
+          (r.perception as { motive?: string; llm?: boolean }).motive === 'social' &&
+          (r.perception as { llm?: boolean }).llm === false,
+      )!.perception as { llm?: boolean }).llm,
+    ).toBe(false);
     h.scheduler.dispose();
   });
 
@@ -709,6 +720,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
+    h.onEvent(chatEvent(1, 'other-1')); // social.chat 回执结算 doing want(桩不发事件,手动补)
     h.clock.gameMinutes += 15;
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1); // 冷却中
@@ -727,6 +739,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     for (let i = 0; i < 9; i += 1) {
       if (i > 0) h.clock.gameMinutes += 60; // 跨出同对冷却
       await vi.advanceTimersByTimeAsync(2_000);
+      h.onEvent(chatEvent(10 + i, 'other-1')); // 结算本轮 doing want
     }
     expect(h.intents).toHaveLength(8);
     h.scheduler.dispose();
@@ -752,7 +765,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     h.scheduler.dispose();
   });
 
-  it('生成期间走散: 对方被拽远后放弃本轮,不产意图', async () => {
+  it('走散两段式(E6): 对方被拽远,冷却过再点火写寻人 want→move_to 寻人,不隔空聊天', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
@@ -760,15 +773,17 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     withEmptyIntents();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
+    h.onEvent(chatEvent(1, 'other-1')); // 结算首轮 doing want
     h.clock.gameMinutes += 60;
-    // 第二轮点火前把对方挪远(模拟生成期间走散后的下一轮:直接距离判定不点火)
+    // 对方被拽远:动机仍会再点火(E6 驱力),执行走两段式寻人而非隔空聊天
     const other = char({ id: 'other-1', name: '苏晚', x: 60, y: 60 });
     (h.scheduler as unknown as { deps: { sim: { characters: Map<string, WorldCharacter> } } }).deps.sim.characters.set(
       'other-1',
       other,
     );
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(1);
+    expect(h.intents).toHaveLength(2);
+    expect(h.intents[1]).toEqual({ type: 'move_to', characterId: CHAR_ID, x: 60, y: 60 });
     h.scheduler.dispose();
   });
 });
@@ -792,7 +807,7 @@ describe('AgentScheduler(E2 人指向社交 want)', () => {
       day: 0,
       source: 'llm',
       wants: [
-        { id: 'w0', activityId: 'socialize', targetCharacterId: 'npc-1', why: '找铁牛聊聊', urgency: 0.9, status: 'pending', createdAtMin: 0 },
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'npc-1', why: '找铁牛聊聊', urgency: 0.9, status: 'pending', createdAtMin: 0 },
       ],
     });
     h.onEvent(chatEvent(1)); // self 强度4→idle 管线→wantSelect 寻人

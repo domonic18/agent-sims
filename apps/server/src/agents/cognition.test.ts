@@ -53,11 +53,37 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
     innerState.setIntents('char-1', {
       day: 3,
       source: 'llm',
-      wants: [{ id: 'w1', activityId: 'work', why: '挣钱', urgency: 0.7, status: 'pending', createdAtMin: 100 }],
+      wants: [{ id: 'w1', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.7, status: 'pending', createdAtMin: 100 }],
     });
     expect(innerState.get('char-1')!.intents?.day).toBe(3);
     innerState.clearIntents('char-1');
     expect(innerState.get('char-1')!.intents).toBeNull();
+  });
+
+  it('setIntents 合并语义(E6):同日重规划替换 plan-origin,保留在途 drive/impulse;跨日整体替换', () => {
+    innerState.setIntents('char-1', {
+      day: 3,
+      source: 'llm',
+      wants: [
+        { id: 'p1', activityId: 'work', origin: 'plan', why: '挣钱', urgency: 0.7, status: 'done', createdAtMin: 100 },
+        { id: 'd1', activityId: 'socialize', origin: 'drive', targetCharacterId: 'b', why: '想找乙聊聊', urgency: 0.8, status: 'pending', createdAtMin: 120 },
+        { id: 'j1', activityId: 'stroll', origin: 'impulse', why: '去公园散心', urgency: 0.3, status: 'doing', createdAtMin: 130, expiresAtMin: 200 },
+      ],
+    });
+    innerState.setIntents('char-1', {
+      day: 3,
+      source: 'llm',
+      wants: [
+        { id: 'p2', activityId: 'study', origin: 'plan', why: '学习', urgency: 0.6, status: 'pending', createdAtMin: 200 },
+      ],
+    });
+    expect(innerState.get('char-1')!.intents!.wants.map((w) => w.id).sort()).toEqual([
+      'd1',
+      'j1',
+      'p2',
+    ]);
+    innerState.setIntents('char-1', { day: 4, source: 'llm', wants: [] });
+    expect(innerState.get('char-1')!.intents!.wants).toHaveLength(0);
   });
 
   it('persistedOf 只含持久化四字段(focus/intents/lastEvaluation/pendingInvitation)且为深拷贝', () => {
@@ -67,8 +93,8 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
       day: 2,
       source: 'fallback',
       wants: [
-        { id: 'w1', activityId: 'work', why: '挣钱', urgency: 0.7, status: 'pending', createdAtMin: 50 },
-        { id: 'w2', activityId: 'stroll', why: '散步', urgency: 0.3, status: 'done', createdAtMin: 40 },
+        { id: 'w1', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.7, status: 'pending', createdAtMin: 50 },
+        { id: 'w2', activityId: 'stroll', why: '散步', origin: 'plan', urgency: 0.3, status: 'done', createdAtMin: 40 },
       ],
     });
     const saved = innerState.persistedOf('char-1');
@@ -116,6 +142,7 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
     expect(state.intents!.day).toBe(1);
     expect(state.intents!.wants).toHaveLength(1);
     expect(state.intents!.wants[0]!.id).toBe('w2');
+    expect(state.intents!.wants[0]!.origin).toBe('plan'); // E6 前落库无 origin:兜底 plan
     expect(state.lastEvaluation).toEqual({ activityId: 'work', verdict: 'bad', reason: '太累', atMin: 40 });
     expect(state.mood.valence).toBe(-0.5);
     innerState.restore('char-1', {

@@ -23,6 +23,7 @@ import {
   wantSelect,
   ruleDecide,
   type Decision,
+  type ImpulseWant,
   type JevContext,
   type RuleWorldQueries,
   type WantWorldQueries,
@@ -121,6 +122,7 @@ export class AgentScheduler {
       llm: deps.llm,
       trace: this.trace,
       apply: (char, decision, trigger, perception) => this.apply(char, decision, trigger, perception),
+      executeWants: (char, trigger) => this.executeWants(char, trigger),
     });
     this.timer = setInterval(() => this.inspect(), CHECK_TICK_MS);
     this.unsubscribe = deps.sim.events.subscribe((event) => this.onEvent(event));
@@ -211,6 +213,7 @@ export class AgentScheduler {
           ? null
           : { x: target.x, y: target.y, name: target.name };
       },
+      nowMin: sim.clock.gameMinutes,
     };
   }
 
@@ -406,10 +409,19 @@ export class AgentScheduler {
       return;
     }
     const socialCandidates = this.socialLoop.idleSocialStep(char, 'eventbus');
+    // 驱力 want 已接上执行(角色在移动/活动中)则本轮不惊动 jev(省一次白烧调用)
+    if (char.activity !== null || char.path.length > 0) return;
     const last = this.jevLastAt.get(char.id) ?? Number.NEGATIVE_INFINITY;
     if (sim.clock.gameMinutes - last < JEV_COOLDOWN_MINUTES) return;
     this.jevLastAt.set(char.id, sim.clock.gameMinutes);
     void this.jevReact(char, event, socialCandidates);
+  }
+
+  /** 冲动/驱力 want 写入意图存储后的即时择条(E6):两段式第二段——
+   * wantSelect 重评全部在途 want(驱力紧迫度通常压过冲动),命中即执行 */
+  private executeWants(char: WorldCharacter, trigger: 'threshold' | 'eventbus'): void {
+    const want = this.wantDecision(char);
+    if (want !== null) this.apply(char, want, trigger, { want: true, generated: true });
   }
 
   /** respond 直执:move 响应若打断了忙碌角色,固定短退避后期望回意图 */
@@ -761,6 +773,7 @@ export class AgentScheduler {
           intents.wants.unshift({
             id: `w${intents.day}-inv`,
             activityId: 'socialize',
+            origin: 'plan',
             why: `赴约:${due.note}`,
             urgency: 0.9,
             status: 'pending',
@@ -876,7 +889,6 @@ export class AgentScheduler {
         .filter((w) => w.status === 'pending' || w.status === 'doing')
         .slice(0, 3)
         .map((w) => w.why),
-      nowMin: sim.clock.gameMinutes,
     };
     const decision = await jevDecide(this.deps.llm, char, sim.map.definition, feed, persona, context);
     if (decision === null) {
@@ -888,7 +900,80 @@ export class AgentScheduler {
       });
       return;
     }
+    // E6:System 1 不直执——直觉落为冲动 want(origin=impulse)入意图存储,
+    // 即时重入意图通道择条执行(经 wantSelect 评分,可能与 plan want 竞争)
+    if (decision.impulse !== undefined) {
+      this.writeImpulse(char, decision.impulse, decision.choice, event.type);
+      return;
+    }
     this.apply(char, decision, 'eventbus', { event: event.type, jev: true });
+  }
+
+  /** jev 冲动落库(E6 统一意图架构):冲动 want 带 urgency 常数与半衰期
+   * (expiresAtMin,冲动会消退);同活动+同人已有在途 want 不重复写(直觉反复
+   * 刷同一念头不入账);无当日意图容器(晨间规划未跑)则静默消退 */
+  private writeImpulse(
+    char: WorldCharacter,
+    impulse: ImpulseWant,
+    choice: string | undefined,
+    eventType: string,
+  ): void {
+    const { sim } = this.deps;
+    const intents = innerState.get(char.id)?.intents ?? null;
+    if (intents === null || intents.day !== sim.clock.day) {
+      this.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger: 'eventbus',
+        perception: { event: eventType, jev: 'impulse_dropped', reason: 'no_intents', choice },
+        decision: { layer: 'jev', conclusion: 'continue' },
+      });
+      return;
+    }
+    const duplicate = intents.wants.some(
+      (w) =>
+        (w.status === 'pending' || w.status === 'doing') &&
+        w.activityId === impulse.activityId &&
+        w.targetCharacterId === impulse.targetCharacterId,
+    );
+    if (duplicate) {
+      this.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger: 'eventbus',
+        perception: { event: eventType, jev: 'impulse_duplicate', activity: impulse.activityId, choice },
+        decision: { layer: 'jev', conclusion: 'continue' },
+      });
+      return;
+    }
+    intents.wants.push({
+      id: `w${sim.clock.day}-j${sim.clock.gameMinutes}`,
+      activityId: impulse.activityId,
+      origin: 'impulse',
+      ...(impulse.targetCharacterId !== undefined
+        ? { targetCharacterId: impulse.targetCharacterId }
+        : {}),
+      why: impulse.why,
+      urgency: BALANCE.JEV_IMPULSE_URGENCY,
+      expiresAtMin: sim.clock.gameMinutes + BALANCE.JEV_IMPULSE_TTL_MINUTES,
+      status: 'pending',
+      createdAtMin: sim.clock.gameMinutes,
+    });
+    persistInnerState(this.deps.handle, char.id);
+    this.trace.record(char.id, sim.clock.gameMinutes, {
+      trigger: 'eventbus',
+      perception: {
+        event: eventType,
+        jev: 'impulse',
+        activity: impulse.activityId,
+        target: impulse.targetCharacterId,
+      },
+      decision: {
+        layer: 'jev',
+        conclusion: 'react',
+        intent: `want:${impulse.activityId}`,
+        bubble: impulse.why,
+        ...(choice !== undefined ? { choice } : {}),
+      },
+    });
+    const want = this.wantDecision(char);
+    if (want !== null) this.apply(char, want, 'eventbus', { event: eventType, want: true, impulse: true });
   }
 
   /** 判定落地:continue 走采样 trace;react 执行意图+气泡+全量 trace */
@@ -907,6 +992,31 @@ export class AgentScheduler {
           perception,
           decision: { layer: decision.layer, conclusion: 'continue' },
         });
+      }
+      return;
+    }
+    if (decision.chatWith !== undefined) {
+      // E6:socialize want 贴身——聊天交还社交管线生成对话(簿记/light 槽生成在
+      // 管线内,social.chat 落地时结算 want),本决策先落一行可审计 trace
+      if (decision.wantId !== undefined) this.markWantDoing(char.id, decision.wantId);
+      this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
+        trigger,
+        perception,
+        decision: {
+          layer: decision.layer,
+          conclusion: 'react',
+          intent: `chat_with:${decision.chatWith}`,
+          bubble: decision.bubble,
+        },
+      });
+      const self = this.deps.sim.characters.get(char.id);
+      if (self !== undefined) {
+        void this.socialLoop.executeChatWant(
+          self,
+          decision.chatWith,
+          decision.wantId ?? null,
+          trigger === 'threshold' ? 'threshold' : 'eventbus',
+        );
       }
       return;
     }

@@ -1,4 +1,4 @@
-import { TOWN_MAP, SHOP_ITEMS, getActivityDefinition } from '@sims/shared';
+import { TOWN_MAP, SHOP_ITEMS } from '@sims/shared';
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
@@ -59,6 +59,7 @@ function intents(day: number, wants: Array<Partial<DayIntents['wants'][number]> 
     wants: wants.map((w, i) => ({
       id: w.id ?? `w${day}-${i}`,
       activityId: w.activityId,
+      origin: w.origin ?? 'plan',
       why: w.why ?? '想这么做',
       urgency: w.urgency ?? 0.5,
       status: w.status ?? 'pending',
@@ -343,26 +344,84 @@ describe('jevDecide(systemone choice 候选选一)', () => {
     valence: 0,
     hasSellable: false,
     wantWhys: [],
-    nowMin: 0,
     ...overrides,
   });
 
-  it('选中候选 → 去对应场所 entrance 的 react;排除当前所在;选中标签落 choice', async () => {
+  it('选中候选 → 冲动 want(E6 不直执);排除当前所在;选中标签落 choice', async () => {
     const { llm } = captureLlm('公园');
     const decision: Decision | null = await jevDecide(llm, char({}), TOWN_MAP);
     expect(decision).not.toBeNull();
     expect(decision!.layer).toBe('jev');
     expect(decision!.choice).toBe('公园');
-    expect(decision!.intent).toEqual({
-      type: 'move_to',
-      characterId: 'char-1',
-      x: park.entrance.x,
-      y: park.entrance.y,
-    });
-    // 角色站在商店门口时,候选不再含「商店」;E5 起候选池=商店/公园/出去转转(家宅死端候选移除)
+    expect(decision!.intent).toBeUndefined();
+    expect(decision!.impulse).toEqual({ activityId: 'stroll', why: '去公园走走散心' });
+    // E6:商店候选仅在背包有货时出现(冲动=变现);无货时候选池=公园/出去转转
     const { llm: llm2, captured: captured2 } = captureLlm('公园');
     await jevDecide(llm2, char({ x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y }), TOWN_MAP);
     expect(Object.keys(captured2.criteria!)).toEqual(['公园', '出去转转']);
+  });
+
+  it('概率采样(E6):probabilities 分布采样命中高权候选;空分布回落 argmax choice', async () => {
+    const weighted: MemoryLlm = {
+      systemOne: () =>
+        Promise.resolve({
+          model: 'stub',
+          answers: {
+            next: {
+              type: 'choice',
+              choice: '出去转转',
+              probabilities: { 公园: 0, 出去转转: 1 },
+              confidence: 1,
+            },
+          },
+        }) as never,
+      embed: () => Promise.reject(new Error('unused')),
+      chat: () => Promise.reject(new Error('unused')),
+      chatStructured: () => Promise.reject(new Error('unused')),
+    };
+    for (let i = 0; i < 5; i += 1) {
+      const decision = await jevDecide(weighted, char({}), TOWN_MAP);
+      expect(decision!.choice).toBe('出去转转');
+      expect(decision!.impulse!.activityId).toBe('explore');
+    }
+    // probabilities 全空:回落 argmax choice(公园)
+    const { llm } = captureLlm('公园');
+    const fallback = await jevDecide(llm, char({}), TOWN_MAP);
+    expect(fallback!.choice).toBe('公园');
+  });
+
+  it('confidence 低于门限 → null(低置信=没产生直觉,不产出冲动)', async () => {
+    const shy: MemoryLlm = {
+      systemOne: () =>
+        Promise.resolve({
+          model: 'stub',
+          answers: {
+            next: { type: 'choice', choice: '公园', probabilities: { 公园: 1 }, confidence: 0.1 },
+          },
+        }) as never,
+      embed: () => Promise.reject(new Error('unused')),
+      chat: () => Promise.reject(new Error('unused')),
+      chatStructured: () => Promise.reject(new Error('unused')),
+    };
+    expect(await jevDecide(shy, char({}), TOWN_MAP)).toBeNull();
+  });
+
+  it('有货时商店候选出现,冲动映射 sell_goods;社交候选映射 socialize(带 target)', async () => {
+    const { llm: sellLlm } = captureLlm('商店');
+    const sell = await jevDecide(sellLlm, char({}), TOWN_MAP, [], undefined, ctx({ hasSellable: true }));
+    expect(sell!.impulse).toEqual({ activityId: 'sell_goods', why: '背包有货,拿去商店卖掉换钱' });
+    const { llm: socialLlm } = captureLlm('找铁牛聊天');
+    const social = await jevDecide(
+      socialLlm,
+      char({}),
+      TOWN_MAP,
+      [{ characterId: 'npc-1', name: '铁牛', affinity: 70, x: 5, y: 5 }],
+    );
+    expect(social!.impulse).toEqual({
+      activityId: 'socialize',
+      why: '去找铁牛聊聊,你们很投缘',
+      targetCharacterId: 'npc-1',
+    });
   });
 
   it('E5 状态感知: 深夜公园降权/低落散心加权/有货卖货导向/wants 注入题面', async () => {
@@ -386,36 +445,22 @@ describe('jevDecide(systemone choice 候选选一)', () => {
     expect(wantCaptured.prompt).toContain('书虫');
   });
 
-  it('公园终点化(E5):在园内选公园 → start_activity stroll 就地散步,不再到门口站着', async () => {
+  it('公园终点化(E5→E6):在园内选公园 → stroll 冲动 want(执行器就地开散步)', async () => {
     const decision = await jevDecide(
       stubLlm('公园'),
       char({ x: park.entrance.x, y: park.entrance.y }),
       TOWN_MAP,
     );
-    expect(decision!.intent).toEqual({
-      type: 'start_activity',
-      characterId: 'char-1',
-      activityId: 'stroll',
-    });
-    expect(decision!.bubble).toContain('散会儿步');
+    expect(decision!.impulse).toEqual({ activityId: 'stroll', why: '就在公园散会儿步' });
+    expect(decision!.intent).toBeUndefined();
     expect(decision!.choice).toBe('公园');
   });
 
-  it('「出去转转」(E5) → explore 两段式:远处 move_to 小时粘性目标/到位即开始', async () => {
-    const decision = await jevDecide(stubLlm('出去转转'), char({}), TOWN_MAP, [], undefined, ctx({ nowMin: 90 }));
+  it('「出去转转」(E5→E6) → explore 冲动 want(两段式交执行器)', async () => {
+    const decision = await jevDecide(stubLlm('出去转转'), char({}), TOWN_MAP);
     expect(decision).not.toBeNull();
     expect(decision!.choice).toBe('出去转转');
-    const target = exploreTarget(
-      'char-1|jev|1',
-      getActivityDefinition('explore')!.placeIds,
-      TOWN_MAP,
-    )!;
-    const intent = decision!.intent!;
-    if (intent.type === 'move_to') {
-      expect({ x: intent.x, y: intent.y }).toEqual({ x: target.entrance.x, y: target.entrance.y });
-    } else {
-      expect(intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'explore' });
-    }
+    expect(decision!.impulse).toEqual({ activityId: 'explore', why: '换个地方随便看看' });
   });
 
   it('回答不在候选内/调用失败 → null(回落 continue,不阻塞泵)', async () => {
@@ -699,25 +744,29 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
     expect(decision!.bubble).toContain('铁牛');
   });
 
-  it('已贴身(≤SOCIAL_CHAT_DISTANCE): 返回 null 让位动机引擎,want 留待 social.chat 结算', () => {
+  it('已贴身(≤SOCIAL_CHAT_DISTANCE): chatWith 交还社交管线生成对话,不产裸意图', () => {
     const day = intents(1, [
       { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
     ]);
-    expect(
-      wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
-        positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
-      }),
-    ).toBeNull();
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
+    });
+    expect(decision!.action).toBe('react');
+    expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.chatWith).toBe('npc-9');
+    expect(decision!.intent).toBeUndefined(); // 聊天归 executeChatWant,不走 runIntent
   });
 
-  it('对方不在(下线/亡故): null 跳过,want 不废弃', () => {
+  it('对方不在(下线/亡故): continue 跳过且 want 废弃', () => {
     const day = intents(1, [
       { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'ghost' },
     ]);
-    expect(
-      wantSelect(char({}), day, 1, TOWN_MAP, noAnchors, {}, {
-        positionOf: () => null,
-      }),
-    ).toBeNull();
+    const decision = wantSelect(char({}), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: () => null,
+    });
+    expect(decision!.action).toBe('continue');
+    expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.abandonedWantIds).toContain('w1-0');
+    expect(decision!.intent).toBeUndefined();
   });
 });

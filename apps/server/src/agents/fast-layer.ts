@@ -22,9 +22,20 @@ import type { DayIntents } from './cognition.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { MemoryLlm } from './memory-writer.js';
 
+/** jev 冲动 want 载荷(E6 统一意图架构,System 1 输出):jev 不再直执——
+ * 概率采样产出冲动,调度泵写入意图存储(origin=impulse)后立即重入 wantSelect
+ * 择条执行;冲动紧迫度低、带半衰期,会自然消退 */
+export interface ImpulseWant {
+  activityId: string;
+  why: string;
+  targetCharacterId?: string;
+}
+
 /** 快层判定输出(agent-design §4.3):continue=当前行为仍有效零模型;react=产出一个意图交执行。
  * D3:plan 层改执行弹性意图(wantSelect),wantId 标记本条决策对应的 want,
- * abandonedWantIds 收录当场判不可执行须废弃的 want(调度泵落库) */
+ * abandonedWantIds 收录当场判不可执行须废弃的 want(调度泵落库);
+ * E6:jev 层 react 改携带 impulse(冲动 want,泵落库);socialize want 贴身时
+ * 携带 chatWith(聊天交还社交管线执行,want 由 social.chat 结算) */
 export interface Decision {
   layer: 'rule' | 'plan' | 'jev' | 'triage';
   action: 'continue' | 'react';
@@ -37,6 +48,10 @@ export interface Decision {
   abandonedWantIds?: string[];
   /** jev 层:选中候选标签(E5 观测口径,进 trace 供选择分布聚合) */
   choice?: string;
+  /** jev 层:概率采样产出的冲动 want(调度泵落库后即时择条) */
+  impulse?: ImpulseWant;
+  /** plan 层:socialize want 已贴身,聊天交还社交管线(值=target) */
+  chatWith?: string;
 }
 
 /** rule 层世界查询(E1 依赖注入,与 anchorsOf 同款):货架余量/可食节点/倾向分,
@@ -332,12 +347,10 @@ export interface JevContext {
   night: boolean;
   /** 情绪效价(-1~1):低落时散心文案加权 */
   valence: number;
-  /** 背包有带价物:商店文案导向卖货变现 */
+  /** 背包有带价物:商店候选(冲动=变现)仅此时出现 */
   hasSellable: boolean;
   /** 当日未完成 wants 的第一人称理由(顶 3):惦记的事进题面参与直觉竞争 */
   wantWhys: string[];
-  /** 当前游戏分钟(探索粘性键按小时桶,同小时内重入命中同一目标) */
-  nowMin: number;
 }
 
 const EMPTY_JEV_CONTEXT: JevContext = {
@@ -345,24 +358,62 @@ const EMPTY_JEV_CONTEXT: JevContext = {
   valence: 0,
   hasSellable: false,
   wantWhys: [],
-  nowMin: 0,
 };
 
 /** 低落效价线:≤ 此值时公园候选改「散心加权」文案(情绪压力→行动倾向,非强制) */
 const JEV_SAD_VALENCE = -0.3;
 
 type JevCandidate =
-  | { kind: 'place'; ref: string; label: string; desc: string }
+  | { kind: 'place'; ref: 'shop' | 'park'; label: string; desc: string }
   | { kind: 'wander'; label: string; desc: string }
   | { kind: 'social'; characterId: string; label: string; desc: string };
 
-/** jev 微决策(agent-design §4.3):空闲角色在事件触发时用 systemone choice
- * 题「现在去哪」候选选一。C4 起社交候选与地点同池竞争(好感≥65 文案加权);
- * E5 起状态感知——题面注入惦记的 wants,候选按情绪/背包/昼夜动态措辞;
- * 公园候选终点化(入园即 start_activity stroll,消灭「到门口站着」的死端),
- * 别人家候选移除(无活动/购买/社交接应,纯站立终点);新样「出去转转」
- * 走 explore 两段式(时段粘性目标,到位即开始)。选中标签落 decision.choice
- * 供 trace 聚合。调用失败返回 null(回落 continue)。 */
+/** 候选→冲动 want 映射(E6):直觉选中的是「此刻想做的事」而非动作——
+ * 每个候选对应一个冲动活动 want,寻路/两段式等执行细节归 wantSelect 唯一执行器 */
+function impulseFor(picked: JevCandidate): ImpulseWant {
+  switch (picked.kind) {
+    case 'social':
+      return { activityId: 'socialize', why: picked.desc, targetCharacterId: picked.characterId };
+    case 'wander':
+      return { activityId: 'explore', why: picked.desc };
+    case 'place':
+      return picked.ref === 'park'
+        ? { activityId: 'stroll', why: picked.desc }
+        : { activityId: 'sell_goods', why: picked.desc };
+  }
+}
+
+/** 概率采样(E6 System 1 通道变宽):优先按 probabilities 分布采样——直觉天然带
+ * 不确定性,不必永远 argmax;分布缺失/非法回落 choice。confidence 低于门限视为
+ * 没产生直觉(本次调用作废,回落 continue)。 */
+function sampleChoice(
+  candidates: readonly JevCandidate[],
+  answer: { choice: string; probabilities: Record<string, number>; confidence: number } | undefined,
+): JevCandidate | null {
+  if (answer === undefined || answer.confidence < BALANCE.JEV_CONFIDENCE_MIN) return null;
+  const weighted = candidates
+    .map((candidate) => ({ candidate, p: answer.probabilities[candidate.label] }))
+    .filter(
+      (e): e is { candidate: JevCandidate; p: number } => typeof e.p === 'number' && e.p > 0,
+    );
+  const total = weighted.reduce((sum, e) => sum + e.p, 0);
+  if (weighted.length > 0 && total > 0) {
+    let roll = Math.random() * total;
+    for (const e of weighted) {
+      roll -= e.p;
+      if (roll <= 0) return e.candidate;
+    }
+  }
+  return candidates.find((c) => c.label === answer.choice) ?? null;
+}
+
+/** jev 冲动生成(E6 统一意图架构,System 1 通道):空闲角色在事件触发时用 systemone
+ * choice 题「现在最想做什么」选一,产出**冲动 want**(origin=impulse)交意图存储——
+ * 永不直接执行。C4 起社交候选与地点同池竞争(好感≥65 文案加权);E5 起状态感知
+ * (题面注入惦记的 wants,候选按情绪/背包/昼夜动态措辞);E6 候选终点化到活动:
+ * 公园→stroll want、出去转转→explore want、商店(仅背包有货时出现)→sell_goods want、
+ * 找X聊天→socialize want(带 target)。选中标签落 decision.choice 供 trace 聚合。
+ * 调用失败/无直觉返回 null(回落 continue)。 */
 export async function jevDecide(
   llm: MemoryLlm,
   char: WorldCharacter,
@@ -383,15 +434,13 @@ export async function jevDecide(
       : context.valence <= JEV_SAD_VALENCE
         ? '心情有点沉,去公园透透气会舒服些'
         : '去公园走走散心';
-  const shopDesc = context.hasSellable ? '背包有货,拿去商店卖掉换钱' : '去商店看看,补充食物';
-  const placeCandidates: JevCandidate[] = [
-    { kind: 'place', ref: 'shop', label: '商店', desc: shopDesc },
+  const candidates: JevCandidate[] = [
+    // 商店候选仅在背包有货时出现(冲动=变现;买食物是 rule 层生存压力不归直觉)
+    ...(context.hasSellable
+      ? [{ kind: 'place' as const, ref: 'shop' as const, label: '商店', desc: '背包有货,拿去商店卖掉换钱' }]
+      : []),
     { kind: 'place', ref: 'park', label: '公园', desc: parkDesc },
     { kind: 'wander', label: '出去转转', desc: '换个地方随便看看' },
-  ];
-  const candidates = [
-    // 当前所在处不再候选——公园例外:在园内候选语义变为「就地散步」(终点化)
-    ...placeCandidates.filter((c) => c.kind !== 'place' || c.ref !== here || c.ref === 'park'),
     ...socialCandidates.map(
       (c): JevCandidate => ({
         kind: 'social',
@@ -401,7 +450,9 @@ export async function jevDecide(
       }),
     ),
   ];
-  if (candidates.length === 0) return null;
+  // 当前所在处不再候选——公园例外:在园内候选语义变为「就地散步」(终点化)
+  const eligible = candidates.filter((c) => c.kind !== 'place' || c.ref !== here || c.ref === 'park');
+  if (eligible.length === 0) return null;
   const wantPart =
     context.wantWhys.length > 0 ? `(心里还惦记着: ${context.wantWhys.join(';')})` : '';
   try {
@@ -412,55 +463,15 @@ export async function jevDecide(
         next: {
           type: 'choice',
           instructions: '选出此刻最想做的选择',
-          criteria: Object.fromEntries(candidates.map((c) => [c.label, c.desc])),
+          criteria: Object.fromEntries(eligible.map((c) => [c.label, c.desc])),
         },
       },
       { taskType: 'agent.jev_micro', characterId: char.id },
     );
     const answer = result.answers.next;
-    const choice = answer?.type === 'choice' ? answer.choice : null;
-    const picked = choice !== null ? candidates.find((c) => c.label === choice) : undefined;
-    if (picked === undefined) return null;
-    if (picked.kind === 'social') {
-      const target = socialCandidates.find((c) => c.characterId === picked.characterId);
-      if (target === undefined) return null;
-      return {
-        layer: 'jev',
-        action: 'react',
-        choice: picked.label,
-        intent: { type: 'move_to', characterId: char.id, x: target.x, y: target.y },
-        bubble: `去找${target.name}聊聊`,
-      };
-    }
-    if (picked.kind === 'wander') {
-      const decision = exploreDecision(
-        char,
-        map,
-        `jev|${Math.floor(context.nowMin / 60)}`,
-        getActivityDefinition('explore')?.placeIds ?? [],
-      );
-      return decision === null
-        ? null
-        : { layer: 'jev', action: 'react', choice: picked.label, ...decision };
-    }
-    const place = findPlaceByRef(map, picked.ref);
-    if (place === null) return null;
-    if (picked.ref === 'park' && atPark) {
-      return {
-        layer: 'jev',
-        action: 'react',
-        choice: picked.label,
-        intent: { type: 'start_activity', characterId: char.id, activityId: 'stroll' },
-        bubble: `${picked.desc}(${picked.label})`,
-      };
-    }
-    return {
-      layer: 'jev',
-      action: 'react',
-      choice: picked.label,
-      intent: { type: 'move_to', characterId: char.id, x: place.entrance.x, y: place.entrance.y },
-      bubble: `${picked.desc}(${picked.label})`,
-    };
+    const picked = sampleChoice(eligible, answer?.type === 'choice' ? answer : undefined);
+    if (picked === null) return null;
+    return { layer: 'jev', action: 'react', choice: picked.label, impulse: impulseFor(picked) };
   } catch {
     return null; // jev 槽不可用:快层回落 rule/continue,绝不阻塞泵
   }
@@ -571,8 +582,8 @@ export function bestSellable(backpack: Record<string, number | undefined>): { id
  *   (接单即到位计时,消灭移动中/途中掉力的错位拒单)
  * - 制作岗(E1):背包含料预检→站点锚点 craft{recipeId}/先 move_to 站点
  * - 卖货(E4):背包有带价物→在店 sell_item 整叠变现/先 move_to 商店(空包跳过)
- * - 人指向社交(E2):带 target 的 socialize 远处 move_to 寻人,已贴身/对方不在
- *   则返回 null 让位空闲社交管线(want 由 social.chat 事件结算 done)
+ * - 人指向社交(E2→E6 两段式):带 target 的 socialize 远处 move_to 寻人,贴身交还
+ *   社交管线生成对话(chatWith),want 由 social.chat 事件结算 done;对方不在则废弃
  * 不可执行的 want 当场废弃(rest 无居所/无锚点无场所);门槛不够/缺料/无节点
  * 只是本轮跳过(pending 保留——学了知识/采到料/节点重生后可再评);
  * 体力见底时非基础块让位生存压力。无意图/意图耗尽返回 null,交还 jev/continue。
@@ -592,6 +603,11 @@ export function wantSelect(
   const abandoned: string[] = [];
   const candidates = intents.wants.filter((w) => {
     if (w.status !== 'pending' && w.status !== 'doing') return false;
+    // 冲动半衰期(E6):过期冲动直接废弃——冲动会消退,不留陈年旧念
+    if (w.expiresAtMin !== undefined && world.nowMin !== undefined && world.nowMin > w.expiresAtMin) {
+      abandoned.push(w.id);
+      return false;
+    }
     const definition = getActivityDefinition(w.activityId);
     if (definition === null) {
       abandoned.push(w.id);
@@ -640,24 +656,38 @@ export function wantSelect(
   const definition = getActivityDefinition(picked.activityId)!;
   const extra: Pick<Decision, 'abandonedWantIds'> = {};
   if (abandoned.length > 0) extra.abandonedWantIds = abandoned;
-  // 人指向社交 want(E2):远处 move_to 寻人;已贴身/对方不在则让位——贴身时
-  // 空闲社交管线(动机引擎)直执聊天,want 由 social.chat 事件结算 done
+  // 人指向社交 want(E2→E6 两段式):远处 move_to 寻人,到场经 character.arrived
+  // 重入再评;贴身则交还社交管线生成对话(chatWith),want 由 social.chat 结算 done;
+  // 对方不在(亡故/下线)则 want 废弃
   if (picked.activityId === 'socialize' && picked.targetCharacterId !== undefined) {
     const pos = world.positionOf?.(picked.targetCharacterId) ?? null;
-    if (pos !== null) {
-      const distance = Math.abs(char.x - pos.x) + Math.abs(char.y - pos.y);
-      if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {
-        return {
-          layer: 'plan',
-          action: 'react',
-          wantId: picked.id,
-          ...extra,
-          intent: { type: 'move_to', characterId: char.id, x: pos.x, y: pos.y },
-          bubble: `${picked.why},去找${pos.name}`,
-        };
-      }
+    if (pos === null) {
+      return {
+        layer: 'plan',
+        action: 'continue',
+        abandonedWantIds: [...abandoned, picked.id],
+        wantId: picked.id,
+      };
     }
-    return null;
+    const distance = Math.abs(char.x - pos.x) + Math.abs(char.y - pos.y);
+    if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {
+      return {
+        layer: 'plan',
+        action: 'react',
+        wantId: picked.id,
+        ...extra,
+        intent: { type: 'move_to', characterId: char.id, x: pos.x, y: pos.y },
+        bubble: `${picked.why},去找${pos.name}`,
+      };
+    }
+    return {
+      layer: 'plan',
+      action: 'react',
+      wantId: picked.id,
+      ...extra,
+      chatWith: picked.targetCharacterId,
+      bubble: `${picked.why}`,
+    };
   }
   if (picked.activityId === 'explore') {
     const decision = exploreDecision(char, map, picked.id, definition.placeIds);
@@ -786,6 +816,8 @@ export interface WantWorldQueries {
   recipeReady?: (recipeId: string) => boolean;
   /** 存活角色位置(E2 人指向社交寻人;null=不存在/已亡故,want 跳过) */
   positionOf?: (characterId: string) => { x: number; y: number; name: string } | null;
+  /** 当前游戏分钟(E6):冲动 want 半衰期(expiresAtMin)判定 */
+  nowMin?: number;
 }
 
 /** 采集岗→节点 kind(GATHER_TASKS 表驱动;非采集活动返回 null) */

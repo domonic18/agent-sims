@@ -113,9 +113,9 @@ describe('parseIntents(工具入参→wants)', () => {
     ).toEqual({
       ok: true,
       value: [
-        { id: 'w5-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'pending', createdAtMin: 500 },
-        { id: 'w5-1', activityId: 'study', why: '想学新东西', urgency: 1, status: 'pending', createdAtMin: 500 },
-        { id: 'w5-2', activityId: 'stroll', why: '透透气', urgency: 0, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-0', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.8, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-1', activityId: 'study', why: '想学新东西', origin: 'plan', urgency: 1, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-2', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0, status: 'pending', createdAtMin: 500 },
       ],
     });
   });
@@ -136,7 +136,7 @@ describe('parseIntents(工具入参→wants)', () => {
     ).toEqual({
       ok: true,
       value: [
-        { id: 'w5-0', activityId: 'meal', why: '随性而为', urgency: 0.5, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-0', activityId: 'meal', why: '随性而为', origin: 'plan', urgency: 0.5, status: 'pending', createdAtMin: 500 },
       ],
     });
     expect(parseIntents({ wants: [] }, DAY, 500).ok).toBe(false);
@@ -166,15 +166,16 @@ describe('parseIntents(工具入参→wants)', () => {
         id: 'w5-0',
         activityId: 'socialize',
         why: '找铁牛聊聊',
+        origin: 'plan',
         urgency: 0.9,
         status: 'pending',
         createdAtMin: 500,
         targetCharacterId: 'npc-9',
       },
       // 「路人甲」解析不了:剥 target 保留 want
-      { id: 'w5-1', activityId: 'socialize', why: '找人说话', urgency: 0.5, status: 'pending', createdAtMin: 500 },
+      { id: 'w5-1', activityId: 'socialize', why: '找人说话', origin: 'plan', urgency: 0.5, status: 'pending', createdAtMin: 500 },
       // 非 socialize 的 target 一律忽略
-      { id: 'w5-2', activityId: 'work', why: '挣钱', urgency: 0.5, status: 'pending', createdAtMin: 500 },
+      { id: 'w5-2', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.5, status: 'pending', createdAtMin: 500 },
     ]);
   });
 });
@@ -209,8 +210,8 @@ describe('describeIntents(昨日对照措辞)', () => {
         day: 4,
         source: 'llm',
         wants: [
-          { id: 'w4-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'done', createdAtMin: 100 },
-          { id: 'w4-1', activityId: 'study', why: '想学新东西', urgency: 0.5, status: 'pending', createdAtMin: 100 },
+          { id: 'w4-0', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.8, status: 'done', createdAtMin: 100 },
+          { id: 'w4-1', activityId: 'study', why: '想学新东西', origin: 'plan', urgency: 0.5, status: 'pending', createdAtMin: 100 },
         ],
       }),
     ).toBe('杂工(已完成): 挣钱;学习(未做): 想学新东西');
@@ -234,7 +235,7 @@ describe('evidenceQuery(记忆检索动态查询,D4)', () => {
         previous: {
           day: 4,
           wants: [
-            { id: 'w4-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'done', createdAtMin: 100 },
+            { id: 'w4-0', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.8, status: 'done', createdAtMin: 100 },
           ],
           source: 'llm',
         },
@@ -359,8 +360,8 @@ describe('composeIntents ctx 注入(M4e 方针+人设)', () => {
       previous: {
         day: DAY - 1,
         wants: [
-          { id: 'w4-0', activityId: 'work', why: '挣钱', urgency: 0.8, status: 'done', createdAtMin: 100 },
-          { id: 'w4-1', activityId: 'stroll', why: '透气', urgency: 0.3, status: 'pending', createdAtMin: 100 },
+          { id: 'w4-0', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.8, status: 'done', createdAtMin: 100 },
+          { id: 'w4-1', activityId: 'stroll', why: '透气', origin: 'plan', urgency: 0.3, status: 'pending', createdAtMin: 100 },
         ],
         source: 'llm',
       },

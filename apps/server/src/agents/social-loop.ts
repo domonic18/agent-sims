@@ -9,11 +9,13 @@ import { meetByProximity, relationKey } from '../world/social.js';
 import { innerState } from './cognition.js';
 import { generateConversation } from './dialogue.js';
 import type { Decision } from './fast-layer.js';
+import { persistInnerState } from './inner-state-db.js';
 import type { MemoryLlm } from './memory-writer.js';
 import { socialMotive, type ScoredCandidate, type SocialMotiveInput } from './social-motive.js';
 import type { TraceEntry, TraceRecorder } from './trace.js';
 
-/** 空闲社交管线依赖:意图执行经 scheduler.apply 统一出口(气泡/trace/拒绝退避同源) */
+/** 空闲社交管线依赖:意图执行经 scheduler.apply 统一出口(气泡/trace/拒绝退避同源);
+ * executeWants=驱力 want 写入意图存储后的即时择条回调(E6,调度泵提供) */
 export interface SocialLoopDeps {
   sim: Simulation;
   handle: DbHandle;
@@ -25,17 +27,20 @@ export interface SocialLoopDeps {
     trigger: TraceEntry['trigger'],
     perception: Record<string, unknown>,
   ) => void;
+  executeWants: (char: WorldCharacter, trigger: 'threshold' | 'eventbus') => void;
 }
 
 /**
  * 自治社交管线(10-cognition §7.2 C4,自 AgentScheduler 抽出):
  * 共处破冰(acquaintanceStep,零模型)——同场所陌生对攒面熟度自动相识,解
- * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑动机引擎(零模型,E2 口径拆分)——
- * 贴身可达候选过点火线即经 light 槽生成双句对话直执(簿记先于 await,走散降级
- * 短冷却);同场未贴身则零 LLM 直接 move_to 走近,到场由 arrived 事件重燃引擎;
- * 异地候选返回给 jev 池(LLM 决定要不要专程去找 TA)。一次至多点火一人。
- * 聊后即时印象 upsert(character_impressions),下次对话 prompt 立即可见。
- * 簿记:同对最近聊天时刻(双角色排序 key)+每角色每日主动计数。
+ * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑动机引擎(零模型,E2 口径拆分,
+ * E6 起降为驱力生成器)——过点火线的候选写 socialize want(origin=drive,urgency=
+ * 欲望分)入意图存储并即时择条,聊天/寻人执行全归 wantSelect 唯一执行器(两段式:
+ * 远处 move_to 寻人、贴身 chatWith 路回本管线生成对话);动机段把门不变(封顶剔除/
+ * 同对冷却/日预算三闸在 socialMotive 内)。异地候选返回给 jev 池(直觉决定要不要
+ * 专程去找 TA)。一次至多点火一人。聊后即时印象 upsert(character_impressions)。
+ * 簿记:同对最近聊天时刻(双角色排序 key)+每角色每日主动计数——聊天落地才算
+ * 主动社交(bookSocial 移到执行时)。
  */
 export class SocialLoop {
   private readonly socialPairLastAt = new Map<string, number>();
@@ -127,37 +132,57 @@ export class SocialLoop {
       valence: innerState.moodOf(char.id)?.valence ?? 0,
       nowGameMinutes: sim.clock.gameMinutes,
     });
-    // 贴身可达:light 槽生成双句直执(簿记先于 await 防双发;走散降级短冷却)
-    const hit = candidates.find((c) => c.chatReady);
-    if (hit !== undefined) {
-      this.bookSocial(char.id, hit.targetId);
-      void this.socialReact(char, hit, trigger);
-      return candidates;
-    }
-    // 走近再聊(E2):同场未贴身→零 LLM 直接 move_to 对方位置,不簿记不计数
-    // (走到才算主动);到场经 character.arrived(triage self=3)重燃动机引擎
-    const approach = candidates.find((c) => c.samePlace);
-    if (approach !== undefined && char.activity === null && char.path.length === 0) {
-      const target = sim.characters.get(approach.targetId);
-      if (target !== undefined) {
-        this.deps.apply(
-          char,
-          {
-            layer: 'rule',
-            action: 'react',
-            intent: { type: 'move_to', characterId: char.id, x: target.x, y: target.y },
-            bubble: `想找${target.name}聊聊,走过去`,
-          },
-          trigger,
-          {
-            motive: 'social',
-            approach: target.id,
-            desire: Math.round(approach.desire * 100) / 100,
-          },
-        );
-      }
+    // E6:动机引擎降为驱力生成器(10-cognition §7.5)——点火不再直执聊天/走近,
+    // 改写 socialize want(origin=drive)入意图存储;执行归 wantSelect 唯一执行器
+    // (两段式:远处 move_to 寻人,贴身 chatWith 路回 executeChatWant)。同目标
+    // 在途 want 不重复写(动机每步都跑,防止 want 刷屏);无当日意图容器不写。
+    const fire = candidates[0]; // socialMotive 已按欲望降序,条条过点火线
+    if (
+      fire !== undefined &&
+      !this.hasSocialWant(char.id, fire.targetId) &&
+      innerState.get(char.id)?.intents?.day === sim.clock.day
+    ) {
+      const intents = innerState.get(char.id)!.intents!;
+      const why =
+        fire.affinity >= 65 ? `想去找${fire.name}聊聊,你们很投缘` : `想找${fire.name}聊聊天`;
+      const want = {
+        id: `w${sim.clock.day}-d${sim.clock.gameMinutes}`,
+        activityId: 'socialize',
+        origin: 'drive' as const,
+        targetCharacterId: fire.targetId,
+        why,
+        urgency: Math.min(1, Math.round(fire.desire * 100) / 100),
+        status: 'pending' as const,
+        createdAtMin: sim.clock.gameMinutes,
+      };
+      intents.wants.push(want);
+      persistInnerState(this.deps.handle, char.id);
+      this.deps.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger,
+        perception: {
+          motive: 'social',
+          want: want.id,
+          target: fire.targetId,
+          desire: want.urgency,
+        },
+        decision: { layer: 'plan', conclusion: 'react', intent: 'want:socialize', bubble: why },
+      });
+      this.deps.executeWants(char, trigger);
     }
     return candidates;
+  }
+
+  /** 同目标 socialize want 在途(pending/doing)判定:动机重复点火去重 */
+  private hasSocialWant(characterId: string, targetId: string): boolean {
+    const intents = innerState.get(characterId)?.intents;
+    return (
+      intents?.wants.some(
+        (w) =>
+          (w.status === 'pending' || w.status === 'doing') &&
+          w.activityId === 'socialize' &&
+          w.targetCharacterId === targetId,
+      ) ?? false
+    );
   }
 
   /** 动机候选原始资料:已认识(familiarity>0)且对方存活的关系,拼两档同地
@@ -284,18 +309,30 @@ export class SocialLoop {
     }
   }
 
-  /** 点火执行:light 槽多轮生成(E3 自然终止)→chat 意图一次结算;败句回落
-   * 模板补齐(不丢点火),发起方邀约顺带写入双方脑内(次晨转赴约 want) */
-  private async socialReact(
+  /** 执行 socialize want 的聊天(E6 统一意图架构):wantSelect 评分选中且贴身时
+   * 由调度泵经 apply(chatWith)路由至此,light 槽多轮生成(E3 自然终止)→chat
+   * 意图一次结算;败句回落模板补齐(不丢点火),发起方邀约顺带写入双方脑内
+   * (次晨转赴约 want)。簿记(冷却+日计数)先于任何 await——聊天落地才算一次
+   * 主动社交;生成期间走散→冷却降级短窗+计数返还+want 回 pending(评分可再裁决);
+   * 对方不在/无关系→want 废弃 */
+  async executeChatWant(
     char: WorldCharacter,
-    candidate: ScoredCandidate,
+    targetId: string,
+    wantId: string | null,
     trigger: 'threshold' | 'eventbus',
   ): Promise<void> {
     const { sim } = this.deps;
-    const target = sim.characters.get(candidate.targetId);
-    if (target === undefined) return;
+    const target = sim.characters.get(targetId);
+    if (target === undefined || !target.alive || target.collapsed) {
+      this.releaseWant(char.id, wantId, 'abandoned');
+      return;
+    }
     const relation = sim.socials.get(relationKey(char.id, target.id));
-    if (relation === undefined) return;
+    if (relation === undefined) {
+      this.releaseWant(char.id, wantId, 'abandoned');
+      return;
+    }
+    this.bookSocial(char.id, targetId);
     const conversation = await generateConversation(
       this.deps.llm,
       this.deps.handle,
@@ -307,9 +344,10 @@ export class SocialLoop {
     if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {
       // 生成期间走散(对方被意图拽走等):本轮放弃,冷却降级为短窗可重试(E2 走散不罚)
       this.downgradeWalkedAway(char.id, target.id);
+      this.releaseWant(char.id, wantId, 'pending');
       this.deps.trace.record(char.id, sim.clock.gameMinutes, {
         trigger,
-        perception: { motive: 'social', walkedAway: true, target: target.id },
+        perception: { motive: 'social', walkedAway: true, target: target.id, want: wantId ?? undefined },
         decision: { layer: 'rule', conclusion: 'continue' },
       });
       return;
@@ -322,13 +360,13 @@ export class SocialLoop {
         layer: 'rule',
         action: 'react',
         intent: { type: 'chat', characterId: char.id, targetId: target.id, lines },
-        bubble: `想找${target.name}聊聊天`,
+        bubble: `和${target.name}聊聊天`,
       },
       trigger,
       {
         motive: 'social',
         target: target.id,
-        desire: Math.round(candidate.desire * 100) / 100,
+        want: wantId ?? undefined,
         llm: conversation !== null,
       },
     );
@@ -336,6 +374,20 @@ export class SocialLoop {
       this.bookInvitation(char.id, target.id, conversation.invitation);
     }
     void this.touchImpression(char, target, lines[0]!);
+  }
+
+  /** want 回收:聊天未落地时把 doing 的 socialize want 置回 pending(评分可再裁决)
+   * 或废弃(对象不存在);wantId 为 null(无 want 直呼)静默 */
+  private releaseWant(
+    characterId: string,
+    wantId: string | null,
+    status: 'pending' | 'abandoned',
+  ): void {
+    if (wantId === null) return;
+    const want = innerState.get(characterId)?.intents?.wants.find((w) => w.id === wantId);
+    if (want === undefined || want.status !== 'doing') return;
+    want.status = status;
+    persistInnerState(this.deps.handle, characterId);
   }
 
   /** 聚会邀约(E3 最小版):双方脑内各记一条约定,次晨意图生成兑现为赴约 want */

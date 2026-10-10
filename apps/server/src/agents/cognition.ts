@@ -71,15 +71,25 @@ export interface MoodState {
   since: number | null;
 }
 
-/** 意图(want,弹性意图模型 D3 的执行单元):慢层生成、快层择一执行 */
+/** 意图来源(E6 统一意图架构):生成器只写不执行——plan=慢层日程/drive=驱力巡检(E6.2)/
+ * impulse=jev 冲动(System 1)/event=事件响应冲动(E6.2,原 triage respond)。
+ * 唯一执行器 wantSelect 按 urgency×bias 评分择条;「冲动会消退,计划才持久」
+ * ——非 plan 来源可带 expiresAtMin,过期由执行器废弃 */
+export type WantOrigin = 'plan' | 'drive' | 'impulse' | 'event';
+
+/** 意图(want,弹性意图模型 D3 的执行单元):生成器写入、快层择一执行 */
 export interface Want {
   id: string;
   activityId: string;
+  /** 来源(E6):决定 setIntents 重规划时的存留资格 */
+  origin: WantOrigin;
   placeId?: string;
   /** 人指向社交(E2):仅 socialize want 携带,值=想找的熟人 id;结算走 social.chat */
   targetCharacterId?: string;
   why: string;
   urgency: number;
+  /** 过期时刻(游戏分钟,可选):冲动/事件 want 的半衰期;到期未执行废弃 */
+  expiresAtMin?: number;
   status: 'pending' | 'doing' | 'done' | 'abandoned';
   createdAtMin: number;
 }
@@ -134,6 +144,7 @@ export interface InnerState {
 export type PersistedInnerState = Omit<InnerState, 'mood'>;
 
 const WANT_STATUSES: readonly Want['status'][] = ['pending', 'doing', 'done', 'abandoned'];
+const WANT_ORIGINS: readonly WantOrigin[] = ['plan', 'drive', 'impulse', 'event'];
 
 /** 形状校验式灌回:库值残缺/类型不对逐字段兜默认,防脏数据毒化脑状态 */
 function hydrate(saved: unknown): PersistedInnerState {
@@ -166,6 +177,8 @@ function hydrate(saved: unknown): PersistedInnerState {
               {
                 id: w.id,
                 activityId: w.activityId,
+                // E6 前落库的 want 无 origin:按 plan 兜底(只有慢层产 want)
+                origin: WANT_ORIGINS.find((o) => o === w.origin) ?? 'plan',
                 why: w.why,
                 urgency: w.urgency,
                 status,
@@ -174,6 +187,7 @@ function hydrate(saved: unknown): PersistedInnerState {
                 ...(typeof w.targetCharacterId === 'string'
                   ? { targetCharacterId: w.targetCharacterId }
                   : {}),
+                ...(typeof w.expiresAtMin === 'number' ? { expiresAtMin: w.expiresAtMin } : {}),
               } satisfies Want,
             ];
           }),
@@ -227,9 +241,21 @@ export const innerState = {
   moodOf(characterId: string): MoodState | undefined {
     return innerStates.get(characterId)?.mood;
   },
-  /** 慢层产出当日意图集(整体替换) */
+  /** 慢层产出当日意图集(E6 合并语义:替换 plan-origin,保留其他来源的在途 want——
+   * 冲动不被晨间重规划顶掉;跨日整体替换) */
   setIntents(characterId: string, intents: DayIntents): void {
-    this.ensure(characterId).intents = intents;
+    const state = this.ensure(characterId);
+    const cur = state.intents;
+    state.intents =
+      cur !== null && cur.day === intents.day
+        ? {
+            ...intents,
+            wants: [
+              ...intents.wants,
+              ...cur.wants.filter((w) => w.origin !== 'plan' && (w.status === 'pending' || w.status === 'doing')),
+            ],
+          }
+        : intents;
   },
   /** 清空意图(拒绝退避 3 连/托管变更/角色下线):快层回退数值压力决策 */
   clearIntents(characterId: string): void {

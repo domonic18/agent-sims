@@ -120,6 +120,11 @@ export interface BalanceConfig {
   SOCIAL_PAIR_COOLDOWN_MINUTES: number;
   SOCIAL_DAILY_INITIATE_CAP: number;
   SOCIAL_RETRY_COOLDOWN_MINUTES: number;
+  /** jev 冲动 want(E6 统一意图架构):System 1 产出的紧迫度/半衰期(游戏分钟)/
+   * confidence 门(低于视为没产生直觉,忽略本次) */
+  JEV_IMPULSE_URGENCY: number;
+  JEV_IMPULSE_TTL_MINUTES: number;
+  JEV_CONFIDENCE_MIN: number;
   /** 共处破冰(D1):同场所陌生对共处累计满阈值分钟自动相识;每世界每日建交上限防速熟;初识熟悉度 */
   ACQUAINTANCE_THRESHOLD_MINUTES: number;
   ACQUAINTANCE_DAILY_CAP: number;
@@ -219,6 +224,11 @@ export const BALANCE: BalanceConfig = {
   SOCIAL_PAIR_COOLDOWN_MINUTES: 30,
   SOCIAL_DAILY_INITIATE_CAP: 8,
   SOCIAL_RETRY_COOLDOWN_MINUTES: 10,
+  // E6:冲动紧迫度 0.3——低于 plan want 常规档,直觉让位计划但能被概率采样放大;
+  // 半衰期 120 游戏分(冲动会消退);置信门 0.35(低置信兜底不产出冲动)
+  JEV_IMPULSE_URGENCY: 0.3,
+  JEV_IMPULSE_TTL_MINUTES: 120,
+  JEV_CONFIDENCE_MIN: 0.35,
   ACQUAINTANCE_THRESHOLD_MINUTES: 120,
   ACQUAINTANCE_DAILY_CAP: 2,
   ACQUAINTANCE_FAMILIARITY: 5,
