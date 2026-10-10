@@ -189,13 +189,37 @@ export function AgentTracePanel() {
           <Typography.Text type="secondary">选择角色查看此刻 want 池(5 秒自动刷新)。</Typography.Text>
         ) : schedule === null ? (
           <Typography.Text type="secondary">加载中…</Typography.Text>
-        ) : schedule.day === null ? (
-          <Typography.Text type="secondary">该角色暂无当日意图容器(等待晨间规划)。</Typography.Text>
         ) : (
           <>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {`第 ${schedule.day} 天 · ${schedule.source === 'llm' ? '慢思考生成' : '个性化回落'} · 共 ${schedule.wants.length} 条 want(点击看生命周期)`}
-            </Typography.Text>
+            {schedule.snapshot !== null && (
+              <div style={{ marginBottom: 8 }}>
+                <Space wrap size={4}>
+                  <Tag>运行态</Tag>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {`(${schedule.snapshot.x},${schedule.snapshot.y}) · coins ${schedule.snapshot.coins} · energy ${schedule.snapshot.energy}`}
+                  </Typography.Text>
+                  {schedule.snapshot.activity !== null ? (
+                    <Tag color="processing">
+                      {`${schedule.snapshot.activity.activityId} ${Math.round(schedule.snapshot.activity.elapsed)}′`}
+                    </Tag>
+                  ) : (
+                    <Tag>空闲</Tag>
+                  )}
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {schedule.snapshot.backpack.length === 0
+                      ? '背包:空'
+                      : `背包:${schedule.snapshot.backpack.map((b) => `${b.name}×${b.count}`).join('、')}`}
+                  </Typography.Text>
+                </Space>
+              </div>
+            )}
+            {schedule.day === null ? (
+              <Typography.Text type="secondary">该角色暂无当日意图容器(等待晨间规划)。</Typography.Text>
+            ) : (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {`第 ${schedule.day} 天 · ${schedule.source === 'llm' ? '慢思考生成' : '个性化回落'} · 共 ${schedule.wants.length} 条 want(点击看生命周期)`}
+              </Typography.Text>
+            )}
             {doingWants.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 <Tag color="processing">进行中</Tag>

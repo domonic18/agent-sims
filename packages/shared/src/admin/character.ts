@@ -15,13 +15,27 @@ export interface CharacterWantView {
   targetCharacterId: string | null;
 }
 
-/** GET /api/admin/characters/:id/schedule 响应(当日无意图时 day=null/wants=[]) */
+/** 角色运行态快照(观测性):仲裁-执行失配排查的第一事实源——
+ * 「为什么仲裁胜出却不执行」先看这里(背包空/不在场/正忙着) */
+export interface CharacterRuntimeSnapshot {
+  x: number;
+  y: number;
+  coins: number;
+  energy: number;
+  /** 进行中活动;null=空闲 */
+  activity: { activityId: string; elapsed: number } | null;
+  /** 背包非空项(带单价;空数组=空包) */
+  backpack: Array<{ id: string; name: string; count: number; price: number | null }>;
+}
+
+/** GET /api/admin/characters/:id/schedule 响应(当日无意图时 day=null/wants=[];snapshot 始终在) */
 export interface CharacterScheduleView {
   characterId: string;
   day: number | null;
   /** llm=慢槽生成;fallback=模板回落 */
   source: 'llm' | 'fallback' | null;
   wants: CharacterWantView[];
+  snapshot: CharacterRuntimeSnapshot | null;
 }
 
 /** GET /api/admin/characters 响应(当前活跃世界角色清单,决策追踪面板角色选择器用) */

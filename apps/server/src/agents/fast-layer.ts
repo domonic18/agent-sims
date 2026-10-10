@@ -51,6 +51,11 @@ export interface WantCandidateDebug {
 export interface Decision {
   layer: 'rule' | 'plan' | 'jev' | 'triage';
   action: 'continue' | 'react';
+  /** continue 时的不可执行原因(观测性):仲裁-执行失配排查靠它免读代码——
+   * energy_gate=体力闸 | drive_channel_gone/drive_satisfied/drive_stuck=驱力通道 |
+   * target_missing=寻人目标不在 | chat_generating/summon_awaiting/chat_cooldown=会合协议静候 |
+   * node_depleted=采集节点空 | backpack_empty=卖货无货 | no_explore_target/craft_no_place/no_spot=无处可去 */
+  reason?: string;
   intent?: Intent;
   /** react 时的决策气泡文案(意图+理由模板) */
   bubble?: string;
@@ -778,7 +783,9 @@ export function wantSelect(
   );
   if (eligible.length === 0) {
     // 全被体力闸拦下:wants 保留(pending 不动),驱力生存压力照旧评分先行
-    return abandoned.length > 0 ? { layer: 'plan', action: 'continue', abandonedWantIds: abandoned } : null;
+    return abandoned.length > 0
+      ? { layer: 'plan', action: 'continue', reason: 'energy_gate', abandonedWantIds: abandoned }
+      : null;
   }
   const scored = eligible
     .map((w) => ({
@@ -844,11 +851,19 @@ export function wantSelect(
       world.night ??
       false;
     const ex = driveExecution(char, picked, day, night, map, anchorsOf, world);
-    if (ex === null) return { layer: 'plan', action: 'continue', wantId: picked.id, ...extraOf(abandoned, doneIds) };
+    if (ex === null)
+      return {
+        layer: 'plan',
+        action: 'continue',
+        reason: 'drive_channel_gone',
+        wantId: picked.id,
+        ...extraOf(abandoned, doneIds),
+      };
     if (ex.done) {
       return {
         layer: 'plan',
         action: 'continue',
+        reason: 'drive_satisfied',
         wantId: picked.id,
         doneWantIds: [...doneIds, picked.id],
         ...(abandoned.length > 0 ? { abandonedWantIds: abandoned } : {}),
@@ -858,6 +873,7 @@ export function wantSelect(
       return {
         layer: 'plan',
         action: 'continue',
+        reason: 'drive_stuck',
         wantId: picked.id,
         abandonedWantIds: [...abandoned, picked.id],
         ...(doneIds.length > 0 ? { doneWantIds: doneIds } : {}),
@@ -875,11 +891,19 @@ export function wantSelect(
   // 救援查看 want(E6.2 respond→冲动):到场即完成,详见 rescueExecution
   if (picked.activityId === 'rescue') {
     const ex = rescueExecution(char, picked, world);
-    if (ex === null) return { layer: 'plan', action: 'continue', wantId: picked.id, ...extraOf(abandoned, doneIds) };
+    if (ex === null)
+      return {
+        layer: 'plan',
+        action: 'continue',
+        reason: 'rescue_gone',
+        wantId: picked.id,
+        ...extraOf(abandoned, doneIds),
+      };
     if (ex.done) {
       return {
         layer: 'plan',
         action: 'continue',
+        reason: 'rescue_done',
         wantId: picked.id,
         doneWantIds: [...doneIds, picked.id],
         ...(abandoned.length > 0 ? { abandonedWantIds: abandoned } : {}),
@@ -905,6 +929,7 @@ export function wantSelect(
       return {
         layer: 'plan',
         action: 'continue',
+        reason: 'target_missing',
         abandonedWantIds: [...abandoned, picked.id],
         wantId: picked.id,
       };
@@ -922,19 +947,19 @@ export function wantSelect(
     }
     // 贴身:对话生成在途(E6.2 会合协议)——原地静候 social.chat 结算,零模型零移动
     if (world.chatGeneratingWith?.(char.id, picked.targetCharacterId) === true) {
-      return { layer: 'plan', action: 'continue', wantId: picked.id, ...extra };
+      return { layer: 'plan', action: 'continue', reason: 'chat_generating', wantId: picked.id, ...extra };
     }
     // 贴身:我召唤的对方还没应答(E6.2 两阶段会合)——不重复点火也不代答,
     // 静候对方自行应答(其 event want 赢得评分即 commit);放鸽子由会合超时回收
     if (world.summonAwaiting?.(picked.targetCharacterId) === true) {
-      return { layer: 'plan', action: 'continue', wantId: picked.id, ...extra };
+      return { layer: 'plan', action: 'continue', reason: 'summon_awaiting', wantId: picked.id, ...extra };
     }
     // 贴身:短冷却口径(E6)——落地聊天先簿记,簿记未出短窗本轮不重入聊天,
     // want 留待下轮再评(防连场聊天气泡刷屏)
     const lastChatAt =
       world.pairLastChatAt?.(char.id, picked.targetCharacterId) ?? Number.NEGATIVE_INFINITY;
     if (world.nowMin !== undefined && world.nowMin - lastChatAt < BALANCE.SOCIAL_RETRY_COOLDOWN_MINUTES) {
-      return { layer: 'plan', action: 'continue', wantId: picked.id, ...extra };
+      return { layer: 'plan', action: 'continue', reason: 'chat_cooldown', wantId: picked.id, ...extra };
     }
     return {
       layer: 'plan',
@@ -948,7 +973,13 @@ export function wantSelect(
   if (picked.activityId === 'explore') {
     const decision = exploreDecision(char, map, picked.id, definition.placeIds);
     if (decision === null) {
-      return { layer: 'plan', action: 'continue', abandonedWantIds: [...abandoned, picked.id], wantId: picked.id };
+      return {
+        layer: 'plan',
+        action: 'continue',
+        reason: 'no_explore_target',
+        abandonedWantIds: [...abandoned, picked.id],
+        wantId: picked.id,
+      };
     }
     return { layer: 'plan', action: 'react', wantId: picked.id, ...extra, ...decision };
   }
@@ -957,7 +988,7 @@ export function wantSelect(
     const node = gatherTarget(picked.activityId, char, world);
     if (node === null) {
       // 节点刚被采空:本轮不动,want 留 pending 待重生
-      return { layer: 'plan', action: 'continue', ...extra, wantId: picked.id };
+      return { layer: 'plan', action: 'continue', reason: 'node_depleted', ...extra, wantId: picked.id };
     }
     // 两段式(E4):远处 move_to 节点邻位,到达经 character.arrived 重入再接单
     // (消灭「移动中接单」与途中体力跌破的状态错位拒单)
@@ -996,7 +1027,13 @@ export function wantSelect(
     }
     const spot = activitySpot(map, picked.activityId, definition.placeIds, anchors);
     if (spot === null) {
-      return { layer: 'plan', action: 'continue', abandonedWantIds: [...abandoned, picked.id], wantId: picked.id };
+      return {
+        layer: 'plan',
+        action: 'continue',
+        reason: 'craft_no_place',
+        abandonedWantIds: [...abandoned, picked.id],
+        wantId: picked.id,
+      };
     }
     const placePart = spot.placeName === '' ? definition.name : `${spot.placeName}${definition.name}`;
     return {
@@ -1013,7 +1050,7 @@ export function wantSelect(
   if (picked.activityId === 'sell_goods') {
     const sellable = bestSellable(char.backpack);
     if (sellable === null) {
-      return { layer: 'plan', action: 'continue', ...extra, wantId: picked.id };
+      return { layer: 'plan', action: 'continue', reason: 'backpack_empty', ...extra, wantId: picked.id };
     }
     const shop = findPlaceByRef(map, 'shop');
     if (shop === null) return null;
@@ -1051,7 +1088,13 @@ export function wantSelect(
   }
   const spot = activitySpot(map, picked.activityId, definition.placeIds, anchors);
   if (spot === null) {
-    return { layer: 'plan', action: 'continue', abandonedWantIds: [...abandoned, picked.id], wantId: picked.id };
+    return {
+      layer: 'plan',
+      action: 'continue',
+      reason: 'no_spot',
+      abandonedWantIds: [...abandoned, picked.id],
+      wantId: picked.id,
+    };
   }
   const placePart = spot.placeName === '' ? definition.name : `${spot.placeName}${definition.name}`;
   return {

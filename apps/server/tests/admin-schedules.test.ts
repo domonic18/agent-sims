@@ -10,7 +10,20 @@ const CHAR_ID = 'char-1';
 
 function buildSim(minuteOfDay: number): Simulation {
   return {
-    characters: new Map([[CHAR_ID, { id: CHAR_ID }]]),
+    characters: new Map([
+      [
+        CHAR_ID,
+        {
+          id: CHAR_ID,
+          x: 12,
+          y: 34,
+          coins: 7,
+          energy: 88.4,
+          activity: null,
+          backpack: { berry: 3 },
+        },
+      ],
+    ]),
     clock: { minuteOfDay },
   } as unknown as Simulation;
 }
@@ -46,7 +59,20 @@ describe('GET/POST /api/admin/characters/:id/schedule|replan(D3 意图面板)', 
       headers: { authorization: authHeader() },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ characterId: CHAR_ID, day: null, source: null, wants: [] });
+    expect(res.json()).toEqual({
+      characterId: CHAR_ID,
+      day: null,
+      source: null,
+      wants: [],
+      snapshot: {
+        x: 12,
+        y: 34,
+        coins: 7,
+        energy: 88,
+        activity: null,
+        backpack: [{ id: 'berry', name: '浆果', count: 3, price: 2 }],
+      },
+    });
   });
 
   it('有意图:wants 视图带 label/statusLabel,why/urgency 原样透出', async () => {
@@ -69,6 +95,7 @@ describe('GET/POST /api/admin/characters/:id/schedule|replan(D3 意图面板)', 
       day: number;
       source: string;
       wants: Array<{ id: string; label: string; statusLabel: string; urgency: number; why: string }>;
+      snapshot: { backpack: Array<{ id: string; count: number; price: number | null }> } | null;
     };
     expect(body.day).toBe(3);
     expect(body.source).toBe('llm');
@@ -82,6 +109,7 @@ describe('GET/POST /api/admin/characters/:id/schedule|replan(D3 意图面板)', 
       ['挣钱', 0.8],
       ['透透气', 0.3],
     ]);
+    expect(body.snapshot?.backpack).toEqual([{ id: 'berry', name: '浆果', count: 3, price: 2 }]);
   });
 
   it('角色不在活跃世界 → 404;replan 清意图交泵重生成(此处只验 cleared)', async () => {

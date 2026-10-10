@@ -853,7 +853,18 @@ export class AgentScheduler {
         persistInnerState(this.deps.handle, char.id);
         this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
           trigger: 'day_rollover',
-          perception: { day: intents.day, source: intents.source, wants: intents.wants.length },
+          perception: {
+            day: intents.day,
+            source: intents.source,
+            wants: intents.wants.length,
+            // 生成留痕(观测性):plan 源 want 无产欲行,晨间生成明细在此可追溯
+            generated: intents.wants.map((w) => ({
+              id: w.id,
+              activity: w.activityId,
+              urgency: w.urgency,
+              why: w.why,
+            })),
+          },
           decision: { layer: 'slow', conclusion: 'continue' },
         });
       })
@@ -1090,7 +1101,13 @@ export class AgentScheduler {
         this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
           trigger,
           perception,
-          decision: { layer: decision.layer, conclusion: 'continue' },
+          decision: {
+            layer: decision.layer,
+            conclusion: 'continue',
+            ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
+            ...(decision.reason !== undefined ? { reason: decision.reason } : {}),
+          },
+          ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
         });
       }
       return;

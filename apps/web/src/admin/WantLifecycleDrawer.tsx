@@ -30,6 +30,31 @@ export function conclusionTag(conclusion: unknown): ReactNode {
   );
 }
 
+/** 执行层 continue 原因中文映射(观测性:「为什么不做」一眼可见) */
+const CONTINUE_REASON_META: Record<string, string> = {
+  energy_gate: '体力闸',
+  drive_channel_gone: '驱力通道消失',
+  drive_satisfied: '驱力已满足',
+  drive_stuck: '驱力受阻废弃',
+  rescue_gone: '救援已消失',
+  rescue_done: '救援已达成',
+  target_missing: '目标不在',
+  chat_generating: '对话生成中',
+  summon_awaiting: '召唤待应答',
+  chat_cooldown: '聊天冷却中',
+  no_explore_target: '无探索目标',
+  node_depleted: '节点已采空',
+  craft_no_place: '无制作台',
+  backpack_empty: '背包空',
+  no_spot: '无处可去',
+};
+
+export function continueReasonTag(reason: unknown): ReactNode {
+  const key = String(reason ?? '');
+  if (key === '' || key === 'undefined') return null;
+  return <Tag color="orange">{CONTINUE_REASON_META[key] ?? key}</Tag>;
+}
+
 const ORIGIN_META: Record<string, { label: string; color: string }> = {
   plan: { label: '规划', color: 'geekblue' },
   drive: { label: '驱力', color: 'gold' },
@@ -126,6 +151,7 @@ function traceChildren(entry: CognitionTraceEntryView, onOpenWant?: (wantId: str
             {intent}
           </Typography.Text>
         )}
+        {decision.reason !== undefined && continueReasonTag(decision.reason)}
         {decision.rejectReason !== undefined && (
           <Tag color="red">{`拒绝:${String(decision.rejectReason)}`}</Tag>
         )}

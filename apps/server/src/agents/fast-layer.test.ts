@@ -432,6 +432,7 @@ describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', 
     expect(none).toEqual({
       layer: 'plan',
       action: 'continue',
+      reason: 'energy_gate',
       abandonedWantIds: ['w1-0'],
     });
 
@@ -441,7 +442,12 @@ describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', 
     ]);
     const mixed = wantSelect(char({ housing: null, energy: 10 }), workDay, 1, TOWN_MAP, anchorsOf);
     // rest 废弃 + work 被体力闸拦下(≤20 非基础块)→ continue 携废弃列表
-    expect(mixed).toEqual({ layer: 'plan', action: 'continue', abandonedWantIds: ['w1-0'] });
+    expect(mixed).toEqual({
+      layer: 'plan',
+      action: 'continue',
+      reason: 'energy_gate',
+      abandonedWantIds: ['w1-0'],
+    });
 
     // 基础块(stroll)体力闸放行
     const strollDay = intents(1, [{ activityId: 'stroll', urgency: 0.9 }]);
