@@ -37,6 +37,17 @@ export interface ImpulseWant {
  * E6:jev 层 react 改携带 impulse(冲动 want,泵落库);socialize want 贴身时
  * 携带 chatWith(聊天交还社交管线执行,want 由 social.chat 结算);
  * E6.2:doneWantIds 收录当场判已达成须收口为 done 的 want(驱力压力已过/救援已到场) */
+/** 仲裁候选观测条目(观测性):wantSelect 每轮候选集的评分快照,进 select trace */
+export interface WantCandidateDebug {
+  id: string;
+  activityId: string;
+  origin: string;
+  urgency: number;
+  score: number;
+  /** 落选原因: seize=在契保护(挑战者分差不足) | score=评分落选 | energy=体力闸 */
+  reject?: string;
+}
+
 export interface Decision {
   layer: 'rule' | 'plan' | 'jev' | 'triage';
   action: 'continue' | 'react';
@@ -49,6 +60,8 @@ export interface Decision {
   abandonedWantIds?: string[];
   /** plan 层:当场判已达成须标 done 的 want 列表(调度泵落库;E6.2 驱力/事件 want 收口) */
   doneWantIds?: string[];
+  /** plan 层:本轮仲裁候选集评分快照(观测性,调度泵落 select trace 后即弃) */
+  debugCandidates?: WantCandidateDebug[];
   /** jev 层:选中候选标签(E5 观测口径,进 trace 供选择分布聚合) */
   choice?: string;
   /** jev 层:概率采样产出的冲动 want(调度泵落库后即时择条) */
@@ -704,6 +717,7 @@ export function wantSelect(
   anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
   bias: Readonly<Record<string, number>> = {},
   world: WantWorldQueries = {},
+  debug?: { candidates: WantCandidateDebug[] },
 ): Decision | null {
   if (!char.alive || char.collapsed) return null;
   if (char.activity !== null || char.path.length > 0) return null; // 忙碌不越权打断(rule/jev 同门槛)
@@ -791,6 +805,37 @@ export function wantSelect(
     scored[0]!.score <= incumbent.score * BALANCE.WANT_SEIZE_RATIO
   ) {
     picked = incumbent.want;
+  }
+  if (debug !== undefined) {
+    debug.candidates = scored.map((s) => ({
+      id: s.want.id,
+      activityId: s.want.activityId,
+      origin: s.want.origin,
+      urgency: s.want.urgency,
+      score: Math.round(s.score * 1000) / 1000,
+      ...(s.want.id === picked.id
+        ? {}
+        : {
+            reject:
+              s === scored[0]
+                ? 'seize'
+                : s.want.status === 'doing'
+                  ? 'incumbent_lost'
+                  : 'score',
+          }),
+    }));
+    for (const w of candidates) {
+      if (!eligible.includes(w)) {
+        debug.candidates.push({
+          id: w.id,
+          activityId: w.activityId,
+          origin: w.origin,
+          urgency: w.urgency,
+          score: 0,
+          reject: 'energy',
+        });
+      }
+    }
   }
   // 驱力 want 执行(E6.2):「怎么做」归专属分支——压力已过收口 done,通道消失
   // 废弃改道(写侧巡检重评),其余两段式动作;want 生命周期与其他来源同轨

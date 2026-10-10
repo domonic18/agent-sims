@@ -1,4 +1,4 @@
-import { date, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { date, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { worlds } from './world.js';
 
 export const characters = pgTable('characters', {
@@ -46,24 +46,35 @@ export const dialogues = pgTable('dialogues', {
 
 /** 认知 trace(agent-design §7.2):每个认知周期一行,明细 JSONB。
  * 采样: rule 层 continue 高频周期按采样记录,react 与模型调用周期全量。 */
-export const cognitionTrace = pgTable('cognition_trace', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  characterId: uuid('character_id')
-    .notNull()
-    .references(() => characters.id, { onDelete: 'cascade' }),
-  /** 角色内自增周期号 */
-  seq: integer('seq').notNull(),
-  /** 游戏时刻(纪元起分钟);真实时间=created_at */
-  gameMinutes: integer('game_minutes').notNull(),
-  /** 触发源: eventbus | threshold | schedule_block | day_rollover | reflection */
-  triggerType: text('trigger_type').notNull(),
-  /** 触发摘要+感知内容 */
-  perception: jsonb('perception'),
-  /** 检索命中(记忆 id+三因子得分) */
-  retrieval: jsonb('retrieval'),
-  /** 判定: { layer, conclusion, intent?, bubble? } */
-  decision: jsonb('decision').notNull(),
-  /** 模型调用明细数组: { slot, taskType, promptTokens, completionTokens, latencyMs, outputPreview } */
-  calls: jsonb('calls'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const cognitionTrace = pgTable(
+  'cognition_trace',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    characterId: uuid('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    /** 归属世界(观测性: 跨世界数据隔离检索) */
+    worldId: uuid('world_id').references(() => worlds.id, { onDelete: 'set null' }),
+    /** 角色内自增周期号 */
+    seq: integer('seq').notNull(),
+    /** 游戏时刻(纪元起分钟);真实时间=created_at */
+    gameMinutes: integer('game_minutes').notNull(),
+    /** 触发源: eventbus | threshold | schedule_block | day_rollover | reflection */
+    triggerType: text('trigger_type').notNull(),
+    /** 触发摘要+感知内容 */
+    perception: jsonb('perception'),
+    /** 检索命中(记忆 id+三因子得分) */
+    retrieval: jsonb('retrieval'),
+    /** 判定: { layer, conclusion, intent?, bubble? } */
+    decision: jsonb('decision').notNull(),
+    /** 模型调用明细数组: { slot, taskType, promptTokens, completionTokens, latencyMs, outputPreview } */
+    calls: jsonb('calls'),
+    /** 关联 want(观测性: 一张 want 从产欲到结算的追踪键) */
+    wantId: text('want_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('cognition_trace_world_char_idx').on(table.worldId, table.characterId),
+    index('cognition_trace_want_idx').on(table.wantId),
+  ],
+);

@@ -28,6 +28,7 @@ import {
   type ImpulseWant,
   type JevContext,
   type RuleWorldQueries,
+  type WantCandidateDebug,
   type WantWorldQueries,
 } from './fast-layer.js';
 import { ResponseRegistry } from './responses.js';
@@ -397,8 +398,8 @@ export class AgentScheduler {
       this.apply(char, rent, 'eventbus', { event: event.type });
       return;
     }
-    this.driveStep(char);
-    const want = this.wantDecision(char);
+    this.driveStep(char, 'eventbus');
+    const want = this.wantDecision(char, 'eventbus');
     if (want !== null) {
       this.apply(char, want, 'eventbus', { event: event.type, want: true });
       return;
@@ -415,7 +416,7 @@ export class AgentScheduler {
   /** 冲动/驱力 want 写入意图存储后的即时择条(E6):两段式第二段——
    * wantSelect 重评全部在途 want(驱力紧迫度通常压过冲动),命中即执行 */
   private executeWants(char: WorldCharacter, trigger: 'threshold' | 'eventbus'): void {
-    const want = this.wantDecision(char);
+    const want = this.wantDecision(char, trigger);
     if (want !== null) this.apply(char, want, trigger, { want: true, generated: true });
   }
 
@@ -465,8 +466,9 @@ export class AgentScheduler {
       });
       return;
     }
+    const wantId = this.freshWantId(char.id, 'e');
     intents.wants.push({
-      id: this.freshWantId(char.id, 'e'),
+      id: wantId,
       activityId: action.want.activityId,
       origin: 'event',
       ...(action.want.targetCharacterId !== undefined
@@ -494,6 +496,7 @@ export class AgentScheduler {
         intent: `want:${action.want.activityId}`,
         bubble: action.label,
       },
+      wantId,
     });
     if (char.activity === null && char.path.length === 0) this.executeWants(char, 'eventbus');
   }
@@ -502,7 +505,7 @@ export class AgentScheduler {
    * 带半衰期);压力已缓解的存量驱力 want 收口 done(bench-rest 等与驱力活动 id
    * 错位的结算也靠这里主动收口,activity.finished 只对得上真实活动 id)。零模型
    * 零直执——「怎么做」归 wantSelect 驱力分支;落库后由调用方的 wantDecision 择条 */
-  private driveStep(char: WorldCharacter): void {
+  private driveStep(char: WorldCharacter, trigger: TraceEntry['trigger'] = 'threshold'): void {
     const { sim } = this.deps;
     const intents = innerState.get(char.id)?.intents ?? null;
     if (intents === null || intents.day !== sim.clock.day) return; // 无容器静默(与 writeImpulse 同口径)
@@ -531,8 +534,9 @@ export class AgentScheduler {
           w.activityId === p.activityId,
       );
       if (exists) continue;
+      const wantId = this.freshWantId(char.id, 'd');
       intents.wants.push({
-        id: this.freshWantId(char.id, 'd'),
+        id: wantId,
         activityId: p.activityId,
         origin: 'drive',
         why: p.why,
@@ -542,6 +546,17 @@ export class AgentScheduler {
         createdAtMin: sim.clock.gameMinutes,
       });
       changed = true;
+      this.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger,
+        perception: { gate: 'drive_want', activity: p.activityId, urgency: p.urgency },
+        decision: {
+          layer: 'rule',
+          conclusion: 'react',
+          intent: `want:${p.activityId}`,
+          bubble: p.why,
+        },
+        wantId,
+      });
     }
     if (changed) persistInnerState(this.deps.handle, char.id);
   }
@@ -699,6 +714,7 @@ export class AgentScheduler {
         elapsedMinutes: event.elapsedMinutes,
       },
       decision: { layer: 'plan', conclusion: 'continue' },
+      wantId: want.id,
     });
   }
 
@@ -722,6 +738,7 @@ export class AgentScheduler {
         trigger: 'eventbus',
         perception: { event: event.type, want: want.id, with: partner },
         decision: { layer: 'plan', conclusion: 'continue' },
+        wantId: want.id,
       });
     }
   }
@@ -852,12 +869,14 @@ export class AgentScheduler {
   }
 
   /** 意图执行判定:退避期内静默;无意图/意图耗尽返回 null 交还后续层级;
-   * 不可执行 want 当场废弃落库 */
-  private wantDecision(char: WorldCharacter): Decision | null {
+   * 不可执行 want 当场废弃落库;命中即落一行 select trace(候选集评分快照,
+   * 观测性:一张 want 的仲裁时刻可审计) */
+  private wantDecision(char: WorldCharacter, trigger: 'threshold' | 'eventbus' = 'threshold'): Decision | null {
     const { sim } = this.deps;
     // intentSkipUntil 存绝对 gameMinutes:跨日不会被同一 minuteOfDay 误读成"仍在退避"
     const skipUntil = this.intentSkipUntil.get(char.id) ?? Number.NEGATIVE_INFINITY;
     if (sim.clock.gameMinutes < skipUntil) return null;
+    const debug: { candidates: WantCandidateDebug[] } = { candidates: [] };
     const decision = wantSelect(
       char,
       innerState.get(char.id)?.intents,
@@ -866,6 +885,7 @@ export class AgentScheduler {
       this.anchorsAt(),
       biasOf(hosting.get(char.id)?.compiled ?? null),
       this.wantWorld(char),
+      debug,
     );
     if (decision === null) return null;
     if (decision.abandonedWantIds !== undefined && decision.abandonedWantIds.length > 0) {
@@ -874,6 +894,17 @@ export class AgentScheduler {
     if (decision.doneWantIds !== undefined && decision.doneWantIds.length > 0) {
       this.completeWants(char.id, decision.doneWantIds);
     }
+    this.trace.record(char.id, sim.clock.gameMinutes, {
+      trigger,
+      perception: { select: true, action: decision.action },
+      decision: {
+        layer: 'select',
+        conclusion: 'react',
+        ...(decision.wantId !== undefined ? { intent: `want:${decision.wantId}` } : {}),
+        candidates: debug.candidates,
+      },
+      ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
+    });
     return decision;
   }
 
@@ -1009,8 +1040,9 @@ export class AgentScheduler {
       });
       return;
     }
+    const wantId = this.freshWantId(char.id, 'j');
     intents.wants.push({
-      id: this.freshWantId(char.id, 'j'),
+      id: wantId,
       activityId: impulse.activityId,
       origin: 'impulse',
       ...(impulse.targetCharacterId !== undefined
@@ -1038,8 +1070,9 @@ export class AgentScheduler {
         bubble: impulse.why,
         ...(choice !== undefined ? { choice } : {}),
       },
+      wantId,
     });
-    const want = this.wantDecision(char);
+    const want = this.wantDecision(char, 'eventbus');
     if (want !== null) this.apply(char, want, 'eventbus', { event: eventType, want: true, impulse: true });
   }
 
@@ -1075,6 +1108,7 @@ export class AgentScheduler {
           intent: `chat_with:${decision.chatWith}`,
           bubble: decision.bubble,
         },
+        ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
       });
       const self = this.deps.sim.characters.get(char.id);
       if (self !== undefined) {
@@ -1124,6 +1158,7 @@ export class AgentScheduler {
         ...(decision.choice !== undefined ? { choice: decision.choice } : {}),
         ...(result.ok ? {} : { rejectReason: result.message }),
       },
+      ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
     });
   }
 }

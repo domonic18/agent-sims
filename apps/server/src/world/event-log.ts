@@ -2,6 +2,7 @@ import type { WorldEvent } from '@sims/shared';
 import type { DbHandle } from '../db/client.js';
 import { dialogues, worldEvents } from '../db/schema/index.js';
 import type { EventBus } from './event-bus.js';
+import { getWorldId } from './world-id.js';
 
 /** 事件各形态角色字段(characterId/fromId/aId…)统一提取为筛选用主角色 */
 export function eventCharacterId(event: WorldEvent): string | null {
@@ -26,6 +27,7 @@ export function attachWorldEventLog(
         await handle.db.insert(worldEvents).values({
           type: event.type,
           characterId: eventCharacterId(event),
+          worldId: getWorldId(),
           tick: event.tick,
           payload: event,
         });

@@ -42,6 +42,8 @@ export const tokenUsage = pgTable('token_usage', {
   characterId: uuid('character_id').references(() => characters.id, {
     onDelete: 'set null',
   }),
+  /** 归属世界(观测性: 跨世界数据隔离检索;无 FK,slot 级行可空) */
+  worldId: uuid('world_id'),
   taskType: text('task_type').notNull(),
   promptTokens: integer('prompt_tokens').notNull().default(0),
   completionTokens: integer('completion_tokens').notNull().default(0),

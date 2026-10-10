@@ -1,4 +1,5 @@
-import { index, integer, jsonb, pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
+import { index, integer, jsonb, pgTable, serial, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { worlds } from './world.js';
 
 /** 世界事件日志(M-G.1①):EventBus 事件异步落库,后台按角色/类型筛选 */
 export const worldEvents = pgTable(
@@ -7,6 +8,8 @@ export const worldEvents = pgTable(
     id: serial('id').primaryKey(),
     type: text('type').notNull(),
     characterId: text('character_id'),
+    /** 归属世界(观测性: 跨世界数据隔离检索) */
+    worldId: uuid('world_id').references(() => worlds.id, { onDelete: 'set null' }),
     tick: integer('tick').notNull(),
     payload: jsonb('payload').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -15,6 +18,7 @@ export const worldEvents = pgTable(
     index('world_events_type_idx').on(table.type),
     index('world_events_character_idx').on(table.characterId),
     index('world_events_created_idx').on(table.createdAt),
+    index('world_events_world_idx').on(table.worldId),
   ],
 );
 

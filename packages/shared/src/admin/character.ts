@@ -7,6 +7,12 @@ export interface CharacterWantView {
   why: string;
   urgency: number;
   status: 'pending' | 'doing' | 'done' | 'abandoned';
+  /** 产欲来源: plan=晨间规划/drive=驱力/impulse=直觉/event=事件与召唤 */
+  origin: 'plan' | 'drive' | 'impulse' | 'event';
+  /** 半衰期截止(游戏分钟);null=无半衰 */
+  expiresAtMin: number | null;
+  /** 人指向 want 的目标角色;null=非人指向 */
+  targetCharacterId: string | null;
 }
 
 /** GET /api/admin/characters/:id/schedule 响应(当日无意图时 day=null/wants=[]) */

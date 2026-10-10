@@ -1,6 +1,7 @@
 import { tokenUsage } from '../db/schema/index.js';
 import type { DbHandle } from '../db/client.js';
 import type { ModelSlot } from '@sims/shared';
+import { getWorldId } from '../world/world-id.js';
 
 export interface TokenUsageEntry {
   slot: ModelSlot;
@@ -18,6 +19,7 @@ export async function recordTokenUsage(
   await handle.db.insert(tokenUsage).values({
     slot: entry.slot,
     characterId: entry.characterId ?? null,
+    worldId: getWorldId(),
     taskType: entry.taskType,
     promptTokens: entry.promptTokens,
     completionTokens: entry.completionTokens,

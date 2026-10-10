@@ -26,6 +26,7 @@ import type { DbHandle } from '../db/client.js';
 import { characters, worldState, worlds } from '../db/schema/index.js';
 import { publishTarget, readManifestVersion } from '../assets/paths.js';
 import { TileMap } from '../world/map.js';
+import { setWorldId } from '../world/world-id.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
 import { DECOR_POOLS } from '../world/worldgen/blueprint.js';
 
@@ -340,6 +341,7 @@ export function registerWorldCreateRoutes(app: FastifyInstance, handle: DbHandle
     if (!row) {
       return await reply.code(500).send({ error: '世界记录写入失败' });
     }
+    setWorldId(row.id);
 
     // 重置模拟现场并按配置批量出生(DB 已落世界记录,sim 侧纯内存操作不再失败)
     app.simulation.reset();

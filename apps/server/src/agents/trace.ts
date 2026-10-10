@@ -1,6 +1,7 @@
 import type { DbHandle } from '../db/client.js';
 import { cognitionTrace } from '../db/schema/agent.js';
 import { logTech } from '../telemetry.js';
+import { getWorldId } from '../world/world-id.js';
 
 /** 认知周期触发源(agent-design §4.6) */
 export type TraceTrigger =
@@ -20,8 +21,8 @@ export interface TraceCall {
 }
 
 export interface TraceDecision {
-  /** 判定层级: rule=数值压力 | plan=日程执行 | jev=微决策 | triage=事件分级门 | light/slow=慢思考 */
-  layer: 'rule' | 'plan' | 'jev' | 'triage' | 'light' | 'slow';
+  /** 判定层级: rule=数值压力 | plan=日程执行 | jev=微决策 | triage=事件分级门 | select=want 仲裁 | light/slow=慢思考 */
+  layer: 'rule' | 'plan' | 'jev' | 'triage' | 'select' | 'light' | 'slow';
   /** continue | react */
   conclusion: 'continue' | 'react';
   /** react 时的意图摘要(如 "move_to 23,25") */
@@ -32,6 +33,16 @@ export interface TraceDecision {
   choice?: string;
   /** react 意图被意图层拒绝时的原因(执行回执) */
   rejectReason?: string;
+  /** select 层仲裁快照:候选集评分与胜负(观测性,wantSelect 命中后落一份) */
+  candidates?: Array<{
+    id: string;
+    activityId: string;
+    origin: string;
+    urgency: number;
+    score: number;
+    /** 落选原因(如 seize=挑战者分差不足) */
+    reject?: string;
+  }>;
 }
 
 export interface TraceEntry {
@@ -40,6 +51,8 @@ export interface TraceEntry {
   retrieval?: Record<string, unknown>;
   decision: TraceDecision;
   calls?: TraceCall[];
+  /** 关联 want(观测性: 一张 want 从产欲到结算的追踪键) */
+  wantId?: string;
 }
 
 function errMsg(err: unknown): string {
@@ -62,6 +75,7 @@ export class TraceRecorder {
       .insert(cognitionTrace)
       .values({
         characterId,
+        worldId: getWorldId(),
         seq,
         gameMinutes,
         triggerType: entry.trigger,
@@ -69,6 +83,7 @@ export class TraceRecorder {
         retrieval: entry.retrieval ?? null,
         decision: entry.decision,
         calls: entry.calls ?? null,
+        wantId: entry.wantId ?? null,
       })
       .catch((err: unknown) => {
         logTech('warn', 'agent', '认知 trace 落库失败', {

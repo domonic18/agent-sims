@@ -12,6 +12,7 @@ import { restoreHostingFromDb } from './hosting.js';
 import { restoreInnerStateFromDb } from '../agents/inner-state-db.js';
 import { restoreLatestArchive } from './world-archives.js';
 import { TileMap } from '../world/map.js';
+import { setWorldId } from '../world/world-id.js';
 import { applyWorldParams } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { characters, worlds } from '../db/schema/index.js';
@@ -37,6 +38,7 @@ export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle)
     .orderBy(desc(worlds.createdAt))
     .limit(1);
   if (!row) return;
+  setWorldId(row.id);
   const config = row.config as CreateWorldRequest & { map?: TileMapDefinition };
   if (config.map !== undefined) {
     try {

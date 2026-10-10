@@ -134,6 +134,13 @@
       "when": 1791546020600,
       "tag": "0018_sloppy_starjammers",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791632554522,
+      "tag": "0019_lying_dagger",
+      "breakpoints": true
     }
   ]
 }

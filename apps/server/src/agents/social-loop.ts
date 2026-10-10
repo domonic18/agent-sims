@@ -208,6 +208,7 @@ export class SocialLoop {
           coLocated: fire.chatReady ? 'near' : fire.samePlace ? 'same' : 'far',
         },
         decision: { layer: 'plan', conclusion: 'react', intent: 'want:socialize', bubble: why },
+        wantId: want.id,
       });
       this.deps.executeWants(char, trigger);
     }
@@ -375,6 +376,7 @@ export class SocialLoop {
         trigger,
         perception: { motive: 'social', chatBusy: true, target: target.id, want: wantId ?? undefined },
         decision: { layer: 'rule', conclusion: 'continue' },
+        ...(wantId !== null ? { wantId } : {}),
       });
       return;
     }
@@ -393,6 +395,7 @@ export class SocialLoop {
           trigger,
           perception: { motive: 'social', summonWait: true, target: target.id, want: wantId ?? undefined },
           decision: { layer: 'rule', conclusion: 'continue' },
+          ...(wantId !== null ? { wantId } : {}),
         });
       }
       return;
@@ -465,6 +468,7 @@ export class SocialLoop {
         trigger,
         perception: { motive: 'social', summon: char.id, want: want.id },
         decision: { layer: 'rule', conclusion: 'react', intent: 'want:socialize', bubble: want.why },
+        wantId: want.id,
       });
     }
     this.deps.executeWants(target, trigger); // 即时重评:贴身空闲即应答,应答即生成
@@ -497,6 +501,7 @@ export class SocialLoop {
         trigger: 'threshold',
         perception: { motive: 'social', summonTimeout: true, target: entry.targetId },
         decision: { layer: 'rule', conclusion: 'continue' },
+        ...(want !== undefined ? { wantId: want.id } : {}),
       });
     }
   }
@@ -544,6 +549,7 @@ export class SocialLoop {
         trigger,
         perception: { motive: 'social', walkedAway: true, target: target.id, want: wantId ?? undefined },
         decision: { layer: 'rule', conclusion: 'continue' },
+        ...(wantId !== null ? { wantId } : {}),
       });
       return;
     }
@@ -556,6 +562,7 @@ export class SocialLoop {
         action: 'react',
         intent: { type: 'chat', characterId: char.id, targetId: target.id, lines },
         bubble: `和${target.name}聊聊天`,
+        ...(wantId !== null ? { wantId } : {}),
       },
       trigger,
       {

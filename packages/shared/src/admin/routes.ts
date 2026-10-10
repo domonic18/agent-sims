@@ -37,6 +37,9 @@ export const ADMIN_API = {
   logWorldEvents: '/api/admin/logs/world-events',
   logTechLogs: '/api/admin/logs/tech-logs',
   logAuditLogs: '/api/admin/logs/audit-logs',
+  logCognitionTraces: '/api/admin/logs/cognition-traces',
+  wantLifecycle: (characterId: string, wantId: string) =>
+    `/api/admin/traces/wants/${characterId}/${wantId}`,
   characterMemories: (id: string) => `/api/admin/characters/${id}/memories`,
   characterImpressions: (id: string) => `/api/admin/characters/${id}/impressions`,
   characterMood: (id: string) => `/api/admin/characters/${id}/mood`,

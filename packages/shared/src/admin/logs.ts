@@ -52,3 +52,35 @@ export interface AuditLogEntriesResponse {
   pageSize: number;
   entries: AuditLogEntryView[];
 }
+
+/** 认知 trace 行(agent-design §7): 每个认知周期一条,决策链六步观测面 */
+export interface CognitionTraceEntryView {
+  id: string;
+  characterId: string;
+  worldId: string | null;
+  seq: number;
+  gameMinutes: number;
+  trigger: string;
+  perception: Record<string, unknown> | null;
+  retrieval: Record<string, unknown> | null;
+  decision: Record<string, unknown>;
+  calls: Array<Record<string, unknown>> | null;
+  /** 关联 want(一张 want 从产欲到结算的追踪键;continue 采样行可为 null) */
+  wantId: string | null;
+  createdAt: string;
+}
+
+export interface CognitionTraceEntriesResponse {
+  total: number;
+  page: number;
+  pageSize: number;
+  entries: CognitionTraceEntryView[];
+}
+
+/** GET /api/admin/traces/wants/:characterId/:wantId — want 全生命周期聚合 */
+export interface WantLifecycleResponse {
+  /** 脑内在途快照(意图存储仍保有该 want 时;跨日/已清意图则 null,靠 traces 还原) */
+  want: Record<string, unknown> | null;
+  traces: CognitionTraceEntryView[];
+  events: WorldEventEntryView[];
+}

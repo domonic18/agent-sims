@@ -27,6 +27,9 @@ export function registerScheduleRoutes(app: FastifyInstance, sim: Simulation): v
         urgency: w.urgency,
         status: w.status,
         statusLabel: WANT_STATUS_LABEL[w.status],
+        origin: w.origin,
+        expiresAtMin: w.expiresAtMin ?? null,
+        targetCharacterId: w.targetCharacterId ?? null,
       })),
     });
   });
