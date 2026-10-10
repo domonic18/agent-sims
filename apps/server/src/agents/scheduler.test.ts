@@ -1,4 +1,5 @@
 import { TOWN_MAP } from '@sims/shared';
+import { TileMap } from '../world/map.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WorldEvent } from '@sims/shared';
 import { autonomy, hosting, innerState } from './cognition.js';
@@ -80,6 +81,10 @@ interface HarnessOpts {
   runIntent?: typeof runIntent;
   /** 额外世界角色(died/revived 事件的主体、救援者等,供 positionOf/距离判定) */
   extraCharacters?: WorldCharacter[];
+  /** 资源节点表(采集/驱力 forage 通道测试用) */
+  resourceNodes?: Array<[string, { id: string; kind: string; x: number; y: number; charges: number | null; respawnAtDay: number | null }]>;
+  /** 用真 TileMap(含 isWalkable/寻路)替换无地形 mock——节点寻址类测试必开 */
+  useTileMap?: boolean;
 }
 
 function harness(
@@ -101,7 +106,10 @@ function harness(
   let eventHandler: ((event: WorldEvent) => void) | null = null;
   const sim = {
     clock,
-    map: { definition: TOWN_MAP, activityAnchors: () => [] as Array<never> },
+    map:
+      opts?.useTileMap === true
+        ? TileMap.fromDefinition(TOWN_MAP)
+        : { definition: TOWN_MAP, activityAnchors: () => [] as Array<never> },
     characters: new Map([
       [worldChar.id, worldChar] as const,
       ...(opts?.extraCharacters ?? []).map((c) => [c.id, c] as const),
@@ -109,7 +117,7 @@ function harness(
     socials: new Map(),
     // E1 rule/want 世界查询与 townNeeds 读的世界表(空=无货/无节点/无损耗)
     shopStock: new Map<string, number>(),
-    resourceNodes: new Map<string, never>(),
+    resourceNodes: new Map(opts?.resourceNodes ?? []),
     maintenanceSpots: new Map<string, never>(),
     recipe: () => null,
     events: {
@@ -450,6 +458,36 @@ describe('AgentScheduler(D3 意图执行)', () => {
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 跨出巡检块边界
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents[0]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
+    h.scheduler.dispose();
+  });
+
+  it('forage 执行链端到端(wantWorld 注入回归): 饿汉+浆果丛必须产出走向采集的意图而非空手废弃', async () => {
+    // 复刻决策观测镇老周式绝境: energy 25 触发饥饿,coins 0 买不起,背包空,
+    // 身旁有浆果丛——写侧预检(ruleWorld)与执行侧(wantWorld)必须同源可见该节点;
+    // E6.2 平移曾漏注入 nearestEdibleNode 令执行恒 stuck→abandoned,饿死循环。
+    // 坐标取 TOWN_MAP 相邻可行走格(25,25)+(26,25):角色站不可走格会令寻路预检失败;
+    // 起始 gm 600(白天档): 夜间 sleep 驱力 0.85 会压过 forage 0.8,白天 0.7 则稳输
+    const h = harness(
+      600,
+      char({ x: 25, y: 25, energy: 25, coins: 0 }),
+      undefined,
+      {
+        resourceNodes: [
+          ['bush-1', { id: 'bush-1', kind: 'berry_bush', x: 26, y: 25, charges: 3, respawnAtDay: null }],
+        ],
+        useTileMap: true,
+      },
+    );
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] }); // 屏蔽回落意图,专注驱力链
+    vi.advanceTimersByTime(2_000);
+    expect(h.intents.length).toBeGreaterThanOrEqual(1);
+    expect(['move_to', 'work_task']).toContain(h.intents[0]!.type);
+    expect(h.bubbles[0]!.text).toContain('采'); // 「饿得不行,店也没的买,采点吃的」
+    const forageWant = innerState
+      .get(CHAR_ID)
+      ?.intents?.wants.find((w) => w.activityId === 'forage');
+    expect(forageWant).toBeDefined();
+    expect(forageWant!.status).toBe('doing');
     h.scheduler.dispose();
   });
 });

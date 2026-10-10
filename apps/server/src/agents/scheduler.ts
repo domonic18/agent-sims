@@ -188,11 +188,14 @@ export class AgentScheduler {
   }
 
   /** want 层世界查询(E1 依赖注入):按 kind 寻节点+每世界配方就绪(存在+启用+背包含料)
-   * +存活角色位置(E2 人指向寻人) */
+   * +存活角色位置(E2 人指向寻人);shopStock/nearestEdibleNode 供驱力 eat/forage
+   * 执行分支——与 ruleWorld 同源,漏注入会令预检放行而执行必 stuck(E6.2 平移遗漏) */
   private wantWorld(char: WorldCharacter): WantWorldQueries {
     const { sim } = this.deps;
     return {
       nearestNode: (kind, from) => this.nearestNodeOf([kind], from),
+      shopStock: (itemId) => sim.shopStock.get(itemId) ?? 0,
+      nearestEdibleNode: (from) => this.nearestNodeOf(['berry_bush', 'apple_tree'], from),
       recipeReady: (recipeId) => {
         const recipe = sim.recipe(recipeId);
         if (recipe === null || recipe.enabled === false) return false;
