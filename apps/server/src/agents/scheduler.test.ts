@@ -490,6 +490,27 @@ describe('AgentScheduler(D3 意图执行)', () => {
     expect(forageWant!.status).toBe('doing');
     h.scheduler.dispose();
   });
+
+  it('sell_goods 空包候选期拦截: 空背包时卖货 want 不进评分池,次优 work 正常择条而非全天空转', async () => {
+    // 复刻观测镇空转案例: sell_goods 0.9 稳压 work 0.7(jitter ±5% 不重叠),
+    // 缺候选期拦截时它夺冠→E6.3 契约免评续做→每拍执行答 backpack_empty 锁死白天;
+    // 拦截后空包不评分(pending 保留,采到货自然复活),仲裁落到 work
+    const h = harness(600, char({ coins: 50, energy: 80 }));
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [
+        { id: 'w0-sell', activityId: 'sell_goods', why: '卖货换钱', origin: 'plan', urgency: 0.9, status: 'pending', createdAtMin: 600 },
+        { id: 'w0-work', activityId: 'work', why: '打杂工挣钱', origin: 'plan', urgency: 0.7, status: 'pending', createdAtMin: 600 },
+      ],
+    });
+    vi.advanceTimersByTime(2_000);
+    expect(h.intents.length).toBeGreaterThanOrEqual(1); // 修复前=0: sell_goods 空转无意图
+    const wants = innerState.get(CHAR_ID)?.intents?.wants ?? [];
+    expect(wants.find((w) => w.id === 'w0-sell')?.status).toBe('pending'); // 跳过不废弃,等背包有货
+    expect(wants.find((w) => w.id === 'w0-work')?.status).toBe('doing');
+    h.scheduler.dispose();
+  });
 });
 
 describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {

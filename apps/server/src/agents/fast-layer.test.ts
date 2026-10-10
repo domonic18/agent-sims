@@ -617,11 +617,12 @@ describe('wantSelect 卖货 want(E4 变现通路)', () => {
     });
   });
 
-  it('空背包(无可变现物):本轮 continue,want 留 pending 非 abandoned', () => {
+  it('空背包(无可变现物):候选期跳过不评分(无决策),want 留 pending 非 abandoned', () => {
+    // 2026-10-10 起 sell_goods 空包在候选期拦截(与采集节点/制作配料同款):
+    // 池中仅此一条时直接无决策,杜绝「夺冠→契约续做→执行层 backpack_empty」全天空转
     const decision = wantSelect(char({}), day, 1, TOWN_MAP, noAnchors);
-    expect(decision!.action).toBe('continue');
-    expect(decision!.wantId).toBe('w1-0');
-    expect(decision!.intent).toBeUndefined();
+    expect(decision).toBeNull();
+    expect(day.wants[0]!.status).toBe('pending');
   });
 });
 

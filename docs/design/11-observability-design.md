@@ -27,7 +27,7 @@
 
 **采样策略**: react/select 全量(低频高价值),continue 按 RULE_CONTINUE_SAMPLE 采样(summon_wait 等常态等待另行采样 SOCIAL_WAIT_TRACE_SAMPLE)。4 倍速 4 角色 volatile 量级约数千行/游戏日,可控。
 
-**continue reason 枚举**(执行层 15 出口,落 decision.reason,面板映射为中文 Tag): energy_gate(体力闸)/drive_channel_gone(驱力通道消失)/drive_satisfied(驱力已满足)/drive_stuck(驱力受阻废弃)/rescue_gone(救援已消失)/rescue_done(救援已达成)/target_missing(目标不在)/chat_generating(对话生成中)/summon_awaiting(召唤待应答)/chat_cooldown(聊天冷却中)/no_explore_target(无探索目标)/node_depleted(节点已采空)/craft_no_place(无制作台)/backpack_empty(背包空)/no_spot(无处可去)。continue trace 行同步透传 wantId——「哪个 want 连续 continue」是空转识别的钥匙。
+**continue reason 枚举**(执行层 15 出口,落 decision.reason,面板映射为中文 Tag): energy_gate(体力闸)/drive_channel_gone(驱力通道消失)/drive_satisfied(驱力已满足)/drive_stuck(驱力受阻废弃)/rescue_gone(救援已消失)/rescue_done(救援已达成)/target_missing(目标不在)/chat_generating(对话生成中)/summon_awaiting(召唤待应答)/chat_cooldown(聊天冷却中)/no_explore_target(无探索目标)/node_depleted(节点已采空)/craft_no_place(无制作台)/backpack_empty(背包空)/no_spot(无处可去)。continue trace 行同步透传 wantId——「哪个 want 连续 continue」是空转识别的钥匙。注: backpack_empty 自 2026-10-10 起在候选期前置拦截(sell_goods 空包不进评分池),正常情况下不再出现于执行层,枚举保留兼容旧数据。
 
 ## 3. wantId 关联模型
 
@@ -66,4 +66,4 @@
 3. 「社交为什么没聊起来?」→ wantId 过滤 socialize want:召唤→等待(summonWait 采样)→生成/走散/超时废弃,每步有行。
 4. 「跨世界旧数据」→ 旧世界 closed 不碍事,按 world_id/角色检索历史 trace。
 
-**典型案例(2026-10-10 决策观测镇「只有苏晚在动」)**: 晨间 LLM 为 3 角色生成 sell_goods want(编了「卖浆果」戏),但 gather_berry 走 work_task 通道果实归雇主不进背包——执行层 backpack_empty continue(want 保留),仲裁器只看评分每拍仍让它胜出,无限循环锁死决策槽,其他 want 饿死。当时 trace 无 reason/wantId 只能手写 SQL 硬挖;本节补全后此类问题在面板上 1 分钟定位:want 池 doing 全是卖货+快照背包空+时间线连续「背包空」Tag。行为修复(产欲加背包前置/空转护栏)另行立项。
+**典型案例(2026-10-10 决策观测镇「只有苏晚在动」)**: 晨间 LLM 为 3 角色生成 sell_goods want(编了「卖浆果」戏),但 gather_berry 走 work_task 通道果实归雇主不进背包——执行层 backpack_empty continue(want 保留),仲裁器只看评分每拍仍让它胜出,无限循环锁死决策槽,其他 want 饿死。当时 trace 无 reason/wantId 只能手写 SQL 硬挖;本节补全后此类问题在面板上 1 分钟定位:want 池 doing 全是卖货+快照背包空+时间线连续「背包空」Tag。**已修复(同日)**: 根因是 wantSelect 候选过滤对 sell_goods 缺背包前置(gather/craft/rest 均有对应拦截,唯此处漏)——空包 sell_goods 不再进评分池(pending 保留,采到货自然复活),仲裁自动落到次优 want;「空转护栏」(同 want 连续 N continue→废弃)评估后暂缓,待真实执行期失配案例出现再立项。

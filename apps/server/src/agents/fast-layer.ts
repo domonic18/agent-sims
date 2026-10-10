@@ -764,6 +764,12 @@ export function wantSelect(
         ? world.recipeReady(w.activityId)
         : staticRecipeReady(char, w.activityId); // 缺料先跳过,先去采集
     }
+    // 卖货空包先跳过(pending 保留,采到货再变现)——与采集节点/制作配料同款
+    // 候选期拦截;缺此拦截空包 sell_goods 照进评分池且缺钱加权夺冠,E6.3 契约
+    // 每拍重放执行层 backpack_empty,全天空转(2026-10-10 观测镇老周案例)
+    if (w.activityId === 'sell_goods' && bestSellable(char.backpack) === null) {
+      return false;
+    }
     if (w.activityId === 'rest' && char.housing === null) {
       abandoned.push(w.id); // rest 锚点=住宅床(须本人租约),无居所角色走过去必被拒
       return false;
