@@ -493,8 +493,9 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      // stroll 钉 0.6:rescue 0.85×(0.95~1.05) 恒压过 0.6×1.05,评分竞争保确定性
-      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.6, status: 'doing', createdAtMin: 480 }],
+      // stroll 钉 0.4:E6.3 在契语义下 rescue 是挑战者,须恒过 stroll×WANT_SEIZE_RATIO
+      // 1.4=0.56;rescue 最低抖动 0.85×0.95=0.8075 恒压过,评分竞争保确定性
+      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.4, status: 'doing', createdAtMin: 480 }],
     });
     h.onEvent(diedEvent(480));
     await vi.advanceTimersByTimeAsync(0);

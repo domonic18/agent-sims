@@ -119,7 +119,12 @@ export class SocialLoop {
       }
     }
     for (const [a, b] of pairs) {
-      if (sim.socials.get(relationKey(a.id, b.id)) !== undefined) continue;
+      const known = sim.socials.get(relationKey(a.id, b.id));
+      // 熟络未衰减归零的在途对不重刷;归零旧识放行走 meetByProximity 重逢
+      // 刷新——破冰是熟络度唯一非聊天来源,若永久排除已建交对,初值 5 经每
+      // 日衰减 1 归零后无恢复路径(聊天加成要求先点火,点火要求 familiarity>0,
+      // 鸡生蛋死锁),60 日存档实证全镇 12 条关系 familiarity 全 0、零对话
+      if (known !== undefined && known.familiarity > 0) continue;
       const key = [a.id, b.id].sort().join('|');
       const entry = this.coPresence.get(key) ?? { day, minutes: 0 };
       if (entry.day !== day) {

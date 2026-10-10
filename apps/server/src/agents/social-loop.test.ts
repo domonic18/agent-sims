@@ -74,6 +74,61 @@ describe('SocialLoop.acquaintanceStep 共处破冰(D1)', () => {
     expect(events.filter((event) => event.type === 'first.met')).toHaveLength(0);
   });
 
+  it('熟络衰减归零的旧识重逢:静默刷新熟络度至初值,不重发 first.met', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲', flat(0.5));
+    sim.spawnCharacter('b', 8, 12, '乙', flat(0.5));
+    for (const [from, to] of [['a', 'b'], ['b', 'a']] as const) {
+      sim.socials.set(relationKey(from, to), {
+        fromId: from,
+        toId: to,
+        familiarity: 0,
+        affinity: 10,
+        chatDay: 0,
+        chatCount: 0,
+        formedNotified: false,
+        metNotified: true,
+      });
+    }
+    const events: WorldEvent[] = [];
+    const loop = loopWith(sim, events);
+
+    step(loop, 8);
+    const forward = sim.socials.get(relationKey('a', 'b'));
+    expect(forward?.familiarity).toBe(BALANCE.ACQUAINTANCE_FAMILIARITY);
+    expect(forward?.affinity).toBe(10); // 重逢只刷新熟络度,好感不动
+    expect(events.filter((event) => event.type === 'first.met')).toHaveLength(0);
+  });
+
+  it('旧存档无 metNotified 的归零关系:重逢补发一次 first.met,此后静默', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲', flat(0.5));
+    sim.spawnCharacter('b', 8, 12, '乙', flat(0.5));
+    for (const [from, to] of [['a', 'b'], ['b', 'a']] as const) {
+      sim.socials.set(relationKey(from, to), {
+        fromId: from,
+        toId: to,
+        familiarity: 0,
+        affinity: 10,
+        chatDay: 0,
+        chatCount: 0,
+        formedNotified: false,
+      });
+    }
+    const events: WorldEvent[] = [];
+    const loop = loopWith(sim, events);
+
+    step(loop, 8);
+    expect(events.filter((event) => event.type === 'first.met')).toHaveLength(1);
+    // 再度衰减归零后重逢:metNotified 已置位,静默刷新不再重发
+    for (const relation of sim.socials.values()) relation.familiarity = 0;
+    step(loop, 8);
+    expect(events.filter((event) => event.type === 'first.met')).toHaveLength(1);
+    expect(sim.socials.get(relationKey('a', 'b'))?.familiarity).toBe(
+      BALANCE.ACQUAINTANCE_FAMILIARITY,
+    );
+  });
+
   it('每日建交上限 ACQUAINTANCE_DAILY_CAP:同拍多对达标只建上限对,次日恢复', () => {
     const sim = new Simulation();
     sim.spawnCharacter('a', 8, 12, '甲', flat(0.5));

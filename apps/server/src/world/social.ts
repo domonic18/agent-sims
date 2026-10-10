@@ -24,6 +24,8 @@ export interface SocialRelation {
   chatCount: number;
   /** 首次结成 朋友/挚友 已发事件(避免重复) */
   formedNotified: boolean;
+  /** 首识事件已发过(避免旧识熟络衰减归零后被误当首识重发);旧存档缺省=未发 */
+  metNotified?: boolean;
 }
 
 export const relationKey = (fromId: string, toId: string): string => `${fromId}|${toId}`;
@@ -161,9 +163,19 @@ function notifyFriendship(sim: Simulation, relation: SocialRelation): void {
 export function meetByProximity(sim: Simulation, aId: string, bId: string): boolean {
   const [forward, backward] = ensureRelations(sim, aId, bId);
   const initial = BALANCE.ACQUAINTANCE_FAMILIARITY;
-  const isNew = forward.familiarity <= 0 && backward.familiarity <= 0;
+  // 首识事件一对只发一次(metNotified 随存档持久化):熟络衰减归零的旧识重逢
+  // 只静默刷新熟络度不重发。曾缺此标记——isNew 按 familiarity<=0 判定,衰减
+  // 归零会被当首识;且若共处破冰永久排除已建交对,初值 5 经每日衰减 1 归零后
+  // 无任何恢复路径(聊天加成要求先点火,点火要求 familiarity>0,鸡生蛋死锁),
+  // 60 日存档实证全镇 12 条关系 familiarity 全 0、零对话
+  const isNew =
+    forward.familiarity <= 0 &&
+    backward.familiarity <= 0 &&
+    forward.metNotified !== true;
   forward.familiarity = Math.max(forward.familiarity, initial);
   backward.familiarity = Math.max(backward.familiarity, initial);
+  forward.metNotified = true;
+  backward.metNotified = true;
   if (!isNew) {
     return false;
   }
