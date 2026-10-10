@@ -15,11 +15,12 @@ import {
   Typography,
 } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import type { CognitionTraceEntriesResponse, CharacterScheduleView } from '@sims/shared';
+import { getActivityDefinition, type CognitionTraceEntriesResponse, type CharacterScheduleView } from '@sims/shared';
 import { fetchCharacterList, fetchCharacterSchedule, fetchCognitionTraces } from './api';
 import {
   WantLifecycleDrawer,
   buildTraceTimelineItems,
+  fmtGameMinutes,
   originTag,
   wantStatusTag,
 } from './WantLifecycleDrawer';
@@ -141,21 +142,21 @@ export function AgentTracePanel() {
         <Typography.Text strong style={{ fontSize: 13 }}>
           {want.label}
         </Typography.Text>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {`urg ${Math.round(want.urgency * 100)}%`}
+        <Typography.Text type="secondary" style={{ fontSize: 12 }} title="紧迫度:越高越优先做">
+          {`紧迫度 ${Math.round(want.urgency * 100)}%`}
         </Typography.Text>
         {want.targetCharacterId !== null && (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {`→ ${nameOf(want.targetCharacterId)}`}
+            {`→ 找 ${nameOf(want.targetCharacterId)}`}
           </Typography.Text>
         )}
       </Space>
-      <div style={{ fontSize: 12, color: '#57606a' }}>{want.why}</div>
+      <div style={{ fontSize: 12, color: '#57606a' }}>{`理由:${want.why}`}</div>
       <div style={{ fontSize: 12, color: '#8b949e' }}>
         <Typography.Text code style={{ fontSize: 12 }}>
           {want.id}
         </Typography.Text>
-        {want.expiresAtMin !== null ? ` · 半衰至 gm ${want.expiresAtMin}` : ''}
+        {want.expiresAtMin !== null ? ` · 有效期至 ${fmtGameMinutes(want.expiresAtMin)}` : ''}
       </div>
     </Button>
   );
@@ -167,7 +168,7 @@ export function AgentTracePanel() {
     <Flex vertical gap={16}>
       <Card
         size="small"
-        title="此刻决策(want 池)"
+        title="此刻决策(脑内念头池)"
         extra={
           <Select
             showSearch
@@ -186,7 +187,7 @@ export function AgentTracePanel() {
       >
         {scheduleError !== null && <Alert type="error" showIcon message={scheduleError} style={{ marginBottom: 8 }} />}
         {characterId === '' ? (
-          <Typography.Text type="secondary">选择角色查看此刻 want 池(5 秒自动刷新)。</Typography.Text>
+          <Typography.Text type="secondary">选择角色,看他此刻脑内的念头和正在做的事(5 秒自动刷新)。</Typography.Text>
         ) : schedule === null ? (
           <Typography.Text type="secondary">加载中…</Typography.Text>
         ) : (
@@ -194,16 +195,19 @@ export function AgentTracePanel() {
             {schedule.snapshot !== null && (
               <div style={{ marginBottom: 8 }}>
                 <Space wrap size={4}>
-                  <Tag>运行态</Tag>
+                  <Tag>此刻状态</Tag>
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }} title="地图上的位置坐标">
+                    {`位置(${schedule.snapshot.x},${schedule.snapshot.y})`}
+                  </Typography.Text>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {`(${schedule.snapshot.x},${schedule.snapshot.y}) · coins ${schedule.snapshot.coins} · energy ${schedule.snapshot.energy}`}
+                    {`金币 ${schedule.snapshot.coins} · 体力 ${schedule.snapshot.energy}`}
                   </Typography.Text>
                   {schedule.snapshot.activity !== null ? (
-                    <Tag color="processing">
-                      {`${schedule.snapshot.activity.activityId} ${Math.round(schedule.snapshot.activity.elapsed)}′`}
+                    <Tag color="processing" title="正在进行的活动和已进行时长(游戏分钟)">
+                      {`正在「${getActivityDefinition(schedule.snapshot.activity.activityId)?.name ?? schedule.snapshot.activity.activityId}」 ${Math.round(schedule.snapshot.activity.elapsed)}′`}
                     </Tag>
                   ) : (
-                    <Tag>空闲</Tag>
+                    <Tag>手头没活</Tag>
                   )}
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                     {schedule.snapshot.backpack.length === 0
@@ -214,21 +218,21 @@ export function AgentTracePanel() {
               </div>
             )}
             {schedule.day === null ? (
-              <Typography.Text type="secondary">该角色暂无当日意图容器(等待晨间规划)。</Typography.Text>
+              <Typography.Text type="secondary">今天的计划还没生成(等游戏内早晨的慢思考)。</Typography.Text>
             ) : (
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {`第 ${schedule.day} 天 · ${schedule.source === 'llm' ? '慢思考生成' : '个性化回落'} · 共 ${schedule.wants.length} 条 want(点击看生命周期)`}
+                {`第 ${schedule.day} 天 · 计划由${schedule.source === 'llm' ? '慢思考 LLM 生成' : '个性化模板回落生成'} · 共 ${schedule.wants.length} 个念头(点卡片看它的一生)`}
               </Typography.Text>
             )}
             {doingWants.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <Tag color="processing">进行中</Tag>
+                <Tag color="processing">正在做</Tag>
                 {doingWants.map(renderWantCard)}
               </div>
             )}
             {otherWants.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <Tag>在途/已结</Tag>
+                <Tag>排队中/已结束</Tag>
                 {otherWants.map(renderWantCard)}
               </div>
             )}
@@ -238,7 +242,7 @@ export function AgentTracePanel() {
 
       <Card
         size="small"
-        title="决策时间线(认知 trace)"
+        title="决策时间线(每个时刻在想什么、做什么)"
         extra={
           <Space wrap size={8}>
             <span style={{ fontSize: 12, color: '#57606a' }}>10s 轮询</span>
@@ -249,39 +253,39 @@ export function AgentTracePanel() {
         <Space wrap style={{ marginBottom: 12 }}>
           <Select
             value={layerFilter}
-            style={{ minWidth: 130 }}
+            style={{ minWidth: 150 }}
             onChange={(value) => {
               setLayerFilter(value);
               setPage(1);
             }}
             options={[
               { value: '', label: '全部层级' },
-              { value: 'rule', label: 'rule 数值/驱力' },
-              { value: 'plan', label: 'plan 日程执行' },
-              { value: 'jev', label: 'jev 直觉' },
-              { value: 'triage', label: 'triage 事件分级' },
-              { value: 'select', label: 'select want 仲裁' },
-              { value: 'light', label: 'light 轻思考' },
-              { value: 'slow', label: 'slow 慢思考' },
+              { value: 'rule', label: '规则(饿/困/缺钱)' },
+              { value: 'plan', label: '日程(执行计划)' },
+              { value: 'jev', label: '直觉(微决策)' },
+              { value: 'triage', label: '分级(事件处理)' },
+              { value: 'select', label: '仲裁(当拍选谁)' },
+              { value: 'light', label: '轻思考(LLM快想)' },
+              { value: 'slow', label: '慢思考(LLM深想)' },
             ]}
           />
           <Select
             value={conclusionFilter}
-            style={{ minWidth: 110 }}
+            style={{ minWidth: 120 }}
             onChange={(value) => {
               setConclusionFilter(value);
               setPage(1);
             }}
             options={[
               { value: '', label: '全部判定' },
-              { value: 'react', label: 'react 行动' },
-              { value: 'continue', label: 'continue 继续' },
+              { value: 'react', label: '行动(做了事)' },
+              { value: 'continue', label: '无新动作' },
             ]}
           />
           <Input
             value={wantIdFilter}
-            placeholder="按 want ID 过滤"
-            style={{ width: 220 }}
+            placeholder="按念头 ID 过滤,如 w2-0"
+            style={{ width: 200 }}
             allowClear
             onChange={(e) => {
               setWantIdFilter(e.target.value);
@@ -299,7 +303,7 @@ export function AgentTracePanel() {
         {traces === null ? (
           <Typography.Text type="secondary">加载中…</Typography.Text>
         ) : traces.entries.length === 0 ? (
-          <Empty description="无匹配 trace(新世界跑起来后这里会有决策流)" />
+          <Empty description="无匹配记录(新世界跑起来后这里会有决策流)" />
         ) : (
           <>
             <Timeline items={buildTraceTimelineItems(traces.entries, openWant)} />
