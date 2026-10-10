@@ -274,14 +274,14 @@ const flush = async (): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
-describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时印象)', () => {
+describe('SocialLoop.idleSocialStep E6.4(布尔门槛点火/走散不罚/即时印象)', () => {
   afterEach(() => {
     autonomy.disable('b');
     innerState.clear('a');
     innerState.clear('b');
   });
 
-  it('动机点火(E6): 过线候选写 socialize want(origin=drive),不再直执聊天/走近', () => {
+  it('布尔门槛点火(E6.4): 已认识+共处+冷却外写 socialize want(origin=drive),不再直执聊天/走近', () => {
     const sim = new Simulation();
     sim.spawnCharacter('a', 8, 10, '甲'); // 同在 home-a(x3-14/y4-11)内,相距 3 格
     sim.spawnCharacter('b', 5, 10, '乙');
@@ -298,7 +298,7 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
       activityId: 'socialize',
       origin: 'drive',
       targetCharacterId: 'b',
-      urgency: candidates[0]!.desire > 1 ? 1 : Math.round(candidates[0]!.desire * 100) / 100,
+      urgency: 0.5, // E6.4 固定紧迫度,与生存 want 的竞争归 wantSelect
       status: 'pending',
     });
     expect(want.why).toContain('乙');
@@ -321,6 +321,47 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
 
     loop.idleSocialStep(sim.character('a'), 'threshold');
     expect(innerState.get('a')!.intents!.wants).toHaveLength(1); // 未追加
+  });
+
+  it('E6.4 布尔门槛: 嫌弃关系(affinity≤-30)不点火——不找厌恶的人', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 10, '甲');
+    sim.spawnCharacter('b', 5, 10, '乙');
+    relate(sim, 'a', 'b');
+    for (const key of [relationKey('a', 'b'), relationKey('b', 'a')]) {
+      const relation = sim.socials.get(key)!;
+      relation.affinity = -30;
+    }
+    const { loop } = captureLoop(sim, persistHandle());
+    innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
+
+    expect(loop.idleSocialStep(sim.character('a'), 'threshold')).toHaveLength(0);
+    expect(innerState.get('a')!.intents!.wants).toHaveLength(0);
+  });
+
+  it('E6.4 布尔门槛: 同对冷却内不点火——唯一防刷闸(日预算/收益封顶闸已废)', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { handle } = gatedHandle();
+    const { loop } = captureLoop(sim, handle);
+    innerState.setIntents('a', {
+      day: sim.clock.day,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'b', why: '找乙聊聊', urgency: 0.9, status: 'doing', createdAtMin: 0 },
+      ],
+    });
+    summonable(sim);
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold'); // 召唤(零模型)
+    void loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→commit 簿记=冷却起点
+    expect(loop.lastChatAtBetween('a', 'b')).toBe(sim.clock.gameMinutes);
+
+    // 刚聊过:冷却内候选清零,不重复点火
+    innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
+    expect(loop.idleSocialStep(sim.character('a'), 'threshold')).toHaveLength(0);
+    expect(innerState.get('a')!.intents!.wants).toHaveLength(0);
   });
 
   it('走散降级: 生成期间对方被拽走→trace walkedAway+冷却短窗+计数返还+want 回 pending,期满重试成功', async () => {

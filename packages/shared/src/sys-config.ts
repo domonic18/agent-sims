@@ -159,16 +159,8 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
     effect: 'live', desc: '世界日翻转时未互动关系的衰减量',
   },
   {
-    key: 'SOCIAL_DESIRE_FIRE', label: '社交点火线', group: 'social', type: 'float', min: 0, max: 1, step: 0.05,
-    effect: 'live', desc: '动机引擎欲望分达到该值的候选才主动搭话(0.7=熟人+久未聊即可)',
-  },
-  {
     key: 'SOCIAL_PAIR_COOLDOWN_MINUTES', label: '同对聊天冷却', group: 'social', type: 'int', min: 0, max: 720,
     effect: 'live', desc: '同一对角色两次聊天的最小间隔(游戏分钟),防 Agent 高频刷同一个人',
-  },
-  {
-    key: 'SOCIAL_DAILY_INITIATE_CAP', label: '每日主动上限', group: 'social', type: 'int', min: 0, max: 50,
-    effect: 'live', desc: '每角色每日主动发起聊天的次数上限(全部对象合计),0=不限制',
   },
   // —— 资源与刷新(采集节点存量/重生,04 §5.4 表值=出厂默认) ——
   {

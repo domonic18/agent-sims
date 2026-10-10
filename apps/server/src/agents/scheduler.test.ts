@@ -681,7 +681,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     },
   };
 
-  it('动机点火: 同地熟人过线→驱力 want→召唤,应答方执行生成,trace 记 motive=social', async () => {
+  it('动机点火(E6.4 布尔门槛): 同地熟人+冷却外→驱力 want→召唤,应答方执行生成,trace 记 motive=social', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
@@ -753,22 +753,20 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     h.scheduler.dispose();
   });
 
-  it('每日主动上限: SOCIAL_DAILY_INITIATE_CAP=8(E2 6→8),第 9 次不再点火', async () => {
+  it('每日主动上限闸已废(E6.4): 跨出对冷却即可反复点火,频率由对冷却自限', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
     withResponder();
-    for (let i = 0; i < 9; i += 1) {
+    for (let i = 0; i < 3; i += 1) {
       if (i > 0) h.clock.gameMinutes += 60; // 跨出同对冷却
       await vi.advanceTimersByTimeAsync(2_000);
       h.onEvent(chatEvent(10 + i, 'other-1')); // 结算本轮 doing want
     }
-    // 阿测发起的聊天=应答方(苏晚)执行生成归其名下;第 9 轮阿测日预算耗尽不再点火,
-    // 苏晚仍可在自己预算内反向发起(E6.2 双方动机引擎对等)
-    const initiatedByChar = h.intents.filter((i) => i.characterId === 'other-1');
-    expect(initiatedByChar).toHaveLength(8);
+    // 3 轮全部点火成功:无日预算拦截,聊天频率唯一受 SOCIAL_PAIR_COOLDOWN 约束
+    expect(h.intents.filter((i) => i.type === 'chat')).toHaveLength(3);
     h.scheduler.dispose();
   });
 

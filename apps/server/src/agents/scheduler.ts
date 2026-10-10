@@ -32,7 +32,6 @@ import {
 } from './fast-layer.js';
 import { ResponseRegistry } from './responses.js';
 import { persistInnerState } from './inner-state-db.js';
-import type { ScoredCandidate } from './social-motive.js';
 import {
   biasOf,
   composeIntents,
@@ -48,7 +47,7 @@ import {
 } from './triage.js';
 import type { MemoryLlm } from './memory-writer.js';
 import { logTech } from '../telemetry.js';
-import { SocialLoop } from './social-loop.js';
+import { SocialLoop, type SocialCandidate } from './social-loop.js';
 import { TraceRecorder, type TraceEntry } from './trace.js';
 
 /** 阈值巡检周期(游戏分钟):数值压力(饥饿/房租/困倦)的反应节拍 */
@@ -924,7 +923,7 @@ export class AgentScheduler {
   private async jevReact(
     char: WorldCharacter,
     event: WorldEvent,
-    socialCandidates: ScoredCandidate[] = [],
+    socialCandidates: SocialCandidate[] = [],
   ): Promise<void> {
     const { sim } = this.deps;
     // 异地熟人进 jev 池(E2 口径:贴身已直执、同场未近已走近,只余真异地;

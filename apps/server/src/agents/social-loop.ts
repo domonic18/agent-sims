@@ -11,11 +11,26 @@ import { generateConversation, type DialogueRelation } from './dialogue.js';
 import type { Decision } from './fast-layer.js';
 import { persistInnerState } from './inner-state-db.js';
 import type { MemoryLlm } from './memory-writer.js';
-import { socialMotive, type ScoredCandidate, type SocialMotiveInput } from './social-motive.js';
 import type { TraceEntry, TraceRecorder } from './trace.js';
 
 /** summon_wait trace 采样周期(每 N 次记 1 次;会合挂起是常态等待,防洪水) */
 const SOCIAL_WAIT_TRACE_SAMPLE = 10;
+
+/** 社交点火固定紧迫度(E6.4 简化):动机不再打分,与生存 want 的竞争全交
+ * wantSelect——生存压力高时社交让位是正确语义 */
+const SOCIALIZE_WANT_URGENCY = 0.5;
+
+/** 过闸社交候选(E6.4 布尔门槛产物;desire 打分已废,异地候选供 jev 直觉提示) */
+export interface SocialCandidate {
+  targetId: string;
+  name: string;
+  affinity: number;
+  familiarity: number;
+  /** 贴身可达(曼哈顿≤SOCIAL_CHAT_DISTANCE,可立即搭话) */
+  chatReady: boolean;
+  /** 同处一地(同场所/同活动)但未贴身,须走近才能聊 */
+  samePlace: boolean;
+}
 
 /** 空闲社交管线依赖:意图执行经 scheduler.apply 统一出口(气泡/trace/拒绝退避同源);
  * executeWants=驱力 want 写入意图存储后的即时择条回调(E6,调度泵提供) */
@@ -36,14 +51,15 @@ export interface SocialLoopDeps {
 /**
  * 自治社交管线(10-cognition §7.2 C4,自 AgentScheduler 抽出):
  * 共处破冰(acquaintanceStep,零模型)——同场所陌生对攒面熟度自动相识,解
- * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑动机引擎(零模型,E2 口径拆分,
- * E6 起降为驱力生成器)——过点火线的候选写 socialize want(origin=drive,urgency=
- * 欲望分)入意图存储并即时择条,聊天/寻人执行全归 wantSelect 唯一执行器(两段式:
- * 远处 move_to 寻人、贴身 chatWith 路回本管线);动机段把门不变(封顶剔除/
- * 同对冷却/日预算三闸在 socialMotive 内)。异地候选返回给 jev 池(直觉决定要不要
- * 专程去找 TA)。一次至多点火一人。聊后即时印象 upsert(character_impressions)。
- * 簿记:同对最近聊天时刻(双角色排序 key)+每角色每日主动计数——聊天落地才算
- * 主动社交,且计在**发起方**(召唤者)头上,应答方执行生成不计主动。
+ * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑布尔门槛点火(E6.4 简化,
+ * 动机引擎 desire 打分退场)——已认识(fam>0)+关系不嫌弃(affinity>-30)+
+ * 同对冷却外即候选,按 affinity 择优写 socialize want(origin=drive,urgency
+ * 固定)入意图存储并即时择条,聊天/寻人执行全归 wantSelect 唯一执行器
+ * (两段式:远处 move_to 寻人、贴身 chatWith 路回本管线)。候选同时返回给
+ * jev 池(异地者供直觉决定要不要专程去找 TA)。
+ * 一次至多点火一人。聊后即时印象 upsert(character_impressions)。
+ * 簿记:同对最近聊天时刻(双角色排序 key)——唯一防刷闸 SOCIAL_PAIR_COOLDOWN
+ * 的计时源(E6.4 起日预算/收益封顶闸废除,聊天频率由对冷却+生存节奏自限)。
  * E6.2 两阶段会合协议(E6.2-S1):贴身 chatWith 不再直接烧模型——阶段一**召唤**
  * (零模型):写对方 event want(origin=event「回应X的搭话」,带半衰期)并建会合
  * 台账,对方在自己的 wantSelect 里自行决定应答(该 want 赢得评分,经其执行链直接
@@ -53,7 +69,6 @@ export interface SocialLoopDeps {
  */
 export class SocialLoop {
   private readonly socialPairLastAt = new Map<string, number>();
-  private readonly socialDaily = new Map<string, { day: number; count: number }>();
   /** 共处破冰累计(pairKey→{day,分钟}):纯内存,重启重新累计可接受(面熟慢慢攒) */
   private readonly coPresence = new Map<string, { day: number; minutes: number }>();
   /** 对话生成在途标记(pairKey):同一对话同一时刻只烧一次模型 */
@@ -149,20 +164,20 @@ export class SocialLoop {
   idleSocialStep(
     char: WorldCharacter,
     trigger: 'threshold' | 'eventbus',
-  ): ScoredCandidate[] {
+  ): SocialCandidate[] {
     const { sim } = this.deps;
     if (!char.alive || char.collapsed) return [];
-    const inputs = this.socialInputs(char);
-    if (inputs.length === 0) return [];
-    const candidates = socialMotive(inputs, {
-      valence: innerState.moodOf(char.id)?.valence ?? 0,
-      nowGameMinutes: sim.clock.gameMinutes,
-    });
-    // E6:动机引擎降为驱力生成器(10-cognition §7.5)——点火不再直执聊天/走近,
-    // 改写 socialize want(origin=drive)入意图存储;执行归 wantSelect 唯一执行器
-    // (两段式:远处 move_to 寻人,贴身 chatWith 路回 executeChatWant)。同目标
-    // 在途 want 不重复写(动机每步都跑,防止 want 刷屏);无当日意图容器不写。
-    const fire = candidates[0]; // socialMotive 已按欲望降序,条条过点火线
+    const candidates = this.socialCandidates(char);
+    if (candidates.length === 0) return [];
+    // E6.4 布尔门槛点火(E6 动机引擎降为驱力生成器再简化)——候选按 affinity
+    // 择优写 socialize want(origin=drive)入意图存储;执行归 wantSelect 唯一
+    // 执行器(两段式:远处 move_to 寻人,贴身 chatWith 路回 executeChatWant)。
+    // 异地熟人也点火:纯偶遇式社交在分散小镇永远凑不齐共处,寻人正是会合
+    // 协议的存在意义。同目标在途 want 不重复写(每步都跑,防 want 刷屏);
+    // 无当日意图容器不写。
+    const fire = [...candidates].sort(
+      (a, b) => b.affinity - a.affinity || a.targetId.localeCompare(b.targetId),
+    )[0];
     if (
       fire !== undefined &&
       !this.hasSocialWant(char.id, fire.targetId) &&
@@ -177,7 +192,7 @@ export class SocialLoop {
         origin: 'drive' as const,
         targetCharacterId: fire.targetId,
         why,
-        urgency: Math.min(1, Math.round(fire.desire * 100) / 100),
+        urgency: SOCIALIZE_WANT_URGENCY,
         status: 'pending' as const,
         createdAtMin: sim.clock.gameMinutes,
       };
@@ -189,7 +204,8 @@ export class SocialLoop {
           motive: 'social',
           want: want.id,
           target: fire.targetId,
-          desire: want.urgency,
+          affinity: fire.affinity,
+          coLocated: fire.chatReady ? 'near' : fire.samePlace ? 'same' : 'far',
         },
         decision: { layer: 'plan', conclusion: 'react', intent: 'want:socialize', bubble: why },
       });
@@ -211,15 +227,22 @@ export class SocialLoop {
     );
   }
 
-  /** 动机候选原始资料:已认识(familiarity>0)且对方存活的关系,拼两档同地
-   * (chatReady 贴身/samePlace 同场未近)+收益/簿记切片 */
-  private socialInputs(char: WorldCharacter): SocialMotiveInput[] {
+  /** 点火候选(E6.4 布尔门槛):已认识(familiarity>0)且对方存活、关系不嫌弃
+   * (affinity>-30)、同对冷却外;拼两档同地(chatReady 贴身/samePlace 同场未近)。
+   * desire 打分已废——聊不聊由共处与冷却决定,关系好坏交给 affinity 排序与
+   * 聊天结算的相性系数表达 */
+  private socialCandidates(char: WorldCharacter): SocialCandidate[] {
     const { sim } = this.deps;
-    const inputs: SocialMotiveInput[] = [];
+    const now = sim.clock.gameMinutes;
+    const candidates: SocialCandidate[] = [];
     const selfPlace = findPlaceAt(sim.map.definition, char.x, char.y)?.id ?? null;
     const selfActivity = char.activity?.activityId ?? null;
     for (const relation of sim.socials.values()) {
       if (relation.fromId !== char.id || relation.familiarity <= 0) continue;
+      if (relation.affinity <= -30) continue;
+      if (now - this.pairLastAt(char.id, relation.toId) < BALANCE.SOCIAL_PAIR_COOLDOWN_MINUTES) {
+        continue;
+      }
       const target = sim.characters.get(relation.toId);
       if (target === undefined || !target.alive || target.collapsed) continue;
       const targetPlace = findPlaceAt(sim.map.definition, target.x, target.y)?.id ?? null;
@@ -230,50 +253,33 @@ export class SocialLoop {
       const samePlace =
         (selfPlace !== null && selfPlace === targetPlace) ||
         (selfActivity !== null && selfActivity === (target.activity?.activityId ?? null));
-      inputs.push({
+      candidates.push({
         targetId: relation.toId,
         name: target.name,
         affinity: relation.affinity,
         familiarity: relation.familiarity,
-        chatCountToday: relation.chatDay === sim.clock.day ? relation.chatCount : 0,
-        lastChatAt: this.pairLastAt(char.id, relation.toId),
-        initiatedToday: this.initiatedToday(char.id),
         chatReady,
         samePlace,
       });
     }
-    return inputs;
+    return candidates;
   }
 
   private pairLastAt(aId: string, bId: string): number {
     return this.socialPairLastAt.get([aId, bId].sort().join('|')) ?? Number.NEGATIVE_INFINITY;
   }
 
-  private initiatedToday(characterId: string): number {
-    const entry = this.socialDaily.get(characterId);
-    if (entry === undefined || entry.day !== this.deps.sim.clock.day) return 0;
-    return entry.count;
-  }
-
-  /** 社交簿记(同步,先于任何 await):同对冷却时刻+当日主动计数 */
+  /** 社交簿记(同步,先于任何 await):同对冷却时刻——唯一防刷闸的计时源 */
   private bookSocial(characterId: string, targetId: string): void {
     const { sim } = this.deps;
     this.socialPairLastAt.set(
       [characterId, targetId].sort().join('|'),
       sim.clock.gameMinutes,
     );
-    const day = sim.clock.day;
-    const entry = this.socialDaily.get(characterId) ?? { day, count: 0 };
-    if (entry.day !== day) {
-      entry.day = day;
-      entry.count = 0;
-    }
-    entry.count += 1;
-    this.socialDaily.set(characterId, entry);
   }
 
-  /** 走散降级(E2 走散不罚):冷却改写为短窗(RETRY 分钟后可重试),
-   * 发起方当日主动计数返还——生成期间被拽走不算一次主动社交 */
+  /** 走散降级(E2 走散不罚):冷却改写为短窗(RETRY 分钟后可重试)——
+   * 生成期间被拽走不按整场冷却罚 */
   private downgradeWalkedAway(characterId: string, targetId: string): void {
     const { sim } = this.deps;
     this.socialPairLastAt.set(
@@ -281,10 +287,6 @@ export class SocialLoop {
       sim.clock.gameMinutes -
         (BALANCE.SOCIAL_PAIR_COOLDOWN_MINUTES - BALANCE.SOCIAL_RETRY_COOLDOWN_MINUTES),
     );
-    const entry = this.socialDaily.get(characterId);
-    if (entry !== undefined && entry.day === sim.clock.day && entry.count > 0) {
-      entry.count -= 1;
-    }
   }
 
   /** 同对最近一次社交簿记时刻(熟人行「多久没聊」用;NEGATIVE_INFINITY=从未) */

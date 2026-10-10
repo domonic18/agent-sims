@@ -113,11 +113,9 @@ export interface BalanceConfig {
   CHAT_MAX_ROUNDS: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
   FAMILIARITY_DECAY_PER_DAY: number;
-  /** 自治社交动机(10-cognition §7.2 C4): 欲望分点火线/同对聊天冷却(游戏分钟)/
-   * 每角色每日主动上限/走散重试短冷却(E2 走散不罚) */
-  SOCIAL_DESIRE_FIRE: number;
+  /** 自治社交点火(E6.4 布尔门槛): 同对聊天冷却(游戏分钟,唯一防刷闸)/
+   * 走散重试短冷却(E2 走散不罚) */
   SOCIAL_PAIR_COOLDOWN_MINUTES: number;
-  SOCIAL_DAILY_INITIATE_CAP: number;
   SOCIAL_RETRY_COOLDOWN_MINUTES: number;
   /** 会合协议(E6.2 两阶段聊天): 召唤 want 紧迫度/召唤 want 半衰期(对方一直没空
    * 自然消退)/发起方放弃窗口(超时=被放鸽子,会合回收,零 token) */
@@ -242,10 +240,7 @@ export const BALANCE: BalanceConfig = {
   SOCIAL_CHAT_DISTANCE,
   CHAT_MAX_ROUNDS: 4,
   FAMILIARITY_DECAY_PER_DAY: 1,
-  // 0.35=放宽点火线(E2): 初识可达线降至 0.55,更多对子过线;熟客靠久未聊回升
-  SOCIAL_DESIRE_FIRE: 0.35,
   SOCIAL_PAIR_COOLDOWN_MINUTES: 30,
-  SOCIAL_DAILY_INITIATE_CAP: 8,
   SOCIAL_RETRY_COOLDOWN_MINUTES: 10,
   // E6.2 会合协议:召唤 want 紧迫度 0.9(赴约档——应答通常压过日常安排,但可被更高
   // 评分让位=婉拒);半衰 90 分(对方一直没空,召唤自然消退);发起方 120 分放弃
