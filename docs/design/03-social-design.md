@@ -73,6 +73,8 @@ v1 冷启动死锁: 社交动机要求 familiarity>0,而关系只能由 chat 创
 - 语义边界: 破冰≠成为朋友,只是把「认识」交给物理共处;聊不聊仍由动机引擎回答(10-cognition-design §7.2);
 - 配套容忍: 轻活动(stroll/meal/rest/socialize)可被搭话不打断(不 finishActivity,聊完继续),替代旧「忙碌即跳过」。
 
+- **v2 衰减归零死锁修复(2026-10-10 观察轮)**: 初版破冰只对「无关系记录」的陌生对生效,而 `FAMILIARITY_DECAY_PER_DAY` 1/日会把建交初值 5 衰减归零——归零后无任何恢复路径(聊天加成要求先点火,点火要求 familiarity>0,鸡生蛋死锁),60 日存档实证全镇 12 条关系 familiarity 全 0、历史零对话(叠加 driveStep 收口吞 want,见 10-cognition §7.5)。修法: ①acquaintanceStep 放行「熟络归零的旧识」走 meetByProximity 重逢刷新(共处满阈值后熟络度抬回初值,好感不动);②meetByProximity 增 `metNotified` 持久化标记,首识事件一对只发一次,兑现「旧识重逢静默刷新不重发」既有注释意图;③旧存档无标记的归零关系重逢补发一次 first.met 后静默(存档兼容)。
+
 > E6(2026-10-10): 破冰通道属**感知/数值层**,不属决策层,统一意图架构(01-agent-design §3.3)不触碰本节;动机引擎(E6.1 起)降为驱力生成器写 socialize want,封顶剔除/冷却/日预算照旧在动机段把门,§9.1「走近再聊」的直执 move_to 改走 want 两段式——见 10-cognition-design §7.5。
 
 ## 9. E 系列社交强化(E1~E3,2026-10-09 落地)
