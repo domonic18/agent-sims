@@ -17,7 +17,7 @@ export function registerScheduleRoutes(app: FastifyInstance, sim: Simulation): v
     const snapshot = {
       x: char.x,
       y: char.y,
-      coins: char.coins,
+      coins: Math.round(char.coins),
       energy: Math.round(char.energy),
       activity:
         char.activity === null
