@@ -19,9 +19,11 @@ import { autonomy, hosting, innerState } from './cognition.js';
 import { describeMood } from './mood.js';
 import {
   bestSellable,
+  driveDecide,
+  driveSatisfied,
   jevDecide,
+  rentDecision,
   wantSelect,
-  ruleDecide,
   type Decision,
   type ImpulseWant,
   type JevContext,
@@ -74,15 +76,16 @@ export interface AgentSchedulerDeps {
 }
 
 /**
- * Agent 调度泵(agent-design §3.1/§4.6;10-cognition §7.1 事件响应层):
+ * Agent 调度泵(agent-design §3.1/§4.6;10-cognition §7.1 事件响应层;E6.2 统一产欲):
  * 异步认知泵,不进 tick 循环。事件侧走 C3 分级管道——EventBus → isTriagedEvent
  * 过滤(管理面事件零惊动)→ ResponseRegistry 簿记(救援台账)→ 逐自治角色
- * triageEvent 四关分级:ignore(采样 trace)/idle(放行既有 rule→want→jev 管线)/
- * respond(注册表动作直执)/assess(⑤ 中断评估:预算三闸已过,systemOne choice
- * 一词判定)/defer(不可打断,排事后处理,巡检空闲补执行)。move 响应打断当前
- * want 执行后固定短退避,期满重新评分择条=「回意图」。
- * 时间侧=2s 定时器(意图补齐+defer 巡检)+15 游戏分阈值巡检(rule→want);
+ * triageEvent 四关分级:ignore(采样 trace)/idle(放行驱力→want→jev 管线)/
+ * respond(响应落为事件 want,origin=event)/assess(⑤ 中断评估:预算三闸已过,
+ * systemOne choice 一词判定,respond 答案=写 want)/defer(同样写 want——写入
+ * 不打断任何人,忙碌角色由 wantSelect 闲时自然调度,defer 队列溶解为半衰期)。
+ * 时间侧=2s 定时器(意图补齐)+15 游戏分阈值巡检(rent 即时结算+驱力 want 写入);
  * activity.finished 结算 want 生命周期(完成 done/中断 pending/欠费 abandoned)。
+ * 生成器(drive/impulse/event)只写 want,唯一执行器 wantSelect 按评分择条。
  * 输出统一经 runIntent;trace:triage 分级记录(ignore 采样),执行/模型全量。
  */
 export class AgentScheduler {
@@ -101,11 +104,6 @@ export class AgentScheduler {
     { day: number; assessedToday: number; lastAssessAt: number }
   >();
   private readonly assessedKeys = new Map<string, Set<string>>();
-  /** defer 事后处理队列:characterId|eventKey → 事件与入队时刻(保鲜期判定) */
-  private readonly deferred = new Map<
-    string,
-    { characterId: string; event: WorldEvent; atGameMinutes: number }
-  >();
   /** C4 空闲社交管线(独立类,簿记随迁;apply/trace 复用 scheduler 通道) */
   private readonly socialLoop: SocialLoop;
   private readonly timer: NodeJS.Timeout;
@@ -133,10 +131,9 @@ export class AgentScheduler {
     this.unsubscribe();
   }
 
-  /** 阈值巡检(threshold):补齐当日意图+defer 事后处理,跨 15 游戏分边界即共处破冰+rule→want 判定 */
+  /** 阈值巡检(threshold):补齐当日意图,跨 15 游戏分边界即共处破冰+房租结算+驱力 want 写入 */
   private inspect(): void {
     const { sim } = this.deps;
-    this.processDeferred();
     for (const id of autonomy.list()) {
       const char = sim.characters.get(id);
       if (char !== undefined) this.ensureIntents(char);
@@ -149,20 +146,16 @@ export class AgentScheduler {
     for (const id of autonomy.list()) {
       const char = sim.characters.get(id);
       if (char === undefined) continue;
-      const rule = ruleDecide(
-        char,
-        sim.clock.day,
-        sim.clock.minuteOfDay,
-        sim.map.definition,
-        this.anchorsAt(),
-        this.ruleWorld(char),
-      );
-      if (rule.action === 'react') {
-        this.apply(char, rule, 'threshold', {
+      // 房租即时结算(E6 定稿口径:账单不是行为,不走意图存储,唯一保留的直执 rule)
+      const rent = rentDecision(char, sim.clock.day);
+      if (rent !== null) {
+        this.apply(char, rent, 'threshold', {
           block: `${block}(${AUTONOMY_CHECK_INTERVAL_MINUTES}min)`,
         });
         continue;
       }
+      // 驱力巡检(E6.2 rule→驱力):压力写 want/缓解收口,执行交下方 wantDecision
+      this.driveStep(char);
       const want = this.wantDecision(char);
       if (want !== null) {
         this.apply(char, want, 'threshold', {
@@ -172,9 +165,6 @@ export class AgentScheduler {
         continue;
       }
       this.socialLoop.idleSocialStep(char, 'threshold');
-      this.apply(char, rule, 'threshold', {
-        block: `${block}(${AUTONOMY_CHECK_INTERVAL_MINUTES}min)`,
-      });
     }
   }
 
@@ -187,7 +177,7 @@ export class AgentScheduler {
         .map((a) => ({ x: a.x, y: a.y }));
   }
 
-  /** rule 层世界查询(E1 依赖注入):货架余量/最近可食节点/活动倾向分(贫困选岗保人设) */
+  /** 驱力层世界查询(E1 依赖注入;E6.2 前 rule 层):货架余量/最近可食节点/活动倾向分(贫困选岗保人设) */
   private ruleWorld(char: WorldCharacter): RuleWorldQueries {
     const { sim } = this.deps;
     return {
@@ -218,6 +208,16 @@ export class AgentScheduler {
       pairLastChatAt: (aId, bId) => this.socialLoop.lastChatAtBetween(aId, bId),
       chatGeneratingWith: (aId, bId) => this.socialLoop.isGeneratingBetween(aId, bId),
       summonAwaiting: (targetId) => this.socialLoop.summonAwaiting(char.id, targetId),
+      posOfAny: (id) => {
+        const target = sim.characters.get(id);
+        return target === undefined
+          ? null
+          : { x: target.x, y: target.y, name: target.name, alive: target.alive };
+      },
+      night:
+        sim.clock.minuteOfDay >= BALANCE.NIGHT_START_MINUTE ||
+        sim.clock.minuteOfDay < BALANCE.NIGHT_END_MINUTE,
+      bias: biasOf(hosting.get(char.id)?.compiled ?? null),
     };
   }
 
@@ -356,18 +356,16 @@ export class AgentScheduler {
           this.runIdlePipeline(char, event);
           break;
         case 'respond':
-          this.executeResponse(char, event, verdict);
+          if (verdict.action !== undefined) this.writeEventWant(char, verdict.action, event.type);
           break;
         case 'assess':
           this.bookAssess(id, verdict.eventKey);
           void this.assessInterrupt(char, event, verdict);
           break;
         case 'defer':
-          this.deferred.set(`${id}|${verdict.eventKey}`, {
-            characterId: id,
-            event,
-            atGameMinutes: sim.clock.gameMinutes,
-          });
+          // defer 溶解(E6.2):写入不打断任何人,忙碌角色由 wantSelect 闲时调度,
+          // 保鲜由 want 半衰期承担——不再有独立 defer 队列
+          if (verdict.action !== undefined) this.writeEventWant(char, verdict.action, event.type);
           break;
       }
     }
@@ -392,21 +390,15 @@ export class AgentScheduler {
     });
   }
 
-  /** 空闲放行的既有管线(rule→want→社交→jev,冷却护栏原样保留) */
+  /** 空闲放行的既有管线(驱力→want→社交→jev,冷却护栏原样保留) */
   private runIdlePipeline(char: WorldCharacter, event: WorldEvent): void {
     const { sim } = this.deps;
-    const rule = ruleDecide(
-      char,
-      sim.clock.day,
-      sim.clock.minuteOfDay,
-      sim.map.definition,
-      this.anchorsAt(),
-      this.ruleWorld(char),
-    );
-    if (rule.action === 'react') {
-      this.apply(char, rule, 'eventbus', { event: event.type });
+    const rent = rentDecision(char, sim.clock.day);
+    if (rent !== null) {
+      this.apply(char, rent, 'eventbus', { event: event.type });
       return;
     }
+    this.driveStep(char);
     const want = this.wantDecision(char);
     if (want !== null) {
       this.apply(char, want, 'eventbus', { event: event.type, want: true });
@@ -428,18 +420,131 @@ export class AgentScheduler {
     if (want !== null) this.apply(char, want, trigger, { want: true, generated: true });
   }
 
-  /** respond 直执:move 响应若打断了忙碌角色,固定短退避后期望回意图 */
-  private executeResponse(char: WorldCharacter, event: WorldEvent, verdict: TriageVerdict): void {
-    const action = verdict.action;
-    if (action === undefined) return;
-    const wasBusy = char.activity !== null || char.path.length > 0;
-    this.apply(
-      char,
-      { layer: 'triage', action: 'react', intent: action.intent, bubble: action.label },
-      'eventbus',
-      { event: event.type, gate: verdict.gate },
+  /** 意图存储内未占用的 want id(同分钟多次写入不撞 id) */
+  private freshWantId(characterId: string, prefix: string): string {
+    const { sim } = this.deps;
+    const base = `w${sim.clock.day}-${prefix}${sim.clock.gameMinutes}`;
+    const intents = innerState.get(characterId)?.intents;
+    let id = base;
+    for (let n = 1; intents?.wants.some((w) => w.id === id) === true; n += 1) {
+      id = `${base}-${n}`;
+    }
+    return id;
+  }
+
+  /** respond→事件 want(E6.2 统一产欲):响应落为 want(origin=event)入意图存储,
+   * 带 urgency 与半衰期(冲动会消退);写入不打断任何人——忙碌角色由 wantSelect
+   * 闲时评分调度,空闲角色写后即时 kick 择条(响应不等下一拍)。同活动+同人已有
+   * 在途 want 不重复写;无当日意图容器(晨间规划未跑)则静默消退(与 writeImpulse
+   * 同口径) */
+  private writeEventWant(char: WorldCharacter, action: ResponseAction, eventType: string): void {
+    const { sim } = this.deps;
+    const intents = innerState.get(char.id)?.intents ?? null;
+    if (intents === null || intents.day !== sim.clock.day) {
+      this.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger: 'eventbus',
+        perception: { event: eventType, gate: 'event_want_dropped', reason: 'no_intents' },
+        decision: { layer: 'triage', conclusion: 'continue' },
+      });
+      return;
+    }
+    const duplicate = intents.wants.some(
+      (w) =>
+        (w.status === 'pending' || w.status === 'doing') &&
+        w.activityId === action.want.activityId &&
+        w.targetCharacterId === action.want.targetCharacterId,
     );
-    if (wasBusy && action.kind === 'move') this.intentBackoff(char.id);
+    if (duplicate) {
+      this.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger: 'eventbus',
+        perception: {
+          event: eventType,
+          gate: 'event_want_duplicate',
+          activity: action.want.activityId,
+        },
+        decision: { layer: 'triage', conclusion: 'continue' },
+      });
+      return;
+    }
+    intents.wants.push({
+      id: this.freshWantId(char.id, 'e'),
+      activityId: action.want.activityId,
+      origin: 'event',
+      ...(action.want.targetCharacterId !== undefined
+        ? { targetCharacterId: action.want.targetCharacterId }
+        : {}),
+      why: action.label,
+      urgency: action.want.urgency,
+      expiresAtMin: sim.clock.gameMinutes + BALANCE.EVENT_WANT_TTL_MINUTES,
+      status: 'pending',
+      createdAtMin: sim.clock.gameMinutes,
+    });
+    persistInnerState(this.deps.handle, char.id);
+    this.trace.record(char.id, sim.clock.gameMinutes, {
+      trigger: 'eventbus',
+      perception: {
+        event: eventType,
+        gate: 'event_want',
+        activity: action.want.activityId,
+        target: action.want.targetCharacterId,
+        urgency: action.want.urgency,
+      },
+      decision: {
+        layer: 'triage',
+        conclusion: 'react',
+        intent: `want:${action.want.activityId}`,
+        bubble: action.label,
+      },
+    });
+    if (char.activity === null && char.path.length === 0) this.executeWants(char, 'eventbus');
+  }
+
+  /** 驱力巡检(E6.2 rule→驱力):恒稳态压力→驱力 want 写入意图存储(origin=drive,
+   * 带半衰期);压力已缓解的存量驱力 want 收口 done(bench-rest 等与驱力活动 id
+   * 错位的结算也靠这里主动收口,activity.finished 只对得上真实活动 id)。零模型
+   * 零直执——「怎么做」归 wantSelect 驱力分支;落库后由调用方的 wantDecision 择条 */
+  private driveStep(char: WorldCharacter): void {
+    const { sim } = this.deps;
+    const intents = innerState.get(char.id)?.intents ?? null;
+    if (intents === null || intents.day !== sim.clock.day) return; // 无容器静默(与 writeImpulse 同口径)
+    let changed = false;
+    for (const w of intents.wants) {
+      if (
+        w.origin === 'drive' &&
+        (w.status === 'pending' || w.status === 'doing') &&
+        driveSatisfied(char, w.activityId, sim.clock.minuteOfDay)
+      ) {
+        w.status = 'done';
+        changed = true;
+      }
+    }
+    for (const p of driveDecide(
+      char,
+      sim.clock.day,
+      sim.clock.minuteOfDay,
+      this.anchorsAt(),
+      this.ruleWorld(char),
+    )) {
+      const exists = intents.wants.some(
+        (w) =>
+          w.origin === 'drive' &&
+          (w.status === 'pending' || w.status === 'doing') &&
+          w.activityId === p.activityId,
+      );
+      if (exists) continue;
+      intents.wants.push({
+        id: this.freshWantId(char.id, 'd'),
+        activityId: p.activityId,
+        origin: 'drive',
+        why: p.why,
+        urgency: p.urgency,
+        expiresAtMin: sim.clock.gameMinutes + BALANCE.DRIVE_TTL_MINUTES,
+        status: 'pending',
+        createdAtMin: sim.clock.gameMinutes,
+      });
+      changed = true;
+    }
+    if (changed) persistInnerState(this.deps.handle, char.id);
   }
 
   /**
@@ -492,13 +597,8 @@ export class AgentScheduler {
         });
         return;
       }
-      this.apply(
-        char,
-        { layer: 'triage', action: 'react', intent: action.intent, bubble: action.label },
-        'eventbus',
-        { event: event.type, gate: verdict.gate, assess: 'respond' },
-      );
-      if (action.kind === 'move') this.intentBackoff(char.id);
+      // respond 答案=写事件 want(E6.2):不再打断当前块——写入后闲时评分调度
+      this.writeEventWant(char, action, event.type);
     } catch (err) {
       logTech('warn', 'agent', '中断评估失败', {
         characterId: char.id,
@@ -627,58 +727,6 @@ export class AgentScheduler {
     }
   }
 
-  /** defer 队列巡检(2s):空闲且保鲜期内补执行响应;过期记一行 trace 出队 */
-  private processDeferred(): void {
-    const { sim } = this.deps;
-    const now = sim.clock.gameMinutes;
-    for (const [key, entry] of [...this.deferred]) {
-      const char = sim.characters.get(entry.characterId);
-      if (char === undefined) {
-        this.deferred.delete(key);
-        continue;
-      }
-      const stale =
-        now - entry.atGameMinutes > BALANCE.EVENT_RESPONSE_DEFER_FRESH_MINUTES;
-      const idle =
-        char.alive && !char.collapsed && char.activity === null && char.path.length === 0;
-      if (!idle) {
-        if (stale) {
-          this.deferred.delete(key);
-          this.trace.record(char.id, now, {
-            trigger: 'eventbus',
-            perception: { event: entry.event.type, gate: 'defer_expired', waitedGameMinutes: now - entry.atGameMinutes },
-            decision: { layer: 'triage', conclusion: 'continue' },
-          });
-        }
-        continue;
-      }
-      this.deferred.delete(key);
-      if (stale) {
-        this.trace.record(char.id, now, {
-          trigger: 'eventbus',
-          perception: { event: entry.event.type, gate: 'defer_expired', waitedGameMinutes: now - entry.atGameMinutes },
-          decision: { layer: 'triage', conclusion: 'continue' },
-        });
-        continue;
-      }
-      const action = this.registry.resolve(entry.event, this.triageContextOf(char));
-      if (action === null) {
-        this.trace.record(char.id, now, {
-          trigger: 'eventbus',
-          perception: { event: entry.event.type, gate: 'defer_no_action' },
-          decision: { layer: 'triage', conclusion: 'continue' },
-        });
-        continue;
-      }
-      this.apply(
-        char,
-        { layer: 'triage', action: 'react', intent: action.intent, bubble: action.label },
-        'eventbus',
-        { event: entry.event.type, gate: 'deferred_execute' },
-      );
-    }
-  }
-
   /** ⑤ 预算簿记(同步,先于任何 await):当日次数+冷却时刻+事件去重键 */
   private bookAssess(characterId: string, eventKey: string): void {
     const { sim } = this.deps;
@@ -721,6 +769,7 @@ export class AgentScheduler {
         const relation = sim.socials.get(relationKey(char.id, id));
         return relation !== undefined && relation.familiarity > 0;
       },
+      affinityOf: (id) => sim.socials.get(relationKey(char.id, id))?.affinity ?? 0,
       nameOf: (id) => sim.characters.get(id)?.name ?? '某居民',
       budget: {
         day: budget?.day ?? -1,
@@ -823,10 +872,27 @@ export class AgentScheduler {
     if (decision.abandonedWantIds !== undefined && decision.abandonedWantIds.length > 0) {
       this.abandonWants(char.id, decision.abandonedWantIds);
     }
+    if (decision.doneWantIds !== undefined && decision.doneWantIds.length > 0) {
+      this.completeWants(char.id, decision.doneWantIds);
+    }
     return decision;
   }
 
-  /** want 当场废弃落库(fast 层判不可执行:无居所 rest/无锚点无场所) */
+  /** want 当场收口落库(fast 层判已达成:E6.2 驱力压力已过/救援已到场) */
+  private completeWants(characterId: string, wantIds: readonly string[]): void {
+    const intents = innerState.get(characterId)?.intents;
+    if (intents === undefined || intents === null) return;
+    let changed = false;
+    for (const w of intents.wants) {
+      if (wantIds.includes(w.id) && (w.status === 'pending' || w.status === 'doing')) {
+        w.status = 'done';
+        changed = true;
+      }
+    }
+    if (changed) persistInnerState(this.deps.handle, characterId);
+  }
+
+  /** want 当场废弃落库(fast 层判不可执行:无居所 rest/无锚点无场所/驱力通道消失) */
   private abandonWants(characterId: string, wantIds: readonly string[]): void {
     const intents = innerState.get(characterId)?.intents;
     if (intents === undefined || intents === null) return;
@@ -945,7 +1011,7 @@ export class AgentScheduler {
       return;
     }
     intents.wants.push({
-      id: `w${sim.clock.day}-j${sim.clock.gameMinutes}`,
+      id: this.freshWantId(char.id, 'j'),
       activityId: impulse.activityId,
       origin: 'impulse',
       ...(impulse.targetCharacterId !== undefined

@@ -18,7 +18,7 @@ import {
   type TileMapDefinition,
 } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
-import type { DayIntents } from './cognition.js';
+import type { DayIntents, Want } from './cognition.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { MemoryLlm } from './memory-writer.js';
 
@@ -35,7 +35,8 @@ export interface ImpulseWant {
  * D3:plan 层改执行弹性意图(wantSelect),wantId 标记本条决策对应的 want,
  * abandonedWantIds 收录当场判不可执行须废弃的 want(调度泵落库);
  * E6:jev 层 react 改携带 impulse(冲动 want,泵落库);socialize want 贴身时
- * 携带 chatWith(聊天交还社交管线执行,want 由 social.chat 结算) */
+ * 携带 chatWith(聊天交还社交管线执行,want 由 social.chat 结算);
+ * E6.2:doneWantIds 收录当场判已达成须收口为 done 的 want(驱力压力已过/救援已到场) */
 export interface Decision {
   layer: 'rule' | 'plan' | 'jev' | 'triage';
   action: 'continue' | 'react';
@@ -46,6 +47,8 @@ export interface Decision {
   wantId?: string;
   /** plan 层:当场判不可执行须标 abandoned 的 want 列表(调度泵落库) */
   abandonedWantIds?: string[];
+  /** plan 层:当场判已达成须标 done 的 want 列表(调度泵落库;E6.2 驱力/事件 want 收口) */
+  doneWantIds?: string[];
   /** jev 层:选中候选标签(E5 观测口径,进 trace 供选择分布聚合) */
   choice?: string;
   /** jev 层:概率采样产出的冲动 want(调度泵落库后即时择条) */
@@ -66,33 +69,24 @@ export interface RuleWorldQueries {
   bias?: Readonly<Record<string, number>>;
 }
 
-/** 阈值巡检的 rule 判定(agent-design §4.3 rule 层,零模型):数值压力反应,
- * 规则先行、命中即止。优先级 饥饿→房租→贫困→直采→困倦。只对空闲角色反应——
- * 移动/活动进行中不打断(等下轮巡检)。D3 起睡眠由困倦压力接管(替代夜间强制);
- * E1 起贫困/直采两道生存阀兜底经济死循环。 */
-export function ruleDecide(
-  char: WorldCharacter,
-  day: number,
-  minuteOfDay: number,
-  map: TileMapDefinition,
-  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
-  world: RuleWorldQueries = {},
-): Decision {
-  if (!char.alive || char.collapsed) return { layer: 'rule', action: 'continue' };
-  if (char.activity !== null || char.path.length > 0) {
-    return { layer: 'rule', action: 'continue' };
-  }
-  const hunger = ruleHunger(char, map, world);
-  if (hunger !== null) return hunger;
-  const rent = ruleRent(char, day);
-  if (rent !== null) return rent;
-  const poverty = rulePoverty(char, map, anchorsOf, world);
-  if (poverty !== null) return poverty;
-  const forage = ruleForage(char, world);
-  if (forage !== null) return forage;
-  const sleepy = ruleSleepy(char, day, minuteOfDay, map, anchorsOf);
-  if (sleepy !== null) return sleepy;
-  return { layer: 'rule', action: 'continue' };
+// ---------- 驱力层(E6.2 rule→驱力):压力→urgency,执行归 wantSelect 分支 ----------
+
+/** 驱力 want 词汇(E6.2,驱力专用伪活动 id,非活动定义):eat=吃/买/去商店,
+ * earn=变现/贫困选岗,forage=直采逃生,sleep=回床或长椅(复用真实活动 id,
+ * 结算走 activity.finished;执行可能是 start_activity sleep 或 rest) */
+export const DRIVE_ACTIVITY_IDS = ['eat', 'earn', 'forage', 'sleep'] as const;
+export type DriveActivityId = (typeof DRIVE_ACTIVITY_IDS)[number];
+
+export function isDriveActivity(activityId: string): boolean {
+  return (DRIVE_ACTIVITY_IDS as readonly string[]).includes(activityId);
+}
+
+/** 驱力压力(E6.2):恒稳态压力的 want 载荷——生成器只答「我多想要」(压力→urgency),
+ * 「怎么做」归 wantSelect 驱力分支(01-agent-design §3.3 规则②) */
+export interface DrivePressure {
+  activityId: DriveActivityId;
+  urgency: number;
+  why: string;
 }
 
 /** 选食(E4):能量降序、同能量价低优先——高密度先吃快速脱离饥饿区,低密度浆果留存可卖 */
@@ -108,49 +102,109 @@ function pickBackpackFood(backpack: Record<string, number | undefined>): string 
   return foods[0]?.id ?? null;
 }
 
-/** 饥饿反应(E4 进食线提前+选食策略):体力≤进食线(30,提前于健康扣减线留缓冲)时
- * 吃背包食物(能量降序、同能量价低优先) → 店内买最便宜**有货**食物 → 前往商店;
- * 店空/买不起 → null 让行贫困/直采阀(E1,消灭买苹果撞墙循环) */
-function ruleHunger(char: WorldCharacter, map: TileMapDefinition, world: RuleWorldQueries): Decision | null {
-  if (char.energy > BALANCE.HUNGER_EAT_ENERGY) return null;
-  const foodId = pickBackpackFood(char.backpack);
-  if (foodId !== null) {
-    const food = getItem(foodId);
-    return {
-      layer: 'rule',
-      action: 'react',
-      intent: { type: 'eat_item', characterId: char.id, itemId: foodId },
-      bubble: `体力低了,吃个${food?.name ?? foodId}`,
-    };
-  }
-  const shop = findPlaceByRef(map, 'shop');
-  if (shop === null) return null;
-  const inShop = findPlaceAt(map, char.x, char.y)?.id === shop.id;
+/** 进食通道可用性:背包有食物,或商店有货且买得起(写侧预检,与执行分支同源) */
+function eatChannelAvailable(char: WorldCharacter, world: RuleWorldQueries): boolean {
+  if (pickBackpackFood(char.backpack) !== null) return true;
   const cheapest = cheapestStockedFood(world.shopStock);
-  if (inShop) {
-    if (cheapest !== null && char.coins >= cheapest.price) {
-      return {
-        layer: 'rule',
-        action: 'react',
-        intent: { type: 'buy_item', characterId: char.id, itemId: cheapest.id },
-        bubble: `就在商店,买份${cheapest.name}垫垫肚子`,
-      };
-    }
-    return null; // 没钱或店空:让行贫困/直采阀
-  }
-  if (cheapest !== null && char.coins >= cheapest.price) {
-    return {
-      layer: 'rule',
-      action: 'react',
-      intent: { type: 'move_to', characterId: char.id, x: shop.entrance.x, y: shop.entrance.y },
-      bubble: '肚子饿了,去商店买点吃的',
-    };
-  }
-  return null; // 买不起或店空:让行
+  return cheapest !== null && char.coins >= cheapest.price;
 }
 
-/** 房租反应:租约次日到期且有支付能力 → 续租 */
-function ruleRent(char: WorldCharacter, day: number): Decision | null {
+/** 谋生通道可用性(E1):背包有可卖物,或贫困岗位池非空(服务岗须知识够) */
+function earnChannelAvailable(char: WorldCharacter, world: RuleWorldQueries): boolean {
+  const sellable = Object.entries(char.backpack).some(
+    ([id, count]) => (count ?? 0) > 0 && getItem(id)?.price !== undefined,
+  );
+  return sellable || povertyJob(char, world.bias) !== null;
+}
+
+/** 直采通道可用性(E1/E4):背包无食物、体力在直采窗、最近有可食节点 */
+function forageChannelAvailable(char: WorldCharacter, world: RuleWorldQueries): boolean {
+  if (char.energy <= BALANCE.FORAGE_MIN_ENERGY) return false;
+  if (Object.keys(char.backpack).some((id) => getItem(id)?.category === 'food')) return false;
+  return (world.nearestEdibleNode?.({ x: char.x, y: char.y }) ?? null) !== null;
+}
+
+/** 就寝通道可用性(D3/E1):回床(居所+租约有效+床锚点)或公园长椅,总有一条落点 */
+function sleepyChannelAvailable(
+  char: WorldCharacter,
+  day: number,
+  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+): boolean {
+  const homePlaceId = char.housing === null ? undefined : getPropertyDefinition(char.housing.propertyId)?.placeId;
+  const beds =
+    homePlaceId !== undefined && isLeaseValid(char.housing, day) ? anchorsOf('sleep', homePlaceId) : [];
+  return beds.length > 0 || anchorsOf('rest', 'park').length > 0;
+}
+
+/** 驱力巡检(E6.2 rule→驱力,零模型):恒稳态压力→驱力 want 载荷(origin=drive)。
+ * 不再产动作——饥饿族按 E1 逃生梯互斥(能买→eat,买不到→谋生 earn,也无岗→直采
+ * forage);睡眠独立评估(可与饥饿并存,由评分竞争)。rent 不在此列——账单不是行为,
+ * 续租保持即时结算(rentDecision)。 */
+export function driveDecide(
+  char: WorldCharacter,
+  day: number,
+  minuteOfDay: number,
+  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+  world: RuleWorldQueries = {},
+): DrivePressure[] {
+  if (!char.alive || char.collapsed) return [];
+  const pressures: DrivePressure[] = [];
+  const hungry = char.energy <= BALANCE.HUNGER_EAT_ENERGY;
+  if (hungry && eatChannelAvailable(char, world)) {
+    const deficit = (BALANCE.HUNGER_EAT_ENERGY - char.energy) / BALANCE.HUNGER_EAT_ENERGY;
+    pressures.push({
+      activityId: 'eat',
+      urgency: BALANCE.DRIVE_EAT_URGENCY_BASE + BALANCE.DRIVE_EAT_URGENCY_SCALE * deficit,
+      why: '体力低了,得吃点东西',
+    });
+  } else if (
+    char.coins < BALANCE.POVERTY_COIN_LINE &&
+    char.energy >= BALANCE.POVERTY_MIN_ENERGY &&
+    earnChannelAvailable(char, world)
+  ) {
+    pressures.push({ activityId: 'earn', urgency: BALANCE.DRIVE_EARN_URGENCY, why: '口袋见底,得挣点钱了' });
+  } else if (hungry && forageChannelAvailable(char, world)) {
+    pressures.push({
+      activityId: 'forage',
+      urgency: BALANCE.DRIVE_FORAGE_URGENCY,
+      why: '饿得不行,店也没的买,采点吃的',
+    });
+  }
+  const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
+  const sleepyLine = night ? BALANCE.SLEEPY_NIGHT_ENERGY : BALANCE.SLEEPY_DAY_ENERGY;
+  if (char.energy <= sleepyLine && sleepyChannelAvailable(char, day, anchorsOf)) {
+    pressures.push({
+      activityId: 'sleep',
+      urgency: night ? BALANCE.DRIVE_SLEEP_NIGHT_URGENCY : BALANCE.DRIVE_SLEEP_DAY_URGENCY,
+      why: night ? '夜深了,困得睁不开眼' : '困意上头,得歇会儿',
+    });
+  }
+  return pressures;
+}
+
+/** 驱力压力是否已缓解(写侧收口口径):缓解的驱力 want 标 done,通道消失标 abandoned */
+export function driveSatisfied(
+  char: WorldCharacter,
+  activityId: string,
+  minuteOfDay: number,
+): boolean {
+  switch (activityId) {
+    case 'eat':
+    case 'forage':
+      return char.energy > BALANCE.HUNGER_EAT_ENERGY;
+    case 'earn':
+      return char.coins >= BALANCE.POVERTY_COIN_LINE;
+    case 'sleep': {
+      const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
+      return char.energy > (night ? BALANCE.SLEEPY_NIGHT_ENERGY : BALANCE.SLEEPY_DAY_ENERGY);
+    }
+    default:
+      return true;
+  }
+}
+
+/** 房租即时结算(E6 定稿口径:账单不是行为,不走意图存储):租约次日到期且有支付能力→续租 */
+export function rentDecision(char: WorldCharacter, day: number): Decision | null {
   const housing = char.housing;
   if (housing === null || housing.ownership !== 'rent') return null;
   if (housing.paidThroughDay - day > 1) return null;
@@ -164,66 +218,9 @@ function ruleRent(char: WorldCharacter, day: number): Decision | null {
   };
 }
 
-/** 贫困生存阀(E1,保人设选岗):金币<贫困线且体力≥阀值的空闲角色谋收入——
- * 背包有可卖货物先去商店变现(即时回款),否则在[服务岗(知识够)/杂工]里按
- * 倾向分(activityBias)→时薪排序选最高:穷到活不下去也得干,但干的是最合人设的活 */
-function rulePoverty(
-  char: WorldCharacter,
-  map: TileMapDefinition,
-  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
-  world: RuleWorldQueries,
-): Decision | null {
-  if (char.coins >= BALANCE.POVERTY_COIN_LINE) return null;
-  if (char.energy < BALANCE.POVERTY_MIN_ENERGY) return null;
-  const sellable = Object.entries(char.backpack).find(
-    ([id, count]) => (count ?? 0) > 0 && getItem(id)?.price !== undefined,
-  );
-  if (sellable !== undefined) {
-    const [itemId, count] = sellable;
-    const shop = findPlaceByRef(map, 'shop');
-    if (shop === null) return null;
-    const name = getItem(itemId)?.name ?? itemId;
-    if (findPlaceAt(map, char.x, char.y)?.id === shop.id) {
-      return {
-        layer: 'rule',
-        action: 'react',
-        intent: { type: 'sell_item', characterId: char.id, itemId, count: count! },
-        bubble: `口袋见底,把${name}卖给商店换点钱`,
-      };
-    }
-    return {
-      layer: 'rule',
-      action: 'react',
-      intent: { type: 'move_to', characterId: char.id, x: shop.entrance.x, y: shop.entrance.y },
-      bubble: `口袋见底,拿${name}去商店卖钱`,
-    };
-  }
-  const job = povertyJob(char, world);
-  if (job === null) return null;
-  const definition = getActivityDefinition(job)!;
-  const anchors = anchorsOf(job, null);
-  if (anchors.length > 0 ? onSpot(char, anchors) : inAnyPlace(map, char, definition.placeIds)) {
-    return {
-      layer: 'rule',
-      action: 'react',
-      intent: { type: 'start_activity', characterId: char.id, activityId: job },
-      bubble: `得挣点钱了,去干${definition.name}`,
-    };
-  }
-  const spot = activitySpot(map, job, definition.placeIds, anchors);
-  if (spot === null) return null;
-  const placePart = spot.placeName === '' ? definition.name : `${spot.placeName}${definition.name}`;
-  return {
-    layer: 'rule',
-    action: 'react',
-    intent: { type: 'move_to', characterId: char.id, x: spot.x, y: spot.y },
-    bubble: `得挣点钱了,去${placePart}`,
-  };
-}
-
 /** 贫困岗位池排序(E1):服务三岗须知识够;倾向分(保人设)×10 压过时薪差,
  * 无方针/人设编译时按时薪取(服务 1.0 > 杂工 0.8) */
-function povertyJob(char: WorldCharacter, world: RuleWorldQueries): string | null {
+function povertyJob(char: WorldCharacter, bias: Readonly<Record<string, number>> = {}): string | null {
   const pool = (['waiter', 'vendor', 'librarian', 'work'] as const)
     .filter((id) => {
       const definition = getActivityDefinition(id);
@@ -233,90 +230,182 @@ function povertyJob(char: WorldCharacter, world: RuleWorldQueries): string | nul
     })
     .map((id) => ({
       id,
-      score: (world.bias?.[id] ?? 0) * 10 + getActivityDefinition(id)!.effects.coins,
+      score: (bias[id] ?? 0) * 10 + getActivityDefinition(id)!.effects.coins,
     }))
     .sort((a, b) => b.score - a.score);
   return pool[0]?.id ?? null;
 }
 
-/** 直采逃生门(E1;E4 两段式+窗口对齐进食线):饿着且买不起/店空 → 最近可食节点——
- * 距离>阈值先 move_to 节点邻位(到达经 character.arrived 重入本阀),贴身直发
- * work_task(单内含寻路,接单路径≈1 格消灭状态错位拒单);体力窗 (FORAGE_MIN_ENERGY,
- * 进食线],接单侧另有采食豁免(E4)。 */
-function ruleForage(char: WorldCharacter, world: RuleWorldQueries): Decision | null {
-  if (char.energy > BALANCE.HUNGER_EAT_ENERGY) return null;
-  if (char.energy <= BALANCE.FORAGE_MIN_ENERGY) return null;
-  if (Object.keys(char.backpack).some((id) => getItem(id)?.category === 'food')) return null;
-  const node = world.nearestEdibleNode?.({ x: char.x, y: char.y }) ?? null;
-  if (node === null) return null;
-  const dist = Math.abs(char.x - node.x) + Math.abs(char.y - node.y);
-  if (dist > BALANCE.FORAGE_MOVE_THRESHOLD) {
-    return {
-      layer: 'rule',
-      action: 'react',
-      intent: { type: 'move_to', characterId: char.id, x: node.x, y: node.y },
-      bubble: '饿得不行,店也没的买,过去采点吃的',
-    };
-  }
-  return {
-    layer: 'rule',
-    action: 'react',
-    intent: { type: 'work_task', characterId: char.id, targetId: node.id },
-    bubble: '饿得不行,店也没的买,采点吃的',
-  };
+/** 驱力 want 执行结果(E6.2 唯一执行器侧):done=压力已过(收口 done);
+ * stuck=通道消失(废弃改道,写侧重评);intent=两段式动作;null=本轮跳过 */
+interface DriveExecution {
+  intent?: Intent;
+  bubble: string;
+  done?: boolean;
+  stuck?: boolean;
 }
 
-/** 困倦压力(D3,纯数值替代夜间强制;E1 租约感知):夜间/白天各有体力犯困线。
- * 有家可回(居所+租约有效+床锚点)回家睡;租约失效/无居所/无床改去公园长椅
- * rest(长椅档 0.12/min)——数值压力照旧,不再对着被拒的床撞 200 次。 */
-function ruleSleepy(
+/** 驱力 want 执行分支(E6.2):「怎么做」自旧 rule 直执逐字平移——饥饿三段
+ * (吃背包→店内买→去商店,E4 选食策略)、谋生两段(变现→贫困选岗,E1 保人设)、
+ * 直采两段(远 node 邻位→贴身接单,E4)、就寝两段(回床→长椅兜底,E1 租约感知) */
+function driveExecution(
   char: WorldCharacter,
+  want: Want,
   day: number,
-  minuteOfDay: number,
+  night: boolean,
   map: TileMapDefinition,
   anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
-): Decision | null {
-  const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
-  const line = night ? BALANCE.SLEEPY_NIGHT_ENERGY : BALANCE.SLEEPY_DAY_ENERGY;
-  if (char.energy > line) return null;
-  const homePlaceId = char.housing === null ? undefined : getPropertyDefinition(char.housing.propertyId)?.placeId;
-  const beds =
-    homePlaceId !== undefined && isLeaseValid(char.housing, day) ? anchorsOf('sleep', homePlaceId) : [];
-  if (beds.length > 0) {
-    if (onSpot(char, beds)) {
+  world: WantWorldQueries,
+): DriveExecution | null {
+  switch (want.activityId) {
+    case 'eat': {
+      if (char.energy > BALANCE.HUNGER_EAT_ENERGY) return { bubble: '', done: true };
+      const foodId = pickBackpackFood(char.backpack);
+      if (foodId !== null) {
+        const food = getItem(foodId);
+        return {
+          intent: { type: 'eat_item', characterId: char.id, itemId: foodId },
+          bubble: `体力低了,吃个${food?.name ?? foodId}`,
+        };
+      }
+      const shop = findPlaceByRef(map, 'shop');
+      if (shop === null) return { bubble: '', stuck: true };
+      const cheapest = cheapestStockedFood(world.shopStock);
+      if (findPlaceAt(map, char.x, char.y)?.id === shop.id) {
+        if (cheapest !== null && char.coins >= cheapest.price) {
+          return {
+            intent: { type: 'buy_item', characterId: char.id, itemId: cheapest.id },
+            bubble: `就在商店,买份${cheapest.name}垫垫肚子`,
+          };
+        }
+        return { bubble: '', stuck: true }; // 没钱或店空:废弃改道(写侧逃生梯重评)
+      }
+      if (cheapest !== null && char.coins >= cheapest.price) {
+        return {
+          intent: { type: 'move_to', characterId: char.id, x: shop.entrance.x, y: shop.entrance.y },
+          bubble: '肚子饿了,去商店买点吃的',
+        };
+      }
+      return { bubble: '', stuck: true };
+    }
+    case 'earn': {
+      if (char.coins >= BALANCE.POVERTY_COIN_LINE) return { bubble: '', done: true };
+      const sellable = Object.entries(char.backpack).find(
+        ([id, count]) => (count ?? 0) > 0 && getItem(id)?.price !== undefined,
+      );
+      if (sellable !== undefined) {
+        const [itemId, count] = sellable;
+        const shop = findPlaceByRef(map, 'shop');
+        if (shop === null) return { bubble: '', stuck: true };
+        const name = getItem(itemId)?.name ?? itemId;
+        if (findPlaceAt(map, char.x, char.y)?.id === shop.id) {
+          return {
+            intent: { type: 'sell_item', characterId: char.id, itemId, count: count! },
+            bubble: `口袋见底,把${name}卖给商店换点钱`,
+          };
+        }
+        return {
+          intent: { type: 'move_to', characterId: char.id, x: shop.entrance.x, y: shop.entrance.y },
+          bubble: `口袋见底,拿${name}去商店卖钱`,
+        };
+      }
+      const job = povertyJob(char, world.bias);
+      if (job === null) return { bubble: '', stuck: true };
+      const definition = getActivityDefinition(job)!;
+      const anchors = anchorsOf(job, null);
+      if (anchors.length > 0 ? onSpot(char, anchors) : inAnyPlace(map, char, definition.placeIds)) {
+        return {
+          intent: { type: 'start_activity', characterId: char.id, activityId: job },
+          bubble: `得挣点钱了,去干${definition.name}`,
+        };
+      }
+      const spot = activitySpot(map, job, definition.placeIds, anchors);
+      if (spot === null) return { bubble: '', stuck: true };
+      const placePart = spot.placeName === '' ? definition.name : `${spot.placeName}${definition.name}`;
       return {
-        layer: 'rule',
-        action: 'react',
-        intent: { type: 'start_activity', characterId: char.id, activityId: 'sleep' },
-        bubble: night ? '夜深了,困得睁不开眼,上床睡觉' : '困意上头,回去补一觉',
+        intent: { type: 'move_to', characterId: char.id, x: spot.x, y: spot.y },
+        bubble: `得挣点钱了,去${placePart}`,
       };
     }
-    const home = findPlaceByRef(map, homePlaceId!);
-    if (home !== null) {
+    case 'forage': {
+      if (
+        char.energy > BALANCE.HUNGER_EAT_ENERGY ||
+        char.energy <= BALANCE.FORAGE_MIN_ENERGY ||
+        Object.keys(char.backpack).some((id) => getItem(id)?.category === 'food')
+      ) {
+        return { bubble: '', done: true };
+      }
+      const node = world.nearestEdibleNode?.({ x: char.x, y: char.y }) ?? null;
+      if (node === null) return { bubble: '', stuck: true };
+      const dist = Math.abs(char.x - node.x) + Math.abs(char.y - node.y);
+      if (dist > BALANCE.FORAGE_MOVE_THRESHOLD) {
+        return {
+          intent: { type: 'move_to', characterId: char.id, x: node.x, y: node.y },
+          bubble: '饿得不行,店也没的买,过去采点吃的',
+        };
+      }
       return {
-        layer: 'rule',
-        action: 'react',
-        intent: { type: 'move_to', characterId: char.id, x: beds[0]!.x, y: beds[0]!.y },
-        bubble: `困了,回${home.name}睡觉`,
+        intent: { type: 'work_task', characterId: char.id, targetId: node.id },
+        bubble: '饿得不行,店也没的买,采点吃的',
       };
     }
+    case 'sleep': {
+      if (char.energy > (night ? BALANCE.SLEEPY_NIGHT_ENERGY : BALANCE.SLEEPY_DAY_ENERGY)) {
+        return { bubble: '', done: true };
+      }
+      const homePlaceId = char.housing === null ? undefined : getPropertyDefinition(char.housing.propertyId)?.placeId;
+      const beds =
+        homePlaceId !== undefined && isLeaseValid(char.housing, day) ? anchorsOf('sleep', homePlaceId) : [];
+      if (beds.length > 0) {
+        if (onSpot(char, beds)) {
+          return {
+            intent: { type: 'start_activity', characterId: char.id, activityId: 'sleep' },
+            bubble: night ? '夜深了,困得睁不开眼,上床睡觉' : '困意上头,回去补一觉',
+          };
+        }
+        const home = findPlaceByRef(map, homePlaceId!);
+        if (home !== null) {
+          return {
+            intent: { type: 'move_to', characterId: char.id, x: beds[0]!.x, y: beds[0]!.y },
+            bubble: `困了,回${home.name}睡觉`,
+          };
+        }
+      }
+      // 长椅兜底(E1 租约感知):睡不了整觉但能回体力,消灭撞床循环
+      const benches = anchorsOf('rest', 'park');
+      if (benches.length === 0) return { bubble: '', stuck: true };
+      if (onSpot(char, benches)) {
+        return {
+          intent: { type: 'start_activity', characterId: char.id, activityId: 'rest' },
+          bubble: night ? '夜深了回不了家,公园长椅上眯一晚' : '困了,长椅上歇会儿',
+        };
+      }
+      return {
+        intent: { type: 'move_to', characterId: char.id, x: benches[0]!.x, y: benches[0]!.y },
+        bubble: '困了,去公园长椅歇会儿',
+      };
+    }
+    default:
+      return null;
   }
-  // 长椅兜底(E1 租约感知):睡不了整觉但能回体力,消灭撞床循环
-  const benches = anchorsOf('rest', 'park');
-  if (benches.length === 0) return null;
-  if (onSpot(char, benches)) {
-    return {
-      layer: 'rule',
-      action: 'react',
-      intent: { type: 'start_activity', characterId: char.id, activityId: 'rest' },
-      bubble: night ? '夜深了回不了家,公园长椅上眯一晚' : '困了,长椅上歇会儿',
-    };
-  }
+}
+
+/** 救援查看 want 执行(E6.2 respond→冲动):目标仍倒地→过去看;到场即完成查看
+ * (救治走救治窗口自身机制);目标已起/已不在→当场完成(没事了/人散了) */
+function rescueExecution(
+  char: WorldCharacter,
+  want: Want,
+  world: WantWorldQueries,
+): DriveExecution | null {
+  if (want.targetCharacterId === undefined) return { bubble: '', done: true };
+  const pos = world.posOfAny?.(want.targetCharacterId) ?? null;
+  if (pos === null) return { bubble: '', done: true };
+  if (pos.alive) return { bubble: '', done: true };
+  const dist = Math.abs(char.x - pos.x) + Math.abs(char.y - pos.y);
+  if (dist === 0) return { bubble: '', done: true };
   return {
-    layer: 'rule',
-    action: 'react',
-    intent: { type: 'move_to', characterId: char.id, x: benches[0]!.x, y: benches[0]!.y },
-    bubble: '困了,去公园长椅歇会儿',
+    intent: { type: 'move_to', characterId: char.id, x: pos.x, y: pos.y },
+    bubble: `过去看看${pos.name}`,
   };
 }
 
@@ -423,7 +512,7 @@ export async function jevDecide(
   persona?: string,
   context: JevContext = EMPTY_JEV_CONTEXT,
 ): Promise<Decision | null> {
-  if (!char.alive || char.collapsed) return null; // 失能不越权(与 ruleDecide 同门槛)
+  if (!char.alive || char.collapsed) return null; // 失能不越权(与 driveDecide 同门槛)
   if (char.activity !== null || char.path.length > 0) return null; // jev 只服务空闲角色,忙角色不白烧 LLM
   const here = findPlaceAt(map, char.x, char.y)?.id ?? null;
   const parkPlace = findPlaceByRef(map, 'park');
@@ -575,8 +664,19 @@ export function bestSellable(backpack: Record<string, number | undefined>): { id
   return best === null ? null : { id: best.id, count: best.count };
 }
 
+/** 决策附加簿记(仅在有内容时携带,防空数组字段噪声) */
+function extraOf(
+  abandoned: string[],
+  done: string[],
+): Pick<Decision, 'abandonedWantIds' | 'doneWantIds'> {
+  const extra: Pick<Decision, 'abandonedWantIds' | 'doneWantIds'> = {};
+  if (abandoned.length > 0) extra.abandonedWantIds = abandoned;
+  if (done.length > 0) extra.doneWantIds = done;
+  return extra;
+}
+
 /**
- * 意图执行(D3,agent-design §3.3 慢思考产 want、快层择条执行;E1 三通路):
+ * 意图执行(D3,agent-design §3.3 慢思考产 want、快层择条执行;E1 三通路;E6.2 驱力/事件):
  * 空闲角色从当日 wants 中按 评分=urgency×(1+倾向分 bias)×数值需求 needBoost 择条。
  * - 基础/服务岗:两段式 start_activity(服务岗带知识门槛预检,不够跳过不打无效意图)
  * - 采集岗(E1;E4 两段式):查最近有存量节点邻位——远处 move_to、贴身 work_task
@@ -585,9 +685,12 @@ export function bestSellable(backpack: Record<string, number | undefined>): { id
  * - 卖货(E4):背包有带价物→在店 sell_item 整叠变现/先 move_to 商店(空包跳过)
  * - 人指向社交(E2→E6 两段式):带 target 的 socialize 远处 move_to 寻人,贴身交还
  *   社交管线生成对话(chatWith),want 由 social.chat 事件结算 done;对方不在则废弃
+ * - 驱力 want(E6.2 rule→驱力):生存压力由写侧巡检产 want,执行走 driveExecution
+ *   专属分支——压力已过收口 done、通道消失废弃改道,不再直执 intent
+ * - 救援 want(E6.2 triage respond→冲动):rescueExecution 到场即完成
  * 不可执行的 want 当场废弃(rest 无居所/无锚点无场所);门槛不够/缺料/无节点
  * 只是本轮跳过(pending 保留——学了知识/采到料/节点重生后可再评);
- * 体力见底时非基础块让位生存压力。无意图/意图耗尽返回 null,交还 jev/continue。
+ * 体力见底时非基础块让位生存压力(驱力/救援豁免)。无意图/意图耗尽返回 null。
  */
 export function wantSelect(
   char: WorldCharacter,
@@ -602,12 +705,26 @@ export function wantSelect(
   if (char.activity !== null || char.path.length > 0) return null; // 忙碌不越权打断(rule/jev 同门槛)
   if (intents === undefined || intents === null || intents.day !== day) return null;
   const abandoned: string[] = [];
+  const doneIds: string[] = [];
   const candidates = intents.wants.filter((w) => {
     if (w.status !== 'pending' && w.status !== 'doing') return false;
     // 冲动半衰期(E6):过期冲动直接废弃——冲动会消退,不留陈年旧念
     if (w.expiresAtMin !== undefined && world.nowMin !== undefined && world.nowMin > w.expiresAtMin) {
       abandoned.push(w.id);
       return false;
+    }
+    // 驱力 want(E6.2):伪活动 id(eat/earn/forage/sleep)不查活动定义,有效性由
+    // 写侧压力巡检保证(过期/收口处理);真实活动 id(社交动机的 socialize)落回常规校验
+    if (w.origin === 'drive' && isDriveActivity(w.activityId)) {
+      return true;
+    }
+    // 事件 want(E6.2 respond→冲动):救援查看(伪活动 id);道谢=socialize 走下方人指向分支
+    if (w.activityId === 'rescue') {
+      if (w.targetCharacterId === undefined) {
+        abandoned.push(w.id); // 无 target 的救援残片:收口废弃不悬挂
+        return false;
+      }
+      return true;
     }
     const definition = getActivityDefinition(w.activityId);
     if (definition === null) {
@@ -636,11 +753,13 @@ export function wantSelect(
   });
   const eligible = candidates.filter(
     (w) =>
+      w.origin === 'drive' ||
+      w.activityId === 'rescue' ||
       char.energy > BALANCE.LOW_ENERGY_THRESHOLD ||
       (BASIC_ACTIVITY_IDS as readonly string[]).includes(w.activityId),
   );
   if (eligible.length === 0) {
-    // 全被体力闸拦下:wants 保留(pending 不动),rule 层生存/困倦压力先行
+    // 全被体力闸拦下:wants 保留(pending 不动),驱力生存压力照旧评分先行
     return abandoned.length > 0 ? { layer: 'plan', action: 'continue', abandonedWantIds: abandoned } : null;
   }
   const scored = eligible
@@ -654,9 +773,65 @@ export function wantSelect(
     }))
     .sort((a, b) => b.score - a.score);
   const picked = scored[0]!.want;
+  // 驱力 want 执行(E6.2):「怎么做」归专属分支——压力已过收口 done,通道消失
+  // 废弃改道(写侧巡检重评),其余两段式动作;want 生命周期与其他来源同轨
+  if (picked.origin === 'drive' && isDriveActivity(picked.activityId)) {
+    const night =
+      world.night ??
+      false;
+    const ex = driveExecution(char, picked, day, night, map, anchorsOf, world);
+    if (ex === null) return { layer: 'plan', action: 'continue', wantId: picked.id, ...extraOf(abandoned, doneIds) };
+    if (ex.done) {
+      return {
+        layer: 'plan',
+        action: 'continue',
+        wantId: picked.id,
+        doneWantIds: [...doneIds, picked.id],
+        ...(abandoned.length > 0 ? { abandonedWantIds: abandoned } : {}),
+      };
+    }
+    if (ex.stuck) {
+      return {
+        layer: 'plan',
+        action: 'continue',
+        wantId: picked.id,
+        abandonedWantIds: [...abandoned, picked.id],
+        ...(doneIds.length > 0 ? { doneWantIds: doneIds } : {}),
+      };
+    }
+    return {
+      layer: 'plan',
+      action: 'react',
+      wantId: picked.id,
+      ...extraOf(abandoned, doneIds),
+      intent: ex.intent,
+      bubble: ex.bubble,
+    };
+  }
+  // 救援查看 want(E6.2 respond→冲动):到场即完成,详见 rescueExecution
+  if (picked.activityId === 'rescue') {
+    const ex = rescueExecution(char, picked, world);
+    if (ex === null) return { layer: 'plan', action: 'continue', wantId: picked.id, ...extraOf(abandoned, doneIds) };
+    if (ex.done) {
+      return {
+        layer: 'plan',
+        action: 'continue',
+        wantId: picked.id,
+        doneWantIds: [...doneIds, picked.id],
+        ...(abandoned.length > 0 ? { abandonedWantIds: abandoned } : {}),
+      };
+    }
+    return {
+      layer: 'plan',
+      action: 'react',
+      wantId: picked.id,
+      ...extraOf(abandoned, doneIds),
+      intent: ex.intent,
+      bubble: ex.bubble,
+    };
+  }
   const definition = getActivityDefinition(picked.activityId)!;
-  const extra: Pick<Decision, 'abandonedWantIds'> = {};
-  if (abandoned.length > 0) extra.abandonedWantIds = abandoned;
+  const extra = extraOf(abandoned, doneIds);
   // 人指向社交 want(E2→E6 两段式):远处 move_to 寻人,到场经 character.arrived
   // 重入再评;贴身交还社交管线(E6.2 两阶段会合:首触=召唤零模型,对方应答才生成),
   // want 由 social.chat 结算 done;对方不在(亡故/下线)则 want 废弃
@@ -844,6 +1019,17 @@ export interface WantWorldQueries {
   /** 我召唤 TA 且会合未收口(E6.2 两阶段聊天):候召期不重复点火——对方应答
    * (event want 赢得评分即 commit)或会合超时回收驱动后续 */
   summonAwaiting?: (targetId: string) => boolean;
+  /** 商店货架存量(E6.2 驱力 eat 通道预检/执行:有货才吃得起,无货改道) */
+  shopStock?: (itemId: string) => number;
+  /** 最近可食用采集节点(E6.2 驱力 forage 通道预检/执行;null=暂无) */
+  nearestEdibleNode?: (from: { x: number; y: number }) => { id: string; x: number; y: number } | null;
+  /** 是否夜间(E6.2 驱力 sleep urgency 档位与回床目标判定) */
+  night?: boolean;
+  /** 任意角色位置含倒地者(E6.2 救援 want:倒地 alive=false,positionOf 查不到);
+   * null=不存在,alive=false=已倒地待救援,dist 0/已起=done */
+  posOfAny?: (characterId: string) => { x: number; y: number; name: string; alive: boolean } | null;
+  /** 活动倾向分(E6.2 驱力 earn 分支贫困选岗保人设) */
+  bias?: Readonly<Record<string, number>>;
 }
 
 /** 采集岗→节点 kind(GATHER_TASKS 表驱动;非采集活动返回 null) */

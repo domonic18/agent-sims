@@ -85,10 +85,9 @@ export interface BalanceConfig {
    * (空闲低强度走既有 rule→plan 管线);low 容忍度活动仅 importance≥DECISIVE 才评估 */
   EVENT_RESPONSE_STRONG: number;
   EVENT_RESPONSE_DECISIVE: number;
-  /** 事件响应预算(10-cognition §7.1): 每角色每日中断评估(⑤ systemOne)次数上限+评估冷却+defer 队列保鲜期 */
+  /** 事件响应预算(10-cognition §7.1): 每角色每日中断评估(⑤ systemOne)次数上限+评估冷却 */
   EVENT_RESPONSE_DAILY_BUDGET: number;
   EVENT_RESPONSE_COOLDOWN_MINUTES: number;
-  EVENT_RESPONSE_DEFER_FRESH_MINUTES: number;
   SLEEP_DEBT_MULTIPLIER: number;
   /** 累倒苏醒扣分(numerical §2.3/§2.5): growth 送医窗口超时苏醒 score ×= (1 - 该值);救治免扣 */
   SCORE_WAKE_DEDUCTION: number;
@@ -130,6 +129,22 @@ export interface BalanceConfig {
   JEV_IMPULSE_URGENCY: number;
   JEV_IMPULSE_TTL_MINUTES: number;
   JEV_CONFIDENCE_MIN: number;
+  /** 驱力 want(E6.2 rule→驱力):恒稳态压力→urgency,执行归 wantSelect 分支。
+   * 进食随亏空爬坡(base+scale×亏空比,压过夜间睡眠保先吃);直采=饥饿逃生档;
+   * 谋生固定档;睡眠夜间压过 plan/白天让位;半衰期统一(压力在,巡检重发) */
+  DRIVE_EAT_URGENCY_BASE: number;
+  DRIVE_EAT_URGENCY_SCALE: number;
+  DRIVE_FORAGE_URGENCY: number;
+  DRIVE_EARN_URGENCY: number;
+  DRIVE_SLEEP_NIGHT_URGENCY: number;
+  DRIVE_SLEEP_DAY_URGENCY: number;
+  DRIVE_TTL_MINUTES: number;
+  /** 事件 want(E6.2 respond→冲动):响应注册表产出 intent 改 want——
+   * 救人查看档+好感加权(关心的人多赶一分),道谢走 socialize 赴约档 */
+  EVENT_WANT_RESCUE_URGENCY: number;
+  EVENT_WANT_THANKS_URGENCY: number;
+  EVENT_WANT_URGENCY_AFFINITY_SCALE: number;
+  EVENT_WANT_TTL_MINUTES: number;
   /** 共处破冰(D1):同场所陌生对共处累计满阈值分钟自动相识;每世界每日建交上限防速熟;初识熟悉度 */
   ACQUAINTANCE_THRESHOLD_MINUTES: number;
   ACQUAINTANCE_DAILY_CAP: number;
@@ -194,7 +209,6 @@ export const BALANCE: BalanceConfig = {
   EVENT_RESPONSE_DECISIVE: 8,
   EVENT_RESPONSE_DAILY_BUDGET: 4,
   EVENT_RESPONSE_COOLDOWN_MINUTES: 30,
-  EVENT_RESPONSE_DEFER_FRESH_MINUTES: 60,
   SLEEP_DEBT_MULTIPLIER: 0.7,
   SCORE_WAKE_DEDUCTION: 0.2,
   SURVIVAL_HUNGER_ENERGY_LINE: 20,
@@ -240,6 +254,23 @@ export const BALANCE: BalanceConfig = {
   JEV_IMPULSE_URGENCY: 0.3,
   JEV_IMPULSE_TTL_MINUTES: 120,
   JEV_CONFIDENCE_MIN: 0.35,
+  // E6.2 rule→驱力:压力→urgency 评分竞争,不再直执——
+  // 进食 0.75+亏空爬坡 ≤0.95(饿得越狠越压过一切);直采 0.8(店买不到的逃生档);
+  // 谋生 0.7(贫困档,可被高优 plan 让位);睡 0.85 夜/0.7 昼(夜间压过计划,
+  // 白天犯困让位要事);半衰 90 分,压力持续则巡检重发
+  DRIVE_EAT_URGENCY_BASE: 0.75,
+  DRIVE_EAT_URGENCY_SCALE: 0.2,
+  DRIVE_FORAGE_URGENCY: 0.8,
+  DRIVE_EARN_URGENCY: 0.7,
+  DRIVE_SLEEP_NIGHT_URGENCY: 0.85,
+  DRIVE_SLEEP_DAY_URGENCY: 0.7,
+  DRIVE_TTL_MINUTES: 90,
+  // E6.2 respond→冲动 want:救人查看 0.85+好感/100×0.1(陌生人也看,挚友飞奔);
+  // 获救道谢 0.9 走 socialize(经 S1 会合协议当面聊);半衰 60 分(人没救到/已散场自然消退)
+  EVENT_WANT_RESCUE_URGENCY: 0.85,
+  EVENT_WANT_THANKS_URGENCY: 0.9,
+  EVENT_WANT_URGENCY_AFFINITY_SCALE: 0.1,
+  EVENT_WANT_TTL_MINUTES: 60,
   ACQUAINTANCE_THRESHOLD_MINUTES: 120,
   ACQUAINTANCE_DAILY_CAP: 2,
   ACQUAINTANCE_FAMILIARITY: 5,

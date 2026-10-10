@@ -1,6 +1,5 @@
 import {
   getActivityDefinition,
-  type Intent,
   type WorldEvent,
 } from '@sims/shared';
 import { BALANCE } from '../config/balance.js';
@@ -21,16 +20,24 @@ export type TriageDisposition =
   | 'assess' // 歧义案:⑤中断评估(预算内 systemOne)
   | 'defer'; // 当前活动不可打断:排「事后处理」,空闲且新鲜时补执行
 
-/** 响应动作(注册表产出):instant=即时反应(chat,不打断活动);move=移动响应(打断活动) */
+/** 响应动作(注册表产出;E6.2 respond→冲动):产出的是「此刻想做的一件事」(事件
+ * want 载荷)而非动作——写入意图存储(origin=event)交 wantSelect 评分择条,
+ * 抢占=评分不是特批,写入本身不打断任何人。kind 保留门控语义:instant=写入
+ * 无害,忙碌也直接写(pass_instant 不烧评估);move=忙碌时走容忍度/评估链 */
 export interface ResponseAction {
   kind: 'instant' | 'move';
-  /** 动作描述(⑤ criteria 与决策气泡用),如「过去看看苏晚」 */
+  /** 动作描述(want.why/⑤ criteria 用),如「过去看看苏晚」 */
   label: string;
   /** 事件语义中文(⑤ 题面用),如「苏晚倒下了,情况危急」 */
   semantic: string;
   /** 响应指向的对象(证据检索:对 TA 的印象/相关洞察);无主体响应可缺省 */
   subjectId?: string;
-  intent: Intent;
+  /** 事件 want 载荷:activityId 可为伪 id(rescue),target 指向人 */
+  want: {
+    activityId: string;
+    targetCharacterId?: string;
+    urgency: number;
+  };
 }
 
 export interface TriageVerdict {
@@ -57,6 +64,8 @@ export interface TriageContext {
   positionOf(id: string): { x: number; y: number } | null;
   isAcquaintance(id: string): boolean;
   nameOf(id: string): string;
+  /** 我→TA 好感(E6.2 救援 want 紧迫度按关系加权;缺省按 0) */
+  affinityOf?(id: string): number;
   /** 预算快照(scheduler 簿记的只读视图;day 非当日视为零消耗) */
   budget: {
     day: number;

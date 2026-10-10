@@ -36,14 +36,14 @@ const goLook: ResponseAction = {
   label: '过去看看苏晚',
   semantic: '苏晚倒下了,情况危急',
   subjectId: OTHER,
-  intent: { type: 'move_to', characterId: ME, x: 32, y: 30 },
+  want: { activityId: 'rescue', targetCharacterId: OTHER, urgency: 0.85 },
 };
 
 const instant: ResponseAction = {
   kind: 'instant',
   label: '感谢相救',
   semantic: '我刚被救醒',
-  intent: { type: 'chat', characterId: ME, targetId: OTHER, line: '多谢相救！' },
+  want: { activityId: 'socialize', targetCharacterId: OTHER, urgency: 0.9 },
 };
 
 const resolveAlways = (action: ResponseAction): ResponseResolver => () => action;

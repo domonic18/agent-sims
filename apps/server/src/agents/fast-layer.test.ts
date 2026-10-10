@@ -4,13 +4,17 @@ import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { DayIntents } from './cognition.js';
 import {
+  driveDecide,
+  driveSatisfied,
   exploreTarget,
   jevDecide,
+  rentDecision,
   wantSelect,
-  ruleDecide,
   type Decision,
+  type DrivePressure,
   type JevContext,
   type RuleWorldQueries,
+  type WantWorldQueries,
 } from './fast-layer.js';
 import type { MemoryLlm } from './memory-writer.js';
 
@@ -85,236 +89,119 @@ function stubLlm(choice: string): MemoryLlm {
   };
 }
 
-describe('ruleDecide(快层 rule,零模型数值压力反应)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
-  const decide = (c: WorldCharacter, minuteOfDay = NOON): Decision =>
-    ruleDecide(c, DAY, minuteOfDay, TOWN_MAP, noAnchors);
+describe('rentDecision(房租即时结算,账单不是行为)', () => {
+  const decide = (c: WorldCharacter): Decision | null => rentDecision(c, DAY);
 
-  it('数值健康且空闲 → continue', () => {
-    expect(decide(char({}))).toEqual({ layer: 'rule', action: 'continue' });
-  });
-
-  it('忙(活动/移动)与失能(死亡/虚脱)一律 continue,不打断不越权', () => {
-    expect(decide(char({ activity: { id: 'rest', startedAtGameMinutes: 0 } as never })).action).toBe('continue');
-    expect(decide(char({ path: [{ x: 1, y: 1 }] })).action).toBe('continue');
-    expect(decide(char({ alive: false, energy: 0 })).action).toBe('continue');
-    expect(decide(char({ collapsed: true })).action).toBe('continue');
-  });
-
-  it('饥饿链:背包有食物吃食物 → 无食物去商店 → 店内买最便宜 → 没钱 continue', () => {
-    const hungry = BALANCE.SURVIVAL_HUNGER_ENERGY_LINE;
-    const eat = decide(char({ energy: hungry, backpack: { apple: 1, wood: 2 } }));
-    expect(eat.action).toBe('react');
-    expect(eat.intent).toEqual({ type: 'eat_item', characterId: 'char-1', itemId: 'apple' });
-    expect(eat.bubble).toContain('苹果');
-
-    const goShop = decide(char({ energy: hungry }));
-    expect(goShop.intent).toEqual({
-      type: 'move_to',
-      characterId: 'char-1',
-      x: SHOP_ENTRANCE.x,
-      y: SHOP_ENTRANCE.y,
-    });
-
-    const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
-    const cheapest = [...SHOP_ITEMS].sort((a, b) => a.price! - b.price!)[0]!;
-    const buy = decide(char({ energy: hungry, x: shopXY.x, y: shopXY.y, coins: cheapest.price! }));
-    expect(buy.intent).toEqual({ type: 'buy_item', characterId: 'char-1', itemId: cheapest.id });
-
-    const broke = decide(char({ energy: hungry, coins: 0 }));
-    expect(broke.action).toBe('continue');
-  });
-
-  it('房租链:租约次日到期且有钱续租;自持有房/钱不够/租期充裕均 continue', () => {
+  it('租约次日到期且有钱 → react 续租(layer=rule)', () => {
     const due = decide(
       char({ housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 } }),
     );
-    expect(due.action).toBe('react');
-    expect(due.intent).toEqual({ type: 'rent_property', characterId: 'char-1', propertyId: 'home-a' });
-    expect(due.bubble).toContain('公寓 A');
-
-    const owned = char({ housing: { propertyId: 'home-a', ownership: 'owned', paidThroughDay: DAY + 1 } });
-    expect(decide(owned).action).toBe('continue');
-    // E1 贫困阀:钱不够续租但闲着 → 先谋生(贫困阀保人设选岗),不再静默
-    const broke = char({ coins: 0, housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 } });
-    expect(decide(broke).action).toBe('react');
-    expect(decide(broke).bubble).toContain('挣点钱');
+    expect(due).not.toBeNull();
+    expect(due!.layer).toBe('rule');
+    expect(due!.action).toBe('react');
+    expect(due!.intent).toEqual({ type: 'rent_property', characterId: 'char-1', propertyId: 'home-a' });
+    expect(due!.bubble).toContain('公寓 A');
   });
 
-  it('饥饿优先于房租(生存压力先行)', () => {
-    const both = char({
-      energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE,
-      housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 },
-    });
-    expect(decide(both).intent?.type).toBe('move_to');
-  });
-
-  it('困倦压力(D3):夜间体力≤夜间线→回家睡;白天线更低(25);不困/无居所/无床 continue', () => {
-    const beds = [{ x: 5, y: 6 }];
-    const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
-      activityId === 'sleep' && placeId === 'home-a' ? beds : [];
-    const decide2 = (c: WorldCharacter, minuteOfDay: number): Decision =>
-      ruleDecide(c, DAY, minuteOfDay, TOWN_MAP, homeAnchors);
-    const housing = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY + 5 };
-
-    const night = decide2(char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY, housing }), NIGHT);
-    expect(night.action).toBe('react');
-    expect(night.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
-    expect(night.bubble).toContain('困');
-
-    const inBed = decide2(char({ x: 5, y: 6, energy: BALANCE.SLEEPY_NIGHT_ENERGY, housing }), NIGHT);
-    expect(inBed.intent).toEqual({
-      type: 'start_activity',
-      characterId: 'char-1',
-      activityId: 'sleep',
-    });
-
-    // 白天体力在白天困线(25)之下且买不起(E4 进食线 30,饥饿阀买不起让行)才犯困
-    const dayNap = decide2(char({ energy: 22, coins: 0, housing }), NOON);
-    expect(dayNap.action).toBe('react');
-    expect(dayNap.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
-    expect(dayNap.bubble).toContain('困');
-
-    // 夜间精力充沛(>60)不困
-    expect(decide2(char({ energy: 70, housing }), NIGHT).action).toBe('continue');
-    // 无居所不强排(体力 40:够饿线之上、够夜间困线之下,排除饥饿干扰)
-    expect(
-      ruleDecide(char({ energy: 40, housing: null }), DAY, NIGHT, TOWN_MAP, homeAnchors).action,
-    ).toBe('continue');
-  });
-
-  it('饥饿优先于困倦(生存压力先行)', () => {
-    const beds = [{ x: 5, y: 6 }];
-    const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
-      activityId === 'sleep' && placeId === 'home-a' ? beds : [];
-    const starving = char({
-      energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE,
-      housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 5 },
-    });
-    expect(ruleDecide(starving, DAY, NIGHT, TOWN_MAP, homeAnchors).intent?.type).toBe('move_to');
+  it('自持有房/租期充裕/钱不够 → null(E6.2 谋生改由驱力 earn want 接管)', () => {
+    expect(decide(char({ housing: { propertyId: 'home-a', ownership: 'owned', paidThroughDay: DAY + 1 } }))).toBeNull();
+    expect(decide(char({ housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 5 } }))).toBeNull();
+    expect(decide(char({ coins: 0, housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 } }))).toBeNull();
   });
 });
 
-describe('ruleDecide E1 生存阀(贫困变现/直采逃生/饥饿让行/长椅兜底)', () => {
+describe('driveDecide(E6.2 驱力巡检,压力→urgency 不产动作)', () => {
   const noAnchors = (): Array<{ x: number; y: number }> => [];
-  const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
-  const decideW = (c: WorldCharacter, world: RuleWorldQueries = {}, minuteOfDay = NOON): Decision =>
-    ruleDecide(c, DAY, minuteOfDay, TOWN_MAP, noAnchors, world);
+  const decideP = (
+    c: WorldCharacter,
+    minuteOfDay = NOON,
+    world: RuleWorldQueries = {},
+    anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }> = noAnchors,
+  ): DrivePressure[] => driveDecide(c, DAY, minuteOfDay, anchorsOf, world);
+  const byId = (ps: DrivePressure[], id: string): DrivePressure | undefined =>
+    ps.find((p) => p.activityId === id);
+  const housing = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY + 5 };
+  const beds = [{ x: 5, y: 6 }];
+  const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+    activityId === 'sleep' && placeId === 'home-a' ? beds : [];
 
-  it('贫困阀:背包有货在店内→整叠 sell_item;店外→先去商店', () => {
-    const inShop = decideW(
-      char({ coins: 5, energy: 60, x: shopXY.x, y: shopXY.y, backpack: { berry: 4 } }),
-    );
-    expect(inShop.intent).toEqual({
-      type: 'sell_item',
-      characterId: 'char-1',
-      itemId: 'berry',
-      count: 4,
-    });
-    expect(inShop.bubble).toContain('浆果');
-
-    const outside = decideW(char({ coins: 5, energy: 60, backpack: { berry: 4 } }));
-    expect(outside.intent).toEqual({
-      type: 'move_to',
-      characterId: 'char-1',
-      x: SHOP_ENTRANCE.x,
-      y: SHOP_ENTRANCE.y,
-    });
+  it('数值健康 → 零压力;失能(死亡/虚脱)→ 零压力', () => {
+    expect(decideP(char({}))).toEqual([]);
+    expect(decideP(char({ alive: false, energy: 0 }))).toEqual([]);
+    expect(decideP(char({ collapsed: true }))).toEqual([]);
   });
 
-  it('贫困阀选岗保人设:知识不够只剩杂工;知识够时倾向分高者胜出', () => {
-    const green = decideW(char({ coins: 5, energy: 60 }));
-    expect(green.intent?.type).toBe('move_to'); // 杂工,前往作业点
-
-    const waiter = decideW(char({ coins: 5, energy: 60, knowledge: 5 }), { bias: { waiter: 1 } });
-    expect(waiter.bubble).toContain('服务员');
+  it('忙碌照常巡检(写 want 不打断,闲时由评分调度)', () => {
+    const busy = decideP(char({ energy: 20, activity: { id: 'work', startedAtGameMinutes: 0 } as never }));
+    expect(byId(busy, 'eat')).toBeDefined();
   });
 
-  it('贫困阀门槛:体力<阀值 或 金币≥贫困线 不触发', () => {
-    expect(decideW(char({ coins: 5, energy: 34 })).action).toBe('continue'); // E4: 阀值 45→35
-    expect(decideW(char({ coins: BALANCE.POVERTY_COIN_LINE, energy: 60 })).action).toBe('continue');
-  });
+  it('饥饿逃生梯(E1):能买→eat;非饥饿贫困有岗→earn;饿极买不起有节点→forage', () => {
+    // 饥饿+背包有食物 → eat(不吃库存先饿着的事不存在)
+    const eat = decideP(char({ energy: BALANCE.HUNGER_EAT_ENERGY - 1, backpack: { apple: 1 } }));
+    expect(byId(eat, 'eat')?.urgency).toBeGreaterThan(BALANCE.DRIVE_EAT_URGENCY_BASE);
 
-  it('直采逃生门(E4 两段式):体力(6,30] 无食买不起——远处 move_to 邻位/贴身 work_task;≤下界/无节点不动', () => {
-    // 远节点((30,30)→(12,8) 距 30):先 move_to 邻位,到达经 arrived 重入再接单
-    const far = decideW(char({ energy: 25, coins: 0 }), {
-      nearestEdibleNode: () => ({ id: 'berry_bush:12:8', x: 12, y: 8 }),
+    // 饥饿+店有货买得起 → eat
+    const buyable = decideP(char({ energy: BALANCE.HUNGER_EAT_ENERGY - 1, coins: 50 }), NOON, {
+      shopStock: () => 5,
     });
-    expect(far.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 12, y: 8 });
-    expect(far.bubble).toContain('采点吃的');
+    expect(byId(buyable, 'eat')).toBeDefined();
 
-    // 贴身节点(距 1):直发 work_task
-    const near = decideW(char({ energy: 25, coins: 0 }), {
-      nearestEdibleNode: () => ({ id: 'berry_bush:31:30', x: 31, y: 30 }),
-    });
-    expect(near.intent).toEqual({
-      type: 'work_task',
-      characterId: 'char-1',
-      targetId: 'berry_bush:31:30',
-    });
+    // 非饥饿+穷+有岗(知识 0 → 杂工) → earn
+    const earn = decideP(char({ energy: 60, coins: 0 }));
+    expect(byId(earn, 'earn')?.urgency).toBe(BALANCE.DRIVE_EARN_URGENCY);
 
-    // 低体力自救(E4 下界 6):15 不再沉默,先走过去
-    expect(
-      decideW(char({ energy: 15, coins: 0 }), { nearestEdibleNode: () => ({ id: 'b', x: 1, y: 1 }) })
-        .intent?.type,
-    ).toBe('move_to');
-    // ≤直采下界(虚脱边缘)不动
-    expect(
-      decideW(char({ energy: BALANCE.FORAGE_MIN_ENERGY, coins: 0 }), {
-        nearestEdibleNode: () => ({ id: 'b', x: 1, y: 1 }),
-      }).action,
-    ).toBe('continue');
-    expect(decideW(char({ energy: 25, coins: 0 })).action).toBe('continue'); // 无节点
-  });
-
-  it('进食线提前+选食策略(E4):体力 25 吃背包(旧码 20 才吃);能量降序,同能量价低优先', () => {
-    // 25 落在 (20,30]:吃背包(旧码沉默)
-    const eat = decideW(char({ energy: 25, coins: 50, backpack: { berry: 3 } }), {
+    // 饿极(买不起)+体力在直采窗+有节点 → forage
+    const forage = decideP(char({ energy: 25, coins: 0 }), NOON, {
       shopStock: () => 0,
+      nearestEdibleNode: () => ({ id: 'b', x: 1, y: 1 }),
     });
-    expect(eat.intent).toEqual({ type: 'eat_item', characterId: 'char-1', itemId: 'berry' });
+    expect(byId(forage, 'forage')?.urgency).toBe(BALANCE.DRIVE_FORAGE_URGENCY);
 
-    // {apple(+4), berry(+2)} 选 apple:先脱离饥饿区
-    const dense = decideW(char({ energy: 25, coins: 50, backpack: { berry: 3, apple: 1 } }), {
-      shopStock: () => 0,
-    });
-    expect(dense.intent).toMatchObject({ type: 'eat_item', itemId: 'apple' });
-
-    // 同能量(+6)选价低: bread(4 币) 压过 milk(5 币)
-    const cheap = decideW(char({ energy: 25, coins: 50, backpack: { milk: 1, bread: 1 } }), {
-      shopStock: () => 0,
-    });
-    expect(cheap.intent).toMatchObject({ type: 'eat_item', itemId: 'bread' });
+    // 通道全无(买不起+无岗+无节点)→ 零压力(不再对着售罄货架撞墙)
+    expect(decideP(char({ energy: 25, coins: 0 }), NOON, { shopStock: () => 0 })).toEqual([]);
   });
 
-  it('饥饿让行:店空/买不起 → continue(不再对着售罄货架撞墙)', () => {
-    const empty = decideW(char({ energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE, coins: 50 }), {
-      shopStock: () => 0,
-    });
-    expect(empty.action).toBe('continue');
-
-    const broke = decideW(char({ energy: BALANCE.SURVIVAL_HUNGER_ENERGY_LINE, coins: 0 }), {
-      shopStock: (id) => (id === 'berry' ? 5 : 0),
-    });
-    expect(broke.action).toBe('continue');
+  it('贫困阀门槛:体力<阀值 或 金币≥贫困线 不产 earn', () => {
+    expect(byId(decideP(char({ coins: 5, energy: 34 })), 'earn')).toBeUndefined(); // E4: 阀值 45→35
+    expect(byId(decideP(char({ coins: BALANCE.POVERTY_COIN_LINE, energy: 60 })), 'earn')).toBeUndefined();
   });
 
-  it('租约失效困倦 → 公园长椅兜底(两段式 rest,不再撞床)', () => {
-    const expired = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY - 1 };
-    const parkBench = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
-      activityId === 'rest' && placeId === 'park' ? [{ x: 7, y: 8 }] : [];
-    const go = ruleDecide(char({ energy: 30, coins: 0, housing: expired }), DAY, NIGHT, TOWN_MAP, parkBench);
-    expect(go.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 7, y: 8 });
-    expect(go.bubble).toContain('长椅');
+  it('困倦独立评估(D3):夜间线 60→0.85;白天线 25→0.7;不困零压力', () => {
+    const night = decideP(char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY, housing }), NIGHT, {}, homeAnchors);
+    expect(byId(night, 'sleep')?.urgency).toBe(BALANCE.DRIVE_SLEEP_NIGHT_URGENCY);
 
-    const sit = ruleDecide(
-      char({ x: 7, y: 8, energy: 30, coins: 0, housing: expired }),
-      DAY,
+    // 白天困线之下且买不起(E4 进食线 30,饥饿让行通道检查)→ sleep 0.7
+    const dayNap = decideP(char({ energy: 22, coins: 0, housing }), NOON, {}, homeAnchors);
+    expect(byId(dayNap, 'sleep')?.urgency).toBe(BALANCE.DRIVE_SLEEP_DAY_URGENCY);
+
+    expect(byId(decideP(char({ energy: 70, housing }), NIGHT, {}, homeAnchors), 'sleep')).toBeUndefined();
+  });
+
+  it('饥饿+困倦并存 → 两条压力都在(评分竞争,非互斥);rent 不产压力(即时结算)', () => {
+    const both = decideP(
+      char({ energy: BALANCE.HUNGER_EAT_ENERGY, housing }),
       NIGHT,
-      TOWN_MAP,
-      parkBench,
+      { shopStock: () => 5 },
+      homeAnchors,
     );
-    expect(sit.intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'rest' });
+    expect(byId(both, 'eat')).toBeDefined();
+    expect(byId(both, 'sleep')).toBeDefined();
+    // 租约次日到期:pressures 里没有 rent 项(rentDecision 单独结算,账单不是行为)
+    const due = char({ housing: { propertyId: 'home-a', ownership: 'rent', paidThroughDay: DAY + 1 } });
+    expect(decideP(due, NIGHT, {}, homeAnchors)).toEqual([]);
+  });
+});
+
+describe('driveSatisfied(驱力收口口径)', () => {
+  it('eat/forage 看进食线;earn 看贫困线;sleep 看昼夜困线', () => {
+    expect(driveSatisfied(char({ energy: BALANCE.HUNGER_EAT_ENERGY + 1 }), 'eat', NOON)).toBe(true);
+    expect(driveSatisfied(char({ energy: BALANCE.HUNGER_EAT_ENERGY }), 'eat', NOON)).toBe(false);
+    expect(driveSatisfied(char({ energy: 10 }), 'forage', NOON)).toBe(false);
+    expect(driveSatisfied(char({ coins: BALANCE.POVERTY_COIN_LINE }), 'earn', NOON)).toBe(true);
+    expect(driveSatisfied(char({ coins: BALANCE.POVERTY_COIN_LINE - 1 }), 'earn', NOON)).toBe(false);
+    expect(driveSatisfied(char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY + 1 }), 'sleep', NIGHT)).toBe(true);
+    expect(driveSatisfied(char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY }), 'sleep', NIGHT)).toBe(false);
   });
 });
 
@@ -829,5 +716,162 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
     expect(decision!.wantId).toBe('w1-0');
     expect(decision!.abandonedWantIds).toContain('w1-0');
     expect(decision!.intent).toBeUndefined();
+  });
+});
+
+describe('wantSelect 驱力分支(E6.2 rule→驱力,伪活动 id 专属执行)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const beds = [{ x: 5, y: 6 }];
+  const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+    activityId === 'sleep' && placeId === 'home-a' ? beds : [];
+  const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
+
+  it('eat want:吃背包→eat_item;压力已过→doneWantIds 收口', () => {
+    const day = intents(1, [
+      { activityId: 'eat', urgency: 0.9, origin: 'drive', why: '体力低了,得吃点东西' },
+    ]);
+    const eat = wantSelect(char({ energy: 20, backpack: { apple: 1 } }), day, 1, TOWN_MAP, noAnchors);
+    expect(eat!.action).toBe('react');
+    expect(eat!.wantId).toBe('w1-0');
+    expect(eat!.intent).toEqual({ type: 'eat_item', characterId: 'char-1', itemId: 'apple' });
+
+    const done = wantSelect(char({ energy: 80 }), day, 1, TOWN_MAP, noAnchors);
+    expect(done!.action).toBe('continue');
+    expect(done!.doneWantIds).toEqual(['w1-0']);
+    expect(done!.intent).toBeUndefined();
+  });
+
+  it('eat want:无食物去商店 move_to;店内买最便宜;没钱/店空 stuck→abandoned', () => {
+    const day = intents(1, [{ activityId: 'eat', urgency: 0.9, origin: 'drive' }]);
+    const go = wantSelect(char({ energy: 20 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      shopStock: () => 5,
+    });
+    expect(go!.intent).toEqual({
+      type: 'move_to',
+      characterId: 'char-1',
+      x: SHOP_ENTRANCE.x,
+      y: SHOP_ENTRANCE.y,
+    });
+
+    const cheapest = [...SHOP_ITEMS].sort((a, b) => a.price! - b.price!)[0]!;
+    const buy = wantSelect(char({ energy: 20, x: shopXY.x, y: shopXY.y, coins: cheapest.price! }), day, 1, TOWN_MAP, noAnchors, {}, {
+      shopStock: () => 5,
+    });
+    expect(buy!.intent).toEqual({ type: 'buy_item', characterId: 'char-1', itemId: cheapest.id });
+
+    const stuck = wantSelect(char({ energy: 20, x: shopXY.x, y: shopXY.y, coins: 0 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      shopStock: () => 0,
+    });
+    expect(stuck!.action).toBe('continue');
+    expect(stuck!.abandonedWantIds).toEqual(['w1-0']);
+  });
+
+  it('earn want:店内整叠 sell_item;coins 回贫困线→done', () => {
+    const day = intents(1, [{ activityId: 'earn', urgency: 0.7, origin: 'drive', why: '口袋见底' }]);
+    const sell = wantSelect(char({ coins: 5, x: shopXY.x, y: shopXY.y, backpack: { berry: 4 } }), day, 1, TOWN_MAP, noAnchors);
+    expect(sell!.intent).toEqual({ type: 'sell_item', characterId: 'char-1', itemId: 'berry', count: 4 });
+
+    const done = wantSelect(char({ coins: BALANCE.POVERTY_COIN_LINE }), day, 1, TOWN_MAP, noAnchors);
+    expect(done!.doneWantIds).toEqual(['w1-0']);
+  });
+
+  it('sleep want:远处回床 move_to;床上 start_activity sleep;体力过困线→done', () => {
+    const day = intents(1, [{ activityId: 'sleep', urgency: 0.85, origin: 'drive', why: '夜深了' }]);
+    const go = wantSelect(char({ energy: 40 }), day, 1, TOWN_MAP, homeAnchors, {}, { night: true });
+    expect(go!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 5, y: 6 });
+
+    const inBed = wantSelect(char({ x: 5, y: 6, energy: 40 }), day, 1, TOWN_MAP, homeAnchors, {}, { night: true });
+    expect(inBed!.intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'sleep' });
+
+    const done = wantSelect(
+      char({ energy: BALANCE.SLEEPY_NIGHT_ENERGY + 1 }),
+      day,
+      1,
+      TOWN_MAP,
+      homeAnchors,
+      {},
+      { night: true },
+    );
+    expect(done!.doneWantIds).toEqual(['w1-0']);
+  });
+
+  it('sleep want 租约失效 → 公园长椅兜底(两段式 rest,不再撞床)', () => {
+    const expired = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY - 1 };
+    const parkBench = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+      activityId === 'rest' && placeId === 'park' ? [{ x: 7, y: 8 }] : [];
+    const day = intents(1, [{ activityId: 'sleep', urgency: 0.85, origin: 'drive', why: '困了' }]);
+    const go = wantSelect(char({ energy: 40, housing: expired }), day, 1, TOWN_MAP, parkBench, {}, { night: true });
+    expect(go!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 7, y: 8 });
+
+    const sit = wantSelect(char({ x: 7, y: 8, energy: 40, housing: expired }), day, 1, TOWN_MAP, parkBench, {}, { night: true });
+    expect(sit!.intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'rest' });
+  });
+
+  it('forage want:远节点 move_to 邻位;无节点 stuck→abandoned(写侧重评改道)', () => {
+    const day = intents(1, [{ activityId: 'forage', urgency: 0.8, origin: 'drive', why: '采点吃的' }]);
+    const far = wantSelect(char({ energy: 25, coins: 0 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      nearestEdibleNode: () => ({ id: 'berry_bush:12:8', x: 12, y: 8 }),
+    });
+    expect(far!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 12, y: 8 });
+
+    const stuck = wantSelect(char({ energy: 25, coins: 0 }), day, 1, TOWN_MAP, noAnchors);
+    expect(stuck!.action).toBe('continue');
+    expect(stuck!.abandonedWantIds).toEqual(['w1-0']);
+  });
+
+  it('驱力豁免体力闸与非驱力 id 拦截:体力 10 的 sleep want 照常执行;词汇表外 drive want 废弃', () => {
+    const parkBench = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+      activityId === 'rest' && placeId === 'park' ? [{ x: 7, y: 8 }] : [];
+    const day = intents(1, [{ activityId: 'sleep', urgency: 0.7, origin: 'drive', why: '困了' }]);
+    const decision = wantSelect(char({ energy: 10 }), day, 1, TOWN_MAP, parkBench, {}, { night: false });
+    expect(decision!.action).toBe('react');
+    expect(decision!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 7, y: 8 });
+
+    const alien = intents(1, [{ activityId: 'meditate', urgency: 0.9, origin: 'drive' }]);
+    const odd = wantSelect(char({ energy: 80 }), alien, 1, TOWN_MAP, noAnchors);
+    expect(odd!.action).toBe('continue');
+    expect(odd!.abandonedWantIds).toEqual(['w1-0']);
+  });
+});
+
+describe('wantSelect 救援 want(E6.2 triage respond→冲动)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+
+  it('目标倒地:move_to 过去看;到场/已起/人没了→doneWantIds 收口', () => {
+    const day = intents(1, [
+      { activityId: 'rescue', urgency: 0.85, origin: 'event', why: '过去看看苏晚', targetCharacterId: 'npc-9' },
+    ]);
+    const world = (pos: { x: number; y: number; name: string; alive: boolean } | null): WantWorldQueries => ({
+      posOfAny: (id) => (id === 'npc-9' ? pos : null),
+    });
+    const go = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, world({ x: 20, y: 20, name: '苏晚', alive: false }));
+    expect(go!.action).toBe('react');
+    expect(go!.wantId).toBe('w1-0');
+    expect(go!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 20, y: 20 });
+
+    const arrived = wantSelect(char({ x: 20, y: 20 }), day, 1, TOWN_MAP, noAnchors, {}, world({ x: 20, y: 20, name: '苏晚', alive: false }));
+    expect(arrived!.doneWantIds).toEqual(['w1-0']);
+
+    const revived = wantSelect(char({}), day, 1, TOWN_MAP, noAnchors, {}, world({ x: 20, y: 20, name: '苏晚', alive: true }));
+    expect(revived!.doneWantIds).toEqual(['w1-0']);
+
+    const gone = wantSelect(char({}), day, 1, TOWN_MAP, noAnchors, {}, world(null));
+    expect(gone!.doneWantIds).toEqual(['w1-0']);
+  });
+
+  it('rescue want 无 target/体力闸:残片废弃不悬挂;低体力照常放行(豁免体力闸)', () => {
+    const fragment = intents(1, [{ activityId: 'rescue', urgency: 0.85, origin: 'event', why: '过去看看' }]);
+    const dropped = wantSelect(char({ energy: 10 }), fragment, 1, TOWN_MAP, noAnchors);
+    expect(dropped!.action).toBe('continue');
+    expect(dropped!.abandonedWantIds).toEqual(['w1-0']);
+
+    const day = intents(1, [
+      { activityId: 'rescue', urgency: 0.85, origin: 'event', why: '过去看看苏晚', targetCharacterId: 'npc-9' },
+    ]);
+    const low = wantSelect(char({ energy: 10 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      posOfAny: () => ({ x: 20, y: 20, name: '苏晚', alive: false }),
+    });
+    expect(low!.action).toBe('react');
+    expect(low!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 20, y: 20 });
   });
 });

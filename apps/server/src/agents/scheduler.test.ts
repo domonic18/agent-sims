@@ -205,12 +205,17 @@ describe('AgentScheduler(M4c 认知泵)', () => {
     vi.useRealTimers();
   });
 
-  it('阈值巡检: 饥饿角色 rule react 吃背包食物,气泡+trace 落库', () => {
+  it('阈值巡检: 饥饿写驱力 want 即择条执行吃背包食物,气泡+trace 落库', () => {
     const h = harness(0, char({ energy: 20, backpack: { apple: 1 } }));
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] }); // 驱力写 want 须有当日容器
     vi.advanceTimersByTime(2_000);
     expect(h.intents).toEqual([{ type: 'eat_item', characterId: CHAR_ID, itemId: 'apple' }]);
-    expect(h.bubbles).toHaveLength(1);
     expect(h.bubbles[0]!.text).toContain('苹果');
+    expect(innerState.get(CHAR_ID)?.intents?.wants[0]).toMatchObject({
+      activityId: 'eat',
+      origin: 'drive',
+      status: 'doing',
+    });
     const react = h.traceRows.find((r) => r.decision !== null && (r.decision as { conclusion?: string }).conclusion === 'react');
     expect(react).toBeDefined();
     expect(react!.triggerType).toBe('threshold');
@@ -218,25 +223,25 @@ describe('AgentScheduler(M4c 认知泵)', () => {
     h.scheduler.dispose();
   });
 
-  it('同一 15 分块只巡检一次;continue 采样每 20 次记 1 条 trace', () => {
+  it('同一 15 分块只巡检一次;数值健康空想零动作零 trace', () => {
     const h = harness(0, char({}));
     innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] }); // 屏蔽回落意图,专注巡检节拍
     for (let i = 0; i < 25; i += 1) {
       h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES;
       vi.advanceTimersByTime(2_000);
     }
-    expect(h.intents).toHaveLength(0); // 数值健康全程 continue
+    expect(h.intents).toHaveLength(0); // 数值健康全程无压力无候选
     expect(h.jevCalls).toBe(0); // 巡检路径不触发 jev
-    expect(h.traceRows).toHaveLength(1); // 25 次 continue 采样 1 条
-    expect((h.traceRows[0]!.decision as { conclusion: string }).conclusion).toBe('continue');
+    expect(h.traceRows).toHaveLength(0); // wantSelect 空手静默(null),不再有 continue 采样行
     h.scheduler.dispose();
   });
 
-  it('事件驱动: 相关叙事事件放行管线,rule react 直接落地不进 jev', () => {
+  it('事件驱动: 相关叙事事件放行管线,驱力 want 即时执行不进 jev', () => {
     const h = harness(0, char({ energy: 20, backpack: { apple: 1 } }));
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] });
     h.onEvent({ type: 'work_task.cancelled', characterId: CHAR_ID, targetId: 'spot-1', tick: 1 } as WorldEvent);
     expect(h.intents).toEqual([{ type: 'eat_item', characterId: CHAR_ID, itemId: 'apple' }]);
-    expect(h.jevCalls).toBe(0);
+    expect(h.jevCalls).toBe(0); // want 已接上执行,本轮不惊动 jev
     const react = h.traceRows.find((r) => (r.decision as { conclusion?: string }).conclusion === 'react');
     expect(react!.triggerType).toBe('eventbus');
     h.scheduler.dispose();
@@ -374,12 +379,13 @@ describe('AgentScheduler(D3 意图执行)', () => {
     h.scheduler.dispose();
   });
 
-  it('rule 压力优先于意图:饥饿时先吃苹果,want 不抢跑', async () => {
+  it('驱力压过 plan want: 饥饿时先吃苹果(体力闸拦下 study),want 不抢跑', async () => {
     const h = harness(480, char({ energy: 20, backpack: { apple: 1 } }), studyIntentsLlm);
     await vi.advanceTimersByTimeAsync(2_000); // 意图生成
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES;
     await vi.advanceTimersByTimeAsync(2_000);
-    // 桩不改数值,rule 每个巡检块都先于意图 react 吃苹果
+    // 桩不改数值:驱力 eat 唯一 eligible(energy 20≤闸线,study 非基础被体力闸拦下),
+    // 每个巡检块都重评执行吃苹果
     expect(h.intents[0]).toEqual({ type: 'eat_item', characterId: CHAR_ID, itemId: 'apple' });
     expect(h.intents.every((i) => i.type === 'eat_item')).toBe(true);
     h.scheduler.dispose();
@@ -455,8 +461,10 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
+    autonomy.disable('rescuer-1');
     hosting.delete(CHAR_ID);
     innerState.clear(CHAR_ID);
+    innerState.clear('rescuer-1');
     vi.useRealTimers();
   });
 
@@ -477,79 +485,36 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
   const diedEvent = (tick: number): WorldEvent =>
     ({ type: 'character.died', characterId: 'other-1', tick, revivable: true }) as WorldEvent;
 
-  it('忙碌漫步中有人倒下: ⑤评估 respond→move_to 打断,want 固定退避期满回意图', async () => {
+  it('忙碌漫步中有人倒下: ⑤评估 respond→写事件 want 不打断,闲时评分调度去救援', async () => {
     const worldChar = char({ activity: activity('stroll') });
     const h = harness(480, worldChar, respondLlm, {
-      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
-    });
-    // 钉死 stroll:回落按倾向分去随机化(E1 扩池后采集/制作等在本桩不可执行会零意图)
-    hosting.set(CHAR_ID, {
-      mode: 'policy',
-      policyText: null,
-      compiled: {
-        focus: ['stroll'],
-        avoid: INTENT_ACTIVITY_IDS.filter((id) => id !== 'stroll'),
-      },
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30, alive: false })],
     });
     innerState.setIntents(CHAR_ID, {
       day: 0,
       source: 'llm',
-      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
+      // stroll 钉 0.6:rescue 0.85×(0.95~1.05) 恒压过 0.6×1.05,评分竞争保确定性
+      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.6, status: 'doing', createdAtMin: 480 }],
     });
     h.onEvent(diedEvent(480));
     await vi.advanceTimersByTimeAsync(0);
     expect(h.jevCalls).toBe(1); // ⑤ 中断评估恰好一次
-    expect(h.intents[0]).toEqual({ type: 'move_to', characterId: CHAR_ID, x: 32, y: 30 });
-    expect(h.bubbles[0]?.text).toContain('看看');
-    const react = h.traceRows.find(
-      (r) =>
-        (r.decision as { layer?: string }).layer === 'triage' &&
-        (r.decision as { conclusion?: string }).conclusion === 'react',
-    );
-    expect((react!.perception as { gate?: string }).gate).toBe('pass_assess');
-    // 退避期内(480+30=510 前)want 层静默
+    expect(h.intents).toHaveLength(0); // 忙碌不打断:rescue want 只入账
+    expect(
+      innerState.get(CHAR_ID)!.intents!.wants.find((w) => w.activityId === 'rescue'),
+    ).toMatchObject({ origin: 'event', targetCharacterId: 'other-1', status: 'pending' });
+    const assess = h.traceRows.find((r) => (r.perception as { gate?: string }).gate === 'pass_assess');
+    expect(assess).toBeDefined();
+    expect(h.traceRows.find((r) => (r.perception as { gate?: string }).gate === 'event_want')).toBeDefined();
+    // 活动结束:闲时评分调度,rescue 压过 stroll → move_to 去看苏晚
     worldChar.activity = null;
-    h.clock.gameMinutes = 500;
+    h.clock.gameMinutes = 495;
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(1);
-    // 期满:重新评分择条,回意图(去散步)
-    h.clock.gameMinutes = 510;
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(2);
-    expect(h.intents[1]).toMatchObject({ type: 'move_to', characterId: CHAR_ID });
-    h.scheduler.dispose();
-  });
-
-  it('退避为绝对 gameMinutes 语义:次日同时刻不误判仍在退避', async () => {
-    const worldChar = char({ activity: activity('stroll') });
-    const h = harness(480, worldChar, respondLlm, {
-      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 32, y: 30 })],
-    });
-    // 钉死 stroll:回落按倾向分去随机化(E1 扩池后采集/制作等在本桩不可执行会零意图)
-    hosting.set(CHAR_ID, {
-      mode: 'policy',
-      policyText: null,
-      compiled: {
-        focus: ['stroll'],
-        avoid: INTENT_ACTIVITY_IDS.filter((id) => id !== 'stroll'),
-      },
-    });
-    innerState.setIntents(CHAR_ID, {
-      day: 0,
-      source: 'llm',
-      wants: [{ id: 'w0-0', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.9, status: 'doing', createdAtMin: 480 }],
-    });
-    h.onEvent(diedEvent(480));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(h.intents).toHaveLength(1); // respond 打断生效,退避至 510(绝对值)
-    worldChar.activity = null; // 世界侧活动已终止
-    h.clock.gameMinutes = 1440 + 480; // 次日 08:00,与中断同 minuteOfDay
-    await vi.advanceTimersByTimeAsync(2_000); // ensureIntents 生成次日意图
-    h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES; // 跨出巡检块边界
-    await vi.advanceTimersByTimeAsync(2_000); // 巡检回意图
-    expect(h.intents.length).toBeGreaterThan(1);
-    // 次日意图为 fallback 随机候选,产出的可能是 move_to 或就地 start_activity
-    expect(h.intents[1]).toMatchObject({ characterId: CHAR_ID });
+    expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 32, y: 30 }]);
+    expect(h.bubbles[0]?.text).toContain('看看');
+    expect(
+      innerState.get(CHAR_ID)!.intents!.wants.find((w) => w.activityId === 'rescue')!.status,
+    ).toBe('doing');
     h.scheduler.dispose();
   });
 
@@ -585,26 +550,56 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     h.scheduler.dispose();
   });
 
-  it('睡眠不可打断: died 排事后处理,空闲后巡检补执行 move_to', async () => {
+  it('睡眠 defer 溶解: 不评估不打断,died 落为事件 want,醒后闲时调度去救援', async () => {
     const worldChar = char({ activity: activity('sleep') });
-    const h = harness(480, worldChar, respondLlm, {
-      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 33, y: 30 })],
+    const h = harness(480, worldChar, undefined, {
+      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 33, y: 30, alive: false })],
     });
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] });
     h.onEvent(diedEvent(480));
     await vi.advanceTimersByTimeAsync(0);
-    expect(h.jevCalls).toBe(0); // 容忍度 none:不评估不打断
-    expect(h.intents).toHaveLength(0);
+    expect(h.jevCalls).toBe(0); // 容忍度 none:不评估不打断,直接写 want
+    expect(h.intents).toHaveLength(0); // 忙碌:want 只入账不动身
+    expect(
+      innerState.get(CHAR_ID)!.intents!.wants.find((w) => w.activityId === 'rescue'),
+    ).toMatchObject({ origin: 'event', status: 'pending' });
     worldChar.activity = null;
+    h.clock.gameMinutes = 495; // 跨出巡检块边界
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 33, y: 30 }]);
     expect(h.bubbles[0]?.text).toContain('看看');
     h.scheduler.dispose();
   });
 
-  it('获救道谢: 台账由 accepted 喂,复活即当面对救者说固定台词(零模型不打断)', () => {
-    const h = harness(480, char({}), undefined, {
+  it('获救道谢: 台账由 accepted 喂,复活写社交事件 want,召唤恩人两阶段聊天', async () => {
+    const dialogueLlm: Partial<MemoryLlm> = {
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        const parsed = parse({ line: '小事一桩,别放心上', wantsMore: false });
+        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+        return Promise.resolve(parsed.value);
+      },
+    };
+    const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'rescuer-1', name: '阿泽', x: 31, y: 30 })],
     });
+    const sim = (h.scheduler as unknown as { deps: { sim: { socials: Map<string, unknown> } } }).deps.sim;
+    for (const [fromId, toId] of [
+      [CHAR_ID, 'rescuer-1'],
+      ['rescuer-1', CHAR_ID],
+    ] as const) {
+      sim.socials.set(`${fromId}|${toId}`, {
+        fromId,
+        toId,
+        familiarity: 30,
+        affinity: 60,
+        chatDay: 0,
+        chatCount: 0,
+        formedNotified: false,
+      });
+    }
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] });
+    autonomy.enable('rescuer-1');
+    innerState.setIntents('rescuer-1', { day: 0, source: 'llm', wants: [] });
     h.onEvent({
       type: 'work_task.accepted',
       characterId: 'rescuer-1',
@@ -613,10 +608,19 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
       tick: 479,
     } as WorldEvent);
     h.onEvent({ type: 'character.revived', characterId: CHAR_ID, tick: 480 } as WorldEvent);
-    expect(h.jevCalls).toBe(0);
-    expect(h.intents).toEqual([
-      { type: 'chat', characterId: CHAR_ID, targetId: 'rescuer-1', line: '多谢相救！' },
-    ]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.jevCalls).toBe(0); // respond 通道不评估不惊动 jev
+    // 道谢=socialize 事件 want(我名下,doing 静候聊天落地),聊天由恩人应答生成
+    expect(
+      innerState
+        .get(CHAR_ID)!
+        .intents!.wants.find((w) => w.origin === 'event' && w.targetCharacterId === 'rescuer-1'),
+    ).toMatchObject({ activityId: 'socialize', urgency: 0.9, status: 'doing' });
+    const chat = h.intents[0] as { type: string; characterId: string; targetId: string; lines?: string[] } | undefined;
+    expect(chat?.type).toBe('chat');
+    expect(chat?.characterId).toBe('rescuer-1'); // 应答方(恩人)执行生成,chat 归其名下
+    expect(chat?.targetId).toBe(CHAR_ID);
+    expect(chat?.lines![0]).toBe('小事一桩,别放心上');
     h.scheduler.dispose();
   });
 });
