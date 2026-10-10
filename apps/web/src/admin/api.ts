@@ -15,7 +15,9 @@ import {
   type AddWorldCharacterRequest,
   type AddWorldCharacterResponse,
   type AuditLogEntriesResponse,
+  type CharacterListResponse,
   type CharacterScheduleView,
+  type CognitionTraceEntriesResponse,
   type CreateWorldRequest,
   type GameType,
   type ModelConfigInvokeResult,
@@ -38,6 +40,7 @@ import {
   type TokenUsageWindow,
   type SysConfigView,
   type UiMetaView,
+  type WantLifecycleResponse,
   type WorldArchiveView,
   type WorldEventEntriesResponse,
   type WorldRecipesView,
@@ -508,6 +511,43 @@ export async function fetchAuditLogEntries(
   const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) });
   if (query.username) params.set('username', query.username);
   return await adminFetch<AuditLogEntriesResponse>(`${ADMIN_API.logAuditLogs}?${params.toString()}`);
+}
+
+// ============ 决策追溯(观测性) ============
+
+/** 当前活跃世界角色清单(决策追踪面板角色选择器) */
+export async function fetchCharacterList(): Promise<CharacterListResponse> {
+  return await adminFetch<CharacterListResponse>(WORLD_ADMIN_API.characters);
+}
+
+export interface CognitionTracesQuery {
+  characterId?: string;
+  wantId?: string;
+  layer?: string;
+  conclusion?: string;
+  page: number;
+  pageSize: number;
+}
+
+export async function fetchCognitionTraces(
+  query: CognitionTracesQuery,
+): Promise<CognitionTraceEntriesResponse> {
+  const params = new URLSearchParams({ page: String(query.page), pageSize: String(query.pageSize) });
+  if (query.characterId) params.set('characterId', query.characterId);
+  if (query.wantId) params.set('wantId', query.wantId);
+  if (query.layer) params.set('layer', query.layer);
+  if (query.conclusion) params.set('conclusion', query.conclusion);
+  return await adminFetch<CognitionTraceEntriesResponse>(
+    `${ADMIN_API.logCognitionTraces}?${params.toString()}`,
+  );
+}
+
+/** want 全生命周期聚合: 脑内快照 + 按 wantId 全部 trace + 角色同时段事件流 */
+export async function fetchWantLifecycle(
+  characterId: string,
+  wantId: string,
+): Promise<WantLifecycleResponse> {
+  return await adminFetch<WantLifecycleResponse>(ADMIN_API.wantLifecycle(characterId, wantId));
 }
 
 /** 素材图片经鉴权 fetch 转 objectURL(带会话级缓存;<img> 无法携带 Bearer 头,不走 JSON 通道) */

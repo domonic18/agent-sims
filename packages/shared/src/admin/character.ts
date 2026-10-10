@@ -24,6 +24,11 @@ export interface CharacterScheduleView {
   wants: CharacterWantView[];
 }
 
+/** GET /api/admin/characters 响应(当前活跃世界角色清单,决策追踪面板角色选择器用) */
+export interface CharacterListResponse {
+  characters: Array<{ id: string; name: string; alive: boolean }>;
+}
+
 /** 托管模式(M4e):full=Agent 完全自主;policy=生活方针约束(主推) */
 export const HOSTING_MODES = ['full', 'policy'] as const;
 

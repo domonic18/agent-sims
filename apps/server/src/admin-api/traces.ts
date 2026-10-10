@@ -1,4 +1,5 @@
 import {
+  type CharacterListResponse,
   type CognitionTraceEntriesResponse,
   type CognitionTraceEntryView,
   type WantLifecycleResponse,
@@ -25,6 +26,17 @@ const listQuerySchema = z.object({
 
 /** 决策追溯 API(观测性): 认知 trace 分页查询 + want 全生命周期聚合 */
 export function registerTraceRoutes(app: FastifyInstance, handle: DbHandle, sim: Simulation): void {
+  app.get('/api/admin/characters', async (_request, reply) => {
+    const body: CharacterListResponse = {
+      characters: [...sim.characters.values()].map((c) => ({
+        id: c.id,
+        name: c.name,
+        alive: c.alive,
+      })),
+    };
+    return await reply.send(body);
+  });
+
   app.get('/api/admin/logs/cognition-traces', async (request, reply) => {
     const parsed = listQuerySchema.safeParse(request.query);
     if (!parsed.success) {
@@ -48,7 +60,7 @@ export function registerTraceRoutes(app: FastifyInstance, handle: DbHandle, sim:
       .select()
       .from(cognitionTrace)
       .where(where)
-      .orderBy(desc(cognitionTrace.id))
+      .orderBy(desc(cognitionTrace.createdAt), desc(cognitionTrace.gameMinutes))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
     const entries: CognitionTraceEntryView[] = rows.map((row) => ({
@@ -82,9 +94,13 @@ export function registerTraceRoutes(app: FastifyInstance, handle: DbHandle, sim:
       .select()
       .from(cognitionTrace)
       .where(and(eq(cognitionTrace.characterId, characterId), eq(cognitionTrace.wantId, wantId)))
-      .orderBy(asc(cognitionTrace.gameMinutes), asc(cognitionTrace.id));
+      .orderBy(asc(cognitionTrace.gameMinutes), asc(cognitionTrace.createdAt));
     const anchorMin = want?.createdAtMin ?? traces[0]?.gameMinutes ?? null;
-    const endMin = want?.expiresAtMin ?? sim.clock.gameMinutes;
+    // 终态 want 事件窗收口在半衰期;在途 want 一路追到当前时刻
+    const endMin =
+      want === null || want.status === 'pending' || want.status === 'doing'
+        ? sim.clock.gameMinutes
+        : (want.expiresAtMin ?? sim.clock.gameMinutes);
     const events =
       anchorMin === null
         ? []

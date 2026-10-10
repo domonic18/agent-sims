@@ -21,6 +21,7 @@ import {
   PictureOutlined,
   PlayCircleOutlined,
   LogoutOutlined,
+  NodeIndexOutlined,
   RobotOutlined,
   SettingOutlined,
   UserOutlined,
@@ -35,6 +36,7 @@ import { ModelConfigPanel } from './ModelConfigPanel';
 import { TokenUsagePanel } from './TokenUsagePanel';
 import { AssetsPanel } from './AssetsPanel';
 import { LogsPanel } from './LogsPanel';
+import { AgentTracePanel } from './AgentTracePanel';
 import { WorldPanel } from './WorldPanel';
 import { SysConfigPanel } from './SysConfigPanel';
 import { RecipesPanel } from './RecipesPanel';
@@ -99,6 +101,7 @@ type AdminTab =
   | 'usage'
   | 'assets'
   | 'anim'
+  | 'traces'
   | 'logs'
   | 'prompts'
   | 'settings';
@@ -115,6 +118,7 @@ const NAV_ITEMS: MenuProps['items'] = [
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
       { key: 'anim', icon: <PlayCircleOutlined />, label: '动画演示器' },
+      { key: 'traces', icon: <NodeIndexOutlined />, label: '决策追踪' },
       { key: 'logs', icon: <FileTextOutlined />, label: '运行日志' },
       { key: 'prompts', icon: <ProfileOutlined />, label: '提示词' },
     ],
@@ -235,6 +239,8 @@ function AdminShell() {
             <TokenUsagePanel />
           ) : tab === 'assets' ? (
             <AssetsPanel />
+          ) : tab === 'traces' ? (
+            <AgentTracePanel />
           ) : tab === 'logs' ? (
             <LogsPanel />
           ) : tab === 'prompts' ? (
