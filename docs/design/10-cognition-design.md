@@ -182,12 +182,13 @@ character_impressions: id, character_id(FK), about_id(FK characters),
 
 C/D 系列落地后系统长出**五种行为来源**(slow wants/jev/社交动机引擎/rule/triage respond),其中四种绕过意图存储直接执行——症状一致: 到达即死(E5 验收 stroll=0、sell 死在门口、走近朋友被截断的共同根因)、trace 只剩一行 react 不可审计、被 want 层截胡。E6 统一为「双系统产欲、单通道执行」,总设计见 01-agent-design §3.3;对本节各段的修订:
 
-- **§7.1 修订(E6.2 生效)**: ④处置的 respond/assess 产物从「注册表动作直执」改为「**冲动 want**」(origin=event,高 urgency,带 expiresAtMin——defer 队列溶解为冲动消退);抢占由评分裁决(冲动 urgency vs doing want),活动容忍度门照旧为硬闸;⑤中断评估照旧,其 respond 答案=写冲动 want 而非直接执行。响应注册表保留,产出从 intent 改为「事件语义→冲动 want」映射(救人→rescue want,urgency 由好感加权)。②强度门由静态表(EVENT_STRENGTH)升级为预算内 jev score 评价,静态表降级为预算外/低冲击兜底
+- **§7.1 修订(E6.2-S2 落地)**: ④处置的 respond/defer 产物从「注册表动作直执」改为「**事件 want**」(writeEventWant: origin=event,带 urgency 与 `EVENT_WANT_TTL_MINUTES 60` 半衰——defer 队列删除,溶解为冲动消退;**写入不打断任何人**,忙碌角色由 wantSelect 闲时评分调度,空闲角色写后即时 kick 择条;同活动+同人在途 want 去重;无当日意图容器静默消退);抢占由评分裁决(事件 want urgency vs doing want),活动容忍度门照旧为硬闸;⑤中断评估照旧,其 respond 答案=写事件 want 而非直接执行。响应注册表保留,产出从 intent 改为「事件语义→事件 want」映射(救人→rescue want,urgency 由好感加权;获救道谢→socialize want 走两阶段会合;救援 want 执行=rescueExecution 到场即完成,目标已起/不在当场收口)。②强度门由静态表升级为预算内 jev score 评价**挪至 S3**(静态表 EVENT_STRENGTH 照旧)
+- **rule→驱力(E6.2-S2 落地)**: 五级直执链(饥饿/租金/贫困/直采/困倦)改**驱力生成器** driveDecide——恒稳态压力→urgency 写 drive want(饥饿族按 E1 逃生梯互斥: 能买→eat,买不到→earn,也无岗→forage;sleep 独立评估可并存),执行逻辑自旧 rule 逐字平移进 wantSelect **驱力专属分支** driveExecution(eat/earn/forage/sleep 伪活动词汇表,不查活动定义;豁免知识门槛/体力闸/rest 守卫——生存压力天然优先),驱力生命周期双保险: 压力缓解 driveSatisfied 主动收口 done(调度泵 15 分块巡检)+wantSelect 惰性收口(doneWantIds);通道消失废弃改道(写侧逃生梯重评)。rent 保持即时结算——账单不是行为,唯一保留的直执 rule
 - **§7.2 修订(E6.1 生效)**: 动机引擎归入 want 通路——「动机」段降为驱力生成器(欲望分→socialize want,urgency 映射,封顶剔除/冷却/日预算照旧在动机段把门),「触发」段 jev 池候选照旧但产物=冲动 want,「执行」段由 wantSelect socialize 分支承担(远处 move_to 两段式走到身边,贴身触发 light 台词双调用);**共处破冰(acquaintanceStep)属感知/数值通道,不属决策层,保持不动**。「想不想聊天由规则引擎回答,不问模型」红线不变——动机只产欲望分,LLM 不参与点火判定
 - **§7.2 执行段修订(E6.2-S1 生效,两阶段会合协议=event→want 通道首个消费者)**: 贴身 chatWith 不再直接烧模型,拆**召唤→应答→生成**三拍——召唤(零模型): 写对方 event want(origin=event「回应X的搭话」,urgency=`SOCIAL_SUMMON_URGENCY 0.9` 赴约档,半衰 `SOCIAL_SUMMON_TTL_MINUTES 90`)+建会合台账即返回;应答=agent 自裁: 对方 wantSelect 评分竞争(可被更高分让位=婉拒,零成本),执行链即时 kick(贴身空闲即应答即 commit),应答方成为生成执行者(气泡/lines/印象归其名下);生成(唯一烧模型口): 双方就位(贴身+对方静置)才进——共在校验从生成后前移到生成前,E6.1 观察的走散空烧通道(2h 133 次=62% 生成丢弃)随之闭合。配套: wantSelect socialize 贴身分支三门控(生成在途静候/我召唤未应答不重复点火/落地短冷却),onPath 门控退役(走路中可被召唤,走完当前步应答);生成护栏升对级+角色级(一人只进一场);rendezvousSweep 超时回收(give-up 120 分,零 token);主动社交记账归发起方。机制细节见 03-social-design §8
-- **§4.4 修订(E6.2 生效)**: mood 冲量来源由「规则映射」升级为**评价式**(预算内 jev score 题:「这件事对你来说多糟/多好」),同一事件因人(印象/记忆)因状态(valence/数值)冲击分化——评价理论(OCC/EMA)的 jev 化,memory importance 打分(memory-writer.ts)已是同款先例;规则映射表降级为预算外/低冲击兜底
+- **§4.4 修订(E6.2-S3 规划)**: mood 冲量来源由「规则映射」升级为**评价式**(预算内 jev score 题:「这件事对你来说多糟/多好」),同一事件因人(印象/记忆)因状态(valence/数值)冲击分化——评价理论(OCC/EMA)的 jev 化,memory importance 打分(memory-writer.ts)已是同款先例;规则映射表降级为预算外/低冲击兜底
 - **习惯化(S2→S1 下沉)与内在言语**列为观察项:E6.2 长跑数据说话后再决定,当前不排期(防过度设计)
-- **成本红线不变**: 新增评估调用全部在预算护栏内;E6.1/E6.2-S1 均零新增 LLM 调用(会合协议反而消灭走散空烧)
+- **成本红线不变**: 新增评估调用全部在预算护栏内;E6.1/E6.2-S1/E6.2-S2 均零新增 LLM 调用(会合协议反而消灭走散空烧)
 
 ## 8. 验收标准: 行为对照实验
 
@@ -239,6 +240,7 @@ C/D 系列落地后系统长出**五种行为来源**(slow wants/jev/社交动�
 
 | 日期 | 内容 |
 |---|---|
+| 2026-10-10 | E6.2-S2 统一产欲落地(§7.5 §7.1 修订生效+增 rule→驱力段): 五级直执链(饥饿/租金/贫困/直采/困倦)改驱力生成器 driveDecide(压力→urgency 写 drive want,eat/earn/forage/sleep 伪活动词汇表,豁免知识门槛/体力闸/rest 守卫),执行逻辑逐字平移进 wantSelect 驱力分支 driveExecution,生命周期双保险(压力缓解主动收口+惰性收口),rent 保持即时结算;triage respond/defer 产物改写事件 want(writeEventWant: 去重+60 分半衰+忙碌不打断闲时调度、空闲即时 kick),defer 队列删除,救援 want 到场即完成(rescueExecution),获救道谢 socialize want 走两阶段会合;②强度门评价式与 mood 评价式挪 S3;全程零新增 LLM 调用;顺带修驱力词汇表校验误废 socialize drive want 的回归(C4 双代理测试暴露) |
 | 2026-10-10 | E6.2-S1 两阶段会合协议落地(§7.5 增 §7.2 执行段修订): event→want 通道首个消费者——贴身 chatWith 拆召唤(零模型,写对方 event want+会合台账)→应答(对方 wantSelect 评分自裁,应答方成为生成执行者)→生成(双方就位才烧模型,共在校验前移)三拍;E6.1 产线走散空烧(62% 生成丢弃)通道闭合;配套三门控+onPath 退役+rendezvousSweep 超时回收+记账归发起方;顺带修 bookSocial pair 取伴 bug(应答方执行时冷却被记到 self-pair,同对冷却永不生效——双代理测试暴露);全程零新增 LLM 调用 |
 | 2026-10-10 | E6 统一意图架构定稿(新增 §7.5): C/D 系列后五种行为来源四种绕过意图存储直执(E5 验收 stroll=0/sell 死在门口/走近被截断的共因),统一为「双系统产欲、单通道执行」——§7.1 respond/assess 改冲动 want+评分抢占(E6.2)、强度门升级评价式;§7.2 动机引擎归入 want 通路: 欲望分→socialize want,执行归 wantSelect socialize 分支(远处两段式/贴身 light 台词),破冰留感知侧,「不问模型」红线不变(E6.1);§4.4 mood 冲量评价化(E6.2,规则表兜底);习惯化/内在言语列观察项;成本红线不变,E6.1 零新增调用;总设计权威在 01-agent-design §3.3 |
 | 2026-10-09 | D 系列运行机制深度重构随更: §7.2 计划词汇表段注记 DayPlan 已由弹性意图 wants 替代(D3),socialize 语义保留、载体变更;动机段前置缺口补记——初识者 familiarity=0 冷启动死锁由共处破冰通道解(D1: acquaintanceStep 共处计时→阈值建交+first.met,SOCIAL_DESIRE_FIRE 0.7→0.45),见 03-social-design §8;另 D4 记忆评价化后 §7.3 消费点总表中「日计划」行改读「意图生成+评价引擎产物」(evidence query 动态化: focus+昨日 wants 替代固定串) |

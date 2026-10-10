@@ -83,9 +83,9 @@ Agent loop **不在 TickDriver 内**。`apps/server/src/agents/` 跑独立的 Ag
 > activity.finished / social.chat / revived → settleWant
 > ```
 >
-> 三条设计规则: ①**LLM 永不直接执行**——输出只进意图存储/冲量,trace 天然全链路;②**压力→urgency,不是压力→动作**——驱力只回答「我多想要」,「怎么做」归执行器分支(ruleHunger 的吃/买/寻食逻辑搬进 meal 分支,消双轨);③**抢占=评分,不是特批**——高 urgency 冲动写入后自然胜出,活动容忍度(interruptibility)仍为硬闸;defer 队列溶解为冲动 want 的 `expiresAtMin`(**冲动会消退,计划才持久**);rent 保持即时结算——账单不是行为。
+> 三条设计规则: ①**LLM 永不直接执行**——输出只进意图存储/冲量,trace 天然全链路;②**压力→urgency,不是压力→动作**——驱力只回答「我多想要」,「怎么做」归执行器分支(ruleHunger 的吃/买/寻食逻辑搬进 wantSelect 驱力分支,消双轨);③**抢占=评分,不是特批**——高 urgency 冲动写入后自然胜出,活动容忍度(interruptibility)仍为硬闸;defer 队列溶解为冲动 want 的 `expiresAtMin`(**冲动会消退,计划才持久**);rent 保持即时结算——账单不是行为。
 >
-> 机制细节: `Want` 增 `origin` 与可选 `expiresAtMin`(hydrate 兜底旧行为 plan);`setIntents` 改**合并语义——替换 plan-origin、保留 drive/impulse-origin**(否则驱力/冲动写入会被晨间规划整体顶掉);校验拒绝退避(intentSkipUntil)保留,它管执行失败不是调度优先级。扩展公式: **新行为 = 活动定义 + 事件语义映射 + 生成器接线;生命周期/执行器/审计面永远不动**(自主建镇=build 活动+townNeeds 加行;救治=注册表映射 rescue want,urgency 由好感加权)。生效分期: **E6.1**=jev→want(含 probabilities 采样)+社交动机→want;**E6.2-S1**(已落地)=event→want 通道首个消费者——两阶段会合协议(§6,细则见 03-social-design §10);**E6.2**=rule→驱力+triage respond→冲动 want+评价式情绪(细则见 10-cognition-design §7.5)。
+> 机制细节: `Want` 增 `origin` 与可选 `expiresAtMin`(hydrate 兜底旧行为 plan);`setIntents` 改**合并语义——替换 plan-origin、保留 drive/impulse-origin**(否则驱力/冲动写入会被晨间规划整体顶掉);校验拒绝退避(intentSkipUntil)保留,它管执行失败不是调度优先级。扩展公式: **新行为 = 活动定义 + 事件语义映射 + 生成器接线;生命周期/执行器/审计面永远不动**(自主建镇=build 活动+townNeeds 加行;救治=注册表映射 rescue want,urgency 由好感加权)。生效分期: **E6.1**=jev→want(含 probabilities 采样)+社交动机→want;**E6.2-S1**(已落地)=event→want 通道首个消费者——两阶段会合协议(§6,细则见 03-social-design §10);**E6.2-S2**(已落地)=rule→驱力+triage respond/defer→事件 want(细则见 10-cognition-design §7.5);**E6.2-S3**(规划)=②强度门评价式+评价式情绪。
 
 ## 4. 认知周期(五模块)
 
@@ -117,7 +117,7 @@ EventBus 事件按"与该角色的空间/社交相关度"过滤(附近的意图�
 
 > v2(2026-10-08,随 10-cognition-design C3 落地): EventBus 叙事事件不直接进上表判定,先过**事件分级门(triage)**——①相关性(感知半径/熟人)→②强度(≥6 STRONG 才可打断忙碌,≥8 DECISIVE 过低容忍)→③活动容忍度(活动声明 interruptibility: sleep/meal=none 一律排事后,study/work=low,缺省 high)→④处置(ignore/idle/respond/assess/defer)→⑤中断评估(仅忙+歧义案烧一次 systemOne)。响应动作由**注册表**查表产生(scheduler 不硬编码业务语义),预算护栏(日 ≤4 次评估+30 游戏分冷却+同事件去重)防中断风暴;**忙守卫语义修订: 忙碌≠零反应,而是受控反应**。细则见 10-cognition-design §7.1。
 >
-> E6(2026-10-10 定稿): ④处置的 respond/assess 产物从「直接执行 intent」改为「**冲动 want**」(E6.2 生效)——注册表保留,产出从 intent 改为事件语义→冲动 want 的映射(救人→rescue want 等),抢占由评分裁决,defer 队列溶解为 expiresAtMin。②强度门由静态表升级为评价式(预算内 jev score,静态表降级兜底),同批生效。细则见 10-cognition-design §7.5。
+> E6(2026-10-10 定稿): ④处置的 respond/defer 产物从「直接执行 intent」改为「**事件 want**」(E6.2-S2 已落地)——注册表保留,产出从 intent 改为事件语义→事件 want 的映射(救人→rescue want 等),抢占由评分裁决,defer 队列溶解为 expiresAtMin(写入不打断任何人,忙碌角色由 wantSelect 闲时评分调度)。②强度门评价式(预算内 jev score,静态表兜底)挪至 S3。细则见 10-cognition-design §7.5。
 
 ### 4.4 执行(execution)
 
@@ -289,7 +289,7 @@ trace 只存元数据 + 输出摘要 + prompt 截断预览(各 ≤200 字符),�
 | C3 事件响应层 | §4.3(事件分级门前置+忙守卫语义修订)+ §4.6(触发表 EventBus 行);细则见 10-cognition-design §7.1 |
 | C4 社交行为闭环 | §6(对话 v1 实现:动机点火→light 双调用→chat 双句一次结算→记忆/印象回路)+ §4.3(空闲管线 idleSocialStep 接线);细则见 10-cognition-design §7.2 |
 | D1~D6 运行机制深度重构 | §3.2(InnerState 统一内心状态)+ §3.3(弹性意图模型重写,替代 15 分钟块)+ §4.3/§4.6(want 执行循环与触发源改版)+ §4.5(反思阈值 80)+ §5.2(记忆评价化与轻槽复盘);共处破冰见 03-social-design §8 |
-| E6 统一意图架构 | §3.3(双系统产欲单通道执行:生成器→意图存储→唯一执行器)+ §4.3(jev=System 1 通道三职能/驱力改版)+ §4.6(触发语义注记)+ §6(社交动机归入 want 通路+两阶段会合协议);细则见 10-cognition-design §7.5 与 03-social-design §10。E6.1=jev→want+社交动机→want;E6.2-S1=event→want 通道首消费者(会合协议);E6.2=rule→驱力+triage respond→冲动 want+评价式情绪 |
+| E6 统一意图架构 | §3.3(双系统产欲单通道执行:生成器→意图存储→唯一执行器)+ §4.3(jev=System 1 通道三职能/驱力改版)+ §4.6(触发语义注记)+ §6(社交动机归入 want 通路+两阶段会合协议);细则见 10-cognition-design §7.5 与 03-social-design §10。E6.1=jev→want+社交动机→want;E6.2-S1=event→want 通道首消费者(会合协议);E6.2-S2(已落地)=rule→驱力+triage respond/defer→事件 want;E6.2-S3(规划)=强度门评价式+评价式情绪 |
 
 维护约定: 改架构先改本文;每子阶段完工在文末变更记录追加一行(时间正序加表尾)。
 
@@ -305,3 +305,4 @@ trace 只存元数据 + 输出摘要 + prompt 截断预览(各 ≤200 字符),�
 | 2026-10-09 | D 系列运行机制深度重构落地随更(6 功能提交+2 测试加固,23 游戏日长跑体检三病根治): §3.2 脑状态收敛为 InnerState(mood/focus/intents/lastEvaluation,inner_state jsonb)+ §3.3 重写为弹性意图模型(wants 替代 15 分钟块 DayPlan,只定方向不定时刻;睡眠删 planNight 改纯困倦压力 ruleSleepy;偏差=记忆素材而非重规划对象)+ §4.3 快层职责表改版(rule 困倦压力/want 重选,slow 晨间意图生成)+ §4.6 触发表改版(计划块边界行退役,want 状态迁移行上岗)+ §4.5 反思阈值 150→80+ §5.2 记忆评价化(五维评价引擎打底+重要活动轻槽复盘 ≤4 次/角色/日)+ §8 里程碑表补 D 行;共处破冰通道见 03-social-design §8 |
 | 2026-10-10 | E6 统一意图架构定稿(先改本文再改代码): §3.3 增「双系统产欲、单通道执行」目标架构——五种行为来源(slow/jev/社交动机/rule/triage respond)统一为生成器只写不执行,意图存储加 Want.origin/expiresAtMin,setIntents 改合并语义(替换 plan、保留 drive/impulse),抢占=评分非特批,defer 溶解为冲动消退;§4.3 jev 重定义为 System 1 通道(冲动生成 probabilities 采样/直觉评估替换静态表/confidence 门控/内在言语观察项),rule 改版驱力(E6.2);§4.6 触发语义注记(意图跨决策周期存活);§6 社交动机归入 want 通路(E6.1);§8 里程碑表补 E6 行。动因: E5 验收 stroll=0/sell 死在门口/走近朋友被截断的共同根因=五种生成器三种执行方式;扩展公式「新行为=活动定义+事件语义映射+生成器接线」,自主建镇/救治零管线改动验证通过 |
 | 2026-10-10 | E6.2-S1 两阶段会合协议落地随更: §6 注记增 E6.2-S1 段(召唤→应答→生成三拍,应答方成为生成执行者,onPath 门控退役撤销 89c374c;§6.1 转 C4 存档)+ §3.3 E6 生效分期补 E6.2-S1(event→want 通道首个消费者)+ §8 里程碑表 E6 行同步;机制细节权威在 03-social-design §10 | E6.1 产线走散空烧(2h 133 次=62% 生成被丢弃,烧掉 62% dialogue token);按「agent 运行机制系统化解决」原则把会合前移到生成之前,event→want 通道首个消费者落地 |
+| 2026-10-10 | E6.2-S2 统一产欲落地随更: §3.3 生效分期标 E6.2-S2 已落地(评价式情绪/强度门评价式挪 S3)+ §4.3 E6 注记改事件 want 口径+ §8 里程碑表 E6 行同步;机制细节权威在 10-cognition-design §7.5 | 五种生成器最后两种直执通道(rule/triage respond)归一,「到达即死/trace 单行不可审计」病根在执行面闭合 |
