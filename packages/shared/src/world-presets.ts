@@ -12,7 +12,8 @@ export interface WorldPreset {
   id: 'relaxed' | 'standard' | 'hardcore';
   label: string;
   desc: string;
-  rules: Omit<WorldRules, 'params'>;
+  /** 预设只管三条体验规则;运行上限(maxGameDays)独立于难度,不在预设内切换 */
+  rules: Pick<WorldRules, 'allowDeath' | 'allowChat' | 'initialTimeScale'>;
   /** 仅偏离默认值的覆盖项;标准档为空对象 */
   params: Record<string, number>;
 }

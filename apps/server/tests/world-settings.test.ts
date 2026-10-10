@@ -64,7 +64,7 @@ async function activeRulesConfig(): Promise<Record<string, unknown>> {
 }
 
 describe.skipIf(!dbUp)('/api/world/settings 设置通道', () => {
-  it('GET 返回读写全形状:params 为目录全集,rules 三字段', async () => {
+  it('GET 返回读写全形状:params 为目录全集,rules 四字段+remainingDays', async () => {
     const app = buildApp();
     const res = await app.inject({ method: 'GET', url: '/api/world/settings' });
     expect(res.statusCode).toBe(200);
@@ -72,7 +72,55 @@ describe.skipIf(!dbUp)('/api/world/settings 设置通道', () => {
     expect(typeof body.paused).toBe('boolean');
     expect(typeof body.timeScale).toBe('number');
     expect(Object.keys(body.params).sort()).toEqual(SYS_CONFIG_FIELDS.map((f) => f.key).sort());
-    expect(body.rules).toEqual({ allowDeath: true, allowChat: true, initialTimeScale: 1 });
+    // 本档世界为内置地图且无存档,重启后规则为出厂态(maxGameDays=0 不限)
+    expect(body.rules).toEqual({
+      allowDeath: true,
+      allowChat: true,
+      maxGameDays: 0,
+      initialTimeScale: 1,
+    });
+    expect(body.remainingDays).toBeNull();
+    await app.close();
+  });
+
+  it('POST rules.maxGameDays:改限生效+事件持久;0=不限时 remainingDays 为 null', async () => {
+    const app = buildApp();
+    const seen: string[] = [];
+    app.simulation.events.subscribe((event) => seen.push(event.type));
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/world/settings',
+      payload: { rules: { maxGameDays: 45 } },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<WorldSettingsView>();
+    expect(body.rules.maxGameDays).toBe(45);
+    expect(body.remainingDays).toBe(45);
+    expect(app.simulation.rules.maxGameDays).toBe(45);
+    expect(seen).toContain('world.rules');
+    await whenParamPersistIdle();
+    expect(await activeRulesConfig()).toMatchObject({ maxGameDays: 45 });
+    const unlimited = await app.inject({
+      method: 'POST',
+      url: '/api/world/settings',
+      payload: { rules: { maxGameDays: 0 } },
+    });
+    expect(unlimited.json<WorldSettingsView>().remainingDays).toBeNull();
+    await app.inject({ method: 'POST', url: '/api/world/settings', payload: { rules: { maxGameDays: 30 } } });
+    await app.close();
+  });
+
+  it('POST rules.maxGameDays 非法值 400:负数/非整数/超上限', async () => {
+    const app = buildApp();
+    for (const maxGameDays of [-1, 1.5, 3651]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/world/settings',
+        payload: { rules: { maxGameDays } },
+      });
+      expect(res.statusCode, String(maxGameDays)).toBe(400);
+    }
+    expect(app.simulation.rules.maxGameDays).toBe(0); // 校验拒绝不落值(出厂态 0=不限)
     await app.close();
   });
 

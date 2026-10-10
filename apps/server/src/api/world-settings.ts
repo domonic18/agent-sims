@@ -20,7 +20,11 @@ const updateBodySchema = z.object({
   params: z.record(z.string(), z.number()).optional(),
   resetParams: z.boolean().optional(),
   rules: z
-    .object({ allowDeath: z.boolean().optional(), allowChat: z.boolean().optional() })
+    .object({
+      allowDeath: z.boolean().optional(),
+      allowChat: z.boolean().optional(),
+      maxGameDays: z.number().int().min(0).max(3650).optional(),
+    })
     .optional(),
 });
 
@@ -29,6 +33,7 @@ function parseError(reply: FastifyReply, message: string) {
 }
 
 function settingsView(sim: Simulation): WorldSettingsView {
+  const maxGameDays = sim.rules.maxGameDays;
   return {
     paused: sim.paused,
     timeScale: sim.timeScale,
@@ -36,8 +41,11 @@ function settingsView(sim: Simulation): WorldSettingsView {
     rules: {
       allowDeath: sim.rules.allowDeath,
       allowChat: sim.rules.allowChat,
+      maxGameDays,
       initialTimeScale: sim.rules.initialTimeScale,
     },
+    // 与上限触发同口径(日历日):满 N 日 = 进入第 N+1 日 00:00 即冻结
+    remainingDays: maxGameDays > 0 ? Math.max(0, maxGameDays - (sim.clock.day - 1)) : null,
   };
 }
 
@@ -100,7 +108,12 @@ export function registerWorldSettingsRoutes(app: FastifyInstance, sim: Simulatio
     }
     if (paused !== undefined) sim.setPaused(paused);
     if (timeScale !== undefined) sim.setTimeScale(timeScale);
-    if (rules !== undefined && (rules.allowDeath !== undefined || rules.allowChat !== undefined)) {
+    if (
+      rules !== undefined &&
+      (rules.allowDeath !== undefined ||
+        rules.allowChat !== undefined ||
+        rules.maxGameDays !== undefined)
+    ) {
       sim.setRules(rules);
     }
     return await reply.send(settingsView(sim));

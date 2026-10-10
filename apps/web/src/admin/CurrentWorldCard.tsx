@@ -122,6 +122,9 @@ export function CurrentWorldCard({
             聊天 {active.rules.allowChat ? '开' : '关'}
           </Tag>
           <Tag color="default">倍率 {active.rules.initialTimeScale}x</Tag>
+          <Tag color={active.rules.maxGameDays > 0 ? 'warning' : 'default'}>
+            上限 {active.rules.maxGameDays > 0 ? `${active.rules.maxGameDays} 日` : '不限'}
+          </Tag>
         </Flex>
       </Space>
       <Modal

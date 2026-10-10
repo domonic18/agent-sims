@@ -59,6 +59,8 @@ export interface WorldRules {
   allowDeath: boolean;
   /** 允许角色间聊天:关闭后 chat 意图直接被世界规则拒绝 */
   allowChat: boolean;
+  /** 运行时长上限(游戏日):到点自动暂停防 token 空烧;0=不限(存量世界缺省) */
+  maxGameDays: number;
   /** 创建世界时的初始时间倍率 */
   initialTimeScale: WorldTimeScale;
   /** 世界参数(键=balance.ts 目录键,缺省=BALANCE_DEFAULTS);Lab 调试台改参后回写 */
@@ -71,6 +73,7 @@ export interface WorldRules {
 export const DEFAULT_WORLD_RULES: WorldRules = {
   allowDeath: true,
   allowChat: true,
+  maxGameDays: 0,
   initialTimeScale: 1,
 };
 
@@ -82,6 +85,7 @@ export const DEFAULT_WORLD_RULES: WorldRules = {
 export type WorldRulesView = {
   allowDeath: boolean;
   allowChat: boolean;
+  maxGameDays: number;
   initialTimeScale: number;
 };
 
@@ -91,6 +95,8 @@ export interface WorldSettingsView {
   timeScale: number;
   params: Record<string, number>;
   rules: WorldRulesView;
+  /** 距上限剩余游戏日(maxGameDays=0 不限时为 null) */
+  remainingDays: number | null;
 }
 
 /** POST /api/admin/worlds 请求体 */

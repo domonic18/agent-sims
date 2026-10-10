@@ -8,6 +8,7 @@ import {
   Flex,
   Form,
   Input,
+  InputNumber,
   Popconfirm,
   Radio,
   Select,
@@ -197,6 +198,11 @@ export function WorldPanel() {
     },
     { title: '居民', dataIndex: 'characters', width: 70, render: (c: WorldCharacterConfig[]) => `${c.length} 位` },
     {
+      title: '运行上限',
+      width: 90,
+      render: (_, w) => (w.rules.maxGameDays > 0 ? `${w.rules.maxGameDays} 日` : '不限'),
+    },
+    {
       title: '时间',
       width: 320,
       render: (_, w) => (
@@ -261,7 +267,8 @@ export function WorldPanel() {
             gameType: 'growth',
             params: { size: 'small', density: 'normal' },
             characters: [{ name: '', gender: 'unspecified' }],
-            rules: { ...DEFAULT_WORLD_RULES },
+            // 创建表单默认 30 游戏日防挂机空烧(DEFAULT 兜底 0=不限仅用于存量世界)
+            rules: { ...DEFAULT_WORLD_RULES, maxGameDays: 30 },
           }}
           onFinish={(values) => void submit(values)}
         >
@@ -473,9 +480,20 @@ export function WorldPanel() {
                   options={WORLD_TIME_SCALES.map((s) => ({ value: s, label: `${s}x` }))}
                 />
               </Form.Item>
+              <Form.Item
+                name={['rules', 'maxGameDays']}
+                label={
+                  <Tooltip title="运行满该游戏日数后自动暂停(0=不限),防止忘关世界空烧模型额度">
+                    运行上限(游戏日)
+                  </Tooltip>
+                }
+                style={{ marginBottom: 0 }}
+              >
+                <InputNumber min={0} max={3650} precision={0} disabled={busy} style={{ width: 90 }} />
+              </Form.Item>
             </Flex>
             <p style={{ margin: '8px 0 0', fontSize: 12, color: '#8c8c8c' }}>
-              规则随本世界创建定格:关闭死亡后体力归 0 只会躺平不会死;关闭聊天后角色聊天指令将被拒绝。
+              规则随本世界创建定格:关闭死亡后体力归 0 只会躺平不会死;关闭聊天后角色聊天指令将被拒绝;运行上限到点自动暂停,可在世界设置中改限续跑。
             </p>
           </Card>
           <WorldParamsCollapse busy={busy} />

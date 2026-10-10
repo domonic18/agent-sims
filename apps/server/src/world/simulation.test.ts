@@ -53,6 +53,96 @@ describe('Simulation 模拟核心', () => {
   });
 });
 
+describe('世界运行时长上限(maxGameDays,到点自动暂停)', () => {
+  function simWithControls(): {
+    sim: Simulation;
+    controls: Array<{ paused?: boolean; reason?: string }>;
+  } {
+    const sim = new Simulation();
+    const controls: Array<{ paused?: boolean; reason?: string }> = [];
+    sim.events.subscribe((event) => {
+      if (event.type === 'world.control') {
+        controls.push({ paused: event.paused, reason: event.reason });
+      }
+    });
+    return { sim, controls };
+  }
+
+  it('跨过上限日历日边界自动暂停:control 带 reason=max_game_days,本批余量不推进', () => {
+    const { sim, controls } = simWithControls();
+    sim.rules.maxGameDays = 1;
+    sim.advanceTicks(1440 * 2); // 世界从 08:00 起步,第 2 日 00:00 = tick 960 即冻结
+    expect(sim.tick).toBe(960);
+    expect(sim.clock.day).toBe(2);
+    expect(sim.paused).toBe(true);
+    const last = controls.at(-1)!;
+    expect(last.paused).toBe(true);
+    expect(last.reason).toBe('max_game_days');
+  });
+
+  it('maxGameDays=0 不限时', () => {
+    const { sim } = simWithControls();
+    sim.rules.maxGameDays = 0;
+    sim.advanceTicks(1440 * 3 + 5);
+    expect(sim.paused).toBe(false);
+    expect(sim.tick).toBe(1440 * 3 + 5);
+  });
+
+  it('恢复后仍超限立即再触发;提额续跑;降限到当前日以下推进即触发', () => {
+    const { sim } = simWithControls();
+    sim.rules.maxGameDays = 1;
+    sim.advanceTicks(1440 * 2);
+    expect(sim.paused).toBe(true);
+    // 手动恢复(仍超限)→ 下一拍即再冻结(resume 清触发旗标,由检测兜底)
+    sim.setPaused(false);
+    expect(sim.paused).toBe(false);
+    sim.advanceTicks(1);
+    expect(sim.paused).toBe(true);
+    expect(sim.tick).toBe(961);
+    // 提额 → 旗标重置,恢复后可续跑至新上限
+    sim.setRules({ maxGameDays: 3 });
+    sim.setPaused(false);
+    sim.advanceTicks(1440);
+    expect(sim.paused).toBe(false);
+    expect(sim.clock.day).toBe(3);
+    // 降限到当前日以下 → 继续推进即触发
+    sim.setRules({ maxGameDays: 2 });
+    sim.advanceTicks(1);
+    expect(sim.paused).toBe(true);
+  });
+
+  it('reset 清空触发状态,世界回未暂停', () => {
+    const { sim } = simWithControls();
+    sim.rules.maxGameDays = 1;
+    sim.advanceTicks(1440);
+    expect(sim.paused).toBe(true);
+    sim.reset();
+    expect(sim.paused).toBe(false);
+    expect(sim.tick).toBe(0);
+  });
+
+  it('超限存档恢复即暂停(护栏补触发);旧档缺 maxGameDays 字段兜底 0=不限', () => {
+    const sim = new Simulation();
+    sim.rules.maxGameDays = 1;
+    sim.advanceTicks(1440 * 2);
+    const archive = JSON.parse(JSON.stringify(sim.serialize()));
+    // 手工回退成"存档时未暂停"的历史现场(模拟旧版世界无上限概念)
+    archive.paused = false;
+    const restored = new Simulation();
+    restored.reset();
+    restored.restoreArchive(archive);
+    expect(restored.paused).toBe(true);
+
+    const legacy = { ...archive, paused: false };
+    delete (legacy.rules as Record<string, unknown>).maxGameDays;
+    const legacyRestored = new Simulation();
+    legacyRestored.reset();
+    legacyRestored.restoreArchive(legacy);
+    expect(legacyRestored.rules.maxGameDays).toBe(0);
+    expect(legacyRestored.paused).toBe(false);
+  });
+});
+
 describe('世界重置(M3.6k 后台生命周期)', () => {
   it('reset 清空角色/时钟归零/倍率与暂停复位,并广播 world.reset', () => {
     const sim = new Simulation();
@@ -69,7 +159,12 @@ describe('世界重置(M3.6k 后台生命周期)', () => {
     expect(sim.clock.formatTime()).toBe('08:00');
     expect(sim.timeScale).toBe(1);
     expect(sim.paused).toBe(false);
-    expect(sim.rules).toEqual({ allowDeath: true, allowChat: true, initialTimeScale: 1 });
+    expect(sim.rules).toEqual({
+      allowDeath: true,
+      allowChat: true,
+      maxGameDays: 0,
+      initialTimeScale: 1,
+    });
     expect(events.some((e) => e.type === 'world.reset')).toBe(true);
     // 重置后可正常重建世界
     sim.spawnCharacter('b', 9, 12);

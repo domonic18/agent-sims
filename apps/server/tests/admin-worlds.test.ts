@@ -148,7 +148,7 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     await app.close();
   });
 
-  it('世界规则:创建时透传生效,非法倍率 400,缺省兜底默认', async () => {
+  it('世界规则:创建时透传生效,非法倍率/上限 400,缺省默认(上限 30 日)', async () => {
     const app = buildApp();
     const auth = { authorization: `Bearer ${await login(app)}` };
     const created = await app.inject({
@@ -166,6 +166,7 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     expect(world.rules).toEqual({
       allowDeath: false,
       allowChat: false,
+      maxGameDays: 30, // 创建路径默认上限,防挂机空烧
       initialTimeScale: 4,
       recipes: defaultRecipes(), // 建世界冻结出厂配方快照
     });
@@ -184,7 +185,32 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     });
     expect(badScale.statusCode).toBe(400);
 
-    // 不带 rules → 旧世界语义,逐项兜底默认值
+    // 显式 0=不限;超 3650 拒
+    const unlimited = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: {
+        ...CREATE_BODY,
+        name: `${WORLD_NAME_PREFIX}不限镇`,
+        rules: { maxGameDays: 0 },
+      },
+    });
+    expect(unlimited.statusCode).toBe(201);
+    expect((unlimited.json() as WorldView).rules.maxGameDays).toBe(0);
+    const overLimit = await app.inject({
+      method: 'POST',
+      url: '/api/admin/worlds',
+      headers: auth,
+      payload: {
+        ...CREATE_BODY,
+        name: `${WORLD_NAME_PREFIX}超限镇`,
+        rules: { maxGameDays: 3651 },
+      },
+    });
+    expect(overLimit.statusCode).toBe(400);
+
+    // 不带 rules → 旧世界语义逐项兜底,唯运行上限取创建默认 30
     const plain = await app.inject({
       method: 'POST',
       url: '/api/admin/worlds',
@@ -196,6 +222,7 @@ describe.skipIf(!dbUp)('世界生命周期管理 API(M3.6k)', () => {
     expect(plainView.rules).toEqual({
       allowDeath: true,
       allowChat: true,
+      maxGameDays: 30,
       initialTimeScale: 1,
       recipes: defaultRecipes(),
     });

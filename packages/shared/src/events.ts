@@ -80,12 +80,13 @@ export const characterAutoRevivedEventSchema = z.object({
 
 export type CharacterAutoRevivedEvent = z.infer<typeof characterAutoRevivedEventSchema>;
 
-/** 暂停/倍率变更广播:多端 HUD 状态对齐 */
+/** 暂停/倍率变更广播:多端 HUD 状态对齐;reason 标注暂停原因(如 max_game_days=达运行上限) */
 export const worldControlEventSchema = z.object({
   type: z.literal('world.control'),
   tick: z.number().int(),
   paused: z.boolean(),
   timeScale: z.number(),
+  reason: z.string().min(1).optional(),
 });
 
 export type WorldControlEvent = z.infer<typeof worldControlEventSchema>;
@@ -99,13 +100,14 @@ export const worldParamsEventSchema = z.object({
 
 export type WorldParamsEvent = z.infer<typeof worldParamsEventSchema>;
 
-/** 世界规则运行时变更广播(游戏内设置菜单/难度预设):三字段全集,不含 params */
+/** 世界规则运行时变更广播(游戏内设置菜单/难度预设):四字段全集,不含 params */
 export const worldRulesEventSchema = z.object({
   type: z.literal('world.rules'),
   tick: z.number().int(),
   rules: z.object({
     allowDeath: z.boolean(),
     allowChat: z.boolean(),
+    maxGameDays: z.number(),
     initialTimeScale: z.number(),
   }),
 });

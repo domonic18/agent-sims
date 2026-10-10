@@ -69,6 +69,7 @@ import {
   restockShopDaily,
   stepWorkTask,
 } from './work-dispatch.js';
+import { logTech } from '../telemetry.js';
 
 /**
  * 世界存档载荷(C6):serialize() 产出、restoreArchive() 消费。
@@ -117,6 +118,8 @@ export class Simulation {
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
   paused = false;
+  /** 运行上限已触发(maxGameDays 到点自动暂停,防重复触发;resume/提额/reset 清零) */
+  private _limitFired = false;
   timeScale: number = BALANCE.DEFAULT_TIME_SCALE;
   /** 世界规则(M5):默认全开;后台创建世界时随配置覆写,reset 回默认 */
   rules: WorldRules = { ...DEFAULT_WORLD_RULES };
@@ -151,6 +154,16 @@ export class Simulation {
       this.clock.advance(1);
       this._stepCharacters();
       stepMaintenance(this, this.rng);
+      // 运行上限(M):跨过 maxGameDays 整日边界即冻结现场零 token 消耗,不再推进本批余量
+      if (!this._limitFired && this.rules.maxGameDays > 0 && this.clock.day > this.rules.maxGameDays) {
+        this._limitFired = true;
+        this.setPaused(true, 'max_game_days');
+        logTech('info', 'world', '世界达运行时长上限,自动暂停', {
+          tick: this.tick,
+          maxGameDays: this.rules.maxGameDays,
+        });
+        break;
+      }
     }
   }
 
@@ -168,6 +181,7 @@ export class Simulation {
     this.tick = 0;
     this.clock.reset();
     this.paused = false;
+    this._limitFired = false;
     this.timeScale = BALANCE.DEFAULT_TIME_SCALE;
     this.rules = { ...DEFAULT_WORLD_RULES };
     this.recipes = defaultRecipes();
@@ -324,9 +338,11 @@ export class Simulation {
     return character;
   }
 
-  setPaused(paused: boolean): void {
+  /** reason 标注暂停/恢复语境(如 max_game_days);恢复运行时清触发旗标,超限再推进即重触发 */
+  setPaused(paused: boolean, reason?: string): void {
     this.paused = paused;
-    this._emitControl();
+    if (!paused) this._limitFired = false;
+    this._emitControl(reason);
   }
 
   setTimeScale(scale: number): void {
@@ -356,16 +372,22 @@ export class Simulation {
     this.events.emit(event);
   }
 
-  /** 世界规则运行时变更(游戏内设置菜单):合并后广播三字段全集,initialTimeScale 运行中不改 */
-  setRules(updates: { allowDeath?: boolean; allowChat?: boolean }): void {
+  /** 世界规则运行时变更(游戏内设置菜单):合并后广播四字段全集,initialTimeScale 运行中不改;
+   * maxGameDays 变更(提额/改限)重置触发旗标——因限暂停的世界提额后手动恢复即续跑 */
+  setRules(updates: { allowDeath?: boolean; allowChat?: boolean; maxGameDays?: number }): void {
     if (updates.allowDeath !== undefined) this.rules.allowDeath = updates.allowDeath;
     if (updates.allowChat !== undefined) this.rules.allowChat = updates.allowChat;
+    if (updates.maxGameDays !== undefined && updates.maxGameDays !== this.rules.maxGameDays) {
+      this.rules.maxGameDays = updates.maxGameDays;
+      this._limitFired = false;
+    }
     const event: WorldRulesEvent = {
       type: 'world.rules',
       tick: this.tick,
       rules: {
         allowDeath: this.rules.allowDeath,
         allowChat: this.rules.allowChat,
+        maxGameDays: this.rules.maxGameDays,
         initialTimeScale: this.rules.initialTimeScale,
       },
     };
@@ -445,7 +467,11 @@ export class Simulation {
     this.paused = archive.paused;
     this.timeScale = archive.timeScale;
     this.gameType = archive.gameType;
-    this.rules = JSON.parse(JSON.stringify(archive.rules)) as WorldRules;
+    // 旧档 rules 缺字段(如 maxGameDays)时兜底默认值,与 normalizeRules 同语义
+    this.rules = {
+      ...DEFAULT_WORLD_RULES,
+      ...(JSON.parse(JSON.stringify(archive.rules)) as WorldRules),
+    };
     this.setRecipes(archive.recipes);
     // 参数现场灌回(先复位出厂清残留,再整体应用存档值)
     applyWorldParams(archive.params);
@@ -464,15 +490,29 @@ export class Simulation {
     for (const character of archive.characters) {
       this.characters.set(character.id, JSON.parse(JSON.stringify(character)) as WorldCharacter);
     }
+    // 超限护栏:存档时未触发(旧版无上限),恢复时已越界则补触发冻结
+    this._limitFired = false;
+    if (this.rules.maxGameDays > 0 && this.clock.day > this.rules.maxGameDays) {
+      this._limitFired = true;
+      if (!this.paused) {
+        logTech('info', 'world', '恢复的世界已超运行时长上限,自动暂停', {
+          tick: this.tick,
+          maxGameDays: this.rules.maxGameDays,
+        });
+        this.setPaused(true, 'max_game_days');
+        return;
+      }
+    }
     this._emitControl();
   }
 
-  private _emitControl(): void {
+  private _emitControl(reason?: string): void {
     const event: WorldControlEvent = {
       type: 'world.control',
       tick: this.tick,
       paused: this.paused,
       timeScale: this.timeScale,
+      ...(reason !== undefined ? { reason } : {}),
     };
     this.events.emit(event);
   }

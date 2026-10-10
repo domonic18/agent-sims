@@ -19,7 +19,7 @@ export interface WorldSettingsUpdate {
   /** 参数覆盖项(缺省键不变);resetParams=true 时先复位出厂默认再应用 */
   params?: Record<string, number>;
   resetParams?: boolean;
-  rules?: { allowDeath?: boolean; allowChat?: boolean };
+  rules?: { allowDeath?: boolean; allowChat?: boolean; maxGameDays?: number };
 }
 
 const request = async (path: string, method: 'GET' | 'POST', body?: unknown): Promise<WorldSettingsView> => {

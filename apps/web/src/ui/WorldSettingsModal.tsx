@@ -25,8 +25,14 @@ export function WorldSettingsModal({ onClose }: { onClose: () => void }) {
   const applyRules = useWorldStore((state) => state.applyRules);
   const snapshot = useWorldStore((state) => state.snapshot);
   const [draft, setDraft] = useState<Record<string, number> | null>(null);
+  const [limitDraft, setLimitDraft] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 运行上限草稿随规则视图同步(输入不改 storeRules,键入过程不被热同步打断)
+  useEffect(() => {
+    if (storeRules !== null) setLimitDraft(storeRules.maxGameDays);
+  }, [storeRules]);
 
   // 挂载即拉全量(仅依赖事件保鲜可能滞后于上次会话的修改),之后事件持续刷新 store
   useEffect(() => {
@@ -83,10 +89,24 @@ export function WorldSettingsModal({ onClose }: { onClose: () => void }) {
       setDraft({ ...view.params });
     });
 
-  const updateRule = (patch: { allowDeath?: boolean; allowChat?: boolean }): Promise<void> =>
+  const updateRule = (patch: {
+    allowDeath?: boolean;
+    allowChat?: boolean;
+    maxGameDays?: number;
+  }): Promise<void> =>
     run(async () => {
       const view = await updateWorldSettings({ rules: patch });
       applyRules(view.rules);
+    });
+
+  const commitLimit = (): Promise<void> =>
+    run(async () => {
+      if (limitDraft === null || storeRules === null) return;
+      const clamped = Math.max(0, Math.min(3650, Math.round(limitDraft)));
+      setLimitDraft(clamped);
+      if (clamped !== storeRules.maxGameDays) {
+        await updateRule({ maxGameDays: clamped });
+      }
     });
 
   const changeScale = (scale: number): Promise<void> =>
@@ -157,6 +177,29 @@ export function WorldSettingsModal({ onClose }: { onClose: () => void }) {
             />
             <span>允许聊天</span>
           </label>
+          <div
+            className="settings-row"
+            title="世界运行满该游戏日数后自动暂停(0=不限),防止挂机空烧模型额度"
+          >
+            <span>
+              运行上限
+              {storeRules !== null && storeRules.maxGameDays > 0 && snapshot !== null
+                ? `(剩 ${Math.max(0, storeRules.maxGameDays - (snapshot.clock.day - 1))} 日)`
+                : ''}
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={3650}
+              value={limitDraft ?? ''}
+              disabled={busy || storeRules === null}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                setLimitDraft(Number.isNaN(value) ? 0 : value);
+              }}
+              onBlur={() => void commitLimit()}
+            />
+          </div>
           <div className="settings-row">
             <span>时间倍率</span>
             <span className="scale-group">

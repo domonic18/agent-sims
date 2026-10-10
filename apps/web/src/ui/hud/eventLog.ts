@@ -157,13 +157,16 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
         tone: 'info',
         characterId: event.characterId,
       };
-    case 'world.control':
+    case 'world.control': {
+      const reason =
+        event.reason === 'max_game_days' ? ' 已达运行时长上限,自动冻结' : '';
       return {
         icon: '⏯',
-        text: `世界${event.paused ? '暂停' : '继续'}(${event.timeScale}x)`,
+        text: `世界${event.paused ? '暂停' : '继续'}(${event.timeScale}x)${reason}`,
         tone: 'info',
         characterId: null,
       };
+    }
     case 'world.params':
       return {
         icon: '🎛️',
@@ -174,7 +177,7 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
     case 'world.rules':
       return {
         icon: '📏',
-        text: `规则变更: 死亡${event.rules.allowDeath ? '开' : '关'}·闲聊${event.rules.allowChat ? '开' : '关'}`,
+        text: `规则变更: 死亡${event.rules.allowDeath ? '开' : '关'}·闲聊${event.rules.allowChat ? '开' : '关'}·上限${event.rules.maxGameDays > 0 ? `${event.rules.maxGameDays}日` : '不限'}`,
         tone: 'info',
         characterId: null,
       };

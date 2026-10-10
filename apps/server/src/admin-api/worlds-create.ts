@@ -40,6 +40,7 @@ const characterSchema = z.object({
 const rulesSchema = z.object({
   allowDeath: z.boolean(),
   allowChat: z.boolean(),
+  maxGameDays: z.number().int().min(0).max(3650),
   initialTimeScale: z
     .number()
     .int()
@@ -77,6 +78,7 @@ export function normalizeRules(partial: Partial<WorldRules> | undefined): WorldR
   return {
     allowDeath: partial?.allowDeath ?? DEFAULT_WORLD_RULES.allowDeath,
     allowChat: partial?.allowChat ?? DEFAULT_WORLD_RULES.allowChat,
+    maxGameDays: partial?.maxGameDays ?? DEFAULT_WORLD_RULES.maxGameDays,
     initialTimeScale: partial?.initialTimeScale ?? DEFAULT_WORLD_RULES.initialTimeScale,
     ...(partial?.params !== undefined ? { params: partial.params } : {}),
     ...(partial?.recipes !== undefined ? { recipes: partial.recipes } : {}),
@@ -273,7 +275,9 @@ export function registerWorldCreateRoutes(app: FastifyInstance, handle: DbHandle
     if (dupeName !== undefined) {
       return await reply.code(400).send({ error: `居民名重复: ${dupeName}` });
     }
-    const rules = normalizeRules(parsed.data.rules);
+    // 创建路径默认上限 30 游戏日(防挂机空烧;显式传值可覆盖,含 0=不限);
+    // normalizeRules 兜底 0 仅服务存量世界缺字段场景,此处必须先铺默认
+    const rules = normalizeRules({ maxGameDays: 30, ...parsed.data.rules });
     // 每世界配方冻结(v1 不收客户端配方,出厂默认深拷贝入档;admin 配方页后续可编辑)
     rules.recipes = defaultRecipes();
     // 世界参数目录校验(zod 只保证数字 record;越界/非整数/未知 key 在此拒绝)
