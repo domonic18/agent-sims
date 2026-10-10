@@ -120,6 +120,11 @@ export interface BalanceConfig {
   SOCIAL_PAIR_COOLDOWN_MINUTES: number;
   SOCIAL_DAILY_INITIATE_CAP: number;
   SOCIAL_RETRY_COOLDOWN_MINUTES: number;
+  /** 会合协议(E6.2 两阶段聊天): 召唤 want 紧迫度/召唤 want 半衰期(对方一直没空
+   * 自然消退)/发起方放弃窗口(超时=被放鸽子,会合回收,零 token) */
+  SOCIAL_SUMMON_URGENCY: number;
+  SOCIAL_SUMMON_TTL_MINUTES: number;
+  SOCIAL_SUMMON_GIVE_UP_MINUTES: number;
   /** jev 冲动 want(E6 统一意图架构):System 1 产出的紧迫度/半衰期(游戏分钟)/
    * confidence 门(低于视为没产生直觉,忽略本次) */
   JEV_IMPULSE_URGENCY: number;
@@ -224,6 +229,12 @@ export const BALANCE: BalanceConfig = {
   SOCIAL_PAIR_COOLDOWN_MINUTES: 30,
   SOCIAL_DAILY_INITIATE_CAP: 8,
   SOCIAL_RETRY_COOLDOWN_MINUTES: 10,
+  // E6.2 会合协议:召唤 want 紧迫度 0.9(赴约档——应答通常压过日常安排,但可被更高
+  // 评分让位=婉拒);半衰 90 分(对方一直没空,召唤自然消退);发起方 120 分放弃
+  // (>半衰,对方彻底没来即收,驱力日后可再点火)
+  SOCIAL_SUMMON_URGENCY: 0.9,
+  SOCIAL_SUMMON_TTL_MINUTES: 90,
+  SOCIAL_SUMMON_GIVE_UP_MINUTES: 120,
   // E6:冲动紧迫度 0.3——低于 plan want 常规档,直觉让位计划但能被概率采样放大;
   // 半衰期 120 游戏分(冲动会消退);置信门 0.35(低置信兜底不产出冲动)
   JEV_IMPULSE_URGENCY: 0.3,

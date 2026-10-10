@@ -145,6 +145,7 @@ export class AgentScheduler {
     if (block === this.lastInspectedBlock) return;
     this.lastInspectedBlock = block;
     this.socialLoop.acquaintanceStep();
+    this.socialLoop.rendezvousSweep();
     for (const id of autonomy.list()) {
       const char = sim.characters.get(id);
       if (char === undefined) continue;
@@ -211,10 +212,12 @@ export class AgentScheduler {
         const target = sim.characters.get(id);
         return target === undefined || !target.alive
           ? null
-          : { x: target.x, y: target.y, name: target.name, onPath: target.path.length > 0 };
+          : { x: target.x, y: target.y, name: target.name };
       },
       nowMin: sim.clock.gameMinutes,
       pairLastChatAt: (aId, bId) => this.socialLoop.lastChatAtBetween(aId, bId),
+      chatGeneratingWith: (aId, bId) => this.socialLoop.isGeneratingBetween(aId, bId),
+      summonAwaiting: (targetId) => this.socialLoop.summonAwaiting(char.id, targetId),
     };
   }
 
@@ -602,7 +605,8 @@ export class AgentScheduler {
 
   /** 人指向社交 want 结算(E2):动机引擎直执的聊天不走 activity.finished,
    * 这里按 social.chat 事件收口——发起方(聊到了 target)与被指名方(被找)
-   * 双向各结算一条 doing 的带 target socialize want 为 done。 */
+   * 双向各结算一条带 target 的 doing socialize want 为 done;E6.2 起两侧 want
+   * 均在 chatWith 决策出口先标 doing(markWantDoing 先于 executeChatWant)。 */
   private settleSocialChat(event: SocialChatEvent): void {
     for (const characterId of [event.fromId, event.toId]) {
       if (!autonomy.has(characterId)) continue;
@@ -610,10 +614,7 @@ export class AgentScheduler {
       if (intents === undefined || intents === null) continue;
       const partner = characterId === event.fromId ? event.toId : event.fromId;
       const want = intents.wants.find(
-        (w) =>
-          w.status === 'doing' &&
-          w.activityId === 'socialize' &&
-          w.targetCharacterId === partner,
+        (w) => w.status === 'doing' && w.activityId === 'socialize' && w.targetCharacterId === partner,
       );
       if (want === undefined) continue;
       want.status = 'done';

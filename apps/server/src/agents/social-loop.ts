@@ -6,13 +6,16 @@ import { characterImpressions } from '../db/schema/memory.js';
 import type { WorldCharacter } from '../world/character.js';
 import type { Simulation } from '../world/simulation.js';
 import { meetByProximity, relationKey } from '../world/social.js';
-import { innerState } from './cognition.js';
+import { autonomy, innerState, type Want } from './cognition.js';
 import { generateConversation, type DialogueRelation } from './dialogue.js';
 import type { Decision } from './fast-layer.js';
 import { persistInnerState } from './inner-state-db.js';
 import type { MemoryLlm } from './memory-writer.js';
 import { socialMotive, type ScoredCandidate, type SocialMotiveInput } from './social-motive.js';
 import type { TraceEntry, TraceRecorder } from './trace.js';
+
+/** summon_wait trace 采样周期(每 N 次记 1 次;会合挂起是常态等待,防洪水) */
+const SOCIAL_WAIT_TRACE_SAMPLE = 10;
 
 /** 空闲社交管线依赖:意图执行经 scheduler.apply 统一出口(气泡/trace/拒绝退避同源);
  * executeWants=驱力 want 写入意图存储后的即时择条回调(E6,调度泵提供) */
@@ -36,11 +39,17 @@ export interface SocialLoopDeps {
  * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑动机引擎(零模型,E2 口径拆分,
  * E6 起降为驱力生成器)——过点火线的候选写 socialize want(origin=drive,urgency=
  * 欲望分)入意图存储并即时择条,聊天/寻人执行全归 wantSelect 唯一执行器(两段式:
- * 远处 move_to 寻人、贴身 chatWith 路回本管线生成对话);动机段把门不变(封顶剔除/
+ * 远处 move_to 寻人、贴身 chatWith 路回本管线);动机段把门不变(封顶剔除/
  * 同对冷却/日预算三闸在 socialMotive 内)。异地候选返回给 jev 池(直觉决定要不要
  * 专程去找 TA)。一次至多点火一人。聊后即时印象 upsert(character_impressions)。
  * 簿记:同对最近聊天时刻(双角色排序 key)+每角色每日主动计数——聊天落地才算
- * 主动社交(bookSocial 移到执行时)。
+ * 主动社交,且计在**发起方**(召唤者)头上,应答方执行生成不计主动。
+ * E6.2 两阶段会合协议(E6.2-S1):贴身 chatWith 不再直接烧模型——阶段一**召唤**
+ * (零模型):写对方 event want(origin=event「回应X的搭话」,带半衰期)并建会合
+ * 台账,对方在自己的 wantSelect 里自行决定应答(该 want 赢得评分,经其执行链直接
+ * commit)或婉拒(评分输了/半衰过期);阶段二**生成**(唯一烧模型口):双方就位
+ * (贴身+彼此静置)才进 runChatGeneration——共在校验从生成后前移到生成前,
+ * 走散空烧通道随之闭合;召唤无回应由 rendezvousSweep 超时回收(零 token)。
  */
 export class SocialLoop {
   private readonly socialPairLastAt = new Map<string, number>();
@@ -49,6 +58,16 @@ export class SocialLoop {
   private readonly coPresence = new Map<string, { day: number; minutes: number }>();
   /** 对话生成在途标记(pairKey):同一对话同一时刻只烧一次模型 */
   private readonly generating = new Set<string>();
+  /** 生成在途的角色(双向):一人同时只进一场对话生成,三方对撞不双烧 */
+  private readonly generatingChars = new Set<string>();
+  /** 会合台账(E6.2 两阶段聊天,pairKey→发起方/应答方/召唤时刻):召唤已发、
+   * 对方尚未应答落座的窗口;生成 commit 或放弃超时时回收 */
+  private readonly rendezvous = new Map<
+    string,
+    { initiatorId: string; targetId: string; atGameMinutes: number }
+  >();
+  /** summon_wait trace 采样计数(会合挂起是常态等待,防洪水) */
+  private summonWaitCount = 0;
   /** 当日全世界建交数(防速熟) */
   private metToday = { day: -1, count: 0 };
 
@@ -249,7 +268,7 @@ export class SocialLoop {
   }
 
   /** 走散降级(E2 走散不罚):冷却改写为短窗(RETRY 分钟后可重试),
-   * 当日主动计数返还——生成期间被拽走不算一次主动社交 */
+   * 发起方当日主动计数返还——生成期间被拽走不算一次主动社交 */
   private downgradeWalkedAway(characterId: string, targetId: string): void {
     const { sim } = this.deps;
     this.socialPairLastAt.set(
@@ -311,12 +330,16 @@ export class SocialLoop {
     }
   }
 
-  /** 执行 socialize want 的聊天(E6 统一意图架构):wantSelect 评分选中且贴身时
-   * 由调度泵经 apply(chatWith)路由至此,light 槽多轮生成(E3 自然终止)→chat
-   * 意图一次结算;败句回落模板补齐(不丢点火),发起方邀约顺带写入双方脑内
-   * (次晨转赴约 want)。簿记(冷却+日计数)先于任何 await——聊天落地才算一次
-   * 主动社交;生成期间走散→冷却降级短窗+计数返还+want 回 pending(评分可再裁决);
-   * 对方不在/无关系→want 废弃 */
+  /**
+   * 执行 socialize want 的聊天(E6 统一意图架构+E6.2 两阶段会合协议):
+   * 阶段一**召唤**(零模型)——未建会合时写对方 event want(origin=event「回应X
+   * 的搭话」,带半衰期)并建会合台账即返回;对方在自己的 wantSelect 里自行决定
+   * 应答(该 want 赢得评分,经其执行链回到此处直接 commit)或婉拒(评分输了/
+   * 半衰过期)。阶段二**生成**(唯一烧模型口)——双方就位(贴身+对方静置)才进
+   * runChatGeneration:共在校验从「生成后」前移到「生成前」,走散空烧通道闭合。
+   * 生成在途护栏(对级+角色级)防双烧;生成期间走散(rule 层把人拽走等罕见路径)
+   * →冷却降级短窗+发起方计数返还+双向 want 回 pending;对方不在/无关系→want 废弃。
+   */
   async executeChatWant(
     char: WorldCharacter,
     targetId: string,
@@ -334,11 +357,13 @@ export class SocialLoop {
       this.releaseWant(char.id, wantId, 'abandoned');
       return;
     }
-    // 生成在途护栏(E6 产线观察补):同一对话同一时刻只烧一次模型——
-    // wantSelect 每步重评,doing want 在生成窗口内的重入到此为止,
-    // want 归在途生成收口(落地→social.chat 结算;走散→回 pending)
-    const pairKey = `${char.id}|${target.id}`;
-    if (this.generating.has(pairKey)) {
+    const key = [char.id, target.id].sort().join('|');
+    // 生成在途护栏:对级(同对只烧一次)+角色级(一人只进一场,三方对撞不双烧)
+    if (
+      this.generating.has(key) ||
+      this.generatingChars.has(char.id) ||
+      this.generatingChars.has(target.id)
+    ) {
       this.deps.trace.record(char.id, sim.clock.gameMinutes, {
         trigger,
         perception: { motive: 'social', chatBusy: true, target: target.id, want: wantId ?? undefined },
@@ -346,24 +371,154 @@ export class SocialLoop {
       });
       return;
     }
-    this.generating.add(pairKey);
+    // 阶段一:未建会合→召唤(零模型),want 留 doing 静候对方应答
+    if (!this.rendezvous.has(key)) {
+      this.summon(char, target, trigger);
+      return;
+    }
+    // 阶段二闸门:双方就位(贴身+对方静置)才生成——共在校验前置,走散不进生成
+    const distance = Math.abs(char.x - target.x) + Math.abs(char.y - target.y);
+    const otherBusy = target.activity !== null || target.path.length > 0;
+    if (distance > BALANCE.SOCIAL_CHAT_DISTANCE || otherBusy) {
+      this.summonWaitCount += 1;
+      if (this.summonWaitCount % SOCIAL_WAIT_TRACE_SAMPLE === 1) {
+        this.deps.trace.record(char.id, sim.clock.gameMinutes, {
+          trigger,
+          perception: { motive: 'social', summonWait: true, target: target.id, want: wantId ?? undefined },
+          decision: { layer: 'rule', conclusion: 'continue' },
+        });
+      }
+      return;
+    }
+    this.generating.add(key);
+    this.generatingChars.add(char.id);
+    this.generatingChars.add(target.id);
     try {
-      await this.runChatGeneration(char, target, relation, wantId, trigger);
+      await this.runChatGeneration(char, target, relation, wantId, trigger, this.rendezvous.get(key)!.initiatorId);
     } finally {
-      this.generating.delete(pairKey);
+      this.generating.delete(key);
+      this.generatingChars.delete(char.id);
+      this.generatingChars.delete(target.id);
+      // 会合收口:落地/走散均散场,下次聊天新一轮召唤
+      this.rendezvous.delete(key);
     }
   }
 
-  /** 生成→走散判定→落地聊天(want 生命周期收口);簿记先于 await 防双发 */
+  /**
+   * 阶段一·召唤(零模型,E6.2 event→want 通道首个消费者):写对方 event want
+   * (origin=event,「回应X的搭话」,紧迫度 0.9 带半衰期)并建会合台账,即时重评
+   * 对方(贴身空闲即应答,应答即生成)。应答与否归对方 wantSelect 评分自裁——
+   * 让位给更要紧的事=婉拒,零成本;非自治角色/无当日意图容器不写(下轮可重呼);
+   * 对方已有指向我的在途社交 want 则只建会合借道执行(不重复写念头)。
+   */
+  private summon(
+    char: WorldCharacter,
+    target: WorldCharacter,
+    trigger: 'threshold' | 'eventbus',
+  ): void {
+    const { sim } = this.deps;
+    const key = [char.id, target.id].sort().join('|');
+    if (!autonomy.has(target.id)) {
+      this.deps.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger,
+        perception: { motive: 'social', summonDropped: true, reason: 'not_autonomous', target: target.id },
+        decision: { layer: 'rule', conclusion: 'continue' },
+      });
+      return;
+    }
+    const intents = innerState.get(target.id)?.intents ?? null;
+    if (intents === null || intents.day !== sim.clock.day) {
+      this.deps.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger,
+        perception: { motive: 'social', summonDropped: true, reason: 'no_intents', target: target.id },
+        decision: { layer: 'rule', conclusion: 'continue' },
+      });
+      return;
+    }
+    this.rendezvous.set(key, {
+      initiatorId: char.id,
+      targetId: target.id,
+      atGameMinutes: sim.clock.gameMinutes,
+    });
+    if (!this.hasSocialWant(target.id, char.id)) {
+      const want: Want = {
+        id: `w${sim.clock.day}-s${sim.clock.gameMinutes}`,
+        activityId: 'socialize',
+        origin: 'event',
+        targetCharacterId: char.id,
+        why: `${char.name}过来搭话,回应一下`,
+        urgency: BALANCE.SOCIAL_SUMMON_URGENCY,
+        expiresAtMin: sim.clock.gameMinutes + BALANCE.SOCIAL_SUMMON_TTL_MINUTES,
+        status: 'pending',
+        createdAtMin: sim.clock.gameMinutes,
+      };
+      intents.wants.push(want);
+      persistInnerState(this.deps.handle, target.id);
+      this.deps.trace.record(target.id, sim.clock.gameMinutes, {
+        trigger,
+        perception: { motive: 'social', summon: char.id, want: want.id },
+        decision: { layer: 'rule', conclusion: 'react', intent: 'want:socialize', bubble: want.why },
+      });
+    }
+    this.deps.executeWants(target, trigger); // 即时重评:贴身空闲即应答,应答即生成
+  }
+
+  /**
+   * 会合超时回收(15 游戏分一拍,调度泵阈值块驱动):发起方等满放弃窗口仍无应答
+   * =被放鸽子——会合散场,发起方在途 want 废弃(驱力日后可再点火,同对冷却照常
+   * 把门)。零模型零 token,替代旧「生成后走散丢弃」的空烧路径。
+   */
+  rendezvousSweep(): void {
+    const { sim } = this.deps;
+    const now = sim.clock.gameMinutes;
+    for (const [key, entry] of [...this.rendezvous]) {
+      if (now - entry.atGameMinutes < BALANCE.SOCIAL_SUMMON_GIVE_UP_MINUTES) continue;
+      this.rendezvous.delete(key);
+      const want = innerState
+        .get(entry.initiatorId)
+        ?.intents?.wants.find(
+          (w) =>
+            w.status === 'doing' &&
+            w.activityId === 'socialize' &&
+            w.targetCharacterId === entry.targetId,
+        );
+      if (want !== undefined) {
+        want.status = 'abandoned';
+        persistInnerState(this.deps.handle, entry.initiatorId);
+      }
+      this.deps.trace.record(entry.initiatorId, now, {
+        trigger: 'threshold',
+        perception: { motive: 'social', summonTimeout: true, target: entry.targetId },
+        decision: { layer: 'rule', conclusion: 'continue' },
+      });
+    }
+  }
+
+  /** 该对是否正在生成对话(wantSelect 让行闸:生成窗口双方原地静候结算) */
+  isGeneratingBetween(aId: string, bId: string): boolean {
+    return this.generating.has([aId, bId].sort().join('|'));
+  }
+
+  /** 我召唤 TA 且会合未收口(E6.2 发起方让行闸:候召期不重复点火/寻人) */
+  summonAwaiting(initiatorId: string, targetId: string): boolean {
+    const entry = this.rendezvous.get([initiatorId, targetId].sort().join('|'));
+    return entry !== undefined && entry.initiatorId === initiatorId;
+  }
+
+  /** 生成→走散判定→落地聊天(want 生命周期收口);簿记先于 await 防双发,
+   * 主动社交记发起方(召唤者)——应答方执行生成不算主动。簿记/降级的 pair
+   * 以发起方视角取同伴(执行方可能是应答者,其 partner 才是发起方本人) */
   private async runChatGeneration(
     char: WorldCharacter,
     target: WorldCharacter,
     relation: DialogueRelation,
     wantId: string | null,
     trigger: 'threshold' | 'eventbus',
+    initiatorId: string,
   ): Promise<void> {
     const { sim } = this.deps;
-    this.bookSocial(char.id, target.id);
+    const partnerId = initiatorId === char.id ? target.id : char.id;
+    this.bookSocial(initiatorId, partnerId);
     const conversation = await generateConversation(
       this.deps.llm,
       this.deps.handle,
@@ -373,9 +528,11 @@ export class SocialLoop {
     );
     const distance = Math.abs(char.x - target.x) + Math.abs(char.y - target.y);
     if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {
-      // 生成期间走散(对方被意图拽走等):本轮放弃,冷却降级为短窗可重试(E2 走散不罚)
-      this.downgradeWalkedAway(char.id, target.id);
-      this.releaseWant(char.id, wantId, 'pending');
+      // 生成期间走散(对方被 rule 层拽走等罕见路径;常规路径已被就位闸门挡在生成前):
+      // 本轮放弃,冷却降级为短窗可重试(E2 走散不罚),双向 want 回 pending
+      this.downgradeWalkedAway(initiatorId, partnerId);
+      this.releaseSocialWant(char.id, target.id, 'pending');
+      this.releaseSocialWant(target.id, char.id, 'pending');
       this.deps.trace.record(char.id, sim.clock.gameMinutes, {
         trigger,
         perception: { motive: 'social', walkedAway: true, target: target.id, want: wantId ?? undefined },
@@ -417,6 +574,24 @@ export class SocialLoop {
     if (wantId === null) return;
     const want = innerState.get(characterId)?.intents?.wants.find((w) => w.id === wantId);
     if (want === undefined || want.status !== 'doing') return;
+    want.status = status;
+    persistInnerState(this.deps.handle, characterId);
+  }
+
+  /** 按同伴回收在途社交 want(E6.2 会合两侧生命周期对齐:走散时双方 want 一并
+   * 回 pending;找不到(无 want 直呼)静默) */
+  private releaseSocialWant(
+    characterId: string,
+    partnerId: string,
+    status: 'pending' | 'abandoned',
+  ): void {
+    const want = innerState
+      .get(characterId)
+      ?.intents?.wants.find(
+        (w) =>
+          w.status === 'doing' && w.activityId === 'socialize' && w.targetCharacterId === partnerId,
+      );
+    if (want === undefined) return;
     want.status = status;
     persistInnerState(this.deps.handle, characterId);
   }

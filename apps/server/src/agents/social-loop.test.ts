@@ -4,7 +4,7 @@ import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
 import { relationKey } from '../world/social.js';
 import { Simulation } from '../world/simulation.js';
-import { innerState } from './cognition.js';
+import { autonomy, innerState } from './cognition.js';
 import { SocialLoop } from './social-loop.js';
 import type { MemoryLlm } from './memory-writer.js';
 
@@ -107,17 +107,23 @@ describe('SocialLoop.acquaintanceStep 共处破冰(D1)', () => {
   });
 });
 
-/** 关系布景:甲→乙 familiarity 30/affinity 50(基础欲望 0.8 必过点火线) */
+/** 关系布景:甲→乙 familiarity 30/affinity 50(基础欲望 0.8 必过点火线);
+ * 生产关系双向各存一条(meetByProximity),应答方执行生成要查反向键 */
 function relate(sim: Simulation, aId: string, bId: string): void {
-  sim.socials.set(relationKey(aId, bId), {
-    fromId: aId,
-    toId: bId,
-    familiarity: 30,
-    affinity: 50,
-    chatDay: 0,
-    chatCount: 0,
-    formedNotified: true,
-  });
+  for (const [fromId, toId] of [
+    [aId, bId],
+    [bId, aId],
+  ] as const) {
+    sim.socials.set(relationKey(fromId, toId), {
+      fromId,
+      toId,
+      familiarity: 30,
+      affinity: 50,
+      chatDay: 0,
+      chatCount: 0,
+      formedNotified: true,
+    });
+  }
 }
 
 function captureLoop(
@@ -202,6 +208,12 @@ function gatedHandle(): { handle: DbHandle; release: () => void } {
   };
 }
 
+/** 应答方可召唤(E6.2 两阶段会合):乙自治+空当日意图容器,召唤能写入 event want */
+function summonable(sim: Simulation): void {
+  autonomy.enable('b');
+  innerState.setIntents('b', { day: sim.clock.day, source: 'llm', wants: [] });
+}
+
 const flush = async (): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -209,6 +221,7 @@ const flush = async (): Promise<void> => {
 
 describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时印象)', () => {
   afterEach(() => {
+    autonomy.disable('b');
     innerState.clear('a');
     innerState.clear('b');
   });
@@ -269,10 +282,12 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
         { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'b', why: '找乙聊聊', urgency: 0.9, status: 'doing', createdAtMin: 0 },
       ],
     });
+    summonable(sim);
 
-    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold');
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold'); // 首触=召唤(零模型)
+    void loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→commit,簿记先于 await
     const bookedAt = loop.lastChatAtBetween('a', 'b');
-    expect(bookedAt).toBe(sim.clock.gameMinutes); // 簿记先于 await(防双发)
+    expect(bookedAt).toBe(sim.clock.gameMinutes); // 簿记先于 await(防双发),记发起方甲
 
     b.x = 40;
     b.y = 40; // 生成期间走散
@@ -289,10 +304,11 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
     b.x = 9;
     b.y = 12;
     innerState.get('a')!.intents!.wants[0]!.status = 'doing';
-    await loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold');
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold'); // 重唤(零模型)
+    await loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→落地
     expect(applied).toHaveLength(1);
     expect(applied[0]!.intent.type).toBe('chat');
-    expect(applied[0]!.intent.targetId).toBe('b');
+    expect(applied[0]!.intent.targetId).toBe('a'); // 应答方执行生成,chat 对象=发起方
   });
 
   it('生成在途护栏: 同对重入不双烧模型(trace chatBusy),在途生成照常收口', async () => {
@@ -303,9 +319,11 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
     const { handle, release } = gatedHandle();
     const { loop, applied, traces } = captureLoop(sim, handle);
     innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
+    summonable(sim);
 
-    const first = loop.executeChatWant(sim.character('a'), 'b', null, 'threshold'); // 挂在生成上
-    await flush(); // 首次调用进入生成窗口
+    void loop.executeChatWant(sim.character('a'), 'b', null, 'threshold'); // 首触=召唤(零模型)
+    const first = loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→挂在生成上
+    await flush(); // 进入生成窗口
     await loop.executeChatWant(sim.character('a'), 'b', null, 'threshold'); // 重入:立即返回
     expect(applied).toHaveLength(0); // 重入不落地
     expect(traces.some((t) => (t.perception as { chatBusy?: boolean }).chatBusy === true)).toBe(true);
@@ -323,6 +341,7 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
       sim.spawnCharacter('a', 8, 12, '甲');
       sim.spawnCharacter('b', 9, 12, '乙');
       relate(sim, 'a', 'b');
+      summonable(sim);
       const upserts: Array<{ values: Record<string, unknown>; conflict: unknown }> = [];
       const handle = {
         db: {
@@ -346,30 +365,142 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
 
     // 无印象:规则拼接浅印象(零 LLM)
     const fresh = build([]);
-    await fresh.loop.executeChatWant(fresh.sim.character('a'), 'b', null, 'threshold');
+    void fresh.loop.executeChatWant(fresh.sim.character('a'), 'b', null, 'threshold'); // 召唤
+    await fresh.loop.executeChatWant(fresh.sim.character('b'), 'a', null, 'threshold'); // 应答→生成
     expect(fresh.applied.map((d) => d.intent.type)).toEqual(['chat']);
     expect(fresh.upserts).toHaveLength(1);
-    expect(String(fresh.upserts[0]!.values.content)).toContain('今天和乙聊了几句');
+    // 印象记在执行者(应答方乙)名下:今天和甲(发起方)聊了几句
+    expect(String(fresh.upserts[0]!.values.content)).toContain('今天和甲聊了几句');
 
     // 已有印象:文案保持,仅刷新
     const known = build([{ content: '老朋友,靠得住' }]);
-    await known.loop.executeChatWant(known.sim.character('a'), 'b', null, 'threshold');
+    void known.loop.executeChatWant(known.sim.character('a'), 'b', null, 'threshold');
+    await known.loop.executeChatWant(known.sim.character('b'), 'a', null, 'threshold');
     expect(known.upserts).toHaveLength(1);
     expect(known.upserts[0]!.values.content).toBe('老朋友,靠得住');
+  });
+
+  it('召唤(E6.2): 首触零模型不生成,写对方 event want(origin=event)建会合台账', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { loop, applied, traces } = captureLoop(sim, persistHandle());
+    innerState.setIntents('a', {
+      day: sim.clock.day,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'b', why: '找乙聊聊', urgency: 0.9, status: 'doing', createdAtMin: 0 },
+      ],
+    });
+    summonable(sim);
+
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold');
+    expect(applied).toHaveLength(0); // 阶段一零模型零意图
+    const want = innerState.get('b')!.intents!.wants[0]!;
+    expect(want).toMatchObject({
+      activityId: 'socialize',
+      origin: 'event',
+      targetCharacterId: 'a',
+      urgency: BALANCE.SOCIAL_SUMMON_URGENCY,
+      status: 'pending',
+    });
+    expect(want.why).toContain('甲'); // 「甲过来搭话,回应一下」
+    expect(want.expiresAtMin).toBe(sim.clock.gameMinutes + BALANCE.SOCIAL_SUMMON_TTL_MINUTES);
+    expect(loop.summonAwaiting('a', 'b')).toBe(true); // 会合台账挂起
+    expect(traces.some((t) => (t.perception as { summon?: string }).summon === 'a')).toBe(true);
+    expect(loop.lastChatAtBetween('a', 'b')).toBe(Number.NEGATIVE_INFINITY); // 召唤不簿记(不挡应答)
+  });
+
+  it('召唤丢弃(E6.2): 对方非自治不建会合(trace summonDropped),want 留 doing 待重呼', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { loop, applied, traces } = captureLoop(sim, persistHandle());
+    innerState.setIntents('a', {
+      day: sim.clock.day,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'b', why: '找乙聊聊', urgency: 0.9, status: 'doing', createdAtMin: 0 },
+      ],
+    });
+
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold'); // 乙无自治无意图
+    expect(applied).toHaveLength(0);
+    expect(innerState.get('b')?.intents?.wants ?? []).toHaveLength(0); // 未写对方念头
+    expect(loop.summonAwaiting('a', 'b')).toBe(false); // 不建台账
+    expect(traces.some((t) => (t.perception as { summonDropped?: boolean }).summonDropped)).toBe(true);
+  });
+
+  it('会合挂起(E6.2): 对方未就位(忙碌)不生成,trace summonWait 且台账不收口', async () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { loop, applied, traces } = captureLoop(sim, persistHandle());
+    innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
+    summonable(sim);
+
+    void loop.executeChatWant(sim.character('a'), 'b', null, 'threshold'); // 召唤
+    sim.character('a').activity = {
+      activityId: 'meal',
+      elapsed: 0,
+      anchorKind: null,
+      targetId: null,
+    } as never; // 发起方聊到一半被排了活动:应答方到场但对方不静置
+    await loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→闸门拦住
+    expect(applied).toHaveLength(0);
+    expect(traces.some((t) => (t.perception as { summonWait?: boolean }).summonWait)).toBe(true);
+    expect(loop.summonAwaiting('a', 'b')).toBe(true); // 会合仍在,等就位
+  });
+
+  it('放弃超时(E6.2): rendezvousSweep 回收无应答会合,发起方 want 废弃零 token', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { loop, traces } = captureLoop(sim, persistHandle());
+    innerState.setIntents('a', {
+      day: sim.clock.day,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'b', why: '找乙聊聊', urgency: 0.9, status: 'doing', createdAtMin: 0 },
+      ],
+    });
+    summonable(sim);
+
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold'); // 召唤,乙一直不应答
+    sim.advanceTicks(BALANCE.SOCIAL_SUMMON_GIVE_UP_MINUTES); // 等满放弃窗口
+    loop.rendezvousSweep();
+    expect(loop.summonAwaiting('a', 'b')).toBe(false); // 散场
+    expect(innerState.get('a')!.intents!.wants[0]!.status).toBe('abandoned');
+    expect(traces.some((t) => (t.perception as { summonTimeout?: boolean }).summonTimeout)).toBe(true);
   });
 });
 
 describe('SocialLoop.executeChatWant E3(自然终止多轮/聚会邀约)', () => {
   afterEach(() => {
+    autonomy.disable('b');
     innerState.clear('a');
     innerState.clear('b');
   });
+
+  /** 两阶段会合桩(E6.2):甲召唤→乙应答,返回应答承诺(生成在其上收口) */
+  function chat(
+    sim: Simulation,
+    loop: SocialLoop,
+  ): Promise<void> {
+    void loop.executeChatWant(sim.character('a'), 'b', null, 'threshold'); // 召唤(零模型)
+    return loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→生成
+  }
 
   it('多轮生成 lines 落 chat 意图:单轮终止补模板保底双句,trace 记 llm', async () => {
     const sim = new Simulation();
     sim.spawnCharacter('a', 8, 12, '甲');
     sim.spawnCharacter('b', 9, 12, '乙');
     relate(sim, 'a', 'b');
+    summonable(sim);
     const { loop, applied, traces } = captureLoop(sim, emptyHandle(), {
       chatStructured: (_slot, _messages, _tool, _task, parse) => {
         const parsed = parse({ line: '去公园坐坐?', wantsMore: false });
@@ -377,10 +508,10 @@ describe('SocialLoop.executeChatWant E3(自然终止多轮/聚会邀约)', () =>
         return Promise.resolve(parsed.value);
       },
     });
-    await loop.executeChatWant(sim.character('a'), 'b', null, 'threshold');
+    await chat(sim, loop);
     expect(applied[0]!.intent.type).toBe('chat');
     const lines = applied[0]!.intent.lines as string[];
-    expect(lines[0]).toBe('去公园坐坐?'); // 发起者先说
+    expect(lines[0]).toBe('去公园坐坐?'); // 执行者(应答方)先说
     expect(lines).toHaveLength(2); // 终止后听者句回落模板保底
     expect(lines[1]).toBeTruthy();
     expect(traces.some((t) => (t.perception as { llm?: boolean }).llm === true)).toBe(true);
@@ -391,6 +522,7 @@ describe('SocialLoop.executeChatWant E3(自然终止多轮/聚会邀约)', () =>
     sim.spawnCharacter('a', 8, 12, '甲');
     sim.spawnCharacter('b', 9, 12, '乙');
     relate(sim, 'a', 'b');
+    summonable(sim);
     const { loop, applied } = captureLoop(sim, emptyHandle(), {
       chatStructured: (_slot, _messages, _tool, _task, parse) => {
         const parsed = parse({
@@ -402,7 +534,7 @@ describe('SocialLoop.executeChatWant E3(自然终止多轮/聚会邀约)', () =>
         return Promise.resolve(parsed.value);
       },
     });
-    await loop.executeChatWant(sim.character('a'), 'b', null, 'threshold');
+    await chat(sim, loop);
     expect(applied).toHaveLength(1);
     expect(innerState.get('a')!.pendingInvitation).toEqual({
       placeId: 'park',
@@ -418,6 +550,7 @@ describe('SocialLoop.executeChatWant E3(自然终止多轮/聚会邀约)', () =>
     sim.spawnCharacter('a', 8, 12, '甲');
     sim.spawnCharacter('b', 9, 12, '乙');
     relate(sim, 'a', 'b');
+    summonable(sim);
     let call = 0;
     const { loop, applied } = captureLoop(sim, emptyHandle(), {
       chatStructured: (_slot, _messages, _tool, _task, parse) => {
@@ -431,7 +564,7 @@ describe('SocialLoop.executeChatWant E3(自然终止多轮/聚会邀约)', () =>
         return Promise.resolve(parsed.value);
       },
     });
-    await loop.executeChatWant(sim.character('a'), 'b', null, 'threshold');
+    await chat(sim, loop);
     expect(call).toBe(2);
     expect(applied[0]!.intent.lines).toEqual(['早啊', '早,吃了吗']);
     expect(innerState.get('a')?.pendingInvitation ?? null).toBeNull();

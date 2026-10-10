@@ -781,17 +781,41 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
     expect(ready!.chatWith).toBe('npc-9');
   });
 
-  it('对方在途(走路中): continue 等静置再开口,不点火不寻人', () => {
+  it('对方在途(走路中)也点火(E6.2): onPath 门控退役,首触=召唤零模型', () => {
     const day = intents(1, [
       { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
     ]);
     const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
       positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛', onPath: true } : null),
     });
+    expect(decision!.action).toBe('react');
+    expect(decision!.chatWith).toBe('npc-9'); // 走完当前步后可应答,不再等静置
+  });
+
+  it('贴身但该对生成在途(E6.2 会合协议): continue 原地静候 social.chat 结算', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
+    ]);
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
+      chatGeneratingWith: (a, b) => a === 'char-1' && b === 'npc-9',
+    });
     expect(decision!.action).toBe('continue');
     expect(decision!.wantId).toBe('w1-0');
     expect(decision!.chatWith).toBeUndefined();
-    expect(decision!.intent).toBeUndefined();
+  });
+
+  it('贴身但我召唤的对方未应答(E6.2 会合协议): continue 不重复点火不代答', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
+    ]);
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
+      summonAwaiting: (targetId) => targetId === 'npc-9',
+    });
+    expect(decision!.action).toBe('continue');
+    expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.chatWith).toBeUndefined();
   });
 
   it('对方不在(下线/亡故): continue 跳过且 want 废弃', () => {

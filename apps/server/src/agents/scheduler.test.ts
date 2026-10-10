@@ -628,29 +628,44 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
   });
   afterEach(() => {
     autonomy.disable(CHAR_ID);
+    autonomy.disable('other-1');
     hosting.delete(CHAR_ID);
     innerState.clear(CHAR_ID);
+    innerState.clear('other-1');
     vi.useRealTimers();
   });
 
-  /** 已认识(familiarity 30)且互有好感(60)的关系,入 harness 的 sim.socials */
+  /** 已认识(familiarity 30)且互有好感(60)的关系,入 harness 的 sim.socials;
+   * 生产关系双向各存一条(meetByProximity),应答方执行生成要查反向键 */
   function withRelation(h: Harness, otherId = 'other-1'): void {
     const sim = (h.scheduler as unknown as { deps: { sim: { socials: Map<string, unknown> } } })
       .deps.sim;
-    sim.socials.set(`${CHAR_ID}|${otherId}`, {
-      fromId: CHAR_ID,
-      toId: otherId,
-      familiarity: 30,
-      affinity: 60,
-      chatDay: 0,
-      chatCount: 0,
-      formedNotified: false,
-    });
+    for (const [fromId, toId] of [
+      [CHAR_ID, otherId],
+      [otherId, CHAR_ID],
+    ] as const) {
+      sim.socials.set(`${fromId}|${toId}`, {
+        fromId,
+        toId,
+        familiarity: 30,
+        affinity: 60,
+        chatDay: 0,
+        chatCount: 0,
+        formedNotified: false,
+      });
+    }
   }
 
   /** 空当日意图: 屏蔽回落意图抢占 want 层,专注社交通路 */
   function withEmptyIntents(): void {
     innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] });
+  }
+
+  /** 应答方可召唤(E6.2 两阶段会合):对方自治+空当日意图容器,能收 event want
+   * 并应答——召唤→executeWants(target)→应答方执行生成(chat 意图归其名下) */
+  function withResponder(): void {
+    autonomy.enable('other-1');
+    innerState.setIntents('other-1', { day: 0, source: 'llm', wants: [] });
   }
 
   const dialogueLlm: Partial<MemoryLlm> = {
@@ -661,25 +676,26 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     },
   };
 
-  it('动机点火: 同地熟人过线,light 台词生成→chat lines 直执,trace 记 motive=social', async () => {
+  it('动机点火: 同地熟人过线→驱力 want→召唤,应答方执行生成,trace 记 motive=social', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
+    withResponder();
     await vi.advanceTimersByTimeAsync(2_000); // 阈值巡检块 0
     const intent = h.intents[0] as
       | { type: string; targetId: string; lines?: string[] }
       | undefined;
     expect(intent?.type).toBe('chat');
-    expect(intent?.targetId).toBe('other-1');
-    expect(intent?.lines![0]).toBe('今天天气真好呀'); // 发起者先说
+    expect(intent?.targetId).toBe(CHAR_ID); // 应答方执行生成,chat 归其名下
+    expect(intent?.lines![0]).toBe('今天天气真好呀'); // 应答方(执行者)先说
     expect(intent?.lines).toHaveLength(2); // 终止后听者句模板保底
-    expect(h.bubbles[0]?.text).toContain('苏晚'); // 聊天落地气泡(和苏晚聊聊天)
+    expect(h.bubbles[0]?.text).toContain('阿测'); // 聊天落地气泡(和阿测聊聊天)
     const wantTrace = h.traceRows.find(
       (r) => (r.decision as { intent?: string }).intent === 'want:socialize',
     );
-    expect(wantTrace).toBeDefined(); // E6: 动机先写驱力 want,不直执
+    expect(wantTrace).toBeDefined(); // E6: 动机先写驱力 want;E6.2 首触只召唤零模型
     const react = h.traceRows.find(
       (r) =>
         (r.perception as { motive?: string; llm?: boolean }).motive === 'social' &&
@@ -696,6 +712,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     });
     withRelation(h);
     withEmptyIntents();
+    withResponder();
     await vi.advanceTimersByTimeAsync(2_000);
     const intent = h.intents[0] as { type: string; lines?: string[] } | undefined;
     expect(intent?.type).toBe('chat');
@@ -718,6 +735,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     });
     withRelation(h);
     withEmptyIntents();
+    withResponder();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
     h.onEvent(chatEvent(1, 'other-1')); // social.chat 回执结算 doing want(桩不发事件,手动补)
@@ -736,12 +754,16 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     });
     withRelation(h);
     withEmptyIntents();
+    withResponder();
     for (let i = 0; i < 9; i += 1) {
       if (i > 0) h.clock.gameMinutes += 60; // 跨出同对冷却
       await vi.advanceTimersByTimeAsync(2_000);
       h.onEvent(chatEvent(10 + i, 'other-1')); // 结算本轮 doing want
     }
-    expect(h.intents).toHaveLength(8);
+    // 阿测发起的聊天=应答方(苏晚)执行生成归其名下;第 9 轮阿测日预算耗尽不再点火,
+    // 苏晚仍可在自己预算内反向发起(E6.2 双方动机引擎对等)
+    const initiatedByChar = h.intents.filter((i) => i.characterId === 'other-1');
+    expect(initiatedByChar).toHaveLength(8);
     h.scheduler.dispose();
   });
 
@@ -771,6 +793,7 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     });
     withRelation(h);
     withEmptyIntents();
+    withResponder();
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
     h.onEvent(chatEvent(1, 'other-1')); // 结算首轮 doing want
@@ -782,8 +805,11 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
       other,
     );
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(2);
-    expect(h.intents[1]).toEqual({ type: 'move_to', characterId: CHAR_ID, x: 60, y: 60 });
+    // 阿测侧:再点火不隔空聊,写寻人 move_to(苏晚动机对等也会反向寻人,各看各的)
+    const mine = h.intents.filter((i) => i.characterId === CHAR_ID);
+    expect(mine).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 60, y: 60 }]);
+    // 全程无第二次隔空聊天:chat 意图只有首轮召唤应答那一场
+    expect(h.intents.filter((i) => i.type === 'chat')).toHaveLength(1);
     h.scheduler.dispose();
   });
 });

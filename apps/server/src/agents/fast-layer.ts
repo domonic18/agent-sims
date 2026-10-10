@@ -50,7 +50,8 @@ export interface Decision {
   choice?: string;
   /** jev 层:概率采样产出的冲动 want(调度泵落库后即时择条) */
   impulse?: ImpulseWant;
-  /** plan 层:socialize want 已贴身,聊天交还社交管线(值=target) */
+  /** plan 层:socialize want 已贴身,聊天交还社交管线两阶段会合(值=target;
+   * 首触=召唤零模型,对方应答才生成) */
   chatWith?: string;
 }
 
@@ -657,8 +658,8 @@ export function wantSelect(
   const extra: Pick<Decision, 'abandonedWantIds'> = {};
   if (abandoned.length > 0) extra.abandonedWantIds = abandoned;
   // 人指向社交 want(E2→E6 两段式):远处 move_to 寻人,到场经 character.arrived
-  // 重入再评;贴身则交还社交管线生成对话(chatWith),want 由 social.chat 结算 done;
-  // 对方不在(亡故/下线)则 want 废弃
+  // 重入再评;贴身交还社交管线(E6.2 两阶段会合:首触=召唤零模型,对方应答才生成),
+  // want 由 social.chat 结算 done;对方不在(亡故/下线)则 want 废弃
   if (picked.activityId === 'socialize' && picked.targetCharacterId !== undefined) {
     const pos = world.positionOf?.(picked.targetCharacterId) ?? null;
     if (pos === null) {
@@ -680,13 +681,17 @@ export function wantSelect(
         bubble: `${picked.why},去找${pos.name}`,
       };
     }
-    // 贴身:目标在途不点火(E6 产线观察补)——走路中的人转眼就走远,
-    // 等对方静置再开口,want 留 pending 零成本等待
-    if (pos.onPath === true) {
+    // 贴身:对话生成在途(E6.2 会合协议)——原地静候 social.chat 结算,零模型零移动
+    if (world.chatGeneratingWith?.(char.id, picked.targetCharacterId) === true) {
       return { layer: 'plan', action: 'continue', wantId: picked.id, ...extra };
     }
-    // 贴身:短冷却口径(E6 产线观察补)——落地聊天/走散降级都先簿记,
-    // 簿记未出短窗(生成在途或刚走散)本轮不重入聊天,want 留待下轮再评
+    // 贴身:我召唤的对方还没应答(E6.2 两阶段会合)——不重复点火也不代答,
+    // 静候对方自行应答(其 event want 赢得评分即 commit);放鸽子由会合超时回收
+    if (world.summonAwaiting?.(picked.targetCharacterId) === true) {
+      return { layer: 'plan', action: 'continue', wantId: picked.id, ...extra };
+    }
+    // 贴身:短冷却口径(E6)——落地聊天先簿记,簿记未出短窗本轮不重入聊天,
+    // want 留待下轮再评(防连场聊天气泡刷屏)
     const lastChatAt =
       world.pairLastChatAt?.(char.id, picked.targetCharacterId) ?? Number.NEGATIVE_INFINITY;
     if (world.nowMin !== undefined && world.nowMin - lastChatAt < BALANCE.SOCIAL_RETRY_COOLDOWN_MINUTES) {
@@ -826,14 +831,19 @@ export interface WantWorldQueries {
   nearestNode?: (kind: string, from: { x: number; y: number }) => { id: string; x: number; y: number } | null;
   /** 配方就绪(存在+启用+背包含料;缺省按 shared 源表验料,不查每世界启用位) */
   recipeReady?: (recipeId: string) => boolean;
-  /** 存活角色位置(E2 人指向社交寻人;null=不存在/已亡故,want 跳过;
-   * onPath=对方正在走路——开口前对方须静置,否则生成窗口里必然走散空烧模型) */
-  positionOf?: (characterId: string) => { x: number; y: number; name: string; onPath?: boolean } | null;
+  /** 存活角色位置(E2 人指向社交寻人;null=不存在/已亡故,want 跳过) */
+  positionOf?: (characterId: string) => { x: number; y: number; name: string } | null;
   /** 当前游戏分钟(E6):冲动 want 半衰期(expiresAtMin)判定 */
   nowMin?: number;
   /** 我→TA 最近一次主动社交簿记时刻(E6:贴身 chatWith 的短冷却口径——
-   * wantSelect 每步重评,无此门槛会在生成在途/走散短窗内反复重入聊天,双烧模型) */
+   * wantSelect 每步重评,无此门槛会在落地聊天短窗内反复重入,气泡刷屏) */
   pairLastChatAt?: (characterId: string, targetId: string) => number;
+  /** 该对是否正在生成对话(E6.2 会合协议):生成窗口双方原地静候 social.chat 结算,
+   * 零模型零移动;原 onPath 门控由会合协议取代(走路中的目标可被召唤) */
+  chatGeneratingWith?: (characterId: string, targetId: string) => boolean;
+  /** 我召唤 TA 且会合未收口(E6.2 两阶段聊天):候召期不重复点火——对方应答
+   * (event want 赢得评分即 commit)或会合超时回收驱动后续 */
+  summonAwaiting?: (targetId: string) => boolean;
 }
 
 /** 采集岗→节点 kind(GATHER_TASKS 表驱动;非采集活动返回 null) */
