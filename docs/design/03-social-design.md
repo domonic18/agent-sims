@@ -76,6 +76,7 @@ v1 冷启动死锁: 社交动机要求 familiarity>0,而关系只能由 chat 创
 - **v2 衰减归零死锁修复(2026-10-10 观察轮)**: 初版破冰只对「无关系记录」的陌生对生效,而 `FAMILIARITY_DECAY_PER_DAY` 1/日会把建交初值 5 衰减归零——归零后无任何恢复路径(聊天加成要求先点火,点火要求 familiarity>0,鸡生蛋死锁),60 日存档实证全镇 12 条关系 familiarity 全 0、历史零对话(叠加 driveStep 收口吞 want,见 10-cognition §7.5)。修法: ①acquaintanceStep 放行「熟络归零的旧识」走 meetByProximity 重逢刷新(共处满阈值后熟络度抬回初值,好感不动);②meetByProximity 增 `metNotified` 持久化标记,首识事件一对只发一次,兑现「旧识重逢静默刷新不重发」既有注释意图;③旧存档无标记的归零关系重逢补发一次 first.met 后静默(存档兼容)。
 
 > E6(2026-10-10): 破冰通道属**感知/数值层**,不属决策层,统一意图架构(01-agent-design §3.3)不触碰本节;动机引擎(E6.1 起)降为驱力生成器写 socialize want,封顶剔除/冷却/日预算照旧在动机段把门,§9.1「走近再聊」的直执 move_to 改走 want 两段式——见 10-cognition-design §7.5。
+> E6.4(2026-10-10): 动机引擎 desire 打分退场(§11),点火线/日预算闸随之废除,把门收敛为同对冷却一闸。
 
 ## 9. E 系列社交强化(E1~E3,2026-10-09 落地)
 
@@ -132,3 +133,13 @@ E6.1 产线观察(2026-10-10,2h trace): 聊天生成被丢弃 133 次/2h(62%),�
 - 新参数(数值权威随 numerical-design 落值): `SOCIAL_SUMMON_URGENCY`=0.9、`SOCIAL_SUMMON_TTL_MINUTES`=90、`SOCIAL_SUMMON_GIVE_UP_MINUTES`=120。
 - **bookSocial pair 修复**(双代理测试暴露的生产 bug): 应答方执行生成时冷却被记到 self-pair(`initiatorId|initiatorId`),同对冷却永不生效 → settle 后动机引擎无限重烧。修法: 记账按发起方视角取同伴。
 - 双代理对等语义: 双方都有动机引擎,互相召唤/反向寻人/在各自日预算内发起是合法生产行为,观察口径按发起方过滤。
+
+## 11. 点火简化——动机引擎退场(E6.4,2026-10-10 落地)
+
+「大道至简」复盘(用户拍板): 社交的本质就是两个人交流、关系随交流渐变。实证:E6.2观察镇 90 游戏日 12 条关系 **0 场对话**;且 E6.3 观察轮两个 bug(driveStep 收口吞 want、破冰衰减归零死锁)都是规则交互的涌现产物——五闸+desire 五项公式每个单独看都合理,叠加后的状态空间没人能推演,补丁在滚雪球(E6.3→fba6bed→b846a09)。修法是**做减法**:
+
+- **砍**: desire 公式五项(好感基础/久未聊/初识面熟/贴身情境/情绪)与 `SOCIAL_DESIRE_FIRE` 点火线;每日主动上限闸(`SOCIAL_DAILY_INITIATE_CAP`);收益封顶剔除闸(`CHAT_DAILY_GAINED` 入口判定)。social-motive.ts 整文件删除。这些防线防御的「敌人」(高频刷聊)从未在产线出现,反而真实制造了 2 秒点火循环(症状被误当病因加闸)。
+- **留**: affinity>-30 嫌弃剔除(不找厌恶的人);同对冷却 `SOCIAL_PAIR_COOLDOWN_MINUTES`=30(**唯一防刷闸**);聊天结算数学(fam+6/aff±4×相性/递减档)与两阶段会合协议原样。
+- **新点火语义**(布尔门槛): 候选=已认识(fam>0)+对方存活+不嫌弃+对冷却外;按 affinity 择优写 socialize want(urgency 固定 0.5,竞争语义归 wantSelect)。**异地熟人也点火**走寻人两段式——纯偶遇式社交在分散小镇永远凑不齐共处,寻人正是会合协议的存在意义。
+- **性格表达归位**: 关系好坏由 affinity 排序(最想聊谁)与聊天结算的相性系数表达,不再由点火公式模拟;若部署后聊天频率确需限流,凭数据加回唯一预算参数(先简后加)。
+- 参数退役: `SOCIAL_DESIRE_FIRE`/`SOCIAL_DAILY_INITIATE_CAP` 自 BALANCE 与设置目录删除;存量世界 params 快照残留键经 SYS_CONFIG_FIELDS 白名单静默跳过,兼容无感。

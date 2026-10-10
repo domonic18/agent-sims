@@ -339,13 +339,12 @@ E3 长跑(25.2 日)三未达项同根: 体力死区(≤20 时四路全断)+直�
 
 | 参数(BALANCE 热调) | 值 | 说明 |
 |---|---|---|
-| SOCIAL_DESIRE_FIRE | **0.35**(D1 0.45→E2 放宽) | 动机点火线;共处加成仅 chatReady(贴身 ≤2)享受 |
-| SOCIAL_PAIR_COOLDOWN_MINUTES | **30**(原 60) | 同对两次聊天最小间隔 |
-| SOCIAL_DAILY_INITIATE_CAP | **8**(原 6) | 每角色每日主动社交上限 |
-| 贴身共处加成 | **+0.3**(原 0.2) | chatReady 时动机加成;samePlace(同场未贴身)无加成 |
-| SOCIAL_RETRY_COOLDOWN_MINUTES | **10**(E2 新增) | 走散降级短冷却(期满可重试,主动计数已返还) |
+| SOCIAL_PAIR_COOLDOWN_MINUTES | **30**(原 60) | 同对两次聊天最小间隔——E6.4 起唯一防刷闸 |
+| SOCIAL_RETRY_COOLDOWN_MINUTES | **10**(E2 新增) | 走散降级短冷却(期满可重试) |
 | CHAT_MAX_ROUNDS | **4**(E3 新增) | 多轮对话硬上限(自然终止为准,上限兜底);单场结算一次不按句数放大 |
 | ACQUAINTANCE_THRESHOLD_MINUTES / DAILY_CAP / FAMILIARITY | 120 / 2 / 5 | 共处破冰(D1,见 social-design §8)不变 |
+
+> E6.4(2026-10-10): `SOCIAL_DESIRE_FIRE`(0.35 点火线)/`SOCIAL_DAILY_INITIATE_CAP`(8)/贴身共处加成(+0.3)随动机引擎退场废除——点火改布尔门槛(fam>0+affinity>-30+对冷却外,affinity 择优,urgency 固定 0.5),详见 social-design §11。
 
 代码: `@sims/shared social.ts`(阈值/公式)+ `apps/server config/balance.ts §社交`(收益参数)。
 
@@ -359,6 +358,7 @@ E3 长跑(25.2 日)三未达项同根: 体力死区(≤20 时四路全断)+直�
 
 | 日期 | 变更 | 原因 |
 |------|------|------|
+| 2026-10-10 | **E6.4 社交点火简化(动机引擎退场)**: §6.5 表删 SOCIAL_DESIRE_FIRE/SOCIAL_DAILY_INITIATE_CAP/贴身共处加成三行——点火改布尔门槛(fam>0+affinity>-30+对冷却外,affinity 择优,urgency 固定 0.5),同对冷却为唯一防刷闸;收益侧(CHAT_DAILY_GAINED/递减档)不动 | 90 游戏日 12 关系 0 对话+两涌现 bug 实证五闸+公式过度设计;用户拍板「大道至简」,详见 social-design §11 |
 | 2026-10-10 | **E4 生产经济闭环加固(两批)**: 新增 §5.6.1 生存链路参数(HUNGER_EAT_ENERGY **30**/FORAGE_MIN_ENERGY **6**/FORAGE_EXEMPT_ENERGY **5**/FORAGE_MOVE_THRESHOLD **2**);POVERTY_MIN_ENERGY **45→35**;采集岗知识门槛 **3→0**(制作食物链随动,§5.6 注记);ruleForage 两段式+选食策略(能量降序价低优先);sell_goods want 载体+needBoost 缺钱扩容(work/sell ×1.5/gather ×1.3)。E4 验收镇长跑 27+ 日: 饿死 0(原 4)/苏晚 d3.9 起 settled+租约日常化(原 0+112 败)/sell_item 6 次(原 0);遗留: 公园吸引子挤占 want 执行(debt 0.48 超线/熵 0.727 边缘)立 E5 | E3 长跑 8✓/3✗ 三未达项同一根因链(体力死区四路全断+直发无两段式+采集门槛锁死零知识穷人)+sell 词汇缺失;用户拍板「文档收口+push,公园吸引子立 E5」 |
 | 2026-10-09 | **E 系列三批(E1 生产经济激活/E2 社交口径与主动社交/E3 多轮对话与邀约)**: 新增 §5.6 需求驱动的生产经济(SHOP_RESTOCK_DAILY 3→**1** 兜底化/SELL_RATE **0.6** 收购/POVERTY_COIN_LINE **12**/POVERTY_MIN_ENERGY **45**+生存阀三 rule);新增 §6.5 社交节奏参数表(FIRE 0.45→**0.35**/同对冷却 60→**30**/日主动上限 6→**8**/贴身加成 0.2→**0.3**/走散短冷 **10** 分/CHAT_MAX_ROUNDS **4**);§6.4 模板池降级为回落保底(E3 多轮对话为主来源,单场结算一次不按句数放大) | E 系列: 经济死循环(全员断租死亡 8 次/生产系统闲置)+社交管线三泄漏;用户拍板「需求驱动分工+社交全面加码+自然终止多轮」(详见 03-social-design §9/09-production-design §5.1/01-development-plan 变更记录) |
 |------|------|------|

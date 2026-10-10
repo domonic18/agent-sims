@@ -85,7 +85,7 @@ Agent loop **不在 TickDriver 内**。`apps/server/src/agents/` 跑独立的 Ag
 >
 > 三条设计规则: ①**LLM 永不直接执行**——输出只进意图存储/冲量,trace 天然全链路;②**压力→urgency,不是压力→动作**——驱力只回答「我多想要」,「怎么做」归执行器分支(ruleHunger 的吃/买/寻食逻辑搬进 wantSelect 驱力分支,消双轨);③**抢占=评分,不是特批**——高 urgency 冲动写入后自然胜出,活动容忍度(interruptibility)仍为硬闸;defer 队列溶解为冲动 want 的 `expiresAtMin`(**冲动会消退,计划才持久**);rent 保持即时结算——账单不是行为。
 >
-> 机制细节: `Want` 增 `origin` 与可选 `expiresAtMin`(hydrate 兜底旧行为 plan);`setIntents` 改**合并语义——替换 plan-origin、保留 drive/impulse-origin**(否则驱力/冲动写入会被晨间规划整体顶掉);**执行契约(E6.3 已落地)**——「抢占=评分」补齐胜负规则: doing=在契,空闲重评走「挑战者 vs 在位者」,挑战者评分≥在位者×`WANT_SEIZE_RATIO 1.4` 才许插队,否则在契者免评续做(重放执行分支,进度天然保留)。动因: 四源入池后 urgency 密集,无记忆每拍贪心每拍换王——E6.2 观察镇 plan 全 pending、earn 驱力饿死循环、会合被拆台零聊天的共同根因;抢占依然纯评分(E6 哲学不变),调度从无记忆贪心升级为带抢占阈值的优先级调度。校验拒绝退避(intentSkipUntil)保留,它管执行失败不是调度优先级。扩展公式: **新行为 = 活动定义 + 事件语义映射 + 生成器接线;生命周期/执行器/审计面永远不动**(自主建镇=build 活动+townNeeds 加行;救治=注册表映射 rescue want,urgency 由好感加权)。生效分期: **E6.1**=jev→want(含 probabilities 采样)+社交动机→want;**E6.2-S1**(已落地)=event→want 通道首个消费者——两阶段会合协议(§6,细则见 03-social-design §10);**E6.2-S2**(已落地)=rule→驱力+triage respond/defer→事件 want(细则见 10-cognition-design §7.5);**E6.3**(已落地)=执行契约+驱力收口范畴修正(`driveSatisfied` 仅对驱力词汇 eat/earn/forage/sleep 判缓解,default=false——曾有 default:true 把 drive 源社交 want 写入后一拍吞掉,对话结构性零落地+2 秒点火循环);**E6.2-S3**(规划)=②强度门评价式+评价式情绪。
+> 机制细节: `Want` 增 `origin` 与可选 `expiresAtMin`(hydrate 兜底旧行为 plan);`setIntents` 改**合并语义——替换 plan-origin、保留 drive/impulse-origin**(否则驱力/冲动写入会被晨间规划整体顶掉);**执行契约(E6.3 已落地)**——「抢占=评分」补齐胜负规则: doing=在契,空闲重评走「挑战者 vs 在位者」,挑战者评分≥在位者×`WANT_SEIZE_RATIO 1.4` 才许插队,否则在契者免评续做(重放执行分支,进度天然保留)。动因: 四源入池后 urgency 密集,无记忆每拍贪心每拍换王——E6.2 观察镇 plan 全 pending、earn 驱力饿死循环、会合被拆台零聊天的共同根因;抢占依然纯评分(E6 哲学不变),调度从无记忆贪心升级为带抢占阈值的优先级调度。校验拒绝退避(intentSkipUntil)保留,它管执行失败不是调度优先级。扩展公式: **新行为 = 活动定义 + 事件语义映射 + 生成器接线;生命周期/执行器/审计面永远不动**(自主建镇=build 活动+townNeeds 加行;救治=注册表映射 rescue want,urgency 由好感加权)。生效分期: **E6.1**=jev→want(含 probabilities 采样)+社交动机→want;**E6.2-S1**(已落地)=event→want 通道首个消费者——两阶段会合协议(§6,细则见 03-social-design §10);**E6.2-S2**(已落地)=rule→驱力+triage respond/defer→事件 want(细则见 10-cognition-design §7.5);**E6.3**(已落地)=执行契约+驱力收口范畴修正(`driveSatisfied` 仅对驱力词汇 eat/earn/forage/sleep 判缓解,default=false——曾有 default:true 把 drive 源社交 want 写入后一拍吞掉,对话结构性零落地+2 秒点火循环);**E6.4**(已落地)=社交动机引擎退场——点火改布尔门槛(fam>0+affinity>-30+对冷却外,affinity 择优,urgency 固定 0.5),同对冷却唯一防刷闸(细则见 03-social-design §11);**E6.2-S3**(规划)=②强度门评价式+评价式情绪。
 
 ## 4. 认知周期(五模块)
 
@@ -205,6 +205,8 @@ top-N(默认 8~12)作为 prompt 证据与 trace 记录。
 > E6(2026-10-10 定稿): 动机引擎归入 want 通路(E6.1 生效)——动机降为**驱力生成器**(欲望分→socialize want,urgency 映射),走近改走 want 两段式(不再被 want 层截断),贴身聊天由执行分支触发 light 台词双调用;共处破冰(acquaintanceStep)属感知/数值通道保持不动;「想不想聊不问模型」红线不变。
 >
 > E6.2-S1(2026-10-10 生效): 贴身聊天改**两阶段会合协议**——「先烧模型后会合」倒挂是 E6.1 产线走散空烧(62% 生成被丢弃)根因。拆召唤(零模型,给对方写 event want+会合台账)→应答(对方 wantSelect 评分自裁,应答方成为生成执行者)→生成(双方就位才烧模型)三拍;`onPath` 门控退役(走路中可被召唤),E6.1 产线补丁 89c374c 随之撤销。§6.1 为 C4 原始流程存档,现行实现以本注记+03-social-design §10 为准。
+>
+> E6.4(2026-10-10 生效): 社交动机引擎 desire 打分退场(03-social-design §11)——「想不想聊」由布尔门槛回答: 已认识+不嫌弃+同对冷却外即候选,affinity 择优写 socialize want(urgency 固定 0.5);§6.3 的收益封顶入口剔除随之废除(收益递减仍在聊天结算侧生效),同对冷却是唯一防刷闸。
 
 ### 6.1 流程(v1 实现,C4)
 
@@ -232,7 +234,7 @@ top-N(默认 8~12)作为 prompt 证据与 trace 记录。
 
 M3.6l 补2 已定"每日前 CHAT_DAILY_GAINED=6 次有收益,之后不拒绝但增益归零"。Agent 侧配套:
 
-- 收益封顶的角色对在**动机引擎入口直接剔除**(不点火、不产生闲聊)——高频无收益社交零成本,不烧 LLM 也不刷模板
+- ~~收益封顶的角色对在**动机引擎入口直接剔除**~~(E6.4 废除: 入口剔除闸随动机引擎退场,超收益档对话照常但增益全 ×0——频率由同对冷却自限)
 - LLM 台词仅覆盖有收益区间;模板池语句数与分档维持 social-design §7
 
 ## 7. 可观测性(Agent Observability)
@@ -297,6 +299,7 @@ trace 只存元数据 + 输出摘要 + prompt 截断预览(各 ≤200 字符),�
 
 | 日期 | 内容 |
 |---|---|
+| 2026-10-10 | E6.4 社交点火简化落地随更: §6 注记增 E6.4 段(动机 desire 打分退场,布尔门槛+affinity 择优)+ §6.3 收益封顶入口剔除划除(收益递减仍在结算侧)+ §3.3 生效分期补 E6.4;机制细节权威在 03-social-design §11 | 90 日 0 对话+两涌现 bug 实证五闸+公式过度设计;用户拍板「大道至简」做减法 | 
 | 2026-10-05 | 初稿定稿: 世界运行(tick/11 意图/双来源同构/EventBus)+ 异步认知泵(不进 tick)+ 脑状态外置 + 15 分钟块 + 五模块认知周期(感知/检索/快层/执行/固化)+ 成本四级(rule 零模型/jev/light/slow)+ 记忆系统(主观经验流/三因子检索/反思固化/衰减遗忘)+ 人可见性澄清(向量≠记忆本体,content 为真相源)+ Agent 间对话 v1(一轮一对一答/封顶回落模板池)+ 可观测性(cognition_trace 全周期 trace/token_usage 关联/lab 观测面板/采样与体积控制);吸收 M4a 后架构讨论三连与用户两条补充需求 |
 | 2026-10-08 | C1 固化管线 v2 落地随更: §4.5 重写(反思升格固化主产物,夜间+白天双触发统一管线,单向爬梯红线;梦境改氛围副产品)+ §5.1 数据模型增 source_ids 溯源链与 character_impressions 印象表(0013)+ §5.4 固化描述同步;细节见 10-cognition-design §5/§10 |
 | 2026-10-09 | C4 社交行为闭环落地随更: §6 重写为 v1 实现(动机引擎点火接管「想不想聊」→ light 槽双调用「怎么聊」:人设+特质+关系称号+定点印象+共同记忆+情绪 → line+reply 随 chat 意图一次结算;新增走散放弃护栏;封顶语义修订为动机入口剔除候选)+ §6.2 maxTokens 思考模型余量教训 + §8 里程碑表增 C4 行;动机细则见 10-cognition-design §7.2 |
