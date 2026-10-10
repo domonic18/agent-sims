@@ -750,11 +750,35 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
     ]);
     const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
       positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
+      nowMin: 500,
     });
     expect(decision!.action).toBe('react');
     expect(decision!.wantId).toBe('w1-0');
     expect(decision!.chatWith).toBe('npc-9');
     expect(decision!.intent).toBeUndefined(); // 聊天归 executeChatWant,不走 runIntent
+  });
+
+  it('贴身但簿记未出短冷却(生成在途/走散降级): continue 不重入聊天,want 保留', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
+    ]);
+    const world = {
+      positionOf: (id: string) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
+      nowMin: 500,
+      pairLastChatAt: (_a: string, _b: string) => 495, // 5 分钟前刚簿记(在途/短窗)
+    };
+    const busy = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, world);
+    expect(busy!.action).toBe('continue');
+    expect(busy!.wantId).toBe('w1-0');
+    expect(busy!.chatWith).toBeUndefined();
+    expect(busy!.intent).toBeUndefined();
+    // 短窗已过(≥SOCIAL_RETRY_COOLDOWN):恢复 chatWith
+    const ready = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      ...world,
+      pairLastChatAt: () => 500 - 10,
+    });
+    expect(ready!.action).toBe('react');
+    expect(ready!.chatWith).toBe('npc-9');
   });
 
   it('对方不在(下线/亡故): continue 跳过且 want 废弃', () => {

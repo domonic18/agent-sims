@@ -214,6 +214,7 @@ export class AgentScheduler {
           : { x: target.x, y: target.y, name: target.name };
       },
       nowMin: sim.clock.gameMinutes,
+      pairLastChatAt: (aId, bId) => this.socialLoop.lastChatAtBetween(aId, bId),
     };
   }
 

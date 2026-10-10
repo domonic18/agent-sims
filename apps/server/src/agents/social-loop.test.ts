@@ -295,6 +295,28 @@ describe('SocialLoop.idleSocialStep E6(动机点火写 want/走散不罚/即时�
     expect(applied[0]!.intent.targetId).toBe('b');
   });
 
+  it('生成在途护栏: 同对重入不双烧模型(trace chatBusy),在途生成照常收口', async () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const { handle, release } = gatedHandle();
+    const { loop, applied, traces } = captureLoop(sim, handle);
+    innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
+
+    const first = loop.executeChatWant(sim.character('a'), 'b', null, 'threshold'); // 挂在生成上
+    await flush(); // 首次调用进入生成窗口
+    await loop.executeChatWant(sim.character('a'), 'b', null, 'threshold'); // 重入:立即返回
+    expect(applied).toHaveLength(0); // 重入不落地
+    expect(traces.some((t) => (t.perception as { chatBusy?: boolean }).chatBusy === true)).toBe(true);
+
+    release();
+    await first;
+    await flush();
+    expect(applied).toHaveLength(1); // 在途生成照常落地
+    expect(applied[0]!.intent.type).toBe('chat');
+  });
+
   it('聊后即时印象: 无印象建浅印象;已有印象只刷新时刻不动文案', async () => {
     const build = (existing: Array<{ content: string }>) => {
       const sim = new Simulation();

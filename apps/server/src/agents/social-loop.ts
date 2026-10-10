@@ -7,7 +7,7 @@ import type { WorldCharacter } from '../world/character.js';
 import type { Simulation } from '../world/simulation.js';
 import { meetByProximity, relationKey } from '../world/social.js';
 import { innerState } from './cognition.js';
-import { generateConversation } from './dialogue.js';
+import { generateConversation, type DialogueRelation } from './dialogue.js';
 import type { Decision } from './fast-layer.js';
 import { persistInnerState } from './inner-state-db.js';
 import type { MemoryLlm } from './memory-writer.js';
@@ -47,6 +47,8 @@ export class SocialLoop {
   private readonly socialDaily = new Map<string, { day: number; count: number }>();
   /** 共处破冰累计(pairKey→{day,分钟}):纯内存,重启重新累计可接受(面熟慢慢攒) */
   private readonly coPresence = new Map<string, { day: number; minutes: number }>();
+  /** 对话生成在途标记(pairKey):同一对话同一时刻只烧一次模型 */
+  private readonly generating = new Set<string>();
   /** 当日全世界建交数(防速熟) */
   private metToday = { day: -1, count: 0 };
 
@@ -332,7 +334,36 @@ export class SocialLoop {
       this.releaseWant(char.id, wantId, 'abandoned');
       return;
     }
-    this.bookSocial(char.id, targetId);
+    // 生成在途护栏(E6 产线观察补):同一对话同一时刻只烧一次模型——
+    // wantSelect 每步重评,doing want 在生成窗口内的重入到此为止,
+    // want 归在途生成收口(落地→social.chat 结算;走散→回 pending)
+    const pairKey = `${char.id}|${target.id}`;
+    if (this.generating.has(pairKey)) {
+      this.deps.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger,
+        perception: { motive: 'social', chatBusy: true, target: target.id, want: wantId ?? undefined },
+        decision: { layer: 'rule', conclusion: 'continue' },
+      });
+      return;
+    }
+    this.generating.add(pairKey);
+    try {
+      await this.runChatGeneration(char, target, relation, wantId, trigger);
+    } finally {
+      this.generating.delete(pairKey);
+    }
+  }
+
+  /** 生成→走散判定→落地聊天(want 生命周期收口);簿记先于 await 防双发 */
+  private async runChatGeneration(
+    char: WorldCharacter,
+    target: WorldCharacter,
+    relation: DialogueRelation,
+    wantId: string | null,
+    trigger: 'threshold' | 'eventbus',
+  ): Promise<void> {
+    const { sim } = this.deps;
+    this.bookSocial(char.id, target.id);
     const conversation = await generateConversation(
       this.deps.llm,
       this.deps.handle,

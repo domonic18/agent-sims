@@ -680,6 +680,13 @@ export function wantSelect(
         bubble: `${picked.why},去找${pos.name}`,
       };
     }
+    // 贴身:短冷却口径(E6 产线观察补)——落地聊天/走散降级都先簿记,
+    // 簿记未出短窗(生成在途或刚走散)本轮不重入聊天,want 留待下轮再评
+    const lastChatAt =
+      world.pairLastChatAt?.(char.id, picked.targetCharacterId) ?? Number.NEGATIVE_INFINITY;
+    if (world.nowMin !== undefined && world.nowMin - lastChatAt < BALANCE.SOCIAL_RETRY_COOLDOWN_MINUTES) {
+      return { layer: 'plan', action: 'continue', wantId: picked.id, ...extra };
+    }
     return {
       layer: 'plan',
       action: 'react',
@@ -818,6 +825,9 @@ export interface WantWorldQueries {
   positionOf?: (characterId: string) => { x: number; y: number; name: string } | null;
   /** 当前游戏分钟(E6):冲动 want 半衰期(expiresAtMin)判定 */
   nowMin?: number;
+  /** 我→TA 最近一次主动社交簿记时刻(E6:贴身 chatWith 的短冷却口径——
+   * wantSelect 每步重评,无此门槛会在生成在途/走散短窗内反复重入聊天,双烧模型) */
+  pairLastChatAt?: (characterId: string, targetId: string) => number;
 }
 
 /** 采集岗→节点 kind(GATHER_TASKS 表驱动;非采集活动返回 null) */
