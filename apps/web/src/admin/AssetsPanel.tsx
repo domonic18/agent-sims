@@ -475,8 +475,10 @@ export function AssetsPanel() {
         ) : (
           <Tree
             blockNode
-            defaultExpandAll
-            expandedKeys={treeKeyword.trim() !== '' ? allTreeKeys : undefined}
+            /* 不用 defaultExpandAll: 全量 2000+ 节点(每节点挂 Tooltip/Dropdown)手机端太重,
+               默认收起按需展开;搜索期经 expandedKeys 自动展开命中分支 */
+            /* 搜索期才传 expandedKeys: 恒传(含 undefined)会被 rc-tree 视为受控,内部展开态失效 */
+            {...(treeKeyword.trim() !== '' ? { expandedKeys: allTreeKeys } : {})}
             selectedKeys={categoryId !== undefined ? [categoryId] : []}
             treeData={treeData}
             onSelect={(keys) => {

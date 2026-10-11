@@ -43,8 +43,8 @@ export function PromptsPanel() {
                     style={{
                       margin: 0,
                       padding: 12,
-                      background: '#f6f8fa',
-                      borderRadius: 6,
+                      background: 'var(--px-ink)',
+                      boxShadow: 'inset 0 0 0 1px var(--px-slate)',
                       fontSize: 12,
                       whiteSpace: 'pre-wrap',
                       wordBreak: 'break-word',

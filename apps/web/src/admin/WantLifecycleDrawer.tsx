@@ -166,8 +166,8 @@ function JsonBlock(props: { label: string; value: unknown }) {
           padding: 8,
           fontSize: 12,
           lineHeight: 1.5,
-          background: '#f6f8fa',
-          borderRadius: 6,
+          background: 'var(--px-ink)',
+          boxShadow: 'inset 0 0 0 1px var(--px-slate)',
           overflow: 'auto',
           maxHeight: 260,
         }}
