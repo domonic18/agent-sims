@@ -30,8 +30,21 @@ export interface ResourcePlacementGroup {
   rules: ReadonlyArray<ResourcePlacementRule>;
 }
 
+/** worldgen 管线 pass id(profile.passes 声明序列;含 rng 的 pass 换序=同种子图变) */
+export type WorldgenPassId =
+  | 'roads' // 蜿蜒路网+广场(patch/中点)
+  | 'townCore' // 镇内核心分区(未启用=零消耗空过)
+  | 'places' // 配额场所撒放(含 zones/占用网格初始化,产出池塘)
+  | 'doorPaths' // 门前 L 形小路
+  | 'townFences' // 镇界围栏(无核心=空过)
+  | 'wildClusters' // 镇外森林/岩石簇(无核心=空簇)
+  | 'resources' // 资源节点撒点
+  | 'decor'; // 户外装饰五 pass
+
 /** worldgen 模式差异(全部为已存在的 growth/survival 分支,新差异出现再扩字段) */
 export interface WorldgenModeOptions {
+  /** 管线 pass 序列(数组序=执行序;growth/survival 今日同序,差异在 pass 内开关) */
+  passes: ReadonlyArray<WorldgenPassId>;
   /** 场所配额,撒放顺序=数组序 */
   quota: ReadonlyArray<QuotaRow>;
   /** small 档占地覆写(survival 窄框适配);null=不覆写 */
@@ -84,6 +97,7 @@ export interface GameModeProfile {
 const GROWTH_PROFILE: GameModeProfile = {
   id: 'growth',
   worldgen: {
+    passes: ['roads', 'townCore', 'places', 'doorPaths', 'townFences', 'wildClusters', 'resources', 'decor'],
     quota: GROWTH_QUOTA,
     smallSizeOverrides: null,
     compactRoads: false,
@@ -123,6 +137,7 @@ const GROWTH_PROFILE: GameModeProfile = {
 const SURVIVAL_PROFILE: GameModeProfile = {
   id: 'survival',
   worldgen: {
+    passes: ['roads', 'townCore', 'places', 'doorPaths', 'townFences', 'wildClusters', 'resources', 'decor'],
     quota: SURVIVAL_QUOTA,
     smallSizeOverrides: SURVIVAL_SMALL_SIZE_OVERRIDES,
     compactRoads: true,
