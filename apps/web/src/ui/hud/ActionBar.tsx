@@ -214,7 +214,7 @@ export function ActionBar({
           label="🔨 工作 ▾"
           title="选择维护工单"
           disabled={dead}
-          items={[taskItem('clean'), taskItem('repair'), taskItem('rescue')]}
+          items={(Object.keys(MAINTENANCE_TASKS) as WorkTaskId[]).map((task) => taskItem(task))}
         />
         <button
           type="button"
