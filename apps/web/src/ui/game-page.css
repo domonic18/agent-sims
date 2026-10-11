@@ -154,18 +154,18 @@
   place-items: center;
   background: var(--px-ink);
   box-shadow: inset 0 0 0 2px var(--px-slate);
-  font-size: 18px;
+  font-size: 22px;
 }
 
 .inspect-icon img {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   image-rendering: pixelated;
 }
 
 .inspect-title {
   font-size: 13px;
-  color: var(--px-text);
+  color: var(--px-gold);
 }
 
 .inspect-tag {
@@ -193,16 +193,6 @@
 
 .inspect-close {
   margin-left: auto;
-  border: none;
-  background: none;
-  color: var(--px-dim);
-  font-size: 13px;
-  cursor: pointer;
-  padding: 2px 4px;
-}
-
-.inspect-close:hover {
-  color: var(--px-text);
 }
 
 .inspect-rows {
@@ -211,6 +201,7 @@
   gap: 4px 14px;
   font-size: 12px;
   color: var(--px-dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .inspect-rows b {
@@ -261,19 +252,28 @@
   margin-top: 8px;
 }
 
+/* 像素输入框(托管方针/访谈输入统一配色,零圆角+slate 内描边+聚焦金) */
 .hosting-policy textarea,
 .mindtalk-input input {
   width: 100%;
-  font-family: inherit;
+  font-family: var(--px-font-ui);
   font-size: 12px;
-  color: var(--px-white, #e8e8e8);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  border-radius: 5px;
+  color: var(--px-text);
+  background: var(--px-ink);
+  border: none;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
   padding: 6px 8px;
   box-sizing: border-box;
 }
 
+.hosting-policy textarea:focus,
+.mindtalk-input input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--px-gold);
+}
+
+/* ---- 意识访谈(UI-1): 复用 theme.css 通用气泡,agent 左/player 右 ---- */
 .mindtalk-modal {
   width: min(460px, 92vw);
 }
@@ -283,25 +283,12 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 8px;
   padding: 4px 0 8px;
 }
 
-.mindtalk-msg {
-  display: flex;
-  gap: 6px;
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.mindtalk-msg.player {
-  padding-left: 22px;
-  color: var(--px-dim, #9aa3b2);
-}
-
-.mindtalk-msg b {
-  font-weight: normal;
+.mindtalk-modal .bubble {
+  max-width: 82%;
 }
 
 .mindtalk-input {
@@ -310,43 +297,168 @@
   margin-top: 6px;
 }
 
+/* ---- 记忆库弹窗(UI-1): 头像标题/工具栏并排/类型色条/印象小卡 ---- */
 .memory-modal {
   width: min(460px, 92vw);
 }
 
-.memory-search {
+.mem-modal-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 检索+类型过滤一行工具栏(窄宽自动换行),替代原 search/filters 两行 */
+.mem-toolbar {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
   margin: 4px 0 6px;
 }
 
-.memory-search input {
+.mem-toolbar input {
   flex: 1;
-  min-width: 0;
+  min-width: 110px;
+  font-family: var(--px-font-ui);
+  font-size: 12px;
+  padding: 4px 6px;
+  background: var(--px-ink);
+  color: var(--px-text);
+  border: none;
+  border-radius: 0;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
 }
 
-/* 记忆条目/类型徽标样式上收 theme.css(与 /lab 记忆面板共用) */
-
-/* 层过滤行(C1): 全部/事件/洞察/梦境/对话 */
-.mem-filters {
-  display: flex;
-  gap: 4px;
-  margin: 2px 0 6px;
-  flex-wrap: wrap;
+.mem-toolbar input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--px-gold);
 }
 
-.mem-filters .px-btn {
+.mem-toolbar .px-btn {
   width: auto;
-  padding: 3px 7px;
+  padding: 4px 7px;
   font-size: 11px;
 }
 
-.mem-filters .px-btn.on {
+.mem-toolbar .px-btn.on {
   box-shadow: inset 0 0 0 2px var(--px-gold);
   color: var(--px-gold);
 }
 
-/* 洞察溯源链: 引用的情景记忆原文 */
-.mem-sources {
+/* 结果行: 模式说明居左,计数金徽标居右 */
+.mem-result-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--px-dim);
+}
+
+.mem-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  color: var(--px-ink);
+  background: var(--px-gold);
+}
+
+/* 条目左侧类型色条(6px,与 mem-badge 同色系;.memory-modal 作用域,不动 lab 共享基类) */
+.memory-modal .memory-item {
+  --mem-bar: var(--px-slate);
+  box-shadow: inset 0 0 0 2px var(--px-slate), inset 6px 0 0 var(--mem-bar);
+}
+
+.memory-modal .memory-item.mem-type-event { --mem-bar: var(--mem-event); }
+.memory-modal .memory-item.mem-type-insight { --mem-bar: var(--mem-insight); }
+.memory-modal .memory-item.mem-type-dream { --mem-bar: var(--mem-dream); }
+.memory-modal .memory-item.mem-type-dialogue { --mem-bar: var(--mem-dialogue); }
+
+/* 条目元信息行: 重要度迷你条 + 时刻 + 检索综合分 */
+.mem-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 重要度 4 格迷你条(高 6px,满格=10) */
+.mem-imp {
+  position: relative;
+  width: 44px;
+  height: 6px;
+  flex: none;
+  background: var(--px-ink);
+  box-shadow: inset 0 0 0 1px var(--px-slate);
+  overflow: hidden;
+}
+
+.mem-imp > i {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  background: var(--px-gold);
+}
+
+.mem-imp > u {
+  position: absolute;
+  inset: 1px;
+  background: repeating-linear-gradient(90deg, transparent 0 10px, var(--px-ink) 10px 11px);
+  text-decoration: none;
+}
+
+.mem-score {
   color: var(--px-cyan);
+}
+
+/* 洞察溯源链: 引用的情景记忆原文(等宽小字) */
+.mem-sources {
+  color: var(--px-dim);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 10px;
+}
+
+/* 关系印象: 两列小卡(头像名+印象+时刻),点卡定位角色不关弹窗 */
+.mem-impressions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 4px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.mem-imp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  font-size: 11px;
+  box-shadow: inset 0 0 0 2px var(--px-slate);
+  cursor: pointer;
+}
+
+.mem-imp-card:hover {
+  box-shadow: inset 0 0 0 2px var(--px-gold);
+}
+
+.mem-imp-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mem-imp-head b {
+  color: var(--px-gold);
+  font-size: 11px;
+}
+
+.mem-imp-text {
+  line-height: 1.5;
+}
+
+.mem-imp-card small {
+  color: var(--px-dim);
+  font-size: 10px;
 }

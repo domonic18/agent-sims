@@ -3,6 +3,7 @@ import type { MindTalkView } from '@sims/shared';
 import { getMindTalk, sendMindTalk } from '../../net/hostingApi';
 import { toErrorMessage } from '../errors';
 import { ModalPanel } from '../ModalPanel';
+import { PixelAvatar } from './PixelAvatar';
 import { useScrollToBottom } from './useScrollToBottom';
 
 /**
@@ -81,17 +82,20 @@ export function MindTalkModal({
       </p>
 
       <div className="mindtalk-log" ref={logRef}>
-        {(view?.messages ?? []).map((message, index) => (
-          <p key={index} className={`mindtalk-msg ${message.role}`}>
-            <span>{message.role === 'agent' ? '🤖' : '🙂'}</span>
-            <b>{message.text}</b>
-          </p>
-        ))}
+        {(view?.messages ?? []).map((message, index) => {
+          const agentSide = message.role === 'agent';
+          return (
+            <div key={index} className={`bubble-row${agentSide ? '' : ' right'} mindtalk-row`}>
+              <PixelAvatar characterId={agentSide ? characterId : 'player'} size={28} />
+              <span className="bubble">{message.text}</span>
+            </div>
+          );
+        })}
         {busy && (
-          <p className="mindtalk-msg agent">
-            <span>🤖</span>
-            <b>……</b>
-          </p>
+          <div className="bubble-row mindtalk-row">
+            <PixelAvatar characterId={characterId} size={28} />
+            <span className="bubble">……</span>
+          </div>
         )}
       </div>
 

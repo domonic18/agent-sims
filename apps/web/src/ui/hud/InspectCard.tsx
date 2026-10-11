@@ -273,7 +273,7 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
           </div>
           <b className="inspect-title">{title}</b>
           <span className={`inspect-tag ${tone}`}>{tag}</span>
-          <button type="button" className="inspect-close" title="关闭" onClick={close}>
+          <button type="button" className="px-btn sq inspect-close" title="关闭" onClick={close}>
             ✕
           </button>
         </div>
