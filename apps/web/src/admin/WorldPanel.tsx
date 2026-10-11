@@ -635,6 +635,7 @@ export function WorldPanel() {
             columns={columns}
             dataSource={history}
             pagination={false}
+            scroll={{ x: 'max-content' }}
           />
         )}
       </Card>

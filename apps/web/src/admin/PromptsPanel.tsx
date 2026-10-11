@@ -26,6 +26,7 @@ export function PromptsPanel() {
           size="small"
           dataSource={prompts}
           pagination={false}
+          scroll={{ x: 'max-content' }}
           expandable={{
             expandedRowRender: (record) => (
               <div>

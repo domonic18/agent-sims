@@ -51,7 +51,7 @@ export function AssetDetailDrawer({
   return (
     <Drawer
       title={detail === null ? '' : `${detail.name}(${detail.slug})`}
-      width={480}
+      width="min(480px, calc(100vw - 24px))"
       open={detail !== null}
       onClose={onClose}
       destroyOnClose

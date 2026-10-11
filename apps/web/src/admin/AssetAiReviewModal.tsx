@@ -29,7 +29,7 @@ export function AssetAiReviewModal({
           关闭
         </Button>,
       ]}
-      width={760}
+      width="min(760px, calc(100vw - 24px))"
     >
       <p style={{ color: '#888', fontSize: 12, marginTop: 4 }}>
         结论由视觉模型(vision 槽)生成,仅供参考;「上报」会把结论写入素材问题清单。
@@ -40,6 +40,7 @@ export function AssetAiReviewModal({
         loading={running}
         dataSource={items}
         pagination={false}
+        scroll={{ x: 'max-content' }}
         columns={[
           {
             title: '图',

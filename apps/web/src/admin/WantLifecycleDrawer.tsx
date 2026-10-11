@@ -323,7 +323,7 @@ export function WantLifecycleDrawer(props: {
     <Drawer
       open={props.wantId !== null}
       title={`念头的一生 ${props.wantId ?? ''}`}
-      width={620}
+      width="min(620px, calc(100vw - 24px))"
       onClose={props.onClose}
       destroyOnClose
     >

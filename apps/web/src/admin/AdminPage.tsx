@@ -5,6 +5,7 @@ import {
   Avatar,
   Button,
   ConfigProvider,
+  Drawer,
   Dropdown,
   Form,
   Input,
@@ -17,6 +18,7 @@ import {
   ControlOutlined,
   FileTextOutlined,
   GlobalOutlined,
+  MenuOutlined,
   PictureOutlined,
   PlayCircleOutlined,
   LogoutOutlined,
@@ -136,11 +138,23 @@ function StatusStrip({ status }: { status: ReturnType<typeof useAdminStatus> }) 
         {status.world ? `${status.world.name} · ${status.world.characters} 角色` : '无活跃世界'}
       </span>
       <span className="adm-sep" />
-      <span className="adm-status-item adm-mono">
+      <span className="adm-status-item adm-mono adm-status-tok">
         今日 {fmtTokens(status.tokensToday)} tok · {status.callsToday ?? '—'} 次
       </span>
     </div>
   );
+}
+
+/** 手机断点(<768px): matchMedia 直读首帧无闪烁,避免 Grid.useBreakpoint 首渲染空对象回退桌面态 */
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = (e: MediaQueryListEvent): void => setIsMobile(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return isMobile;
 }
 
 function AdminShell() {
@@ -218,46 +232,81 @@ function AdminShell() {
   };
 
   const panel = PANELS[tab];
+  const isMobile = useIsMobile();
+  const [navOpen, setNavOpen] = useState(false);
+
+  const selectTab = (key: string): void => {
+    setTab(key as AdminTab);
+    setNavOpen(false);
+  };
+
+  const navContent = (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div className="px-box adm-logo">
+        <div className="px-inner adm-logo-inner">
+          <span className="adm-logo-title px-title-shadow">AGENT·SIMS</span>
+          <span className="adm-logo-sub">控制台</span>
+        </div>
+      </div>
+      <Menu
+        mode="inline"
+        items={NAV_ITEMS}
+        selectedKeys={[tab]}
+        onClick={({ key }) => selectTab(key)}
+        style={{ flex: 1, borderInlineEnd: 'none' }}
+      />
+      <div className="adm-sider-user">
+        <span className="adm-sider-user-name">{username || '已登录'}</span>
+        <Dropdown
+          menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: logout }] }}
+          trigger={['click']}
+        >
+          <Avatar size="small" icon={<UserOutlined />} style={{ cursor: 'pointer', flexShrink: 0 }} />
+        </Dropdown>
+      </div>
+    </div>
+  );
 
   return (
     <Layout className="adm-shell" style={{ minHeight: '100vh' }}>
-      <Layout.Sider width={200} style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}>
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div className="px-box adm-logo">
-            <div className="px-inner adm-logo-inner">
-              <span className="adm-logo-title px-title-shadow">AGENT·SIMS</span>
-              <span className="adm-logo-sub">控制台</span>
-            </div>
-          </div>
-          <Menu
-            mode="inline"
-            items={NAV_ITEMS}
-            selectedKeys={[tab]}
-            onClick={({ key }) => setTab(key as AdminTab)}
-            style={{ flex: 1, borderInlineEnd: 'none' }}
-          />
-          <div className="adm-sider-user">
-            <span className="adm-sider-user-name">{username || '已登录'}</span>
-            <Dropdown
-              menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: logout }] }}
-              trigger={['click']}
-            >
-              <Avatar size="small" icon={<UserOutlined />} style={{ cursor: 'pointer', flexShrink: 0 }} />
-            </Dropdown>
-          </div>
-        </div>
-      </Layout.Sider>
+      {!isMobile && (
+        <Layout.Sider width={200} style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}>
+          {navContent}
+        </Layout.Sider>
+      )}
       <Layout>
         <Layout.Header className="adm-head">
+          {isMobile && (
+            <Button
+              type="text"
+              className="adm-nav-btn"
+              icon={<MenuOutlined />}
+              aria-label="打开导航菜单"
+              onClick={() => setNavOpen(true)}
+            />
+          )}
           <span className="adm-head-title">{panel.title}</span>
           <span className="adm-head-desc">{panel.desc}</span>
           <span className="adm-head-spacer" />
           <StatusStrip status={status} />
         </Layout.Header>
-        <Layout.Content style={{ padding: 20 }}>
+        <Layout.Content className="adm-content">
           <div style={{ maxWidth: 1280, margin: '0 auto' }}>{panel.render()}</div>
         </Layout.Content>
       </Layout>
+      {isMobile && (
+        <Drawer
+          placement="left"
+          width={272}
+          open={navOpen}
+          onClose={() => setNavOpen(false)}
+          closeIcon={null}
+          styles={{ body: { padding: 0 } }}
+          className="adm-nav-drawer"
+        >
+          {navContent}
+        </Drawer>
+      )}
     </Layout>
   );
 }

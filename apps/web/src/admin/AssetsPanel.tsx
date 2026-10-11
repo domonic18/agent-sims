@@ -450,11 +450,11 @@ export function AssetsPanel() {
   };
 
   return (
-    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+    <div className="adm-assets-layout">
       <Card
         size="small"
         title="分类"
-        style={{ width: 240, flexShrink: 0 }}
+        className="adm-assets-tree"
         extra={
           <Tooltip title="新增顶层域">
             <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => openCategoryModal()} />
@@ -503,6 +503,7 @@ export function AssetsPanel() {
             rowKey="id"
             size="small"
             tableLayout="fixed"
+            scroll={{ x: 'max-content' }}
             dataSource={issues}
             pagination={false}
             locale={{ emptyText: <Empty description="没有待处理的问题,游戏内「⚠ 报错」上报会汇聚到这里" /> }}
@@ -635,6 +636,7 @@ export function AssetsPanel() {
           rowKey="id"
           size="small"
           tableLayout="fixed"
+          scroll={{ x: 'max-content' }}
           loading={loading}
           dataSource={items}
           rowSelection={{

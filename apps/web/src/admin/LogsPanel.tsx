@@ -145,7 +145,7 @@ function WorldEventsTab() {
         />
       </FilterBar>
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
-      <Table<WorldEventEntryView> rowKey="id" columns={columns} dataSource={data?.entries ?? []} {...pagedTableProps<WorldEventEntryView>(data, page, setPage)} />
+      <Table<WorldEventEntryView> rowKey="id" columns={columns} dataSource={data?.entries ?? []} {...pagedTableProps<WorldEventEntryView>(data, page, setPage)} scroll={{ x: 'max-content' }} />
     </Card>
   );
 }
@@ -225,7 +225,7 @@ function TechLogsTab() {
         />
       </FilterBar>
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
-      <Table<TechLogEntryView> rowKey="id" columns={columns} dataSource={data?.entries ?? []} {...pagedTableProps<TechLogEntryView>(data, page, setPage)} />
+      <Table<TechLogEntryView> rowKey="id" columns={columns} dataSource={data?.entries ?? []} {...pagedTableProps<TechLogEntryView>(data, page, setPage)} scroll={{ x: 'max-content' }} />
     </Card>
   );
 }
@@ -296,7 +296,7 @@ function AuditLogsTab() {
         />
       </FilterBar>
       {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
-      <Table<AuditLogEntryView> rowKey="id" columns={columns} dataSource={data?.entries ?? []} {...pagedTableProps<AuditLogEntryView>(data, page, setPage)} />
+      <Table<AuditLogEntryView> rowKey="id" columns={columns} dataSource={data?.entries ?? []} {...pagedTableProps<AuditLogEntryView>(data, page, setPage)} scroll={{ x: 'max-content' }} />
     </Card>
   );
 }

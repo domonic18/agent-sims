@@ -153,6 +153,7 @@ export function RecipesPanel() {
             dataSource={CRAFT_RECIPE_IDS.map((id) => view.recipes[id])}
             pagination={false}
             size="middle"
+            scroll={{ x: 'max-content' }}
             columns={[
               { title: '配方', dataIndex: 'name', width: 110 },
               {

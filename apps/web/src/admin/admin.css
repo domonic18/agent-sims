@@ -142,6 +142,12 @@
   letter-spacing: 0.5px;
 }
 
+/* 汉堡钮(移动端开导航抽屉): 顶栏内与状态条同高 */
+.adm-nav-btn {
+  color: var(--px-text);
+  margin-right: 2px;
+}
+
 @media (max-width: 1100px) {
   .adm-head-desc {
     display: none;
@@ -229,4 +235,69 @@
   color: var(--px-dim);
   font-size: 13px;
   padding: 24px 0;
+}
+
+/* ---- 素材管理: 左树+右表工作区(窄屏堆叠) ---- */
+.adm-assets-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.adm-assets-tree {
+  width: 240px;
+  flex-shrink: 0;
+}
+
+/* ---- 内容区留边: 桌面 20px,窄屏收 12px ---- */
+.adm-content {
+  padding: 20px;
+}
+
+/* ---- 移动端适配(<768px): 与游戏页 520px 断点互补,md 以下收工作台 ---- */
+@media (max-width: 767px) {
+  .adm-content {
+    padding: 12px;
+  }
+
+  /* 顶栏: 世界名保留,今日 token 次数让位(信息在 Token 用量面板可查) */
+  .adm-status-tok,
+  .adm-head .adm-sep {
+    display: none;
+  }
+
+  .adm-head {
+    gap: 8px;
+  }
+
+  /* 登录卡窄屏收边 */
+  .adm-login-card {
+    width: min(360px, calc(100vw - 32px));
+  }
+
+  /* 素材管理: 左树+右表改上下堆叠,树限高可滚 */
+  .adm-assets-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .adm-assets-tree {
+    width: auto;
+  }
+
+  .adm-assets-tree .ant-tree {
+    max-height: 240px;
+    overflow-y: auto;
+  }
+
+  /* 固定宽工具栏(Select/Input 200~240px)放不下时整件换行 */
+  .adm-shell .ant-space {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  /* Card 头部操作区(extra)与标题并列放不下时换行 */
+  .adm-shell .ant-card-head-wrapper {
+    flex-wrap: wrap;
+  }
 }

@@ -215,7 +215,7 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Descriptions
           size="small"
-          column={2}
+          column={{ xs: 1, sm: 2 }}
           items={[
             { key: 'protocol', label: '接入协议', children: MODEL_PROTOCOL_LABELS[view.protocol] },
             { key: 'model', label: '模型名', children: <MonoValue value={view.model || '(未填写)'} /> },
@@ -264,7 +264,7 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
 
       <Drawer
         title={`编辑 · ${MODEL_SLOT_LABELS[view.slot]}`}
-        width={420}
+        width="min(420px, calc(100vw - 24px))"
         open={editing}
         onClose={() => setEditing(false)}
         footer={

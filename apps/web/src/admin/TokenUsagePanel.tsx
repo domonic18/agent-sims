@@ -273,6 +273,7 @@ export function TokenUsagePanel() {
               columns={callColumns}
               dataSource={summary.topCalls}
               pagination={false}
+              scroll={{ x: 'max-content' }}
               locale={{ emptyText: '窗口内无调用' }}
             />
           </Card>
@@ -325,6 +326,7 @@ export function TokenUsagePanel() {
           columns={callColumns}
           dataSource={entries?.entries ?? []}
           loading={entries === null}
+          scroll={{ x: 'max-content' }}
           locale={{ emptyText: '无匹配记录' }}
           pagination={{
             current: page,
