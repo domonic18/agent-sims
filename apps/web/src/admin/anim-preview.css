@@ -21,14 +21,14 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
-  border-radius: 6px;
+  background: #232741;
+  border: 1px solid #3a4664;
+  border-radius: 0;
 }
 
 .anim-cell-label {
   font-size: 12px;
-  color: #57606a;
+  color: var(--px-dim);
   font-family: monospace;
 }
 

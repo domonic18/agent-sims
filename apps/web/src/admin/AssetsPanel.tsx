@@ -6,6 +6,7 @@ import {
   Card,
   Dropdown,
   Empty,
+  Flex,
   Form,
   Input,
   Modal,
@@ -16,12 +17,15 @@ import {
   Tag,
   Tooltip,
   Tree,
+  Typography,
   type TreeDataNode,
 } from 'antd';
 import {
+  ArrowLeftOutlined,
   CloudUploadOutlined,
   DeleteOutlined,
   EditOutlined,
+  PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
   SearchOutlined,
@@ -77,6 +81,7 @@ export function AssetsPanel() {
   const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
   const [status, setStatus] = useState<AssetStatus | ''>('');
   const [keyword, setKeyword] = useState('');
+  const [treeKeyword, setTreeKeyword] = useState('');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [detail, setDetail] = useState<AssetAdminView | null>(null);
@@ -144,65 +149,101 @@ export function AssetsPanel() {
   }, [refreshOpenIssues]);
 
   const treeData = useMemo<CategoryTreeNode[]>(() => {
+    const kw = treeKeyword.trim().toLowerCase();
     const build = (parentId: number | null): CategoryTreeNode[] =>
       (categories ?? [])
         .filter((cat) => cat.parentId === parentId)
-        .map((cat) => ({
-          key: cat.id,
-          category: cat,
-          title: (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <span>
-                {cat.name}
-                {cat.assetCount > 0 && (
-                  <span style={{ color: '#999', fontSize: 12 }}> ({cat.assetCount})</span>
+        .map((cat): CategoryTreeNode | null => {
+          const children = build(cat.id);
+          // 搜索期前端过滤: 本节点命中或任一后代命中才保留
+          if (kw !== '' && !cat.name.toLowerCase().includes(kw) && children.length === 0) return null;
+          return {
+            key: cat.id,
+            category: cat,
+            title: (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <span>
+                  {cat.name}
+                  {cat.assetCount > 0 && (
+                    <span style={{ color: 'var(--px-dim)', fontSize: 12 }}> ({cat.assetCount})</span>
+                  )}
+                </span>
+                {cat.level < 2 && (
+                  <Tooltip title={`在「${cat.name}」下新增子分类`}>
+                    <Button
+                      type="text"
+                      size="small"
+                      className="adm-tree-plus"
+                      icon={<PlusOutlined style={{ fontSize: 10, color: 'var(--px-dim)' }} />}
+                      style={{ padding: '0 2px', height: 18 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openCategoryModal(cat);
+                      }}
+                    />
+                  </Tooltip>
                 )}
+                <Dropdown
+                  trigger={['click']}
+                  menu={{
+                    items: [
+                      ...(cat.level < 2
+                        ? [
+                            {
+                              key: 'add-child',
+                              icon: <EditOutlined />,
+                              label: '新增子分类',
+                              onClick: () => openCategoryModal(cat),
+                            },
+                          ]
+                        : []),
+                      {
+                        key: 'rename',
+                        icon: <EditOutlined />,
+                        label: '重命名',
+                        onClick: () => openRenameModal(cat),
+                      },
+                      { type: 'divider' as const },
+                      {
+                        key: 'delete',
+                        icon: <DeleteOutlined />,
+                        danger: true,
+                        label: '删除',
+                        onClick: () => confirmDeleteCategory(cat),
+                      },
+                    ],
+                  }}
+                >
+                  <Button
+                    type="text"
+                    size="small"
+                    className="adm-tree-plus"
+                    icon={<span style={{ fontSize: 10, color: 'var(--px-dim)' }}>⋯</span>}
+                    style={{ padding: '0 2px', height: 18 }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </Dropdown>
               </span>
-              <Dropdown
-                trigger={['click']}
-                menu={{
-                  items: [
-                    ...(cat.level < 2
-                      ? [
-                          {
-                            key: 'add-child',
-                            icon: <EditOutlined />,
-                            label: '新增子分类',
-                            onClick: () => openCategoryModal(cat),
-                          },
-                        ]
-                      : []),
-                    {
-                      key: 'rename',
-                      icon: <EditOutlined />,
-                      label: '重命名',
-                      onClick: () => openRenameModal(cat),
-                    },
-                    { type: 'divider' as const },
-                    {
-                      key: 'delete',
-                      icon: <DeleteOutlined />,
-                      danger: true,
-                      label: '删除',
-                      onClick: () => confirmDeleteCategory(cat),
-                    },
-                  ],
-                }}
-              >
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<span style={{ fontSize: 10, color: '#999' }}>⋯</span>}
-                  style={{ padding: '0 2px', height: 18 }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </Dropdown>
-            </span>
-          ),
-          children: build(cat.id),
-        }));
+            ),
+            children,
+          };
+        })
+        .filter((node): node is CategoryTreeNode => node !== null);
     return build(null);
-  }, [categories]);
+  }, [categories, treeKeyword]);
+
+  // 搜索期自动展开全部命中分支;非搜索期交还 Tree 内部展开态
+  const allTreeKeys = useMemo(() => {
+    const acc: number[] = [];
+    const walk = (nodes: CategoryTreeNode[]): void => {
+      nodes.forEach((node) => {
+        acc.push(node.key);
+        walk(node.children as CategoryTreeNode[]);
+      });
+    };
+    walk(treeData);
+    return acc;
+  }, [treeData]);
 
   const openCategoryModal = (parent?: AssetCategoryView): void => {
     setCategoryModal({ parent: parent ?? null });
@@ -416,16 +457,26 @@ export function AssetsPanel() {
         style={{ width: 240, flexShrink: 0 }}
         extra={
           <Tooltip title="新增顶层域">
-            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openCategoryModal()} />
+            <Button type="text" size="small" icon={<PlusOutlined />} onClick={() => openCategoryModal()} />
           </Tooltip>
         }
       >
+        <Input
+          size="small"
+          placeholder="搜索分类"
+          prefix={<SearchOutlined style={{ color: 'var(--px-dim)' }} />}
+          value={treeKeyword}
+          onChange={(e) => setTreeKeyword(e.target.value)}
+          allowClear
+          style={{ marginBottom: 8 }}
+        />
         {categories === null ? (
-          <p style={{ color: '#999' }}>加载中…</p>
+          <p style={{ color: 'var(--px-dim)' }}>加载中…</p>
         ) : (
           <Tree
             blockNode
             defaultExpandAll
+            expandedKeys={treeKeyword.trim() !== '' ? allTreeKeys : undefined}
             selectedKeys={categoryId !== undefined ? [categoryId] : []}
             treeData={treeData}
             onSelect={(keys) => {
@@ -437,45 +488,21 @@ export function AssetsPanel() {
         )}
       </Card>
 
-      <Card
-        size="small"
-        title={showIssues ? '待处理素材问题' : `素材库(${total})`}
-        style={{ flex: 1, minWidth: 0 }}
-        extra={
-          <Space>
-            <Badge count={openCount} size="small" offset={[-4, 0]}>
-              <Button
-                size="small"
-                icon={<WarningOutlined />}
-                type={showIssues ? 'primary' : 'default'}
-                onClick={() => setShowIssues((v) => !v)}
-              >
-                问题清单
-              </Button>
-            </Badge>
-            <Button
-              size="small"
-              icon={<SearchOutlined />}
-              onClick={() => {
-                setPage(1);
-                void load();
-              }}
-            >
-              查询
-            </Button>
-            <Button size="small" icon={<ReloadOutlined />} onClick={() => void load()} />
-            <Popconfirm title="将 active 素材重建发布到游戏产物,继续?" onConfirm={() => void publish()}>
-              <Button size="small" type="primary" icon={<CloudUploadOutlined />}>
-                发布到游戏
-              </Button>
-            </Popconfirm>
-          </Space>
-        }
-      >
+      <Card size="small" title={showIssues ? '待处理素材问题' : `素材库(${total})`} style={{ flex: 1, minWidth: 0 }}>
         {showIssues ? (
-          <Table<AssetIssueView>
+          <>
+            <Flex justify="space-between" align="center" style={{ marginBottom: 12 }}>
+              <Button size="small" icon={<ArrowLeftOutlined />} onClick={() => setShowIssues(false)}>
+                返回素材库
+              </Button>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                待处理 {openCount}
+              </Typography.Text>
+            </Flex>
+            <Table<AssetIssueView>
             rowKey="id"
             size="small"
+            tableLayout="fixed"
             dataSource={issues}
             pagination={false}
             locale={{ emptyText: <Empty description="没有待处理的问题,游戏内「⚠ 报错」上报会汇聚到这里" /> }}
@@ -503,7 +530,7 @@ export function AssetsPanel() {
                   const parts = Object.entries(ctx)
                     .filter(([key]) => key !== 'key')
                     .map(([key, value]) => `${key}=${String(value)}`);
-                  return <span style={{ fontSize: 12, color: '#57606a' }}>{parts.join(' · ') || '—'}</span>;
+                  return <span style={{ fontSize: 12, color: 'var(--px-dim)' }}>{parts.join(' · ') || '—'}</span>;
                 },
               },
               { title: '备注', dataIndex: 'note', ellipsis: true },
@@ -531,67 +558,83 @@ export function AssetsPanel() {
                 ),
               },
             ]}
-          />
+            />
+          </>
         ) : (
           <>
-            <Space style={{ marginBottom: 12 }} wrap>
-          <Select<AssetStatus | ''>
-            style={{ width: 120 }}
-            value={status}
-            onChange={(value) => {
-              setStatus(value);
-              setPage(1);
-            }}
-            options={[
-              { value: '', label: '全部状态' },
-              { value: 'draft', label: '待校验' },
-              { value: 'active', label: '已启用' },
-              { value: 'retired', label: '已下架' },
-            ]}
-          />
-          <Input
-            style={{ width: 200 }}
-            placeholder="名称/slug 搜索"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={() => {
-              setPage(1);
-              void load();
-            }}
-            allowClear
-          />
-          {selectedIds.length > 0 && (
-            <Popconfirm title={`启用选中 ${selectedIds.length} 件?`} onConfirm={() => void bulkStatus('active')}>
-              <Button size="small" type="primary">
-                批量启用({selectedIds.length})
-              </Button>
-            </Popconfirm>
-          )}
-          {selectedIds.length > 0 && (
-            <Button size="small" onClick={() => void bulkStatus('retired')}>
-              批量下架
-            </Button>
-          )}
-          {selectedIds.length > 0 && (
-            <Tooltip title="勾选素材交给视觉模型识别,校验图片与 slug/元数据是否相符(单批最多 10 件)">
-              <Button
-                size="small"
-                icon={<RobotOutlined />}
-                loading={aiRunning}
-                onClick={() => {
-                  const ids = selectedIds.slice(0, 10);
-                  if (selectedIds.length > 10) message.info(`单批最多 10 件,已取前 10 件`);
-                  void runAiReview(ids);
+            <Flex gap={8} wrap="wrap" align="center" style={{ marginBottom: 12 }}>
+              <Input
+                prefix={<SearchOutlined style={{ color: 'var(--px-dim)' }} />}
+                style={{ width: 200 }}
+                placeholder="名称/slug 搜索"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                onPressEnter={() => {
+                  setPage(1);
+                  void load();
                 }}
-              >
-                AI 审核({Math.min(selectedIds.length, 10)})
-              </Button>
-            </Tooltip>
-          )}
-        </Space>
+                allowClear
+              />
+              <Select<AssetStatus | ''>
+                style={{ width: 110 }}
+                value={status}
+                onChange={(value) => {
+                  setStatus(value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: '', label: '全部状态' },
+                  { value: 'draft', label: '待校验' },
+                  { value: 'active', label: '已启用' },
+                  { value: 'retired', label: '已下架' },
+                ]}
+              />
+              {selectedIds.length > 0 && (
+                <>
+                  <Popconfirm title={`启用选中 ${selectedIds.length} 件?`} onConfirm={() => void bulkStatus('active')}>
+                    <Button size="small" type="primary">
+                      启用({selectedIds.length})
+                    </Button>
+                  </Popconfirm>
+                  <Button size="small" onClick={() => void bulkStatus('retired')}>
+                    下架
+                  </Button>
+                  <Tooltip title="勾选素材交给视觉模型识别,校验图片与 slug/元数据是否相符(单批最多 10 件)">
+                    <Button
+                      size="small"
+                      icon={<RobotOutlined />}
+                      loading={aiRunning}
+                      onClick={() => {
+                        const ids = selectedIds.slice(0, 10);
+                        if (selectedIds.length > 10) message.info(`单批最多 10 件,已取前 10 件`);
+                        void runAiReview(ids);
+                      }}
+                    >
+                      AI 审核({Math.min(selectedIds.length, 10)})
+                    </Button>
+                  </Tooltip>
+                  <Button size="small" type="text" onClick={() => setSelectedIds([])}>
+                    取消选择
+                  </Button>
+                </>
+              )}
+              <div style={{ flex: 1 }} />
+              <Badge count={openCount} size="small" offset={[-4, 0]}>
+                <Button size="small" icon={<WarningOutlined />} onClick={() => setShowIssues(true)}>
+                  问题单
+                </Button>
+              </Badge>
+              <Popconfirm title="将 active 素材重建发布到游戏产物,继续?" onConfirm={() => void publish()}>
+                <Button size="small" type="primary" icon={<CloudUploadOutlined />}>
+                  发布到游戏
+                </Button>
+              </Popconfirm>
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => void load()} />
+            </Flex>
         <Table<AssetAdminView>
           rowKey="id"
           size="small"
+          tableLayout="fixed"
           loading={loading}
           dataSource={items}
           rowSelection={{
@@ -614,7 +657,7 @@ export function AssetsPanel() {
                 thumbUrls[record.id] !== undefined ? (
                   <GridPreview asset={record} url={thumbUrls[record.id]!} scale={1.5} />
                 ) : (
-                  <span style={{ color: '#ccc', fontSize: 12 }}>…</span>
+                  <span style={{ color: 'var(--px-dim)', fontSize: 12 }}>…</span>
                 ),
             },
             { title: '名称', dataIndex: 'name', width: 120 },
@@ -684,10 +727,10 @@ export function AssetsPanel() {
         onOk={() => void submitCategory()}
         okText="创建"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
       >
         {categoryModal?.parent !== undefined && categoryModal?.parent !== null && (
-          <p style={{ fontSize: 12, color: '#57606a' }}>
+          <p style={{ fontSize: 12, color: 'var(--px-dim)' }}>
             父分类: {categoryModal.parent.name}(slug 创建后不可改)
           </p>
         )}

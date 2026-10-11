@@ -80,15 +80,15 @@ function TrendChart(props: { summary: TokenUsageSummary }) {
             style={{
               flex: 1,
               height: point.totalTokens > 0 ? `${Math.max((point.totalTokens / max) * 100, 3)}%` : 2,
-              background: point.totalTokens > 0 ? '#6366f1' : '#f0f0f0',
-              borderRadius: '2px 2px 0 0',
+              background: point.totalTokens > 0 ? 'var(--px-gold)' : 'var(--px-navy)',
+              borderRadius: 0,
             }}
           />
         ))}
       </Flex>
       <Flex gap={3} style={{ marginTop: 6 }}>
         {trend.map((point, index) => (
-          <span key={point.bucket} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: '#8c8c8c' }}>
+          <span key={point.bucket} style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'var(--px-dim)' }}>
             {index % labelStep === 0 ? (hourly ? `${point.bucket.slice(11, 13)}时` : point.bucket.slice(5)) : ''}
           </span>
         ))}
@@ -113,8 +113,8 @@ function DistList(props: {
           窗口内无调用
         </Typography.Text>
       )}
-      {rows.map((row) => (
-        <Flex align="center" gap={8} key={row.label} style={{ margin: '7px 0' }}>
+      {rows.map((row, index) => (
+        <Flex align="center" gap={8} key={`${row.label}:${index}`} style={{ margin: '7px 0' }}>
           <Typography.Text ellipsis style={{ flexShrink: 0, width: 110, fontSize: 12 }} title={row.label}>
             {row.label}
           </Typography.Text>

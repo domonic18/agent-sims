@@ -159,7 +159,7 @@ function JsonBlock(props: { label: string; value: unknown }) {
   if (text === '{}' || text === '[]') return null;
   return (
     <details style={{ marginTop: 4 }}>
-      <summary style={{ cursor: 'pointer', fontSize: 12, color: '#57606a' }}>{props.label}</summary>
+      <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--px-dim)' }}>{props.label}</summary>
       <pre
         style={{
           margin: '4px 0 0',

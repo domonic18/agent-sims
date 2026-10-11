@@ -39,7 +39,7 @@ export function WorldParamsCollapse({ busy }: { busy: boolean }) {
                   </Row>
                 </div>
               ))}
-              <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--px-dim)' }}>
                 参数随本世界创建定格并随 config 存档;运行中修改请到 /lab 调试台控制面板。
               </p>
             </>

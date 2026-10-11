@@ -151,7 +151,7 @@ export function AgentTracePanel() {
           </Typography.Text>
         )}
       </Space>
-      <div style={{ fontSize: 12, color: '#57606a' }}>{`理由:${want.why}`}</div>
+      <div style={{ fontSize: 12, color: 'var(--px-dim)' }}>{`理由:${want.why}`}</div>
       <div style={{ fontSize: 12, color: '#8b949e' }}>
         <Typography.Text code style={{ fontSize: 12 }}>
           {want.id}
@@ -245,7 +245,7 @@ export function AgentTracePanel() {
         title="决策时间线(每个时刻在想什么、做什么)"
         extra={
           <Space wrap size={8}>
-            <span style={{ fontSize: 12, color: '#57606a' }}>10s 轮询</span>
+            <span style={{ fontSize: 12, color: 'var(--px-dim)' }}>10s 轮询</span>
             <Switch size="small" checked={autoPoll} onChange={setAutoPoll} />
           </Space>
         }

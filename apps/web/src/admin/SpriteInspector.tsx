@@ -74,7 +74,7 @@ export function SpriteInspector({
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-        <span style={{ fontSize: 12, color: '#57606a' }}>放大</span>
+        <span style={{ fontSize: 12, color: 'var(--px-dim)' }}>放大</span>
         <Slider
           style={{ flex: 1, margin: 0 }}
           min={1}
@@ -100,9 +100,9 @@ export function SpriteInspector({
       <div
         style={{
           background:
-            'repeating-conic-gradient(#e8e8e8 0% 25%, #f6f6f6 0% 50%) 0 0 / 16px 16px',
-          border: '1px solid #d9d9d9',
-          borderRadius: 4,
+            'repeating-conic-gradient(#232741 0% 25%, #2b3153 0% 50%) 0 0 / 16px 16px',
+          border: '1px solid #3a4664',
+          borderRadius: 0,
           display: 'flex',
           justifyContent: 'center',
           padding: 8,
@@ -110,7 +110,7 @@ export function SpriteInspector({
       >
         <canvas ref={canvasRef} style={{ maxWidth: '100%', imageRendering: 'pixelated' }} />
       </div>
-      <div style={{ fontSize: 12, color: '#57606a', marginTop: 4 }}>
+      <div style={{ fontSize: 12, color: 'var(--px-dim)', marginTop: 4 }}>
         {width}×{height}px
       </div>
     </div>

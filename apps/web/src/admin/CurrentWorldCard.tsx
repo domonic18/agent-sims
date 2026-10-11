@@ -95,7 +95,7 @@ export function CurrentWorldCard({
         <Space wrap>
           <strong>{active.name}</strong>
           <Tag color="success">运行中</Tag>
-          <span style={{ fontSize: 12, color: '#8c8c8c' }}>创建于 {formatTime(active.createdAt)}</span>
+          <span style={{ fontSize: 12, color: 'var(--px-dim)' }}>创建于 {formatTime(active.createdAt)}</span>
         </Space>
         <List
           size="small"
@@ -105,7 +105,7 @@ export function CurrentWorldCard({
             <List.Item style={{ padding: '2px 0' }}>
               <span>
                 {c.name}
-                <small style={{ color: '#8c8c8c' }}>
+                <small style={{ color: 'var(--px-dim)' }}>
                   {' '}
                   · {GENDER_LABELS[c.gender]}
                   {c.persona ? ` · ${c.persona}` : ''}

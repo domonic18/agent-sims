@@ -206,7 +206,7 @@ export function WorldPanel() {
       title: '时间',
       width: 320,
       render: (_, w) => (
-        <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+        <span style={{ fontSize: 12, color: 'var(--px-dim)' }}>
           {formatTime(w.createdAt)}
           {w.closedAt ? ` → ${formatTime(w.closedAt)}` : ''}
         </span>
@@ -235,24 +235,24 @@ export function WorldPanel() {
     <Flex vertical gap={16}>
       {error && <Alert type="error" showIcon message={error} />}
 
-      <Card title="当前世界">
-        {active === null ? (
+      {active === null ? (
+        <Card title="当前世界">
           <Empty description="暂无活跃世界——用下方表单创建一个" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-        ) : (
-          <CurrentWorldCard
-            active={active}
-            busy={busy}
-            onClose={() => void close(active.id)}
-            onAdded={() => void load()}
-          />
-        )}
-      </Card>
+        </Card>
+      ) : (
+        <CurrentWorldCard
+          active={active}
+          busy={busy}
+          onClose={() => void close(active.id)}
+          onAdded={() => void load()}
+        />
+      )}
 
       <Card
         title="创建新世界"
         styles={{ body: { paddingTop: 12 } }}
         extra={
-          <span style={{ fontSize: 12, color: '#8c8c8c' }}>
+          <span style={{ fontSize: 12, color: 'var(--px-dim)' }}>
             创建会归档当前世界并重置小镇(人物/坐标/时钟全部重新开始)
           </span>
         }
@@ -329,7 +329,7 @@ export function WorldPanel() {
                       </Form.Item>
                     </>
                   ) : (
-                    <p style={{ margin: '0 0 8px', fontSize: 12, color: '#8c8c8c' }}>
+                    <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--px-dim)' }}>
                       使用固定经典小镇地图,与历史版本一致。
                     </p>
                   )
@@ -357,7 +357,7 @@ export function WorldPanel() {
           {step === 2 && (
             <>
           <Flex align="center" justify="space-between" style={{ marginBottom: 8 }}>
-            <span style={{ color: '#57606a', fontSize: 13 }}>居民</span>
+            <span style={{ color: 'var(--px-dim)', fontSize: 13 }}>居民</span>
             <Space>
               <Button size="small" icon={<ThunderboltOutlined />} disabled={busy} onClick={randomizeAll}>
                 一键随机名字
@@ -492,7 +492,7 @@ export function WorldPanel() {
                 <InputNumber min={0} max={3650} precision={0} disabled={busy} style={{ width: 90 }} />
               </Form.Item>
             </Flex>
-            <p style={{ margin: '8px 0 0', fontSize: 12, color: '#8c8c8c' }}>
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--px-dim)' }}>
               规则随本世界创建定格:关闭死亡后体力归 0 只会躺平不会死;关闭聊天后角色聊天指令将被拒绝;运行上限到点自动暂停,可在世界设置中改限续跑。
             </p>
           </Card>
@@ -505,7 +505,7 @@ export function WorldPanel() {
               {({ getFieldValue }) => {
                 if (getFieldValue('mode') !== 'random') {
                   return (
-                    <p style={{ margin: '0 0 8px', fontSize: 13, color: '#8c8c8c' }}>
+                    <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--px-dim)' }}>
                       固定地图无需种子,直接下一步确认创建。
                     </p>
                   );
@@ -560,7 +560,7 @@ export function WorldPanel() {
                         <p style={{ margin: '0 0 4px', fontSize: 12 }}>
                           场所: {preview.report.places.map((place) => `${place.name}(${place.w}×${place.h})`).join('、')}
                         </p>
-                        <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>
+                        <p style={{ margin: 0, fontSize: 12, color: 'var(--px-dim)' }}>
                           校验: 连通 {String(preview.report.checks.connectivity)} / 锚点齐备{' '}
                           {String(preview.report.checks.anchorsComplete)};素材清单版本 {preview.report.manifestVersion}
                         </p>
@@ -583,7 +583,7 @@ export function WorldPanel() {
                       世界「{getFieldValue('name')}」 · {mode === 'random' ? '随机地图' : '固定地图'}
                       {mode === 'random' ? ` · 种子 ${getFieldValue('seed') || '(自动)'}` : ''}
                     </p>
-                    <p style={{ margin: 0, fontSize: 12, color: '#8c8c8c' }}>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--px-dim)' }}>
                       居民 {rows.length} 人:{rows.map((row) => row.name || '?').join('、') || '(待填)'}
                     </p>
                   </Card>

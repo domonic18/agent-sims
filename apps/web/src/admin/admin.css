@@ -33,6 +33,32 @@
   box-shadow: none;
 }
 
+/* ---- 模型槽位总览芯片 ---- */
+.adm-slot-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--px-ink);
+  border: 1px solid var(--px-slate);
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.adm-slot-chip:hover {
+  border-color: var(--px-gold);
+}
+
+/* ---- 素材分类树: hover 才现的「+/⋯」操作钮 ---- */
+.adm-tree-plus {
+  visibility: hidden;
+}
+
+.ant-tree-node-content-wrapper:hover .adm-tree-plus {
+  visibility: visible;
+}
+
 /* ---- Card 标题左侧金色仪表条 ---- */
 .adm-shell .ant-card-head-title {
   position: relative;

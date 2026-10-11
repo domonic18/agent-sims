@@ -10,7 +10,7 @@ export function GridPreview({ asset, url, scale }: { asset: AssetAdminView; url:
   const left = asset.anchor === 'top-left' ? 0 : (w - gw) / 2;
   const top = asset.anchor === 'top-left' ? 0 : h - gh;
   return (
-    <div style={{ position: 'relative', width: w, height: h, flex: 'none' }}>
+    <div style={{ position: 'relative', width: w, height: h, flex: 'none', border: '2px solid var(--px-slate)' }}>
       <img src={url} width={w} height={h} alt={asset.slug} style={{ imageRendering: 'pixelated', display: 'block' }} />
       <div
         style={{

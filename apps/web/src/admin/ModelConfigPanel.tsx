@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   Alert,
   App as AntdApp,
   Button,
   Card,
   Descriptions,
+  Drawer,
   Flex,
   Input,
   InputNumber,
@@ -12,6 +13,7 @@ import {
   Space,
   Switch,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd';
 import {
@@ -49,6 +51,54 @@ function MonoValue({ value }: { value: string }) {
     <Typography.Text code style={{ fontSize: 12 }} ellipsis={{ tooltip: value }}>
       {value}
     </Typography.Text>
+  );
+}
+
+/** 测试/试调用结果区: 终端风固定高度(等宽+ink 底),替代原双 Alert */
+function SlotResultArea({
+  testResult,
+  invokeResult,
+}: {
+  testResult: ModelConfigTestResult | null;
+  invokeResult: ModelConfigInvokeResult | null;
+}) {
+  if (testResult === null && invokeResult === null) return null;
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        background: 'var(--px-ink)',
+        border: '1px solid var(--px-navy)',
+        padding: '8px 10px',
+        maxHeight: 180,
+        overflow: 'auto',
+        fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+        fontSize: 12,
+        lineHeight: 1.7,
+      }}
+    >
+      {testResult !== null && (
+        <div style={{ color: testResult.ok ? 'var(--px-lime)' : 'var(--px-orange)' }}>
+          [测试] {testResult.ok ? '成功' : '失败'} · {testResult.latencyMs}ms
+          {testResult.detail ? ` · ${testResult.detail}` : ''}
+        </div>
+      )}
+      {invokeResult !== null && (
+        <>
+          <div style={{ color: invokeResult.ok ? 'var(--px-lime)' : 'var(--px-orange)' }}>
+            [试调用] {invokeResult.ok ? '成功' : '失败'} · {invokeResult.latencyMs}ms
+            {invokeResult.usage
+              ? ` · tokens ${invokeResult.usage.promptTokens}/${invokeResult.usage.completionTokens}`
+              : ''}
+          </div>
+          {(invokeResult.ok ? invokeResult.content ?? invokeResult.detail : invokeResult.detail) && (
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--px-gray)' }}>
+              {invokeResult.ok ? invokeResult.content ?? invokeResult.detail : invokeResult.detail}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -148,15 +198,84 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
 
   return (
     <Card
+      id={`slot-card-${view.slot}`}
       title={
         <Space size={8}>
           <span>{MODEL_SLOT_LABELS[view.slot]}</span>
           <Tag color={tag.color}>{tag.text}</Tag>
         </Space>
       }
-      style={{ flex: '1 1 420px' }}
+      extra={
+        <Button size="small" onClick={startEdit}>
+          编辑
+        </Button>
+      }
+      style={{ flex: '1 1 420px', scrollMarginTop: 12 }}
     >
-      {editing ? (
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        <Descriptions
+          size="small"
+          column={2}
+          items={[
+            { key: 'protocol', label: '接入协议', children: MODEL_PROTOCOL_LABELS[view.protocol] },
+            { key: 'model', label: '模型名', children: <MonoValue value={view.model || '(未填写)'} /> },
+            { key: 'baseUrl', label: 'Base URL', span: 2, children: <MonoValue value={view.baseUrl || '(未填写)'} /> },
+            ...(supportsMaxTokens
+              ? [
+                  {
+                    key: 'maxTokens',
+                    label: '最大输出 tokens',
+                    children: view.maxTokens ?? `内置默认 ${defaultMaxTokens}`,
+                  },
+                ]
+              : []),
+            {
+              key: 'apiKey',
+              label: 'API Key',
+              children: <MonoValue value={view.apiKeyConfigured ? view.apiKeyMasked : '未配置'} />,
+            },
+            {
+              key: 'lastTest',
+              label: '上次测试',
+              span: supportsMaxTokens ? 2 : 1,
+              children: view.lastTestStatus
+                ? `${view.lastTestStatus === 'success' ? '成功' : '失败'}${view.lastTestedAt ? ` · ${new Date(view.lastTestedAt).toLocaleString()}` : ''}`
+                : '未测试',
+            },
+          ]}
+        />
+        <Flex gap={8} wrap="wrap">
+          <Input
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={isEmbedding ? '试调用输入(向量化)' : '试调用 Prompt(留空用默认)'}
+            style={{ flex: 1, minWidth: 140 }}
+          />
+          <Button loading={testing} onClick={() => void handleTest()}>
+            测试连通
+          </Button>
+          <Button type="primary" ghost loading={invoking} onClick={() => void handleInvoke()}>
+            试调用
+          </Button>
+        </Flex>
+      </Space>
+
+      <SlotResultArea testResult={testResult} invokeResult={invokeResult} />
+
+      <Drawer
+        title={`编辑 · ${MODEL_SLOT_LABELS[view.slot]}`}
+        width={420}
+        open={editing}
+        onClose={() => setEditing(false)}
+        footer={
+          <Flex justify="flex-end" gap={8}>
+            <Button onClick={() => setEditing(false)}>取消</Button>
+            <Button type="primary" loading={saving} onClick={() => void handleSave()}>
+              保存
+            </Button>
+          </Flex>
+        }
+      >
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           {allowedProtocols.length > 1 && (
             <label style={{ display: 'block' }}>
@@ -232,89 +351,8 @@ function SlotCard({ view, onChanged }: SlotCardProps) {
             <Switch size="small" checked={enabled} onChange={setEnabled} disabled={saving} />
             <Typography.Text style={{ fontSize: 13 }}>启用该槽位</Typography.Text>
           </Space>
-          <Space>
-            <Button type="primary" loading={saving} onClick={() => void handleSave()}>
-              保存
-            </Button>
-            <Button onClick={() => setEditing(false)}>取消</Button>
-          </Space>
         </Space>
-      ) : (
-        <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Descriptions size="small" column={1} items={[
-            { key: 'protocol', label: '接入协议', children: MODEL_PROTOCOL_LABELS[view.protocol] },
-            { key: 'baseUrl', label: 'Base URL', children: <MonoValue value={view.baseUrl || '(未填写)'} /> },
-            { key: 'model', label: '模型名', children: <MonoValue value={view.model || '(未填写)'} /> },
-            ...(supportsMaxTokens
-              ? [
-                  {
-                    key: 'maxTokens',
-                    label: '最大输出 tokens',
-                    children: view.maxTokens ?? `内置默认 ${defaultMaxTokens}`,
-                  },
-                ]
-              : []),
-            { key: 'apiKey', label: 'API Key', children: <MonoValue value={view.apiKeyConfigured ? view.apiKeyMasked : '未配置'} /> },
-            {
-              key: 'lastTest',
-              label: '上次测试',
-              children: view.lastTestStatus
-                ? `${view.lastTestStatus === 'success' ? '成功' : '失败'}${view.lastTestedAt ? ` · ${new Date(view.lastTestedAt).toLocaleString()}` : ''}`
-                : '未测试',
-            },
-          ]}
-          />
-          <label style={{ display: 'block' }}>
-            <Typography.Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 4 }}>
-              试调用 Prompt{isEmbedding ? '(向量化输入)' : '(留空用默认)'}
-            </Typography.Text>
-            <Input
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="用一句话介绍你自己"
-            />
-          </label>
-          <Space>
-            <Button onClick={startEdit}>编辑</Button>
-            <Button loading={testing} onClick={() => void handleTest()}>
-              测试连通
-            </Button>
-            <Button type="primary" ghost loading={invoking} onClick={() => void handleInvoke()}>
-              试调用
-            </Button>
-          </Space>
-        </Space>
-      )}
-
-      {testResult && (
-        <Alert
-          style={{ marginTop: 12 }}
-          type={testResult.ok ? 'success' : 'error'}
-          showIcon
-          message={`测试(${testResult.latencyMs}ms)`}
-          description={testResult.detail}
-        />
-      )}
-      {invokeResult && (
-        <Alert
-          style={{ marginTop: 12 }}
-          type={invokeResult.ok ? 'success' : 'error'}
-          showIcon
-          message={`试调用(${invokeResult.latencyMs}ms)${invokeResult.usage ? ` · tokens ${invokeResult.usage.promptTokens}/${invokeResult.usage.completionTokens}` : ''}`}
-          description={
-            invokeResult.ok ? (
-              <Typography.Paragraph
-                code
-                style={{ maxHeight: 140, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginBottom: 0 }}
-              >
-                {invokeResult.content ?? invokeResult.detail}
-              </Typography.Paragraph>
-            ) : (
-              invokeResult.detail
-            )
-          }
-        />
-      )}
+      </Drawer>
     </Card>
   );
 }
@@ -324,8 +362,40 @@ interface ModelConfigPanelProps {
   onChanged: () => void;
 }
 
+/** 总览条槽位芯片: 状态点(灰未启/红测败/绿正常)+模型名缩略,点击滚动定位到卡片 */
+function SlotChip({ view }: { view: ModelConfigView }) {
+  const tag = statusTag(view);
+  const dotColor =
+    tag.color === 'success' ? 'var(--px-lime)' : tag.color === 'error' ? 'var(--px-orange)' : 'var(--px-slate)';
+  return (
+    <Tooltip title={`${MODEL_SLOT_LABELS[view.slot]} · ${tag.text}`}>
+      <button
+        type="button"
+        className="adm-slot-chip"
+        onClick={() =>
+          document.getElementById(`slot-card-${view.slot}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      >
+        <i style={{ width: 8, height: 8, background: dotColor, flexShrink: 0 }} />
+        <span style={{ color: 'var(--px-white)' }}>{MODEL_SLOT_LABELS[view.slot]}</span>
+        <span
+          style={{
+            maxWidth: 120,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            color: 'var(--px-gray)',
+          }}
+        >
+          {view.model || '未配置'}
+        </span>
+      </button>
+    </Tooltip>
+  );
+}
+
 /** 游戏页左下角模型徽标开关(app_settings ui.showModels,公开 GET 读/此处 PUT 写) */
-function UiBadgeCard() {
+function UiBadgeSwitch() {
   const { message } = AntdApp.useApp();
   const [uiMeta, setUiMeta] = useState<UiMetaView | null>(null);
   const [saving, setSaving] = useState(false);
@@ -355,19 +425,14 @@ function UiBadgeCard() {
   };
 
   return (
-    <Card size="small" title="游戏页模型徽标">
-      <Space size={12}>
-        <Switch
-          size="small"
-          checked={uiMeta?.showModels === true}
-          loading={saving}
-          onChange={(v) => void toggle(v)}
-        />
-        <Typography.Text style={{ fontSize: 13 }}>
-          在游戏页左下角向游客展示当前 LLM / SystemOne 模型名
+    <Space size={8}>
+      <Switch size="small" checked={uiMeta?.showModels === true} loading={saving} onChange={(v) => void toggle(v)} />
+      <Tooltip title="在游戏页左下角向游客展示当前 LLM / SystemOne 模型名">
+        <Typography.Text type="secondary" style={{ fontSize: 12, cursor: 'help' }}>
+          游戏页模型徽标
         </Typography.Text>
-      </Space>
-    </Card>
+      </Tooltip>
+    </Space>
   );
 }
 
@@ -384,7 +449,22 @@ export function ModelConfigPanel({ configs, onChanged }: ModelConfigPanelProps) 
 
   return (
     <Flex vertical gap={24}>
-      <UiBadgeCard />
+      <Card size="small">
+        <Flex align="center" gap={8} wrap="wrap">
+          {MODEL_SLOT_GROUPS.map((group) => (
+            <Fragment key={group.id}>
+              <Typography.Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>
+                {group.label}
+              </Typography.Text>
+              {group.slots.map((slot) => (
+                <SlotChip key={slot} view={views[slot]!} />
+              ))}
+            </Fragment>
+          ))}
+          <div style={{ flex: 1 }} />
+          <UiBadgeSwitch />
+        </Flex>
+      </Card>
       {MODEL_SLOT_GROUPS.map((group) => (
         <Card
           key={group.id}
