@@ -8,6 +8,7 @@ import {
   getItem,
   getRecipe,
   isLeaseValid,
+  isInPlace,
   JOB_CATEGORIES,
   getPropertyDefinition,
   ITEMS,
@@ -687,8 +688,13 @@ function onSpot(char: WorldCharacter, spots: Array<{ x: number; y: number }>): b
   return spots.some((s) => s.x === char.x && s.y === char.y);
 }
 
+/** 在位判定统一走官方原子:ref 先解析实例(kind 前缀写法解析到具体场所),
+ * 再用 isInPlace(矩形内或入口格)判定——勿自行比对 findPlaceAt 的实例 id */
 function inAnyPlace(map: TileMapDefinition, char: WorldCharacter, placeIds: readonly string[]): boolean {
-  return placeIds.some((id) => findPlaceAt(map, char.x, char.y)?.id === id);
+  return placeIds.some((id) => {
+    const place = findPlaceByRef(map, id);
+    return place !== null && isInPlace(place, char.x, char.y);
+  });
 }
 
 function hasAnyPlace(map: TileMapDefinition, placeIds: readonly string[]): boolean {

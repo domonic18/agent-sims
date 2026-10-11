@@ -1,4 +1,4 @@
-import { TOWN_MAP, SHOP_ITEMS } from '@sims/shared';
+import { TOWN_MAP, SHOP_ITEMS, findPlaceByRef, type TileMapDefinition } from '@sims/shared';
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../config/balance.js';
 import type { WorldCharacter } from '../world/character.js';
@@ -419,6 +419,30 @@ describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', 
     const flipped = wantSelect(char({}), day, 1, TOWN_MAP, anchorsOf, { study: -1, stroll: 1 });
     expect(flipped!.wantId).toBe('w1-0');
     expect(flipped!.intent?.type).toBe('move_to');
+  });
+
+  it('ref 写法在位判定(stroll 死锁回归):实例 id 带 kind 后缀,入口格仍就地 start_activity', () => {
+    // 生产 worldgen 场所实例 id 带 kind 后缀(park→park-a):旧 inAnyPlace 拿 ref 直比
+    // 实例 id 恒 false,活动「到得了门口却永远不算在园内」空转——回归:ref 解析+isInPlace
+    const instanced: TileMapDefinition = {
+      ...TOWN_MAP,
+      places: TOWN_MAP.places.map((p) => (p.id === 'park' ? { ...p, id: 'park-a' } : p)),
+    };
+    const park = findPlaceByRef(instanced, 'park')!;
+    expect(park.id).toBe('park-a');
+    const day = intents(1, [{ activityId: 'stroll', urgency: 0.9, why: '去公园走走' }]);
+    const at = wantSelect(
+      char({ x: park.entrance.x, y: park.entrance.y }),
+      day,
+      1,
+      instanced,
+      anchorsOf,
+    );
+    expect(at!.intent).toEqual({
+      type: 'start_activity',
+      characterId: 'char-1',
+      activityId: 'stroll',
+    });
   });
 
   it('doing 粘性:进行中的 want 仍是候选(被打断后可续)', () => {
