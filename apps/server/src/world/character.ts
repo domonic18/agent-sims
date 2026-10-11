@@ -136,7 +136,7 @@ export function reviveCharacter(
   character: WorldCharacter,
   source: 'rescue' | 'debug' | 'timeout',
 ): void {
-  const injuryWake = sim.gameType === 'survival' && source === 'timeout';
+  const injuryWake = sim.profile.sim.injuryWakeToRecoverLine && source === 'timeout';
   character.alive = true;
   character.collapsed = false;
   character.energy = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.REVIVE_ENERGY;

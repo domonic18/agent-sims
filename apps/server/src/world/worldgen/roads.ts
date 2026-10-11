@@ -7,8 +7,8 @@ export const PLAZA_TILE = 'tile-plaza';
 /**
  * 蜿蜒路网:中心广场(边长 4~6,随机偏移 ±2)+ 四方向随机游走延伸——段宽 2/段长 3~6,
  * 折弯垂直偏移 2~4(连接段锚定刚铺段前端 2 格,路网必连通),距边 4~6 停;
- * 短枝路自随机已铺段垂直引出(长 5~10)。growth 折弯 30%/枝路 1-2-4 不变;
- * survival 降折弯(12%)/减枝路(0-1-2)——镇内核心容量吃紧,整片内圈不被
+ * 短枝路自随机已铺段垂直引出(长 5~10)。默认折弯 30%/枝路 1-2-4 不变;
+ * compact(紧凑档)降折弯(12%)/减枝路(0-1-2)——镇内核心容量吃紧,整片内圈不被
  * 折弯带切碎是 essential 场所撒放前提(M-S/S1.5)。
  */
 export function buildRoadNetwork(
@@ -16,10 +16,10 @@ export function buildRoadNetwork(
   width: number,
   height: number,
   densityIndex: number,
-  survival: boolean,
+  compact: boolean,
 ): { rects: BlockedRect[]; plaza: BlockedRect } {
   const rects: BlockedRect[] = [];
-  const bendChance = survival ? 0.12 : 0.3;
+  const bendChance = compact ? 0.12 : 0.3;
   const plazaSize = rng.int(4, 6);
   const plaza: BlockedRect = {
     x: Math.floor(width / 2) + rng.int(-2, 2) - Math.floor(plazaSize / 2),
@@ -75,7 +75,7 @@ export function buildRoadNetwork(
     }
   }
   // 短枝路:自随机已铺段(含广场)垂直引出,长 5~10,越界侧自动改向
-  const branchCount = survival ? [0, 1, 2][densityIndex] ?? 1 : [1, 2, 4][densityIndex] ?? 2;
+  const branchCount = compact ? [0, 1, 2][densityIndex] ?? 1 : [1, 2, 4][densityIndex] ?? 2;
   for (let i = 0; i < branchCount; i += 1) {
     const base = rng.pick(rects);
     const len = rng.int(5, 10);

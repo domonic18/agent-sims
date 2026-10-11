@@ -46,6 +46,7 @@ import {
   type WorldCharacter,
 } from './character.js';
 import { EventBus } from './event-bus.js';
+import { getGameModeProfile, type GameModeProfile } from './game-mode.js';
 import { requestCraft } from './craft.js';
 import { buyProperty, rentProperty } from './housing.js';
 import { buyItem, eatItem, sellItem, storeItem, takeItem } from './inventory.js';
@@ -128,8 +129,10 @@ export class Simulation {
    * admin 配方页运行时改写 live 生效(不追溯在制单,退料/产出凭 activity 快照);
    * reset 回出厂默认。craft/活动门槛/时长/场所/产出全部读本表 */
   recipes: Record<CraftRecipeId, RecipeDef> = defaultRecipes();
-  /** 游戏模式(M-S/S1):survival 启用生存健康数值;创建/恢复世界时注入,reset 回 growth */
+  /** 游戏模式(M-S/S1):survival 启用生存健康数值;创建/恢复世界时注入,reset 回 growth。
+   * 模式差异本体在 profile(注册表声明),gameType 仅协议透传;两者经 setGameMode 同步 */
   gameType: GameType = 'growth';
+  profile: GameModeProfile = getGameModeProfile('growth');
   /** 随机源(损耗生成器 roll;默认 Math.random,测试注入确定性实现) */
   readonly rng: RandomFn;
   /** 路上相遇同对冷却(E8):pairKey → 上次触发 gameMinutes,冷却外且进入贴身带才发事件 */
@@ -149,6 +152,12 @@ export class Simulation {
   setMap(definition: TileMapDefinition): void {
     this._map = TileMap.fromDefinition(definition);
     this._rebuildResourceNodes();
+  }
+
+  /** 切游戏模式:gameType(协议)与 profile(行为)同源更新,未注册即抛 */
+  setGameMode(gameType: GameType): void {
+    this.gameType = gameType;
+    this.profile = getGameModeProfile(gameType);
   }
 
   advanceTicks(n: number): void {
@@ -189,7 +198,7 @@ export class Simulation {
     this.timeScale = BALANCE.DEFAULT_TIME_SCALE;
     this.rules = { ...DEFAULT_WORLD_RULES };
     this.recipes = defaultRecipes();
-    this.gameType = 'growth';
+    this.setGameMode('growth');
     const event: WorldResetEvent = { type: 'world.reset', tick: this.tick };
     this.events.emit(event);
     this._emitControl();
@@ -470,7 +479,7 @@ export class Simulation {
     this.clock.restore(archive.clockGameMinutes);
     this.paused = archive.paused;
     this.timeScale = archive.timeScale;
-    this.gameType = archive.gameType;
+    this.setGameMode(archive.gameType);
     // 旧档 rules 缺字段(如 maxGameDays)时兜底默认值,与 normalizeRules 同语义
     this.rules = {
       ...DEFAULT_WORLD_RULES,
@@ -589,8 +598,8 @@ export class Simulation {
           }
         }
       }
-      // 生存健康(M-S/S1):仅 survival 有压力源;置于死亡判定前,健康归零当分钟入重伤
-      if (this.gameType === 'survival') {
+      // 生存健康(M-S/S1):profile.healthTick 开启才有压力源;置于死亡判定前,健康归零当分钟入重伤
+      if (this.profile.sim.healthTick) {
         applyHealthTick(character);
       }
       this._checkDeath(character);

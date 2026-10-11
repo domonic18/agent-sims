@@ -2,11 +2,11 @@ import {
   solidDecorRect,
   type BlockedRect,
   type DecorEntry,
-  type GameType,
   type PlaceDefinition,
   type ResourceNodeSeed,
   type TileMapDefinition,
 } from '@sims/shared';
+import type { DecorModeOptions } from '../game-mode.js';
 import { DECOR_POOLS } from './blueprint.js';
 import { cellKey, mark0 } from './grid.js';
 import { Rng } from './prng.js';
@@ -24,7 +24,7 @@ export function buildDecor(
   width: number,
   height: number,
   densityIndex: number,
-  gameType: GameType,
+  worldgen: DecorModeOptions,
   places: PlaceDefinition[],
   paths: BlockedRect[],
   plaza: BlockedRect,
@@ -100,8 +100,8 @@ export function buildDecor(
     x >= 1 && y >= 1 && x <= width - 2 && y <= height - 2 &&
     !taken.has(cellKey(x, y)) && !noGo.has(cellKey(x, y)) && !inAnyPlace(x, y);
 
-  // pass1 街道:沿路段间隔一侧落路灯(survival 更稀疏,荒凉感;30% 换街具),广场四角灯
-  const [lampGapMin, lampGapMax] = gameType === 'survival' ? [18, 27] : [12, 18];
+  // pass1 街道:沿路段间隔一侧落路灯(lampGap 由 profile 声明,稀疏档荒凉感;30% 换街具),广场四角灯
+  const [lampGapMin, lampGapMax] = worldgen.lampGap;
   for (const road of paths) {
     if (road === plaza) continue;
     const horizontal = road.h <= road.w;
@@ -123,13 +123,13 @@ export function buildDecor(
     if (free(cx2, cy2)) addStanding(cx2, cy2, 'lamp');
   }
 
-  // pass2 宅前庭院:有门场所门前三邻(先跑,再补入口门邻域禁放;survival 减半显荒凉)
+  // pass2 宅前庭院:有门场所门前三邻(先跑,再补入口门邻域禁放;flowerSkipChance 跳过显荒凉)
   for (const place of places) {
     if (place.door === undefined) continue;
     const e = place.entrance;
     const n = rng.int(1, 3);
     for (let i = 0; i < n; i += 1) {
-      if (gameType === 'survival' && !rng.chance(0.5)) continue;
+      if (worldgen.flowerSkipChance !== null && !rng.chance(worldgen.flowerSkipChance)) continue;
       const x = e.x + rng.pick([-2, -1, 1, 2]);
       const y = e.y + (rng.chance(0.3) ? rng.int(0, 1) : 0);
       if (x === e.x && y === e.y) continue;
@@ -197,9 +197,9 @@ export function buildDecor(
     else addFlat(x, y);
   }
 
-  // pass4.5 镇外簇密植(survival):森林簇密树/偶灌木成林,岩石区贴地碎石——
-  // 资源节点已在 noGo,decor 只补视觉体量(growth 零变化)
-  if (gameType === 'survival' && wild !== null) {
+  // pass4.5 镇外簇密植(profile wildClusters):森林簇密树/偶灌木成林,岩石区贴地碎石——
+  // 资源节点已在 noGo,decor 只补视觉体量(不开启则零变化)
+  if (worldgen.wildClusters && wild !== null) {
     for (const forest of wild.forests) {
       for (let y = forest.y; y < forest.y + forest.h; y += 1) {
         for (let x = forest.x; x < forest.x + forest.w; x += 1) {
@@ -219,9 +219,9 @@ export function buildDecor(
     }
   }
 
-  // pass4.6 镇外废土装饰(survival):残骸/电线杆/路障撒镇外带(solid 不可穿越,
-  // 全占地避让;连通校验兜底)——growth 零变化
-  if (gameType === 'survival' && wild !== null && townCore !== null && pools.wreck.length > 0) {
+  // pass4.6 镇外废土装饰(profile wreckDecor):残骸/电线杆/路障撒镇外带(solid 不可穿越,
+  // 全占地避让;连通校验兜底)——不开启则零变化
+  if (worldgen.wreckDecor && wild !== null && townCore !== null && pools.wreck.length > 0) {
     const inCore = (x: number, y: number): boolean =>
       x >= townCore.x && x < townCore.x + townCore.w && y >= townCore.y && y < townCore.y + townCore.h;
     const wreckCount = Math.round(rng.int(8, 14) * densityScale);

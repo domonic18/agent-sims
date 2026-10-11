@@ -13,7 +13,7 @@ const anchorUseKind = (placeId: string, kind: string): { x: number; y: number } 
 
 function survivalSim(): { sim: Simulation; events: WorldEvent[] } {
   const sim = new Simulation();
-  sim.gameType = 'survival';
+  sim.setGameMode('survival');
   const events: WorldEvent[] = [];
   sim.events.subscribe((event) => events.push(event));
   return { sim, events };

@@ -12,14 +12,8 @@ import {
   type WorldgenReport,
 } from '@sims/shared';
 import { TileMap } from '../map.js';
-import {
-  GROWTH_QUOTA,
-  PLACE_BLUEPRINTS,
-  SURVIVAL_QUOTA,
-  SURVIVAL_SMALL_SIZE_OVERRIDES,
-  type PlaceKind,
-  type Zone,
-} from './blueprint.js';
+import { getGameModeProfile, type ResourcePlacementRule, type WorldgenModeOptions } from '../game-mode.js';
+import { PLACE_BLUEPRINTS, type PlaceKind, type Zone } from './blueprint.js';
 import { buildDecor } from './decor.js';
 import {
   buildTownCore,
@@ -47,25 +41,6 @@ export type { SlotWithPool } from './placement.js';
 
 /** 内置固定地图种子(design/06:固定地图=生成器特例,兼容已有存档) */
 export const BUILTIN_SEED = '__builtin__';
-
-/** 资源节点撒点数量档(TD-1 自 scatterResources 字面量具名,design/09 §2):
- * 浆果丛易枯竭(重生次日)、拾荒堆无限,数量太少则以物代薪无目标可接 */
-const BERRY_BUSH_COUNT: readonly [number, number] = [4, 7];
-const JUNK_PILE_COUNT: readonly [number, number] = [2, 4];
-/** 食物链节点档(2026-10-07,numerical §5.4):苹果树/麦丛与浆果丛同落食物区,
- * 售罄即止后长期食物来源=直采(苹果)与制作原料(小麦) */
-const APPLE_TREE_COUNT: readonly [number, number] = [2, 4];
-const WHEAT_PATCH_COUNT: readonly [number, number] = [2, 4];
-/** 末日生存档:资源采集区加密(废土拾荒+食物区) */
-const SURVIVAL_BERRY_BUSH_COUNT: readonly [number, number] = [5, 9];
-const SURVIVAL_JUNK_PILE_COUNT: readonly [number, number] = [5, 9];
-const SURVIVAL_APPLE_TREE_COUNT: readonly [number, number] = [3, 6];
-const SURVIVAL_WHEAT_PATCH_COUNT: readonly [number, number] = [3, 6];
-/** 生存资源三件套档(M-S/S1,07-survival §2):树→木材/岩石→石料/废墟金属堆→金属;
- * S1.5 起树/岩迁镇外簇(森林/岩石区),数量随簇加密 */
-const SURVIVAL_TREE_COUNT: readonly [number, number] = [6, 10];
-const SURVIVAL_ROCK_COUNT: readonly [number, number] = [4, 7];
-const SURVIVAL_METAL_PILE_COUNT: readonly [number, number] = [3, 6];
 
 export interface WorldgenInput {
   seed: string;
@@ -131,6 +106,7 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
     `${input.seed}|${input.gameType}|${input.params.size}|${input.params.density}|${input.manifestVersion}#${attempt}`,
   );
   const densityIndex = WORLDGEN_DENSITIES.indexOf(input.params.density);
+  const { worldgen } = getGameModeProfile(input.gameType);
   const blockedRects: BlockedRect[] = [];
   const places: PlaceDefinition[] = [];
   const fences: BlockedRect[] = [];
@@ -138,13 +114,13 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   // ① 骨架:蜿蜒路网——中心广场随机偏移,四方向随机游走延伸(段长 3~6,30% 折弯),
   // 密度短枝路自已铺路段引出;只进 paths(纯视觉+撒放预留),不阻塞通行
   const { rects: paths, plaza } = buildRoadNetwork(
-    rng, width, height, densityIndex, input.gameType === 'survival',
+    rng, width, height, densityIndex, worldgen.compactRoads,
   );
   const patches: NonNullable<TileMapDefinition['patches']> = [{ ...plaza, tile: PLAZA_TILE }];
   const midX = plaza.x + Math.floor(plaza.w / 2);
   const midY = plaza.y + Math.floor(plaza.h / 2);
-  // 镇内核心(survival 分区): 以广场中心为镇中心,growth 不分区(rng 流零消耗)
-  const townCore = input.gameType === 'survival' ? buildTownCore(width, height) : null;
+  // 镇内核心(profile 分区): 以广场中心为镇中心,不分区则 rng 流零消耗
+  const townCore = worldgen.townCore ? buildTownCore(width, height) : null;
 
   // ② 场所随机撒放:四象限为偏好区(主街分割),核心场所必得、可选场所放不下即裁;
   // 占用网格含 ±1 缓冲(场所间不贴脸、不压路、不越界),撒放顺序即配额顺序
@@ -167,15 +143,14 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
   for (const path of paths) reserve(path);
   const counters = new Map<PlaceKind, number>();
   let pond: BlockedRect | null = null;
-  // survival 模式换末日配额(场所末日化重配),growth 保持原配额
-  const QUOTA = input.gameType === 'survival' ? SURVIVAL_QUOTA : GROWTH_QUOTA;
-  for (const quota of QUOTA) {
+  // 撒放顺序=配额数组序(profile 声明,mode 差异全在数据)
+  for (const quota of worldgen.quota) {
     const count = densityIndex === 0 ? quota.count[0] : rng.int(quota.count[0], quota.count[1]);
     const zone = zones[quota.zone];
     for (let n = 0; n < count; n += 1) {
       const sizePool =
-        input.gameType === 'survival' && input.params.size === 'small'
-          ? SURVIVAL_SMALL_SIZE_OVERRIDES[quota.kind] ?? PLACE_BLUEPRINTS[quota.kind].size
+        worldgen.smallSizeOverrides !== null && input.params.size === 'small'
+          ? worldgen.smallSizeOverrides[quota.kind] ?? PLACE_BLUEPRINTS[quota.kind].size
           : PLACE_BLUEPRINTS[quota.kind].size;
       const [w, h] = rng.pick(sizePool);
       const spot = tryScatterPlace(
@@ -228,15 +203,15 @@ function generate(input: WorldgenInput, attempt: number): WorldgenResult {
       ? { forests: [], rocks: [] }
       : buildWildClusters(rng, width, height, townCore, paths, places, input.params.size === 'small');
 
-  // ④ 资源节点撒点(M-G.6):公园浆果丛/街道拾荒堆,占格不可行走站四邻作业
+  // ④ 资源节点撒点(M-G.6):profile 资源组驱动(组序即 rng 消耗序)
   const resources = scatterResources(
-    rng, input.gameType, width, height, places, paths, fences, pond,
+    rng, worldgen, width, height, places, paths, fences, pond,
     townCore === null ? null : wildClusters,
   );
 
   // ⑤ 户外装饰(池驱动五 pass):decor 避让资源与全部既有占用
   const decor = buildDecor(
-    rng, width, height, densityIndex, input.gameType,
+    rng, width, height, densityIndex, worldgen,
     places, paths, plaza, pond, fences, resources, input.assetsByKind,
     townCore === null ? null : wildClusters, townCore, input.assetSizes,
   );
@@ -370,15 +345,15 @@ function tryScatterPlace(
 }
 
 /**
- * 资源节点撒点(M-G.6+2026-10-07 食物链):食物节点(浆果丛/苹果树/麦丛)落公园空地
- * (survival 加落幸存者营地),拾荒堆落街道空地(避池塘/家具/使用格三邻域、场所缓冲带/道路/围栏);
- * 占格不可行走,重摇尽力放置。survival 模式数量加密(资源采集区)。
- * S1.5 起三件套迁镇外:树→森林簇/岩石→岩石区/金属堆→废墟(食物节点近家不变)。
- * 食物链新增撒点循环改变 rng 消耗序列:growth 同种子地图与旧版有意不同(非回归)。
+ * 资源节点撒点(M-G.6+2026-10-07 食物链):数量档与落点全部来自 profile
+ * resourcePlacement 组表——组序即 rng 消耗序;batchDraw=true 整组先抽齐数量档
+ * 再依次撒放(浆果/拾荒、苹果/麦丛两种既有节拍),false 逐条抽取撒放(镇外三件套)。
+ * 食物节点落食物区场所(20 试,无区即弃),街面节点全镇空地(30 试),
+ * 簇节点落镇外森林/岩石区与废墟(20 试)。占格不可行走,重摇尽力放置。
  */
 function scatterResources(
   rng: Rng,
-  gameType: GameType,
+  worldgen: WorldgenModeOptions,
   width: number,
   height: number,
   places: PlaceDefinition[],
@@ -388,19 +363,19 @@ function scatterResources(
   wild: { forests: BlockedRect[]; rocks: BlockedRect[] } | null,
 ): ResourceNodeSeed[] {
   const parkBlocked = new Set<string>();
-  for (const path of paths) mark0(parkBlocked, path); // 浆果丛不落路面
+  for (const path of paths) mark0(parkBlocked, path); // 食物节点不落路面
   for (const fence of fences) mark0(parkBlocked, fence); // 公园北缘围栏段
   if (pond !== null) {
     mark0(parkBlocked, { x: pond.x - 1, y: pond.y - 1, w: pond.w + 2, h: pond.h + 2 });
   }
   const streetBlocked = new Set<string>();
-  for (const path of paths) mark0(streetBlocked, path); // 拾荒堆不上路面
+  for (const path of paths) mark0(streetBlocked, path); // 街面节点不上路面
   if (pond !== null) mark0(streetBlocked, pond);
-  if (gameType === 'survival') {
+  if (worldgen.townCore) {
     for (const fence of fences) mark0(streetBlocked, fence); // 镇界围栏格不落堆(S1.5;growth 零变化)
   }
-  const parks = places.filter(
-    (p) => p.id.startsWith('park') || (gameType === 'survival' && p.id.startsWith('camping')),
+  const parks = places.filter((p) =>
+    worldgen.foodPlacePrefixes.some((prefix) => p.id.startsWith(prefix)),
   );
   for (const park of parks) {
     for (const fence of fences) mark0(parkBlocked, fence);
@@ -415,40 +390,13 @@ function scatterResources(
     mark0(streetBlocked, { x: park.x - 1, y: park.y - 1, w: park.w + 2, h: park.h + 2 });
   }
   for (const place of places) {
-    if (place.id.startsWith('park')) continue;
+    if (place.id.startsWith('park')) continue; // 公园已在上方处理;营地等食物区场所同样吃街道缓冲
     mark0(streetBlocked, { x: place.x - 1, y: place.y - 1, w: place.w + 2, h: place.h + 2 });
   }
   const taken = new Set<string>();
   const seeds: ResourceNodeSeed[] = [];
-  const berryCount = rng.int(...(gameType === 'survival' ? SURVIVAL_BERRY_BUSH_COUNT : BERRY_BUSH_COUNT));
-  const junkCount = rng.int(...(gameType === 'survival' ? SURVIVAL_JUNK_PILE_COUNT : JUNK_PILE_COUNT));
-  for (let n = 0; n < berryCount && parks.length > 0; n += 1) {
-    const park = rng.pick(parks);
-    for (let tries = 0; tries < 20; tries += 1) {
-      const x = rng.int(park.x + 1, park.x + park.w - 2);
-      const y = rng.int(park.y + 1, park.y + park.h - 2);
-      const key = cellKey(x, y);
-      if (parkBlocked.has(key) || taken.has(key)) continue;
-      taken.add(key);
-      seeds.push({ kind: 'berry_bush', x, y });
-      break;
-    }
-  }
-  for (let n = 0; n < junkCount; n += 1) {
-    for (let tries = 0; tries < 30; tries += 1) {
-      const x = rng.int(2, width - 3);
-      const y = rng.int(2, height - 3);
-      const key = cellKey(x, y);
-      if (streetBlocked.has(key) || taken.has(key)) continue;
-      taken.add(key);
-      seeds.push({ kind: 'junk_pile', x, y });
-      break;
-    }
-  }
-  // 食物链两节点(2026-10-07,numerical §5.4):复制浆果丛落位(食物区=公园,survival 加营地)
-  const appleCount = rng.int(...(gameType === 'survival' ? SURVIVAL_APPLE_TREE_COUNT : APPLE_TREE_COUNT));
-  const wheatCount = rng.int(...(gameType === 'survival' ? SURVIVAL_WHEAT_PATCH_COUNT : WHEAT_PATCH_COUNT));
-  const scatterFoodNode = (kind: ResourceNodeSeed['kind'], count: number): void => {
+  /** 食物区节点:场所内空地撒放(无食物区即弃) */
+  const scatterFood = (kind: ResourceNodeSeed['kind'], count: number): void => {
     for (let n = 0; n < count && parks.length > 0; n += 1) {
       const park = rng.pick(parks);
       for (let tries = 0; tries < 20; tries += 1) {
@@ -462,46 +410,67 @@ function scatterResources(
       }
     }
   };
-  scatterFoodNode('apple_tree', appleCount);
-  scatterFoodNode('wheat_patch', wheatCount);
-  // 生存资源三件套(M-S/S1,07-survival §2;S1.5 镇外迁移):树→森林簇、岩石→岩石区、
-  // 金属堆→废墟——growth 不进此分支,rng 消耗流零变化
-  if (gameType === 'survival' && wild !== null) {
-    const clusterBlocked = new Set<string>();
-    for (const path of paths) mark0(clusterBlocked, path);
-    const ruins = places.filter((p) => p.id.startsWith('ruins'));
-    const ruinsBlocked = new Set<string>(parkBlocked);
-    for (const ruin of ruins) {
-      for (const f of ruin.furniture ?? []) {
-        mark0(ruinsBlocked, { x: f.x, y: f.y, w: f.w, h: f.h });
-        if (f.use !== undefined) {
-          mark0(ruinsBlocked, { x: f.use.x - 1, y: f.use.y - 1, w: 3, h: 3 }); // 使用格保持四邻可站
-        }
+  /** 街面节点:全镇空地撒放 */
+  const scatterStreet = (kind: ResourceNodeSeed['kind'], count: number): void => {
+    for (let n = 0; n < count; n += 1) {
+      for (let tries = 0; tries < 30; tries += 1) {
+        const x = rng.int(2, width - 3);
+        const y = rng.int(2, height - 3);
+        const key = cellKey(x, y);
+        if (streetBlocked.has(key) || taken.has(key)) continue;
+        taken.add(key);
+        seeds.push({ kind, x, y });
+        break;
       }
-      mark0(ruinsBlocked, { x: ruin.entrance.x - 1, y: ruin.entrance.y - 1, w: 3, h: 2 });
     }
-    const scatterInto = (
-      kind: ResourceNodeSeed['kind'],
-      count: number,
-      areas: readonly BlockedRect[],
-      blocked: Set<string>,
-    ): void => {
-      for (let n = 0; n < count && areas.length > 0; n += 1) {
-        const area = rng.pick(areas);
-        for (let tries = 0; tries < 20; tries += 1) {
-          const x = rng.int(area.x + 1, area.x + area.w - 2);
-          const y = rng.int(area.y + 1, area.y + area.h - 2);
-          const key = cellKey(x, y);
-          if (blocked.has(key) || taken.has(key)) continue;
-          taken.add(key);
-          seeds.push({ kind, x, y });
-          break;
-        }
+  };
+  /** 簇节点:镇外森林/岩石区与废墟撒放 */
+  const clusterBlocked = new Set<string>();
+  for (const path of paths) mark0(clusterBlocked, path);
+  const ruins = places.filter((p) => p.id.startsWith('ruins'));
+  const ruinsBlocked = new Set<string>(parkBlocked);
+  for (const ruin of ruins) {
+    for (const f of ruin.furniture ?? []) {
+      mark0(ruinsBlocked, { x: f.x, y: f.y, w: f.w, h: f.h });
+      if (f.use !== undefined) {
+        mark0(ruinsBlocked, { x: f.use.x - 1, y: f.use.y - 1, w: 3, h: 3 }); // 使用格保持四邻可站
       }
-    };
-    scatterInto('tree', rng.int(...SURVIVAL_TREE_COUNT), wild.forests, clusterBlocked);
-    scatterInto('rock', rng.int(...SURVIVAL_ROCK_COUNT), wild.rocks, clusterBlocked);
-    scatterInto('metal_pile', rng.int(...SURVIVAL_METAL_PILE_COUNT), ruins, ruinsBlocked);
+    }
+    mark0(ruinsBlocked, { x: ruin.entrance.x - 1, y: ruin.entrance.y - 1, w: 3, h: 2 });
+  }
+  const scatterCluster = (
+    kind: ResourceNodeSeed['kind'],
+    count: number,
+    areas: readonly BlockedRect[],
+    blocked: Set<string>,
+  ): void => {
+    for (let n = 0; n < count && areas.length > 0; n += 1) {
+      const area = rng.pick(areas);
+      for (let tries = 0; tries < 20; tries += 1) {
+        const x = rng.int(area.x + 1, area.x + area.w - 2);
+        const y = rng.int(area.y + 1, area.y + area.h - 2);
+        const key = cellKey(x, y);
+        if (blocked.has(key) || taken.has(key)) continue;
+        taken.add(key);
+        seeds.push({ kind, x, y });
+        break;
+      }
+    }
+  };
+  const scatterByArea = (rule: ResourcePlacementRule, count: number): void => {
+    if (rule.area === 'food') return scatterFood(rule.kind, count);
+    if (rule.area === 'streets') return scatterStreet(rule.kind, count);
+    if (rule.area === 'forests') return scatterCluster(rule.kind, count, wild?.forests ?? [], clusterBlocked);
+    if (rule.area === 'rocks') return scatterCluster(rule.kind, count, wild?.rocks ?? [], clusterBlocked);
+    return scatterCluster(rule.kind, count, ruins, ruinsBlocked);
+  };
+  for (const group of worldgen.resourcePlacement) {
+    if (group.batchDraw) {
+      const plans = group.rules.map((rule) => ({ rule, count: rng.int(...rule.count) }));
+      for (const { rule, count } of plans) scatterByArea(rule, count);
+    } else {
+      for (const rule of group.rules) scatterByArea(rule, rng.int(...rule.count));
+    }
   }
   return seeds;
 }

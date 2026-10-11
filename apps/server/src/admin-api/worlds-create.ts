@@ -368,7 +368,7 @@ export function registerWorldCreateRoutes(app: FastifyInstance, handle: DbHandle
     // 重置模拟现场并按配置批量出生(DB 已落世界记录,sim 侧纯内存操作不再失败)
     app.simulation.reset();
     if (mapDefinition !== null) app.simulation.setMap(mapDefinition);
-    app.simulation.gameType = parsed.data.worldgen?.gameType ?? parsed.data.gameType ?? 'growth';
+    app.simulation.setGameMode(parsed.data.worldgen?.gameType ?? parsed.data.gameType ?? 'growth');
     app.simulation.rules = rules;
     applyWorldParams(rules.params); // 先复位出厂默认再应用本世界覆盖,消除上一世界残留
     app.simulation.setRecipes(rules.recipes!); // 建世界冻结的配方快照灌入运行时

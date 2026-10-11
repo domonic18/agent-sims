@@ -46,7 +46,7 @@ export async function restoreActiveWorld(app: FastifyInstance, handle: DbHandle)
       const rules = normalizeRules(config.rules);
       app.simulation.reset();
       app.simulation.setMap(config.map);
-      app.simulation.gameType = config.worldgen?.gameType ?? 'growth';
+      app.simulation.setGameMode(config.worldgen?.gameType ?? 'growth');
       app.simulation.rules = rules;
       applyWorldParams(rules.params);
       // 每世界配方恢复(旧世界无存档或校验不过→出厂默认,可用性优先)

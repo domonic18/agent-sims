@@ -11,14 +11,14 @@ import type { Simulation } from './simulation.js';
  * (survival 免扣、数值回恢复线,见 reviveCharacter 分支)。
  */
 export function checkDeath(sim: Simulation, character: WorldCharacter): void {
-  // 世界规则关闭死亡(M5):健康卡 1 不入重伤(survival);
+  // 世界规则关闭死亡(M5):健康卡 1 不入重伤(profile.healthZeroToInjury);
   if (!sim.rules.allowDeath) {
-    if (sim.gameType === 'survival' && character.health <= 0) {
+    if (sim.profile.sim.healthZeroToInjury && character.health <= 0) {
       character.health = 1;
     }
     return;
   }
-  const injured = sim.gameType === 'survival' && character.health <= 0;
+  const injured = sim.profile.sim.healthZeroToInjury && character.health <= 0;
   if (!character.alive || !injured) {
     return;
   }
@@ -47,7 +47,7 @@ export function checkCollapse(sim: Simulation, character: WorldCharacter): void 
   if (!character.alive || character.energy > 0) {
     return;
   }
-  if (sim.gameType === 'growth' && sim.rules.allowDeath) {
+  if (sim.profile.sim.energyZeroToDeath && sim.rules.allowDeath) {
     character.alive = false;
     character.path = [];
     character.diedAtGameMinutes = sim.clock.gameMinutes;
@@ -77,8 +77,8 @@ export function checkReviveWindow(sim: Simulation, character: WorldCharacter): v
   if (sim.clock.gameMinutes - character.diedAtGameMinutes < REVIVE_WINDOW_MINUTES) {
     return;
   }
-  // 累倒苏醒扣分(numerical §2.3/§2.5): 比例扣,仅 growth 送医窗口;survival 不扣
-  if (sim.gameType !== 'survival') {
+  // 累倒苏醒扣分(numerical §2.3/§2.5): 比例扣,仅 growth 送医窗口;wakeScoreDeduction 关闭不扣
+  if (sim.profile.sim.wakeScoreDeduction) {
     character.score *= 1 - BALANCE.SCORE_WAKE_DEDUCTION;
   }
   reviveCharacter(sim, character, 'timeout');
