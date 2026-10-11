@@ -46,6 +46,13 @@
   top: 72px;
 }
 
+/* 窄视口: 顶栏两行化后时钟+功能簇占到 ~106px,轻提示再往下让 */
+@media (max-width: 520px) {
+  .game-page .toasts {
+    top: 126px;
+  }
+}
+
 .game-page .toast {
   border-radius: 0;
   font-family: var(--px-font-ui);

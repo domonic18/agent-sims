@@ -576,3 +576,51 @@
   font-size: 14px;
   box-shadow: 0 2px 0 var(--px-ink);
 }
+
+/* 窄视口顶栏两行化(置于文件末尾确保覆盖上方同权重规则): 手机宽度下时钟与
+   右上功能簇(📜/admin/⚙)同顶 absolute 几乎完全重叠、簇在 DOM 后者直接盖住
+   时钟——时钟整行居中,功能簇降一行;toasts(见 game-page.css)与日志抽屉
+   (见 game-log-drawer.css)随断点下移 */
+@media (max-width: 520px) {
+  .hud-clock {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    transform: none;
+  }
+
+  .hud-clock-inner {
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .hud-topright {
+    top: 74px;
+    right: 8px;
+  }
+
+  /* 角色面板随顶栏下移,让过时钟+功能簇两行;宽度铺满视口,高度让过底部
+     动作条(窄屏换行后高约 210px),超出部分内部滚动 */
+  .hud-character {
+    left: 8px;
+    right: 8px;
+    top: 118px;
+    width: auto;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 360px);
+    max-height: calc(100dvh - 360px);
+  }
+
+  .hud-character-inner {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* 模型坞: 手机屏上属低值调试信息且与动作条重叠,直接收起 */
+  .hud-model-dock {
+    display: none;
+  }
+}

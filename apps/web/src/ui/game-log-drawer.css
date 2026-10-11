@@ -18,16 +18,21 @@
   z-index: 30;
 }
 
-/* 窄视口: 顶栏按钮群换行后 .log-root 右缘内移,380px 抽屉右锚会被推出屏左,
-   改为固定悬于视口两侧留边(与 toasts 同顶距) */
+/* 窄视口: 抽屉改固定悬于视口两侧留边,顶距让过两行化顶栏
+   (时钟行 + 功能簇行,见 game-hud.css 同断点) */
 @media (max-width: 520px) {
   .log-drawer {
     position: fixed;
-    top: 72px;
+    top: 126px;
     left: 16px;
     right: 16px;
     width: auto;
     max-width: none;
+  }
+
+  /* 头部行窄屏放不下(标题+7 枚 chips),换行让标题独占一行不竖排 */
+  .log-head {
+    flex-wrap: wrap;
   }
 }
 
