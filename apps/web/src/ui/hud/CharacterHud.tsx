@@ -185,8 +185,8 @@ export function CharacterHud({
             <ul>
               {character.intents
                 .filter((want) => want.status !== 'abandoned')
-                .map((want) => (
-                  <li key={`${want.activityId}-${want.why}`} className={`want ${want.status}`}>
+                .map((want, index) => (
+                  <li key={`${want.activityId}-${want.why}:${index}`} className={`want ${want.status}`}>
                     <i title={WANT_STATUS_TITLE[want.status]} />
                     <span className="want-name">
                       {getActivityDefinition(want.activityId)?.name ?? want.activityId}

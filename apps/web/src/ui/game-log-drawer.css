@@ -118,3 +118,102 @@
   color: var(--px-dim);
   font-size: 12px;
 }
+
+/* ---- 聊天流(UI-R.3): social.chat 对话块 + 天分隔 + 精简/全部分段开关 ---- */
+.chat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chat-head-names {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--px-text);
+  cursor: pointer;
+}
+
+.chat-head-names:hover {
+  color: var(--px-gold);
+}
+
+.chat-head-names i {
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-head .px-avatar {
+  flex: none;
+}
+
+.chat-time {
+  flex: none;
+  margin-left: auto;
+  color: var(--px-dim);
+  font-size: 10px;
+  font-family: var(--px-font-pixel);
+}
+
+.chat-delta {
+  flex: none;
+  padding: 0 4px;
+  font-size: 10px;
+  font-family: var(--px-font-pixel);
+}
+
+.chat-delta.up {
+  color: var(--px-ok);
+}
+
+.chat-delta.down {
+  color: var(--px-bad);
+}
+
+.chat-block .bubble {
+  cursor: pointer;
+}
+
+.chat-block .bubble:hover {
+  border-color: var(--px-slate);
+}
+
+.log-day-sep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 2px;
+  color: var(--px-dim);
+  font-size: 10px;
+  font-family: var(--px-font-pixel);
+}
+
+.log-day-sep::before,
+.log-day-sep::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--px-slate);
+}
+
+.log-chip-sep {
+  flex: none;
+  align-self: center;
+  width: 2px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--px-slate);
+  opacity: 0.5;
+}

@@ -288,3 +288,22 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
           };
   }
 }
+
+/** 精简档隐藏的噪音类型(移动/活动起止/睡眠结算等 tick 级高频事件);
+ * 「精简」档直接隐藏,「全部」档可见。social.chat 不在此列——它走对话块渲染 */
+export const VERBOSE_HIDDEN: ReadonlySet<WorldEvent['type']> = new Set([
+  'character.arrived',
+  'activity.started',
+  'activity.finished',
+  'character.auto_revived',
+  'sleep.debt_applied',
+  'sleep.settled',
+  'work_task.accepted',
+  'maintenance.spawned',
+  'world.params',
+  'world.rules',
+  'world.recipes',
+]);
+
+/** 精简档是否保留该事件(不在 VERBOSE_HIDDEN 即保留,不改动既有签名) */
+export const eventLogNotable = (event: WorldEvent): boolean => !VERBOSE_HIDDEN.has(event.type);

@@ -325,3 +325,55 @@
   font-size: 11px;
   color: var(--px-dim);
 }
+
+/*
+ * ---- 通用气泡(聊天流原语): .bubble-row 左右分侧行 + .bubble 方块泡 ----
+ * 泡体 navy 底 + 2px ink 描边 + 零圆角,::before 方块小尾巴;右泡 panel 底。
+ * 日志抽屉对话块与 MindTalk 访谈流复用;私有尺寸细节放各自 css。
+ */
+.bubble-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bubble-row.right {
+  flex-direction: row-reverse;
+}
+
+.bubble {
+  position: relative;
+  max-width: 78%;
+  padding: 5px 8px;
+  background: var(--px-navy);
+  border: 2px solid var(--px-ink);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.bubble-row.right .bubble {
+  background: var(--px-panel);
+}
+
+/* 方块小尾巴: 4px 方块贴左下/右下,落在头像与泡的 6px 间隙里 */
+.bubble::before {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: -6px;
+  width: 4px;
+  height: 4px;
+  background: inherit;
+  border-left: 2px solid var(--px-ink);
+  border-bottom: 2px solid var(--px-ink);
+}
+
+.bubble-row.right .bubble::before {
+  left: auto;
+  right: -6px;
+  border-left: none;
+  border-right: 2px solid var(--px-ink);
+}
