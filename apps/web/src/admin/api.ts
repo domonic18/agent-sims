@@ -20,6 +20,10 @@ import {
   type CognitionTraceEntriesResponse,
   type CreateWorldRequest,
   type GameType,
+  type MapDetailResponse,
+  type MapListResponse,
+  type MapStatus,
+  type MapWriteRequest,
   type ModelConfigInvokeResult,
   type ModelConfigTestResult,
   type ModelConfigUpdate,
@@ -246,6 +250,44 @@ export async function addWorldCharacter(
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ---- 地图库(MS-1) ----
+
+export async function fetchMaps(status?: MapStatus): Promise<MapListResponse> {
+  return await adminFetch<MapListResponse>(
+    status !== undefined ? `${ADMIN_API.maps}?status=${status}` : ADMIN_API.maps,
+  );
+}
+
+export async function fetchMap(id: string): Promise<MapDetailResponse> {
+  return await adminFetch<MapDetailResponse>(ADMIN_API.map(id));
+}
+
+export async function createMap(payload: MapWriteRequest): Promise<MapDetailResponse> {
+  return await adminFetch<MapDetailResponse>(ADMIN_API.maps, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateMap(id: string, payload: MapWriteRequest): Promise<MapDetailResponse> {
+  return await adminFetch<MapDetailResponse>(ADMIN_API.map(id), {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function publishMap(id: string): Promise<MapDetailResponse> {
+  return await adminFetch<MapDetailResponse>(ADMIN_API.mapPublish(id), { method: 'POST' });
+}
+
+export async function archiveMap(id: string): Promise<MapDetailResponse> {
+  return await adminFetch<MapDetailResponse>(ADMIN_API.mapArchive(id), { method: 'POST' });
+}
+
+export async function deleteMap(id: string): Promise<void> {
+  await adminFetch<unknown>(ADMIN_API.map(id), { method: 'DELETE' });
 }
 
 // ============ 世界存档多档(C6) ============

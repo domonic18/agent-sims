@@ -16,6 +16,7 @@ import {
 import {
   BarChartOutlined,
   ControlOutlined,
+  EnvironmentOutlined,
   FileTextOutlined,
   GlobalOutlined,
   MenuOutlined,
@@ -41,6 +42,7 @@ import { AssetsPanel } from './AssetsPanel';
 import { LogsPanel } from './LogsPanel';
 import { AgentTracePanel } from './AgentTracePanel';
 import { WorldPanel } from './WorldPanel';
+import { MapLibraryPanel } from './MapLibraryPanel';
 import { SysConfigPanel } from './SysConfigPanel';
 import { RecipesPanel } from './RecipesPanel';
 import { AnimPreviewPanel } from './AnimPreviewPanel';
@@ -97,6 +99,7 @@ type AdminTab =
   | 'world'
   | 'params'
   | 'recipes'
+  | 'maps'
   | 'models'
   | 'usage'
   | 'assets'
@@ -115,6 +118,7 @@ const NAV_ITEMS: MenuProps['items'] = [
       { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'params', icon: <ControlOutlined />, label: '世界参数' },
       { key: 'recipes', icon: <ExperimentOutlined />, label: '世界配方' },
+      { key: 'maps', icon: <EnvironmentOutlined />, label: '地图库' },
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
       { key: 'anim', icon: <PlayCircleOutlined />, label: '动画演示器' },
@@ -164,6 +168,9 @@ function AdminShell() {
   const [configs, setConfigs] = useState<ModelConfigView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const status = useAdminStatus(authed);
+  // hooks 必须全部先于 if (!authed) 早退调用,否则登录翻转 authed 后 hook 数量变化直接崩溃
+  const isMobile = useIsMobile();
+  const [navOpen, setNavOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -205,6 +212,7 @@ function AdminShell() {
     },
     params: { title: '世界参数', desc: '全局数值与系统配置', render: () => <SysConfigPanel /> },
     recipes: { title: '世界配方', desc: '采集·制作·出售链路配方', render: () => <RecipesPanel /> },
+    maps: { title: '地图库', desc: '自定义地图管理·体检发布', render: () => <MapLibraryPanel /> },
     usage: { title: 'Token 用量', desc: '模型消耗统计与调用流水', render: () => <TokenUsagePanel /> },
     assets: { title: '素材管理', desc: '素材库分类·审核与发布', render: () => <AssetsPanel /> },
     anim: { title: '动画演示器', desc: '角色动画帧预览', render: () => <AnimPreviewPanel /> },
@@ -232,8 +240,6 @@ function AdminShell() {
   };
 
   const panel = PANELS[tab];
-  const isMobile = useIsMobile();
-  const [navOpen, setNavOpen] = useState(false);
 
   const selectTab = (key: string): void => {
     setTab(key as AdminTab);

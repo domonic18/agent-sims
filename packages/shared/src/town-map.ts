@@ -11,6 +11,28 @@ import {
 import type { DecorDefinition } from './worldgen.js';
 import type { ResourceNodeSeed } from './production.js';
 
+/** 场所语义类型(18 种;生成图 place.id 为 kind-N 命名,内置图 id 即语义名)。
+ * 单一来源:server worldgen/blueprint.ts 的配额蓝图与 admin 渲染/编辑器共用。 */
+export type PlaceKind =
+  | 'home'
+  | 'library'
+  | 'office'
+  | 'shop'
+  | 'restaurant'
+  | 'gym'
+  | 'park'
+  | 'cafe'
+  | 'school'
+  | 'hotel'
+  | 'clinic'
+  | 'plaza'
+  | 'beach'
+  | 'camping'
+  | 'graveyard'
+  | 'ruins'
+  | 'hospital'
+  | 'police';
+
 /** 场所定义:占地矩形 + 入口格(入口必须在占地外且可行走) */
 export interface PlaceDefinition {
   id: string;

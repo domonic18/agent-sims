@@ -5,3 +5,4 @@
  */
 export * from './furniture.js';
 export * from './town-map.js';
+export * from './map-validate.js';

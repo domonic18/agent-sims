@@ -53,6 +53,10 @@ export const ADMIN_API = {
   characterMindTalk: (id: string) => `/api/admin/characters/${id}/mindtalk`,
   prompts: '/api/admin/prompts',
   uiSettings: '/api/admin/ui-settings',
+  maps: '/api/admin/maps',
+  map: (id: string) => `/api/admin/maps/${id}`,
+  mapPublish: (id: string) => `/api/admin/maps/${id}/publish`,
+  mapArchive: (id: string) => `/api/admin/maps/${id}/archive`,
 } as const;
 
 /** GET /api/world/ui-meta 响应(公开): 游戏页左下角模型徽标;

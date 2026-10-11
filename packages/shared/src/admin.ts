@@ -6,6 +6,7 @@
  */
 export * from './admin/routes.js';
 export * from './admin/model-config.js';
+export * from './admin/map.js';
 export * from './admin/assets.js';
 export * from './admin/character.js';
 export * from './admin/usage.js';

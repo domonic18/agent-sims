@@ -31,21 +31,36 @@ import {
   WORLD_TIME_SCALES,
   pickRandomName,
   type GameType,
+  type MapDetailResponse,
+  type MapSummaryItem,
   type WorldCharacterConfig,
   type WorldRules,
   type WorldPreviewResponse,
   type WorldView,
 } from '@sims/shared';
-import { ApiError, closeWorld, createWorld, deleteWorld, fetchSysConfig, fetchWorlds, previewWorld } from './api';
+import {
+  ApiError,
+  closeWorld,
+  createWorld,
+  deleteWorld,
+  fetchMap,
+  fetchMaps,
+  fetchSysConfig,
+  fetchWorlds,
+  previewWorld,
+} from './api';
 import { CurrentWorldCard, formatTime, type CharacterRow } from './CurrentWorldCard';
+import { MapPreviewCanvas } from './MapPreviewCanvas';
 import { WorldParamsCollapse } from './WorldParamsCollapse';
 
 /** 世界管理面板(M-L.5):当前世界卡/五步创建向导/历史归档;
  * 参数折叠区与当前世界卡拆至 WorldParamsCollapse/CurrentWorldCard */
 
 interface WorldFormValues {
-  mode?: 'builtin' | 'random';
+  mode?: 'builtin' | 'random' | 'custom';
   gameType?: GameType;
+  /** mode=custom: 地图库已发布地图 id */
+  mapId?: string;
   seed?: string;
   params?: { size: 'small' | 'medium' | 'large'; density: 'sparse' | 'normal' | 'dense' };
   name: string;
@@ -63,6 +78,23 @@ export function WorldPanel() {
   const [step, setStep] = useState(0);
   const [preview, setPreview] = useState<WorldPreviewResponse | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  // 地图库已发布地图(MS-1):mode=custom 时 Select 候选+详情预览
+  const [maps, setMaps] = useState<MapSummaryItem[] | null>(null);
+  const [mapDetail, setMapDetail] = useState<MapDetailResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchMaps('published')
+      .then((body) => {
+        if (!cancelled) setMaps(body.items);
+      })
+      .catch(() => {
+        if (!cancelled) setMaps([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -121,7 +153,7 @@ export function WorldPanel() {
       gender: row.gender,
       ...(row.persona?.trim() ? { persona: row.persona.trim() } : {}),
     }));
-    const mode = form.getFieldValue('mode') as 'builtin' | 'random';
+    const mode = form.getFieldValue('mode') as 'builtin' | 'random' | 'custom';
     const worldgen =
       mode === 'random'
         ? {
@@ -130,6 +162,7 @@ export function WorldPanel() {
             params: form.getFieldValue('params') as { size: 'small' | 'medium' | 'large'; density: 'sparse' | 'normal' | 'dense' },
           }
         : undefined;
+    const mapId = mode === 'custom' ? (form.getFieldValue('mapId') as string | undefined) : undefined;
     // 清空的输入框会产生 undefined 条目,剔除后再提交(缺省键=出厂默认)
     const rulesFromForm = values.rules ?? (form.getFieldValue('rules') as WorldRules | undefined);
     const rawParams = (rulesFromForm?.params ?? {}) as Record<string, number | undefined>;
@@ -149,11 +182,13 @@ export function WorldPanel() {
         characters,
         rules,
         ...(worldgen !== undefined ? { worldgen } : {}),
+        ...(mapId !== undefined ? { mapId } : {}),
       });
       message.success(`世界「${created.name}」已创建,${created.characters.length} 位居民已入驻`);
       form.resetFields();
       setStep(0);
       setPreview(null);
+      setMapDetail(null);
       void load();
     } catch (err) {
       message.error(err instanceof ApiError ? err.message : '创建失败');
@@ -293,47 +328,90 @@ export function WorldPanel() {
                   options={[
                     { value: 'builtin', label: '固定地图(经典小镇)' },
                     { value: 'random', label: '随机生成(种子可复现)' },
+                    { value: 'custom', label: '自定义地图(地图库已发布)' },
                   ]}
                 />
               </Form.Item>
               <Form.Item noStyle shouldUpdate={(prev, cur) => prev.mode !== cur.mode}>
-                {({ getFieldValue }) =>
-                  getFieldValue('mode') === 'random' ? (
-                    <>
-                      <Form.Item name={['params', 'size']} label="地图尺寸">
-                        <Radio.Group
-                          options={[
-                            { value: 'small', label: '小(64×48)' },
-                            { value: 'medium', label: '中(80×60)' },
-                            { value: 'large', label: '大(96×72)' },
-                          ]}
-                        />
-                      </Form.Item>
-                      <Form.Item name={['params', 'density']} label="场所密度">
-                        <Radio.Group
-                          options={[
-                            { value: 'sparse', label: '稀疏' },
-                            { value: 'normal', label: '标准' },
-                            { value: 'dense', label: '稠密' },
-                          ]}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name="gameType"
-                        label="世界模式"
-                        extra="末日生存:墓地废墟破败区域+资源采集加密;成长小镇:经典布局。玩法机制一致,僵尸实体随后续里程碑开放。"
-                      >
-                        <Radio.Group
-                          options={GAME_TYPES.map((value) => ({ value, label: GAME_TYPE_LABELS[value] }))}
-                        />
-                      </Form.Item>
-                    </>
-                  ) : (
+                {({ getFieldValue }) => {
+                  const mode = getFieldValue('mode');
+                  if (mode === 'custom') {
+                    return (
+                      <>
+                        <Form.Item
+                          name="mapId"
+                          label="选择地图(仅已发布)"
+                          rules={[{ required: true, message: '请选择一张已发布地图' }]}
+                          style={{ maxWidth: 420 }}
+                        >
+                          <Select
+                            placeholder={maps === null ? '加载中…' : '选择地图'}
+                            notFoundContent={
+                              maps === null ? '加载中…' : '暂无已发布地图——先到「地图库」创建并发布'
+                            }
+                            options={(maps ?? []).map((m) => ({
+                              value: m.id,
+                              label: `${m.name}(${m.stats ? `${m.stats.width}×${m.stats.height}` : m.sizePreset} · ${m.stats?.placeCount ?? 0} 场所)`,
+                            }))}
+                            onChange={(value: string) => {
+                              setMapDetail(null);
+                              void fetchMap(value)
+                                .then(setMapDetail)
+                                .catch(() => setMapDetail(null));
+                            }}
+                          />
+                        </Form.Item>
+                        {mapDetail !== null && (
+                          <div style={{ maxWidth: 560 }}>
+                            <MapPreviewCanvas definition={mapDetail.definition} />
+                            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--px-dim)' }}>
+                              「{mapDetail.name}」语义色块预览(游戏内为像素贴图);世界以创建时快照使用该地图,
+                              后续编辑/删除不影响已建世界。
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  }
+                  if (mode === 'random') {
+                    return (
+                      <>
+                        <Form.Item name={['params', 'size']} label="地图尺寸">
+                          <Radio.Group
+                            options={[
+                              { value: 'small', label: '小(64×48)' },
+                              { value: 'medium', label: '中(80×60)' },
+                              { value: 'large', label: '大(96×72)' },
+                            ]}
+                          />
+                        </Form.Item>
+                        <Form.Item name={['params', 'density']} label="场所密度">
+                          <Radio.Group
+                            options={[
+                              { value: 'sparse', label: '稀疏' },
+                              { value: 'normal', label: '标准' },
+                              { value: 'dense', label: '稠密' },
+                            ]}
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          name="gameType"
+                          label="世界模式"
+                          extra="末日生存:墓地废墟破败区域+资源采集加密;成长小镇:经典布局。玩法机制一致,僵尸实体随后续里程碑开放。"
+                        >
+                          <Radio.Group
+                            options={GAME_TYPES.map((value) => ({ value, label: GAME_TYPE_LABELS[value] }))}
+                          />
+                        </Form.Item>
+                      </>
+                    );
+                  }
+                  return (
                     <p style={{ margin: '0 0 8px', fontSize: 12, color: 'var(--px-dim)' }}>
                       使用固定经典小镇地图,与历史版本一致。
                     </p>
-                  )
-                }
+                  );
+                }}
               </Form.Item>
             </>
           )}
@@ -506,7 +584,8 @@ export function WorldPanel() {
                 if (getFieldValue('mode') !== 'random') {
                   return (
                     <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--px-dim)' }}>
-                      固定地图无需种子,直接下一步确认创建。
+                      {getFieldValue('mode') === 'custom' ? '自定义地图无需种子' : '固定地图无需种子'},
+                      直接下一步确认创建。
                     </p>
                   );
                 }
@@ -577,10 +656,16 @@ export function WorldPanel() {
               {({ getFieldValue }) => {
                 const mode = getFieldValue('mode');
                 const rows = (getFieldValue('characters') as CharacterRow[]) ?? [];
+                const mapLabel =
+                  mode === 'random'
+                    ? '随机地图'
+                    : mode === 'custom'
+                      ? `自定义地图「${(maps ?? []).find((m) => m.id === getFieldValue('mapId'))?.name ?? '?'}」`
+                      : '固定地图';
                 return (
                   <Card size="small" title="创建摘要">
                     <p style={{ margin: '0 0 4px', fontSize: 13 }}>
-                      世界「{getFieldValue('name')}」 · {mode === 'random' ? '随机地图' : '固定地图'}
+                      世界「{getFieldValue('name')}」 · {mapLabel}
                       {mode === 'random' ? ` · 种子 ${getFieldValue('seed') || '(自动)'}` : ''}
                     </p>
                     <p style={{ margin: 0, fontSize: 12, color: 'var(--px-dim)' }}>
@@ -600,6 +685,9 @@ export function WorldPanel() {
               <Button
                 type="primary"
                 onClick={async () => {
+                  if (step === 0 && form.getFieldValue('mode') === 'custom') {
+                    await form.validateFields(['mapId']);
+                  }
                   if (step === 1) await form.validateFields(['name']);
                   if (step === 2) await form.validateFields(['characters']);
                   if (step === 3) await form.validateFields(['seed']);

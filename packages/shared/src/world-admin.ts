@@ -114,6 +114,10 @@ export interface CreateWorldRequest {
   rules?: WorldRules;
   /** 随机世界生成配置;省略即内置固定地图 */
   worldgen?: WorldgenConfig;
+  /** 地图库已发布地图 id(与 worldgen 互斥;创建时全量快照进 config,后续编辑/删除不影响存量世界) */
+  mapId?: string;
+  /** 顶层世界模式(mapId 分支用;缺省 growth;survival 要求所选地图含 townCore) */
+  gameType?: GameType;
 }
 
 /** 世界记录视图(GET /api/admin/worlds 列表元素) */

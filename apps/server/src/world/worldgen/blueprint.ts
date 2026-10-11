@@ -1,4 +1,6 @@
-import type { ActivityId, AnyFurnitureKind } from '@sims/shared';
+import type { ActivityId, AnyFurnitureKind, PlaceKind } from '@sims/shared';
+
+export type { PlaceKind };
 
 /**
  * 生成蓝图(M-L.4;全量素材驱动重规划):场所类型配额/尺寸档/家具布局模板/tile 池——
@@ -17,30 +19,6 @@ export interface BlueprintPlace {
   /** 必需活动锚点(校验硬约束) */
   requiredAnchors: readonly ActivityId[];
 }
-
-export type PlaceKind =
-  | 'home'
-  | 'library'
-  | 'office'
-  | 'shop'
-  | 'restaurant'
-  | 'gym'
-  | 'park'
-  /** 室内扩展(M-G.0 重规划):锚点驱动,零活动代码接入 */
-  | 'cafe'
-  | 'school'
-  | 'hotel'
-  | 'clinic'
-  /** 户外开放场所:主题道具池布置 */
-  | 'plaza'
-  | 'beach'
-  | 'camping'
-  /** 末日生存(survival 模式):僵尸出没墓地/废墟区(区域标记,僵尸实体随 M-S) */
-  | 'graveyard'
-  | 'ruins'
-  /** 镇外废土场所(M-S/S1.5):旧医院(落脚点)/警察局 */
-  | 'hospital'
-  | 'police';
 
 export type Zone = 'nw' | 'ne' | 'sw' | 'se';
 

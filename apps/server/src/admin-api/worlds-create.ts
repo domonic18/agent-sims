@@ -23,7 +23,7 @@ import {
 } from '@sims/shared';
 import { applyWorldParams, BALANCE, validateBalanceOverrides } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
-import { characters, worldState, worlds } from '../db/schema/index.js';
+import { characters, maps, worldState, worlds } from '../db/schema/index.js';
 import { publishTarget, readManifestVersion } from '../assets/paths.js';
 import { TileMap } from '../world/map.js';
 import { setWorldId } from '../world/world-id.js';
@@ -72,6 +72,10 @@ const createSchema = z.object({
     .max(WORLD_CHARACTER_LIMITS.max, `至多 ${WORLD_CHARACTER_LIMITS.max} 个人物`),
   rules: rulesSchema.partial().optional(),
   worldgen: worldgenSchema.optional(),
+  /** 自定义地图库选图(MS-1):与 worldgen 互斥;取已发布地图定义全量快照进 config */
+  mapId: z.string().uuid().optional(),
+  /** 游戏模式:worldgen 携带时以 worldgen 为准;内置图/自定义图可显式指定(缺省 growth) */
+  gameType: z.enum(GAME_TYPES).optional(),
 });
 
 /** 旧世界无 rules 或部分缺省时逐项兜底默认值;params 缺省=全默认 */
@@ -292,6 +296,9 @@ export function registerWorldCreateRoutes(app: FastifyInstance, handle: DbHandle
     let mapDefinition: TileMapDefinition | null = null;
     let worldgenReport: WorldgenReport | undefined;
     if (parsed.data.worldgen !== undefined) {
+      if (parsed.data.mapId !== undefined) {
+        return await reply.code(400).send({ error: 'worldgen 与 mapId 互斥,二选一' });
+      }
       const seed = parsed.data.worldgen.seed ?? String(randomInt(1, 2 ** 31));
       const result = generateTownMap({
         seed,
@@ -303,6 +310,21 @@ export function registerWorldCreateRoutes(app: FastifyInstance, handle: DbHandle
       mapDefinition = result.map;
       worldgenReport = result.report;
       parsed.data.worldgen = { ...parsed.data.worldgen, seed };
+    } else if (parsed.data.mapId !== undefined) {
+      // 自定义地图库选图(MS-1):仅已发布可选;定义全量快照进 config
+      const [mapRow] = await handle.db
+        .select({ definition: maps.definition, status: maps.status })
+        .from(maps)
+        .where(eq(maps.id, parsed.data.mapId))
+        .limit(1);
+      if (!mapRow || mapRow.status !== 'published') {
+        return await reply.code(400).send({ error: '地图不存在或未发布,不可选用' });
+      }
+      const gameType = parsed.data.gameType ?? 'growth';
+      if (gameType === 'survival' && mapRow.definition.townCore === undefined) {
+        return await reply.code(400).send({ error: 'survival 模式要求地图含镇核心区(townCore)' });
+      }
+      mapDefinition = mapRow.definition;
     }
     const config: CreateWorldRequest & {
       worldgenReport?: WorldgenReport;
@@ -346,7 +368,7 @@ export function registerWorldCreateRoutes(app: FastifyInstance, handle: DbHandle
     // 重置模拟现场并按配置批量出生(DB 已落世界记录,sim 侧纯内存操作不再失败)
     app.simulation.reset();
     if (mapDefinition !== null) app.simulation.setMap(mapDefinition);
-    app.simulation.gameType = parsed.data.worldgen?.gameType ?? 'growth';
+    app.simulation.gameType = parsed.data.worldgen?.gameType ?? parsed.data.gameType ?? 'growth';
     app.simulation.rules = rules;
     applyWorldParams(rules.params); // 先复位出厂默认再应用本世界覆盖,消除上一世界残留
     app.simulation.setRecipes(rules.recipes!); // 建世界冻结的配方快照灌入运行时

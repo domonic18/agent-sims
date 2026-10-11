@@ -10,6 +10,7 @@ import { registerHostingRoutes } from './hosting.js';
 import { registerMindTalkRoutes } from './mindtalk.js';
 import { registerMoodRoutes } from './mood.js';
 import { registerLogRoutes } from './logs.js';
+import { registerMapRoutes } from './maps.js';
 import { registerMemoryRoutes } from './memories.js';
 import { registerModelConfigRoutes } from './model-configs.js';
 import { registerPersonaRoutes } from './persona.js';
@@ -37,6 +38,7 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle, sim: Si
     registerTokenUsageRoutes(scope, handle);
     registerWorldRoutes(scope, handle);
     registerWorldArchiveRoutes(scope, handle);
+    registerMapRoutes(scope, handle);
     registerAssetRoutes(scope, handle);
     registerAssetIssueRoutes(scope, handle);
     registerMemoryRoutes(scope, handle, sim);
