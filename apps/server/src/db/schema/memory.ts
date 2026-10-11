@@ -16,6 +16,9 @@ export const memories = pgTable('memories', {
   gameMinutes: integer('game_minutes'), // 写入时游戏内分钟(recency 按游戏时间衰减,真实时间受暂停/倍率失真)
   consolidatedAt: timestamp('consolidated_at', { withTimezone: true }), // 入睡固化窗口写入
   sourceIds: jsonb('source_ids').$type<string[]>(), // 溯源(10-cognition §4.1): insight 引用的情景记忆 id 数组(≤8)
+  // 结构化元数据(kind 判别): kind='chat'={otherId,lines} 对话方与交替台词,面板按元数据
+  // 渲染双方气泡(content 转述文本仅为阅读态,不做反解);API 层映射为 MemoryPanelItem.chat
+  meta: jsonb('meta').$type<{ kind: 'chat'; otherId: string; lines: string[] }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 

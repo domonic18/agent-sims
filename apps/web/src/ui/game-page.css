@@ -436,6 +436,10 @@
   align-items: center;
 }
 
+.memory-modal .mem-chat-body .bubble-row + .bubble-row {
+  margin-top: 4px;
+}
+
 .memory-modal .mem-chat-body .bubble {
   max-width: 88%;
   font-size: 11px;

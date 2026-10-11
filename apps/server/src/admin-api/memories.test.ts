@@ -56,6 +56,8 @@ async function insertMemory(overrides: {
   gameMinutes: number;
   embedding: number[] | null;
   createdAt: Date;
+  type?: 'event' | 'dialogue';
+  meta?: { kind: 'chat'; otherId: string; lines: string[] } | null;
 }): Promise<void> {
   await handle.db.insert(memories).values({
     characterId: CHAR_ID,
@@ -116,6 +118,20 @@ describe.skipIf(!dbUp)('GET /api/admin/characters/:id/memories', () => {
       embedding: null,
       createdAt: new Date(4_000),
     });
+    await insertMemory({
+      id: '00000000-0000-4000-8000-00000000b315',
+      content: '我和邻座聊了聊:「早」「早呀」',
+      importance: 4,
+      gameMinutes: NOW - 30,
+      embedding: null,
+      createdAt: new Date(5_000),
+      type: 'dialogue',
+      meta: {
+        kind: 'chat',
+        otherId: '00000000-0000-4000-8000-00000000b399',
+        lines: ['早', '早呀'],
+      },
+    });
     app = buildApp();
   }, 30_000);
 
@@ -155,6 +171,7 @@ describe.skipIf(!dbUp)('GET /api/admin/characters/:id/memories', () => {
       notice: null,
     });
     expect(body.items.map((m: { id: string }) => m.id)).toEqual([
+      '00000000-0000-4000-8000-00000000b315',
       '00000000-0000-4000-8000-00000000b314',
       '00000000-0000-4000-8000-00000000b313',
       '00000000-0000-4000-8000-00000000b312',
@@ -164,6 +181,33 @@ describe.skipIf(!dbUp)('GET /api/admin/characters/:id/memories', () => {
       expect(item.score).toBeUndefined();
       expect(item.factors).toBeUndefined();
     }
+  });
+
+  it('对话记忆透传 chat 元数据;旧数据(无 meta)不带 chat;type 过滤生效', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/admin/characters/${CHAR_ID}/memories?type=dialogue`,
+      headers: { authorization: authHeader() },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({
+      id: '00000000-0000-4000-8000-00000000b315',
+      chat: {
+        otherId: '00000000-0000-4000-8000-00000000b399',
+        lines: ['早', '早呀'],
+      },
+    });
+    const browse = await app.inject({
+      method: 'GET',
+      url: `/api/admin/characters/${CHAR_ID}/memories`,
+      headers: { authorization: authHeader() },
+    });
+    const withoutMeta = browse.json().items.find(
+      (m: { id: string }) => m.id === '00000000-0000-4000-8000-00000000b314',
+    );
+    expect(withoutMeta.chat).toBeUndefined();
   });
 
   it('search 模式:llm 桩注单位向量,三因子排序同向登顶', async () => {
@@ -180,11 +224,12 @@ describe.skipIf(!dbUp)('GET /api/admin/characters/:id/memories', () => {
     expect(body.items.map((m: { id: string }) => m.id)).toEqual([
       '00000000-0000-4000-8000-00000000b311',
       '00000000-0000-4000-8000-00000000b312',
+      '00000000-0000-4000-8000-00000000b315',
       '00000000-0000-4000-8000-00000000b314',
       '00000000-0000-4000-8000-00000000b313',
     ]);
     expect(body.items[0].factors.relevance).toBe(1);
-    expect(body.items[3].factors.relevance).toBe(0); // 反向+最旧沉底
+    expect(body.items[4].factors.relevance).toBe(0); // 反向+最旧沉底
   });
 
   it('embed 失败降级双因子排序并带 notice;limit 截断与 400', async () => {
@@ -201,6 +246,7 @@ describe.skipIf(!dbUp)('GET /api/admin/characters/:id/memories', () => {
     expect(body.items.map((m: { id: string }) => m.id)).toEqual([
       '00000000-0000-4000-8000-00000000b312',
       '00000000-0000-4000-8000-00000000b311',
+      '00000000-0000-4000-8000-00000000b315',
       '00000000-0000-4000-8000-00000000b314',
       '00000000-0000-4000-8000-00000000b313',
     ]);

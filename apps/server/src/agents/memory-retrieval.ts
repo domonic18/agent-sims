@@ -21,6 +21,8 @@ export interface ScoredMemory {
   createdAt: Date;
   /** 溯源链(10-cognition §4.1): insight 引用的情景记忆 id;非 insight 为 null */
   sourceIds: string[] | null;
+  /** 结构化元数据(kind 判别): kind='chat'=对话方+交替台词;非对话为 null */
+  meta: { kind: 'chat'; otherId: string; lines: string[] } | null;
   /** 三因子归一化之和(排序唯一依据,分高者胜) */
   score: number;
   factors: MemoryFactors;
@@ -34,6 +36,7 @@ interface CandidateRow {
   gameMinutes: number | null;
   createdAt: Date;
   sourceIds?: string[] | null;
+  meta?: { kind: 'chat'; otherId: string; lines: string[] } | null;
   /** pgvector 余弦相似度(1-距离),queryVector 缺省或条目无向量时 null */
   relevance: number | null;
 }
@@ -76,6 +79,7 @@ export function scoreMemories(
       gameMinutes: row.gameMinutes,
       createdAt: row.createdAt,
       sourceIds: row.sourceIds ?? null,
+      meta: row.meta ?? null,
       score: recencyN[i]! + importanceN[i]! + relevanceN[i]!,
       factors: {
         recency: recencyN[i]!,
@@ -120,6 +124,7 @@ export async function retrieveMemories(
       gameMinutes: memories.gameMinutes,
       createdAt: memories.createdAt,
       sourceIds: memories.sourceIds,
+      meta: memories.meta,
       relevance,
     })
     .from(memories)

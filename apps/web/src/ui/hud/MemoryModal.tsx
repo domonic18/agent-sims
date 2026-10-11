@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type {
   MemoryImpressionsResponse,
+  MemoryPanelItem,
   MemoryPanelResponse,
   MemoryType,
 } from '@sims/shared';
@@ -12,16 +13,25 @@ import { ModalPanel } from '../ModalPanel';
 import { useWorldStore } from '../../store/worldStore';
 import { PixelAvatar } from './PixelAvatar';
 
-/** dialogue 记忆转泡: 「我和XX聊了聊:台词」拆出 lead=「和 XX 的对话」,台词入泡;其余整条入泡 */
-function splitDialogue(content: string): { lead: string | null; text: string } {
-  const m = content.match(/^我和(.+?)聊了聊:([\s\S]+)$/);
-  if (m === null || m[1] === undefined || m[2] === undefined) return { lead: null, text: content };
-  return { lead: `和 ${m[1]} 的对话`, text: m[2] };
+/** 对话记忆泡流: 属主台词恒右(微信自己视角),对方恒左;lines 偶数位=发起者(属主)先说 */
+type ChatBubble = { fromSelf: boolean; text: string };
+
+/** dialogue 条目泡流(结构化,不做文本反解): 有 chat 元数据→按台词交替归属(约定与
+ * social.chat 事件 lines 一致);空台词(结交/初识)或旧数据(无元数据)→整条转述右泡 */
+function chatBubbles(item: MemoryPanelItem): { otherId: string | null; bubbles: ChatBubble[] } {
+  const chat = item.chat;
+  if (chat === undefined || chat.lines.length === 0) {
+    return { otherId: null, bubbles: [{ fromSelf: true, text: item.content }] };
+  }
+  return {
+    otherId: chat.otherId,
+    bubbles: chat.lines.map((text, i) => ({ fromSelf: i % 2 === 0, text })),
+  };
 }
 
 /** 记忆查看弹窗(只读): 游戏页直接翻看 TA 的记忆流(游客/观众同样可见,直播观察姿态);
  * 缺省按时间倒序最近 50 条;类型过滤(事件/洞察/梦境/对话)+洞察溯源+关系印象区
- * (10-cognition §3 全员人可见);对话记忆以聊天气泡呈现。 */
+ * (10-cognition §3 全员人可见);对话记忆按写入侧结构化元数据渲染双方聊天气泡。 */
 export function MemoryModal({
   characterId,
   characterName,
@@ -37,6 +47,7 @@ export function MemoryModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
+  const characters = useWorldStore((state) => state.snapshot?.characters ?? []);
 
   const load = useCallback(
     async (t: MemoryType | null): Promise<void> => {
@@ -125,15 +136,25 @@ export function MemoryModal({
             ) : (
               data.items.map((item) => {
                 if (item.type === 'dialogue') {
-                  const { lead, text } = splitDialogue(item.content);
+                  const { otherId, bubbles } = chatBubbles(item);
+                  const otherName =
+                    otherId !== null ? characters.find((c) => c.id === otherId)?.name : undefined;
                   return (
                     <li key={item.id} className="memory-item mem-chat-item">
                       <div className="mem-chat-body">
-                        {lead !== null && <small className="mem-chat-lead">{lead}</small>}
-                        <div className="bubble-row">
-                          <PixelAvatar characterId={characterId} size={28} />
-                          <div className="bubble">{text}</div>
-                        </div>
+                        {otherId !== null && (
+                          <small className="mem-chat-lead">和 {otherName ?? 'TA'} 的对话</small>
+                        )}
+                        {bubbles.map((b, i) => (
+                          <div key={i} className={`bubble-row${b.fromSelf ? ' right' : ''}`}>
+                            {b.fromSelf ? (
+                              <PixelAvatar characterId={characterId} size={24} />
+                            ) : otherId !== null ? (
+                              <PixelAvatar characterId={otherId} size={24} />
+                            ) : null}
+                            <div className="bubble">{b.text}</div>
+                          </div>
+                        ))}
                         <small className="mem-meta">
                           <span className="mem-badge dialogue">{MEMORY_TYPE_LABELS[item.type]}</span>
                           <span className="mem-imp" title={`重要度 ${item.importance}/10`}>

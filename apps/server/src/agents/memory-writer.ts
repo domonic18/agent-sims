@@ -66,6 +66,9 @@ interface MemoryTask {
   content: string;
   /** D4 重要活动的轻槽复盘材料(baseLine=事实行);缺省=纯模板不入复盘 */
   retrospect?: { baseLine: string; evaluation: ActivityEvalResult };
+  /** 对话记忆结构化元数据(shared MemoryChatMeta 同形): content 转述文本之外的
+   * 结构化真相(对话方 id+交替台词),记忆面板按元数据渲染双方气泡 */
+  meta?: { kind: 'chat'; otherId: string; lines: string[] };
 }
 
 /** 管线队列条目:run=事件经历走 Jev 打分;manual=直写跳过打分;resolve 供 writeManual 等待 */
@@ -279,6 +282,7 @@ export class MemoryWriter {
       embedding,
       gameMinutes: this.sim.clock.gameMinutes,
       sourceIds: opts.sourceIds ?? null,
+      meta: task.meta ?? null,
       consolidatedAt: opts.consolidated === true ? new Date() : null,
     });
     if (opts.consolidated !== true) {
@@ -376,23 +380,27 @@ export class MemoryWriter {
         };
       }
       case 'social.chat':
-        // C4 双句对话 content 已含「问」「答」单引号对,模板改为转述式容纳两种形态
+        // C4 双句对话 content 已含「问」「答」单引号对,模板改为转述式容纳两种形态;
+        // chat 元数据(lines=交替台词,偶数位=发起者=属主)供记忆面板结构化渲染双方气泡
         return {
           characterId: event.fromId,
           type: 'dialogue',
           content: `我和${nameOf(event.toId)}聊了聊:${event.content}`,
+          meta: { kind: 'chat', otherId: event.toId, lines: event.lines ?? [event.content] },
         };
       case 'friendship.formed':
         return {
           characterId: event.aId,
           type: 'dialogue',
           content: `我和${nameOf(event.bId)}结成了${event.title}`,
+          meta: { kind: 'chat', otherId: event.bId, lines: [] },
         };
       case 'first.met':
         return {
           characterId: event.aId,
           type: 'dialogue',
           content: `我初次认识了${nameOf(event.bId)},是个面生的邻居`,
+          meta: { kind: 'chat', otherId: event.bId, lines: [] },
         };
       case 'character.died':
         return {

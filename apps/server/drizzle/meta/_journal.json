@@ -141,6 +141,13 @@
       "when": 1791632554522,
       "tag": "0019_lying_dagger",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791726727610,
+      "tag": "0020_acoustic_tempest",
+      "breakpoints": true
     }
   ]
 }

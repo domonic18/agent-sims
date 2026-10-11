@@ -33,6 +33,7 @@ interface PanelRow {
   gameMinutes: number | null;
   createdAt: Date;
   sourceIds: string[] | null;
+  meta: { kind: 'chat'; otherId: string; lines: string[] } | null;
 }
 
 function toPanelItem(row: PanelRow): MemoryPanelItem {
@@ -44,6 +45,7 @@ function toPanelItem(row: PanelRow): MemoryPanelItem {
     gameMinutes: row.gameMinutes,
     createdAt: row.createdAt.toISOString(),
     ...(row.sourceIds !== null && row.sourceIds.length > 0 ? { sourceIds: row.sourceIds } : {}),
+    ...(row.meta?.kind === 'chat' ? { chat: { otherId: row.meta.otherId, lines: row.meta.lines } } : {}),
   };
 }
 
@@ -109,6 +111,7 @@ export function memoriesPanelHandler(
           gameMinutes: memories.gameMinutes,
           createdAt: memories.createdAt,
           sourceIds: memories.sourceIds,
+          meta: memories.meta,
         })
         .from(memories)
         .where(

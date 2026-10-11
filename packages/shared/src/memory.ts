@@ -11,8 +11,17 @@ export const MEMORY_TYPE_LABELS: Record<MemoryType, string> = {
   dialogue: '对话',
 };
 
+/** 对话记忆结构化元数据(dialogue 类可选): lines=交替台词原句,与 social.chat 事件 lines
+ * 同源同序(偶数位=发起者=记忆属主,先说);空数组=无台词的叙述性对话(结交/初识),
+ * 届时展示 content 转述句。旧数据无此字段,前端回退整条转述泡。 */
+export interface MemoryChatMeta {
+  otherId: string;
+  lines: string[];
+}
+
 /** 单条记忆;score/factors 仅检索模式返回(recency/importance/relevance 归一化明细);
- * sourceIds/sources 仅 insight 类返回(溯源链: 引用的情景记忆 id 与原文,≤8 条) */
+ * sourceIds/sources 仅 insight 类返回(溯源链: 引用的情景记忆 id 与原文,≤8 条);
+ * chat 仅 dialogue 类返回(对话方与台词的结构化元数据) */
 export interface MemoryPanelItem {
   id: string;
   type: MemoryType;
@@ -24,6 +33,7 @@ export interface MemoryPanelItem {
   factors?: { recency: number; importance: number; relevance: number | null };
   sourceIds?: string[];
   sources?: string[];
+  chat?: MemoryChatMeta;
 }
 
 export interface MemoryPanelResponse {
