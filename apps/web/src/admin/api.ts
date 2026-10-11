@@ -21,6 +21,8 @@ import {
   type CreateWorldRequest,
   type GameType,
   type MapDetailResponse,
+  type MapGenerateRequest,
+  type MapGenerateResponse,
   type MapListResponse,
   type MapStatus,
   type MapWriteRequest,
@@ -288,6 +290,13 @@ export async function archiveMap(id: string): Promise<MapDetailResponse> {
 
 export async function deleteMap(id: string): Promise<void> {
   await adminFetch<unknown>(ADMIN_API.map(id), { method: 'DELETE' });
+}
+
+export async function generateMap(payload: MapGenerateRequest): Promise<MapGenerateResponse> {
+  return await adminFetch<MapGenerateResponse>(ADMIN_API.mapGenerate, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 // ============ 世界存档多档(C6) ============

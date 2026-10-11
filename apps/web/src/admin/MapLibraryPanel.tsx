@@ -9,6 +9,7 @@ import {
   Flex,
   Form,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
   Radio,
@@ -19,26 +20,39 @@ import {
   Tooltip,
   type TableColumnsType,
 } from 'antd';
-import { DeleteOutlined, EyeOutlined, PlusOutlined, RocketOutlined } from '@ant-design/icons';
 import {
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  RocketOutlined,
+} from '@ant-design/icons';
+import {
+  GAME_TYPES,
+  GAME_TYPE_LABELS,
   MAP_STATUS_LABELS,
   TOWN_MAP,
+  WORLDGEN_SIZES,
+  WORLDGEN_SIZE_GRIDS,
+  type GameType,
   type MapDetailResponse,
   type MapStatus,
   type MapSummaryItem,
   type TileMapDefinition,
+  type WorldgenSize,
 } from '@sims/shared';
 import {
   ApiError,
   archiveMap,
-  createMap,
   deleteMap,
   fetchMap,
   fetchMaps,
+  generateMap,
   publishMap,
 } from './api';
 import { formatTime } from './CurrentWorldCard';
 import { MapPreviewCanvas } from './MapPreviewCanvas';
+import { MapEditorPanel, type MapEditorLaunch } from './map-editor/MapEditorPanel';
 
 const STATUS_FILTERS = [
   { value: 'all', label: '全部' },
@@ -56,7 +70,10 @@ const STATUS_TAG_COLOR: Record<MapStatus, string> = {
 interface CreateFormValues {
   name: string;
   description?: string;
-  source: 'blank' | 'builtin';
+  source: 'blank' | 'builtin' | 'random';
+  seed?: number;
+  gameType: GameType;
+  size: WorldgenSize;
 }
 
 /** 空白起步图:24x18 草坪+一个门洞小屋(保证 createWorld 语义校验可通过的最小可玩图) */
@@ -92,6 +109,8 @@ export function MapLibraryPanel() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm] = Form.useForm<CreateFormValues>();
   const [preview, setPreview] = useState<MapDetailResponse | null>(null);
+  const [editing, setEditing] = useState<MapEditorLaunch | null>(null);
+  const source = Form.useWatch('source', createForm) ?? 'builtin';
 
   const load = useCallback(async () => {
     try {
@@ -143,20 +162,46 @@ export function MapLibraryPanel() {
     }
   };
 
+  const openEditor = async (item: MapSummaryItem): Promise<void> => {
+    try {
+      const detail = await fetchMap(item.id);
+      setEditing({
+        mapId: detail.id,
+        name: detail.name,
+        ...(detail.description ? { description: detail.description } : {}),
+        definition: detail.definition,
+      });
+    } catch (err) {
+      message.error(err instanceof Error ? err.message : '加载地图失败');
+    }
+  };
+
+  /** 三来源统一进编辑器(不落库):空白/内置/随机生成;保存时才走创建 API */
   const submitCreate = async (values: CreateFormValues): Promise<void> => {
     setBusy(true);
     try {
-      const created = await createMap({
-        name: values.name.trim(),
-        ...(values.description?.trim() ? { description: values.description.trim() } : {}),
-        definition: values.source === 'builtin' ? structuredClone(TOWN_MAP) : blankDefinition(),
-      });
-      message.success(`地图「${created.name}」已创建为草稿`);
+      let definition: TileMapDefinition;
+      if (values.source === 'random') {
+        const generated = await generateMap({
+          ...(values.seed !== undefined ? { seed: values.seed } : {}),
+          gameType: values.gameType,
+          size: values.size,
+        });
+        definition = generated.map;
+        message.info(`已按种子 ${generated.seed} 生成布局`);
+      } else {
+        definition = values.source === 'builtin' ? structuredClone(TOWN_MAP) : blankDefinition();
+      }
       setCreateOpen(false);
       createForm.resetFields();
-      void load();
+      setEditing({
+        mapId: null,
+        name: values.name.trim(),
+        ...(values.description?.trim() ? { description: values.description.trim() } : {}),
+        definition,
+      });
     } catch (err) {
-      message.error(err instanceof ApiError ? err.message : '创建失败');
+      message.error(err instanceof ApiError ? err.message : '生成失败');
     } finally {
       setBusy(false);
     }
@@ -199,12 +244,22 @@ export function MapLibraryPanel() {
     },
     {
       title: '操作',
-      width: 240,
+      width: 300,
       render: (_, item) => (
         <Space size={4}>
           <Button size="small" icon={<EyeOutlined />} onClick={() => void openPreview(item.id)}>
             预览
           </Button>
+          <Tooltip title="在编辑器中打开(保存走草稿门禁)">
+            <Button
+              size="small"
+              icon={<EditOutlined />}
+              disabled={busy}
+              onClick={() => void openEditor(item)}
+            >
+              编辑
+            </Button>
+          </Tooltip>
           {item.status === 'draft' && (
             <Tooltip title="体检通过才可发布;发布后创建世界可选">
               <Button
@@ -237,6 +292,18 @@ export function MapLibraryPanel() {
       ),
     },
   ];
+
+  if (editing !== null) {
+    return (
+      <MapEditorPanel
+        launch={editing}
+        onBack={() => {
+          setEditing(null);
+          void load();
+        }}
+      />
+    );
+  }
 
   return (
     <Flex vertical gap={16}>
@@ -282,9 +349,14 @@ export function MapLibraryPanel() {
         onCancel={() => setCreateOpen(false)}
         onOk={() => void createForm.validateFields().then(() => void submitCreate(createForm.getFieldsValue(true)))}
         confirmLoading={busy}
-        okText="创建"
+        okText="起步并编辑"
       >
-        <Form form={createForm} layout="vertical" requiredMark={false} initialValues={{ source: 'builtin' }}>
+        <Form
+          form={createForm}
+          layout="vertical"
+          requiredMark={false}
+          initialValues={{ source: 'builtin', gameType: 'growth', size: 'small' }}
+        >
           <Form.Item
             name="name"
             label="地图名"
@@ -303,9 +375,30 @@ export function MapLibraryPanel() {
               options={[
                 { value: 'builtin', label: '复制内置经典小镇(推荐起步)' },
                 { value: 'blank', label: '空白地图(自建)' },
+                { value: 'random', label: '随机生成(种子可复现)' },
               ]}
             />
           </Form.Item>
+          {source === 'random' && (
+            <Flex gap={16} wrap="wrap">
+              <Form.Item name="seed" label="种子(留空随机)" style={{ marginBottom: 12, minWidth: 160 }}>
+                <InputNumber min={0} max={9999999999} precision={0} style={{ width: '100%' }} placeholder="如 20261011" />
+              </Form.Item>
+              <Form.Item name="gameType" label="世界类型" style={{ marginBottom: 12 }}>
+                <Radio.Group
+                  options={GAME_TYPES.map((g) => ({ value: g, label: GAME_TYPE_LABELS[g] }))}
+                />
+              </Form.Item>
+              <Form.Item name="size" label="尺寸档" style={{ marginBottom: 12 }}>
+                <Radio.Group
+                  options={WORLDGEN_SIZES.map((s) => ({
+                    value: s,
+                    label: `${s === 'small' ? '小' : s === 'medium' ? '中' : '大'} ${WORLDGEN_SIZE_GRIDS[s].width}×${WORLDGEN_SIZE_GRIDS[s].height}`,
+                  }))}
+                />
+              </Form.Item>
+            </Flex>
+          )}
         </Form>
       </Modal>
 

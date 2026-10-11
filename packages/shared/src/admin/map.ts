@@ -2,6 +2,7 @@
  * 地图库协议(MS-1):后台地图管理面板/建世界选图/编辑器的共享视图类型。
  * 地图正文是 TileMapDefinition(town-map.ts),本文件只定义列表/详情/写入协议。
  */
+import type { GameType } from '../worldgen.js';
 import type { TileMapDefinition } from '../town-map.js';
 
 /** 地图状态机: 草稿(编辑中)→已发布(建世界可选)→归档(不可选仍可查) */
@@ -48,4 +49,19 @@ export interface MapWriteRequest {
   description?: string;
   sizePreset?: string;
   definition: TileMapDefinition;
+}
+
+/** POST /api/admin/maps/generate 请求:随机生成起步图(编辑器第三起步来源,不落库) */
+export interface MapGenerateRequest {
+  /** 缺省=服务端随机种子 */
+  seed?: number;
+  gameType: GameType;
+  /** 尺寸档(缺省 small) */
+  size?: 'small' | 'medium' | 'large';
+}
+
+export interface MapGenerateResponse {
+  map: TileMapDefinition;
+  /** 实际使用的种子(请求缺省时由服务端生成,回显供复现) */
+  seed: number;
 }

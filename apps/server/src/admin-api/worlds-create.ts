@@ -189,7 +189,7 @@ function loadAssetsByKind(): {
 }
 
 /** worldgen 输入的素材参数包(池 + solid 占地尺寸;manifest 缺省时全缺省,同参同图) */
-function loadAssetInput(): {
+export function loadAssetInput(): {
   assetsByKind?: Record<string, string[]>;
   assetSizes?: Record<string, readonly [number, number]>;
 } {

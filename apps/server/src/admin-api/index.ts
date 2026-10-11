@@ -11,6 +11,7 @@ import { registerMindTalkRoutes } from './mindtalk.js';
 import { registerMoodRoutes } from './mood.js';
 import { registerLogRoutes } from './logs.js';
 import { registerMapRoutes } from './maps.js';
+import { registerMapGenerateRoutes } from './maps-generate.js';
 import { registerMemoryRoutes } from './memories.js';
 import { registerModelConfigRoutes } from './model-configs.js';
 import { registerPersonaRoutes } from './persona.js';
@@ -39,6 +40,7 @@ export function registerAdminApi(app: FastifyInstance, handle: DbHandle, sim: Si
     registerWorldRoutes(scope, handle);
     registerWorldArchiveRoutes(scope, handle);
     registerMapRoutes(scope, handle);
+    registerMapGenerateRoutes(scope, handle);
     registerAssetRoutes(scope, handle);
     registerAssetIssueRoutes(scope, handle);
     registerMemoryRoutes(scope, handle, sim);

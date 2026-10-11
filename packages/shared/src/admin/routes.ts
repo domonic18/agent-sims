@@ -54,6 +54,7 @@ export const ADMIN_API = {
   prompts: '/api/admin/prompts',
   uiSettings: '/api/admin/ui-settings',
   maps: '/api/admin/maps',
+  mapGenerate: '/api/admin/maps/generate',
   map: (id: string) => `/api/admin/maps/${id}`,
   mapPublish: (id: string) => `/api/admin/maps/${id}/publish`,
   mapArchive: (id: string) => `/api/admin/maps/${id}/archive`,
