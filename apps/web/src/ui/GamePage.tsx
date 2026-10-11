@@ -15,6 +15,7 @@ import { MemoryModal } from './hud/MemoryModal';
 import { ActionBar } from './hud/ActionBar';
 import { InspectCard } from './hud/InspectCard';
 import { LogDrawer } from './hud/LogDrawer';
+import { ModelPulse } from './hud/ModelPulse';
 import { BootScreen } from './BootScreen';
 import { useGoAndDo } from './side-panel/useGoAndDo';
 import { useCharacterLookup } from './hud/useCharacterLookup';
@@ -331,25 +332,28 @@ export default function GamePage() {
 
       {uiMeta?.showModels === true &&
         (uiMeta.slowModel !== null || uiMeta.lightModel !== null || uiMeta.jevModel !== null) && (
-          <div className="hud-model-badge">
-            {uiMeta.slowModel !== null && (
-              <span>
-                <i>慢思考</i>
-                {uiMeta.slowModel}
-              </span>
-            )}
-            {uiMeta.lightModel !== null && (
-              <span>
-                <i>轻量LLM</i>
-                {uiMeta.lightModel}
-              </span>
-            )}
-            {uiMeta.jevModel !== null && (
-              <span>
-                <i>决策Jev</i>
-                {uiMeta.jevModel}
-              </span>
-            )}
+          <div className="hud-model-dock">
+            <ModelPulse />
+            <div className="hud-model-badge">
+              {uiMeta.slowModel !== null && (
+                <span>
+                  <i>慢思考</i>
+                  {uiMeta.slowModel}
+                </span>
+              )}
+              {uiMeta.lightModel !== null && (
+                <span>
+                  <i>轻量LLM</i>
+                  {uiMeta.lightModel}
+                </span>
+              )}
+              {uiMeta.jevModel !== null && (
+                <span>
+                  <i>决策Jev</i>
+                  {uiMeta.jevModel}
+                </span>
+              )}
+            </div>
           </div>
         )}
 

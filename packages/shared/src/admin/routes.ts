@@ -67,6 +67,18 @@ export interface UiMetaView {
   jevModel: string | null;
 }
 
+/** GET /api/world/model-pulse 响应(公开): 游戏页左下角模型心跳仪表;
+ * pulse 为近窗口调用次数桶(旧→新,全槽位合计,心电图数据源);
+ * totals 为三槽位累计 Token 调用量(prompt+completion 合计,不细分) */
+export interface ModelPulseView {
+  /** 心跳桶(旧→新): 每桶 bucketMs 内的模型调用次数 */
+  pulse: number[];
+  /** 桶时长(毫秒),窗口=pulse.length × bucketMs */
+  bucketMs: number;
+  /** 各槽位累计 Token(全史): slow=慢思考 light=轻量LLM jev=决策Jev */
+  totals: { slow: number; light: number; jev: number };
+}
+
 /** 外置提示词查看视图(GET /api/admin/prompts,只读): 元数据+模板全文 */
 export interface PromptView {
   id: string;

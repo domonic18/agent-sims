@@ -314,13 +314,21 @@
   padding: 3px 10px;
 }
 
-/* 左下 模型徽标(问题⑦): 低存在感提示,后台开关裁定,游客可见不可交互;
- * 三槽位纵列(慢思考/轻量LLM/决策Jev),前缀 label 说明用途 */
-.hud-model-badge {
+/* 左下 模型坞: 心跳仪表+徽标纵列(问题⑦/UI 反馈),后台开关裁定整体显隐 */
+.hud-model-dock {
   position: absolute;
   left: 16px;
   bottom: 18px;
   z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* 左下 模型徽标(问题⑦): 低存在感提示,游客可见不可交互;
+ * 三槽位纵列(慢思考/轻量LLM/决策Jev),前缀 label 说明用途 */
+.hud-model-badge {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -337,6 +345,76 @@
   font-style: normal;
   margin-right: 6px;
   color: var(--px-slate);
+}
+
+/* 模型心跳仪表(UI 反馈): 心电图风格小窗+三槽位累计 Token,低存在感可收起 */
+.hud-model-pulse {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--px-dim);
+  background: rgba(26, 28, 44, 0.55);
+  border: 2px solid rgba(86, 108, 134, 0.35);
+  padding: 2px 3px 2px 5px;
+  opacity: 0.85;
+}
+
+.pulse-canvas {
+  display: block;
+  width: 88px;
+  height: 30px;
+}
+
+.pulse-tokens {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1px 0;
+}
+
+.pulse-tokens span i {
+  font-style: normal;
+  margin-right: 3px;
+  color: var(--px-slate);
+}
+
+.pulse-toggle {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: var(--px-slate);
+  font-size: 10px;
+  line-height: 1;
+  padding: 1px 2px;
+  cursor: pointer;
+}
+
+.pulse-toggle:hover {
+  color: var(--px-dim);
+}
+
+/* 收起态: 呼吸圆点,点击展开 */
+.hud-model-pulse-dot {
+  width: 10px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(74, 222, 128, 0.6);
+  cursor: pointer;
+  animation: pulse-breath 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse-breath {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.9;
+  }
 }
 
 /* ---- 右上 按钮 ---- */

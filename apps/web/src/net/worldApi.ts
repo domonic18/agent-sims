@@ -6,6 +6,7 @@ import type {
   MemoryImpressionsResponse,
   MemoryPanelResponse,
   MemoryType,
+  ModelPulseView,
   UiMetaView,
   WorldEventsHistoryResponse,
   WorldRecipesView,
@@ -63,6 +64,10 @@ export const getWorldRecipes = (): Promise<WorldRecipesView> =>
 /** 游戏页模型徽标(公开读):开关与模型名由服务端裁定,失败静默由调用方处理 */
 export const getUiMeta = (): Promise<UiMetaView> =>
   jsonRequest<UiMetaView>('/api/world/ui-meta');
+
+/** 模型心跳仪表(公开读):近窗调用脉冲桶+三槽位累计 Token */
+export const getModelPulse = (): Promise<ModelPulseView> =>
+  jsonRequest<ModelPulseView>('/api/world/model-pulse');
 
 export const getWorldEvents = async (query: { limit?: number; characterId?: string; type?: string; types?: string[] } = {}): Promise<WorldEventsHistoryResponse> => {
   const params = new URLSearchParams();
