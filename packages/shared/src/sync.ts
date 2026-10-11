@@ -73,6 +73,9 @@ export interface WorldSnapshotMessage {
     name: string;
     x: number;
     y: number;
+    /** 剩余移动路径点(不含当前格,4 向相邻;空=未在移动)。前端沿此逐格插值,
+     * 严禁直线追逐 x/y——直线弦会视觉穿越障碍(E8 路径表现层治理) */
+    path: Array<{ x: number; y: number }>;
     pathRemaining: number;
     energy: number;
     /** 健康(M-S/S1):0~100,仅 survival 模式有压力源(饥饿损耗/吃饱恢复),growth 恒满 */

@@ -31,6 +31,9 @@ const ZOOM_MIN = 1 * RENDER_DPR;
 const ZOOM_MAX = 4 * RENDER_DPR;
 /** 按压位移超过该像素数即判定为拖拽平移(自由视角),否则 pointerup 按点击处理(栅格像素) */
 const DRAG_THRESHOLD_PX = 6 * RENDER_DPR;
+/** 跟随态相机边界外扩(格):角色精灵高于 tile,贴边行走时上半身会越出地图矩形,
+ * 边界按地图矩形硬钳会把边缘角色裁成半截,外扩留出精灵绘制余量 */
+const CAMERA_MARGIN_TILES = 3;
 
 /**
  * 世界渲染场景编排:地形/内景/灯光/喷泉/角色视图各模块装配
@@ -141,7 +144,12 @@ export class WorldScene extends Phaser.Scene {
     this._fountain = new FountainFx(map.places.some((p) => p.id === 'park') ? FOUNTAIN_RECT : null);
 
     const cam = this.cameras.main;
-    cam.setBounds(0, 0, map.width * TILE, map.height * TILE);
+    cam.setBounds(
+      -CAMERA_MARGIN_TILES * TILE,
+      -CAMERA_MARGIN_TILES * TILE,
+      (map.width + 2 * CAMERA_MARGIN_TILES) * TILE,
+      (map.height + 2 * CAMERA_MARGIN_TILES) * TILE,
+    );
     cam.setZoom(ZOOM_DEFAULT);
     this._interactive = this.registry.get('interactive') !== false;
     // 点击 vs 拖拽:UI-1 三态相机。按住位移超阈值=拖拽平移(自动进自由视角),
@@ -301,7 +309,12 @@ export class WorldScene extends Phaser.Scene {
     }
     if (this._appliedMode !== 'follow') {
       if (this._map !== null) {
-        cam.setBounds(0, 0, this._map.width * TILE, this._map.height * TILE);
+        cam.setBounds(
+          -CAMERA_MARGIN_TILES * TILE,
+          -CAMERA_MARGIN_TILES * TILE,
+          (this._map.width + 2 * CAMERA_MARGIN_TILES) * TILE,
+          (this._map.height + 2 * CAMERA_MARGIN_TILES) * TILE,
+        );
       }
       cam.setZoom(Math.max(ZOOM_DEFAULT, minZoom));
       this._appliedMode = 'follow';

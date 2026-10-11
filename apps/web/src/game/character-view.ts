@@ -35,6 +35,10 @@ export interface CharacterRender {
   /** 快照目标坐标(tile 整数) */
   targetX: number;
   targetY: number;
+  /** 权威路径消费队列:每快照重置为 [快照位置, ...剩余路径点](相邻格连线必可行走) */
+  queue: Array<{ x: number; y: number }>;
+  /** 最近同步的快照角色对象(身份比较:仅新快照才重置队列,防逐帧重置消费进度) */
+  src: object | null;
   dir: Direction;
   /** 是否处于活动中(姿态与气泡指示) */
   inActivity: boolean;
@@ -74,6 +78,8 @@ export interface CharacterSnapshotView {
   name: string;
   x: number;
   y: number;
+  /** 剩余权威路径点(4 向相邻;逐格消费,严禁直线追逐 x/y) */
+  path: Array<{ x: number; y: number }>;
   energy: number;
   alive: boolean;
   diedAtGameMinutes: number | null;
@@ -127,6 +133,8 @@ export function syncCharacterViews(
         y: character.y,
         targetX: character.x,
         targetY: character.y,
+        queue: [{ x: character.x, y: character.y }, ...character.path],
+        src: character,
         dir: 'down',
         inActivity: character.activity !== null,
         activityId: character.activity?.activityId ?? null,
@@ -148,8 +156,13 @@ export function syncCharacterViews(
       views.set(character.id, view);
       view.node.setPosition(view.x * TILE + TILE / 2, view.y * TILE + TILE / 2);
     }
-    view.targetX = character.x;
-    view.targetY = character.y;
+    if (view.src !== character) {
+      // 仅新快照才重置目标与路径队列(update 每帧都会带着同一快照进来,逐帧重置会让消费永远归零)
+      view.src = character;
+      view.targetX = character.x;
+      view.targetY = character.y;
+      view.queue = [{ x: character.x, y: character.y }, ...character.path];
+    }
     view.inActivity = character.activity !== null;
     view.activityId = character.activity?.activityId ?? null;
     view.anchorKind = character.activity?.anchorKind ?? null;
@@ -168,8 +181,9 @@ export function syncCharacterViews(
 }
 
 /**
- * 单角色逐帧更新:向快照目标插值(1 tick = 1 游戏分钟,步频随 timeScale 放大),
- * 到位后映射活动姿态与 rest 吸附横躺;幽灵态半透明飘浮。
+ * 单角色逐帧更新:沿权威路径队列逐格推进(1 tick = 1 游戏分钟,步频随 timeScale 放大),
+ * 消费完毕即到位,映射活动姿态与 rest/sleep 锚点吸附;掉帧积压超阈值整段吸附兜底;
+ * 幽灵态半透明飘浮。禁止直线追逐快照坐标——直线弦会视觉穿越障碍。
  */
 export function updateCharacterView(
   scene: Phaser.Scene,
@@ -178,19 +192,39 @@ export function updateCharacterView(
   now: number,
   map: TileMapDefinition,
 ): void {
-  const dx = view.targetX - view.x;
-  const dy = view.targetY - view.y;
-  const distance = Math.hypot(dx, dy);
-  let drawX = view.x;
-  let drawY = view.y;
-  if (distance <= step || distance > SNAP_DISTANCE_TILES) {
+  // 瞬移兜底:距快照位置超阈值(切屏/掉帧积压)直接吸附,队列由下一拍快照重发
+  if (Math.hypot(view.targetX - view.x, view.targetY - view.y) > SNAP_DISTANCE_TILES) {
     view.x = view.targetX;
     view.y = view.targetY;
-    // 活动姿态映射:健身=原地跑(walk 动画不位移),rest=躺卧帧,桌台/柜台类=坐姿,其余=站立待机
+    view.queue.length = 0;
+  } else {
+    // 逐段消费队列(快照位置+后续路径点均与当前格相邻,连线全程压在权威路径上)
+    let remaining = step;
+    while (remaining > 0 && view.queue.length > 0) {
+      const next = view.queue[0]!;
+      const dx = next.x - view.x;
+      const dy = next.y - view.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= remaining) {
+        view.x = next.x;
+        view.y = next.y;
+        view.queue.shift();
+        remaining -= d;
+      } else {
+        view.x += (dx / d) * remaining;
+        view.y += (dy / d) * remaining;
+        remaining = 0;
+      }
+    }
+  }
+  let drawX = view.x;
+  let drawY = view.y;
+  if (view.queue.length === 0) {
+    // 活动姿态映射:健身=原地跑(walk 动画不位移),rest/sleep=躺卧帧,桌台/柜台类=坐姿,其余=站立待机
     if (view.inActivity && view.activityId !== null) {
       const pose = ACTIVITY_POSES[view.activityId as ActivityId] ?? 'idle';
       if (pose === 'sit') {
-        // 坐姿面向锚点家具,位置留在使用格(区别于 rest/workout 的占地中心吸附)
+        // 坐姿面向锚点家具,位置留在使用格(区别于 rest/sleep/workout 的占地中心吸附)
         const dir = facingAnchorDir(view.activityId, view.x, view.y, view.anchorKind, map);
         if (dir !== null) view.dir = dir;
         playAnim(scene, view, 'sit');
@@ -200,27 +234,32 @@ export function updateCharacterView(
     } else {
       playAnim(scene, view, 'idle');
     }
-    // 锚点吸附(纯视觉): rest 到位后以躺卧帧横陈床/沙发/长椅中心
+    // 锚点吸附(纯视觉): rest/sleep 到位后以躺卧帧横陈床/沙发/长椅中心
     // (M3.6g 按 anchorKind 匹配档位家具,躺卧帧自带姿态不再旋转精灵);
-    // workout 站上跑步机占地中心原地跑(M3.6i 反馈①: 真正在机器上跑)
+    // workout 站上跑步机占地中心原地跑(M3.6i 反馈①: 真正在机器上跑)。
+    // sleep 只认床:家具表 activityId 标 rest(furnitureServesActivity 桥接),按床档 kind 过滤
     const snapActivity =
-      view.inActivity && (view.activityId === 'rest' || view.activityId === 'workout')
+      view.inActivity &&
+      (view.activityId === 'rest' ||
+        view.activityId === 'workout' ||
+        view.activityId === 'sleep')
         ? view.activityId
         : null;
-    const anchor =
-      snapActivity !== null
-        ? nearestAnchorFurniture(snapActivity, view.x, view.y, view.anchorKind, map)
-        : null;
-    view.resting = snapActivity === 'rest' && anchor !== null;
+    let anchor: { x: number; y: number; w: number; h: number } | null = null;
+    if (snapActivity === 'rest' || snapActivity === 'workout') {
+      anchor = nearestAnchorFurniture(snapActivity, view.x, view.y, view.anchorKind, map);
+    } else if (snapActivity === 'sleep' && view.anchorKind !== null) {
+      anchor = nearestAnchorFurniture('rest', view.x, view.y, view.anchorKind, map);
+    }
+    view.resting = (snapActivity === 'rest' || snapActivity === 'sleep') && anchor !== null;
     if (anchor !== null) {
       drawX = anchor.x + anchor.w / 2;
       drawY = anchor.y + anchor.h / 2;
     }
   } else {
     view.resting = false;
-    view.x += (dx / distance) * step;
-    view.y += (dy / distance) * step;
-    playWalk(scene, view, dx, dy);
+    const next = view.queue[0]!;
+    playWalk(scene, view, next.x - view.x, next.y - view.y);
   }
   // 幽灵态: 半透明飘浮
   const bob = view.alive ? 0 : Math.sin(now / 300) * 1.5 - 2;

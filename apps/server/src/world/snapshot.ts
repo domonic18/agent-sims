@@ -39,6 +39,7 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
       name: character.name,
       x: character.x,
       y: character.y,
+      path: character.path.map((point) => ({ x: point.x, y: point.y })),
       pathRemaining: character.path.length,
       energy: round(character.energy),
       health: round(character.health),
