@@ -28,7 +28,7 @@ import { publishTarget, readManifestVersion } from '../assets/paths.js';
 import { TileMap } from '../world/map.js';
 import { setWorldId } from '../world/world-id.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
-import { DECOR_POOLS } from '../world/worldgen/blueprint.js';
+import { DECOR_KINDS, decorPoolAllows } from '../world/worldgen/blueprint.js';
 
 const characterSchema = z.object({
   name: z.string().trim().min(1, '人物名不能为空').max(20),
@@ -139,16 +139,8 @@ function loadAssetsByKind(): {
       }>;
     };
     const THEME_TILE_CAPS = [1, 2, 4] as const;
-    // 拼接件(modular/场地线 line)是地形拼图,单独摆放观感差,不入主题/装饰池
-    const DECOR_KINDS: Record<string, readonly string[]> = {
-      [DECOR_POOLS.tree]: ['tree'],
-      [DECOR_POOLS.bush]: ['bush', 'flower-bush', 'bush-potted'],
-      [DECOR_POOLS.bench]: ['bench'],
-      [DECOR_POOLS.street]: ['hydrant', 'sign', 'mailbox', 'trashbin', 'barrel'],
-      [DECOR_POOLS.lamp]: ['street-lamp'],
-      [DECOR_POOLS.flat]: ['flowers', 'grass-tufts', 'stone'],
-      [DECOR_POOLS.wreck]: ['car-wreck', 'electric-pole', 'barrier', 'sidewalk-obstacle'],
-    };
+    // 池成员声明(DECOR_KINDS)与限宽规则(decorPoolAllows)在 blueprint.ts 与
+    // DECOR_POOLS 同文件声明;拼接件 modular/场地线 line 不入主题/装饰池
     const decorMembers: Record<string, Array<{ slug: string; gridW: number; gridH: number }>> = {};
     const pool: Record<string, string[]> = {};
     const sizes: Record<string, readonly [number, number]> = {};
@@ -172,11 +164,7 @@ function loadAssetsByKind(): {
       }
     }
     for (const [poolKey, members] of Object.entries(decorMembers)) {
-      const flat = poolKey === DECOR_POOLS.flat;
-      const wide = poolKey === DECOR_POOLS.wreck; // 残骸/电线杆等宽件(solid 占地)
-      const ok = members.filter((a) =>
-        flat ? a.gridW === 1 && a.gridH === 1 : a.gridW <= (wide ? 4 : 2)
-      );
+      const ok = members.filter((a) => decorPoolAllows(poolKey, a.gridW, a.gridH));
       if (ok.length > 0) {
         (pool[poolKey] ??= []).push(...ok.map((a) => a.slug));
         for (const a of ok) sizes[a.slug] = [a.gridW, a.gridH];

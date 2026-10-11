@@ -433,8 +433,8 @@ export const WALL_TILE_POOL = [
   'tile-wallBlue',
 ] as const;
 
-/** 户外装饰素材池键(worlds.ts loadAssetsByKind 产出同名池,成员限宽保证底边锚定观感;
- * 池空回退 decor 旧固定纹理字段 trees/lamps/flowers/bushes) */
+/** 户外装饰素材池键(loadAssetsByKind 产出同名池;池空回退 decor 旧固定纹理
+ * 字段 trees/lamps/flowers/bushes) */
 export const DECOR_POOLS = {
   /** 立式乔木/枯木(庭院/间隙/边界/公园树簇) */
   tree: 'decor/tree',
@@ -451,3 +451,21 @@ export const DECOR_POOLS = {
   /** 镇外废土装饰(survival):残骸/电线杆/路障——宽件池,solid 占地 */
   wreck: 'decor/wreck',
 } as const;
+
+/** 池成员的素材 categorySlug 清单(manifest → 池过滤用;键与 DECOR_POOLS 同源;
+ * 拼接件 modular/场地线 line 是地形拼图,不入池) */
+export const DECOR_KINDS: Record<string, readonly string[]> = {
+  [DECOR_POOLS.tree]: ['tree'],
+  [DECOR_POOLS.bush]: ['bush', 'flower-bush', 'bush-potted'],
+  [DECOR_POOLS.bench]: ['bench'],
+  [DECOR_POOLS.street]: ['hydrant', 'sign', 'mailbox', 'trashbin', 'barrel'],
+  [DECOR_POOLS.lamp]: ['street-lamp'],
+  [DECOR_POOLS.flat]: ['flowers', 'grass-tufts', 'stone'],
+  [DECOR_POOLS.wreck]: ['car-wreck', 'electric-pole', 'barrier', 'sidewalk-obstacle'],
+};
+
+/** 池成员占地准入(flat 贴地限 1×1,wreck 宽件 ≤4,其余立式 ≤2——底边锚定观感) */
+export function decorPoolAllows(poolKey: string, gridW: number, gridH: number): boolean {
+  if (poolKey === DECOR_POOLS.flat) return gridW === 1 && gridH === 1;
+  return gridW <= (poolKey === DECOR_POOLS.wreck ? 4 : 2);
+}

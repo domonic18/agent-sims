@@ -229,7 +229,7 @@ describe('鲁棒性扩量(300 例:100 种子×3 密度)', () => {
 });
 
 describe('全量素材驱动的场所扩展(重规划)', () => {
-  /** 全 kind 全域素材池(键与 worlds.ts loadAssetsByKind 契约一致) */
+  /** 全 kind 全域素材池(键与 worlds-create.ts loadAssetsByKind 契约一致) */
   const POOLS: Record<string, string[]> = {
     ...Object.fromEntries(
       ['bed', 'desk', 'workstation', 'treadmill', 'table', 'bookshelf', 'shelf', 'counter', 'sofa', 'plant', 'fridge', 'tv', 'wardrobe', 'bench', 'stove', 'workbench'].map(
