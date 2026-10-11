@@ -319,7 +319,7 @@
   gap: 8px;
 }
 
-/* 检索+类型过滤一行工具栏(窄宽自动换行),替代原 search/filters 两行 */
+/* 类型过滤 tab 行(窄宽自动换行) */
 .mem-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -328,31 +328,15 @@
   margin: 4px 0 6px;
 }
 
-.mem-toolbar input {
-  flex: 1;
-  min-width: 110px;
-  font-family: var(--px-font-ui);
-  font-size: 12px;
-  padding: 4px 6px;
-  background: var(--px-ink);
-  color: var(--px-text);
-  border: none;
-  border-radius: 0;
-  box-shadow: inset 0 0 0 2px var(--px-slate);
-}
-
-.mem-toolbar input:focus {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--px-gold);
-}
-
 .mem-toolbar .px-btn {
   width: auto;
   padding: 4px 7px;
   font-size: 11px;
 }
 
+/* 选中态: navy 底金字金描边(不能只改字色——全局 .px-btn.on 金底仍在,金字金底不可读) */
 .mem-toolbar .px-btn.on {
+  background: var(--px-navy);
   box-shadow: inset 0 0 0 2px var(--px-gold);
   color: var(--px-gold);
 }
@@ -428,6 +412,33 @@
   color: var(--px-dim);
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
   font-size: 10px;
+}
+
+/* 对话记忆微信式气泡(复用 theme 通用 bubble): 头像+泡,类型徽标/重要度/时刻收泡下 meta 行 */
+.memory-modal .memory-item.mem-chat-item {
+  box-shadow: none;
+  padding: 0;
+}
+
+.memory-modal .mem-chat-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.memory-modal .mem-chat-lead {
+  color: var(--px-dim);
+}
+
+.memory-modal .mem-chat-body .bubble-row {
+  align-items: center;
+}
+
+.memory-modal .mem-chat-body .bubble {
+  max-width: 88%;
+  font-size: 11px;
 }
 
 /* 关系印象: 两列小卡(头像名+印象+时刻),点卡定位角色不关弹窗 */

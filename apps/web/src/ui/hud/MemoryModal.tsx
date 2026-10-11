@@ -12,9 +12,16 @@ import { ModalPanel } from '../ModalPanel';
 import { useWorldStore } from '../../store/worldStore';
 import { PixelAvatar } from './PixelAvatar';
 
+/** dialogue 记忆转泡: 「我和XX聊了聊:台词」拆出 lead=「和 XX 的对话」,台词入泡;其余整条入泡 */
+function splitDialogue(content: string): { lead: string | null; text: string } {
+  const m = content.match(/^我和(.+?)聊了聊:([\s\S]+)$/);
+  if (m === null || m[1] === undefined || m[2] === undefined) return { lead: null, text: content };
+  return { lead: `和 ${m[1]} 的对话`, text: m[2] };
+}
+
 /** 记忆查看弹窗(只读): 游戏页直接翻看 TA 的记忆流(游客/观众同样可见,直播观察姿态);
- * 缺省按时间倒序最近 50 条,输入检索词走三因子语义检索(命中带综合分/相关度);
- * 层过滤(事件/洞察/梦境/对话)+洞察溯源+关系印象区(10-cognition §3 全员人可见)。 */
+ * 缺省按时间倒序最近 50 条;类型过滤(事件/洞察/梦境/对话)+洞察溯源+关系印象区
+ * (10-cognition §3 全员人可见);对话记忆以聊天气泡呈现。 */
 export function MemoryModal({
   characterId,
   characterName,
@@ -26,25 +33,20 @@ export function MemoryModal({
 }) {
   const [data, setData] = useState<MemoryPanelResponse | null>(null);
   const [impressions, setImpressions] = useState<MemoryImpressionsResponse | null>(null);
-  const [query, setQuery] = useState('');
   const [type, setType] = useState<MemoryType | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const selectCharacter = useWorldStore((state) => state.selectCharacter);
 
   const load = useCallback(
-    async (q: string, t: MemoryType | null): Promise<void> => {
+    async (t: MemoryType | null): Promise<void> => {
       setLoading(true);
       try {
         const [panel, imp] = await Promise.all([
-          getCharacterMemories(
-            characterId,
-            {
-              limit: 50,
-              ...(q === '' ? {} : { q }),
-              ...(t === null ? {} : { type: t }),
-            },
-          ),
+          getCharacterMemories(characterId, {
+            limit: 50,
+            ...(t === null ? {} : { type: t }),
+          }),
           getCharacterImpressions(characterId).catch(() => null),
         ]);
         setData(panel);
@@ -60,20 +62,12 @@ export function MemoryModal({
   );
 
   useEffect(() => {
-    void load('', null);
+    void load(null);
   }, [load]);
 
-  const search = (): void => {
-    void load(query.trim(), type);
-  };
-  const backToRecent = (): void => {
-    setQuery('');
-    setType(null);
-    void load('', null);
-  };
   const switchType = (next: MemoryType | null): void => {
     setType(next);
-    void load(query.trim(), next);
+    void load(next);
   };
 
   return (
@@ -95,22 +89,6 @@ export function MemoryModal({
       <p className="hint">TA 经历过的事都会记在这里;洞察是 TA 从经历中沉淀的认知(带溯源),梦境是睡饱后的回忆变形(只读)。</p>
 
       <div className="mem-toolbar">
-        <input
-          autoFocus
-          value={query}
-          maxLength={100}
-          placeholder="语义检索记忆…"
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') search();
-          }}
-        />
-        <button type="button" className="px-btn" disabled={loading} onClick={search}>
-          🔍 检索
-        </button>
-        <button type="button" className="px-btn" disabled={loading} onClick={backToRecent}>
-          ↺ 最近
-        </button>
         <button
           type="button"
           className={`px-btn${type === null ? ' on' : ''}`}
@@ -138,43 +116,57 @@ export function MemoryModal({
         <>
           {data.notice !== null && <p className="feedback err">{data.notice}</p>}
           <p className="mem-result-line">
-            <span>{data.mode === 'search' ? '三因子检索' : '按时间倒序'}</span>
+            <span>按时间倒序</span>
             <span className="mem-count">{data.items.length} 条</span>
           </p>
           <ul className="memory-list">
             {data.items.length === 0 ? (
               <li className="hint">暂无记忆</li>
             ) : (
-              data.items.map((item) => (
-                <li key={item.id} className={`memory-item mem-type-${item.type}`}>
-                  <span className={`mem-badge ${item.type}`}>{MEMORY_TYPE_LABELS[item.type]}</span>
-                  <div className="memory-body">
-                    <div>{item.content}</div>
-                    <small className="mem-meta">
-                      <span className="mem-imp" title={`重要度 ${item.importance}/10`}>
-                        <i style={{ width: `${Math.min(100, item.importance * 10)}%` }} />
-                        <u />
-                      </span>
-                      {formatGameMinutes(item.gameMinutes)}
-                      {data.mode === 'search' && item.score !== undefined && item.factors !== undefined && (
-                        <span
-                          className="mem-score"
-                          title={`recency ${item.factors.recency.toFixed(2)} · importance ${item.factors.importance.toFixed(2)} · relevance ${
-                            item.factors.relevance === null ? '—' : item.factors.relevance.toFixed(2)
-                          }`}
-                        >
-                          综合 {item.score.toFixed(2)}
+              data.items.map((item) => {
+                if (item.type === 'dialogue') {
+                  const { lead, text } = splitDialogue(item.content);
+                  return (
+                    <li key={item.id} className="memory-item mem-chat-item">
+                      <div className="mem-chat-body">
+                        {lead !== null && <small className="mem-chat-lead">{lead}</small>}
+                        <div className="bubble-row">
+                          <PixelAvatar characterId={characterId} size={28} />
+                          <div className="bubble">{text}</div>
+                        </div>
+                        <small className="mem-meta">
+                          <span className="mem-badge dialogue">{MEMORY_TYPE_LABELS[item.type]}</span>
+                          <span className="mem-imp" title={`重要度 ${item.importance}/10`}>
+                            <i style={{ width: `${Math.min(100, item.importance * 10)}%` }} />
+                            <u />
+                          </span>
+                          {formatGameMinutes(item.gameMinutes)}
+                        </small>
+                      </div>
+                    </li>
+                  );
+                }
+                return (
+                  <li key={item.id} className={`memory-item mem-type-${item.type}`}>
+                    <span className={`mem-badge ${item.type}`}>{MEMORY_TYPE_LABELS[item.type]}</span>
+                    <div className="memory-body">
+                      <div>{item.content}</div>
+                      <small className="mem-meta">
+                        <span className="mem-imp" title={`重要度 ${item.importance}/10`}>
+                          <i style={{ width: `${Math.min(100, item.importance * 10)}%` }} />
+                          <u />
                         </span>
-                      )}
-                    </small>
-                    {item.sources !== undefined && item.sources.length > 0 && (
-                      <small className="mem-sources">
-                        溯源: {item.sources.join(' / ')}
+                        {formatGameMinutes(item.gameMinutes)}
                       </small>
-                    )}
-                  </div>
-                </li>
-              ))
+                      {item.sources !== undefined && item.sources.length > 0 && (
+                        <small className="mem-sources">
+                          溯源: {item.sources.join(' / ')}
+                        </small>
+                      )}
+                    </div>
+                  </li>
+                );
+              })
             )}
           </ul>
         </>
