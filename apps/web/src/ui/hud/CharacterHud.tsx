@@ -56,7 +56,16 @@ export function CharacterHud({
   const hostingMap = useWorldStore((state) => state.hostingMap);
   const applyHosting = useWorldStore((state) => state.applyHosting);
   const isAdmin = useAuthStore((state) => state.token !== null);
-  const [collapsed, setCollapsed] = useState(false);
+  // 手机默认收起(画布优先): 桌面保持展开习惯,手机首屏只留头行+核心数值
+  const [collapsed, setCollapsed] = useState(() => window.matchMedia('(max-width: 520px)').matches);
+
+  // 跨断点(旋转/拖窗)重置为该宽度档默认值: 窄屏必须收起防挡画布,宽屏恢复展开
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 520px)');
+    const onChange = (e: MediaQueryListEvent): void => setCollapsed(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   // 选中即拉托管状态兜底(hosting_changed 事件只保在线期间,首帧/重连/他人已托管时徽标不丢)
   useEffect(() => {
@@ -92,7 +101,7 @@ export function CharacterHud({
     character.intents?.filter((want) => want.status === 'abandoned').length ?? 0;
 
   return (
-    <aside className="px-box hud-character">
+    <aside className={`px-box hud-character${collapsed ? ' collapsed' : ''}`}>
       <div className="px-inner hud-character-inner">
         <div className="hud-char-head">
           <button type="button" className="px-btn sq" title="上一位居民" onClick={() => cycle(-1)}>
@@ -104,7 +113,7 @@ export function CharacterHud({
               {character.name}
               {!character.alive && ' 👻'}
             </b>
-            <span>居民 · {characters.length} 人在镇</span>
+            <span className="hud-char-count">居民 · {characters.length} 人在镇</span>
             {hostingMode !== null && (
               <span
                 className="hud-tag bot"
@@ -126,6 +135,18 @@ export function CharacterHud({
             {collapsed ? '▾' : '▴'}
           </button>
         </div>
+
+        {collapsed && (
+          <div className="hud-char-mini" title="体力 / 金币">
+            <span className="hud-mini-label">⚡</span>
+            <span className="px-bar">
+              <i style={{ width: `calc(${Math.max(0, Math.min(100, character.energy))}% - 4px)` }} />
+              <u />
+            </span>
+            <b className="px-num">{Math.round(character.energy)}</b>
+            <span className="hud-mini-coins px-num">{formatCoins(character.coins)}</span>
+          </div>
+        )}
 
         {collapsed ? null : (
           <>

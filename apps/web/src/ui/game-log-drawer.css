@@ -18,12 +18,12 @@
   z-index: 30;
 }
 
-/* 窄视口: 抽屉改固定悬于视口两侧留边,顶距让过两行化顶栏
-   (时钟行 + 功能簇行,见 game-hud.css 同断点) */
+/* 窄视口: 抽屉改固定悬于视口两侧留边,顶距让过压扁后的两行顶栏
+   (时钟行 ~52px + 功能簇行至 ~96px,见 game-hud.css 同断点) */
 @media (max-width: 520px) {
   .log-drawer {
     position: fixed;
-    top: 126px;
+    top: 104px;
     left: 16px;
     right: 16px;
     width: auto;

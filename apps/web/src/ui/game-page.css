@@ -46,10 +46,14 @@
   top: 72px;
 }
 
-/* 窄视口: 顶栏两行化后时钟+功能簇占到 ~106px,轻提示再往下让 */
+/* 窄视口: 画布优先布局下顶栏(~96px)+收起态角色面板(至 ~190px)之上让位 */
 @media (max-width: 520px) {
   .game-page .toasts {
-    top: 126px;
+    top: 196px;
+  }
+
+  .inspect-card {
+    bottom: 88px;
   }
 }
 
