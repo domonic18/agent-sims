@@ -70,6 +70,7 @@ function intents(day: number, wants: Array<Partial<DayIntents['wants'][number]> 
       status: w.status ?? 'pending',
       createdAtMin: w.createdAtMin ?? 480,
       ...(w.targetCharacterId !== undefined ? { targetCharacterId: w.targetCharacterId } : {}),
+      ...(w.meetingPlaceId !== undefined ? { meetingPlaceId: w.meetingPlaceId } : {}),
       ...(w.expiresAtMin !== undefined ? { expiresAtMin: w.expiresAtMin } : {}),
     })),
   };
@@ -839,6 +840,80 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
     });
     expect(decision!.action).toBe('continue');
     expect(decision!.wantId).toBe('w1-0');
+    expect(decision!.abandonedWantIds).toContain('w1-0');
+    expect(decision!.intent).toBeUndefined();
+  });
+
+  it('赴约 want(meetingPlaceId): 不在场→move_to 约定地点门洞,不追对方实时坐标(走廊互换死锁回归)', () => {
+    // 双向实时坐标追逐在同速+对称寻路下会走廊互换死锁(2026-10-11 观察镇
+    // 小林↔阿泽 17 游戏时):赴约改「到老地方等」,各自去约定场所门口自然会合
+    const day = intents(1, [
+      {
+        activityId: 'socialize',
+        urgency: 0.9,
+        why: '赴约:喝一杯',
+        targetCharacterId: 'npc-9',
+        meetingPlaceId: 'shop',
+      },
+    ]);
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 30, y: 30, name: '铁牛' } : null),
+    });
+    expect(decision!.action).toBe('react');
+    expect(decision!.wantId).toBe('w1-0');
+    // 目标=商店门洞 (23,26),不是铁牛所在 (30,30)
+    expect(decision!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 23, y: 26 });
+    expect(decision!.bubble).toContain('商店');
+  });
+
+  it('赴约 want: 已到场对方未到→原地静候(meeting_waiting),不再折返去追', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9', meetingPlaceId: 'shop' },
+    ]);
+    const decision = wantSelect(char({ x: 23, y: 26 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 30, y: 30, name: '铁牛' } : null),
+    });
+    expect(decision).toEqual({
+      layer: 'plan',
+      action: 'continue',
+      reason: 'meeting_waiting',
+      wantId: 'w1-0',
+    });
+  });
+
+  it('赴约 want: 双方到场距离>2→场内接近(move_to 对方);贴身→交还聊天管线', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9', meetingPlaceId: 'shop' },
+    ]);
+    const world = {
+      positionOf: (id: string) => (id === 'npc-9' ? { x: 20, y: 33, name: '铁牛' } : null),
+      nowMin: 500,
+    };
+    const approach = wantSelect(char({ x: 23, y: 26 }), day, 1, TOWN_MAP, noAnchors, {}, world);
+    expect(approach!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 20, y: 33 });
+    const close = wantSelect(char({ x: 23, y: 26 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      ...world,
+      positionOf: (id: string) => (id === 'npc-9' ? { x: 23, y: 28, name: '铁牛' } : null),
+    });
+    expect(close!.chatWith).toBe('npc-9');
+    expect(close!.intent).toBeUndefined();
+  });
+
+  it('赴约 want 过期: 候场超时废弃改道(等到中午没来,先去忙了)', () => {
+    const day = intents(1, [
+      {
+        activityId: 'socialize',
+        urgency: 0.9,
+        targetCharacterId: 'npc-9',
+        meetingPlaceId: 'shop',
+        expiresAtMin: 400,
+      },
+    ]);
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: () => ({ x: 30, y: 30, name: '铁牛' }),
+      nowMin: 500,
+    });
+    expect(decision!.action).toBe('continue');
     expect(decision!.abandonedWantIds).toContain('w1-0');
     expect(decision!.intent).toBeUndefined();
   });

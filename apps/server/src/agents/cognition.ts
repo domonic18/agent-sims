@@ -86,6 +86,9 @@ export interface Want {
   placeId?: string;
   /** 人指向社交(E2):仅 socialize want 携带,值=想找的熟人 id;结算走 social.chat */
   targetCharacterId?: string;
+  /** 赴约地点(E3 聚会邀约):仅带 target 的 socialize want 可携带——执行改「到老地方等」
+   * (各自去约定场所门口自然会合),替代双向实时坐标追逐(走廊互换死锁根因) */
+  meetingPlaceId?: string;
   why: string;
   urgency: number;
   /** 过期时刻(游戏分钟,可选):冲动/事件 want 的半衰期;到期未执行废弃 */
@@ -187,6 +190,7 @@ function hydrate(saved: unknown): PersistedInnerState {
                 ...(typeof w.targetCharacterId === 'string'
                   ? { targetCharacterId: w.targetCharacterId }
                   : {}),
+                ...(typeof w.meetingPlaceId === 'string' ? { meetingPlaceId: w.meetingPlaceId } : {}),
                 ...(typeof w.expiresAtMin === 'number' ? { expiresAtMin: w.expiresAtMin } : {}),
               } satisfies Want,
             ];

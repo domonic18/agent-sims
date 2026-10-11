@@ -729,8 +729,9 @@ export class AgentScheduler {
 
   /** 人指向社交 want 结算(E2):动机引擎直执的聊天不走 activity.finished,
    * 这里按 social.chat 事件收口——发起方(聊到了 target)与被指名方(被找)
-   * 双向各结算一条带 target 的 doing socialize want 为 done;E6.2 起两侧 want
-   * 均在 chatWith 决策出口先标 doing(markWantDoing 先于 executeChatWant)。 */
+   * 双向各结算一条带 target 的 socialize want 为 done。不问在途状态(pending/doing
+   * 同结算):聊天落地即算兑现——曾因仅结算 doing,追逐/候场阶段 want 恒 pending,
+   * 途中真实聊天全部漏结算,want 不死整夜追人(2026-10-11 观察镇案例)。 */
   private settleSocialChat(event: SocialChatEvent): void {
     for (const characterId of [event.fromId, event.toId]) {
       if (!autonomy.has(characterId)) continue;
@@ -738,7 +739,10 @@ export class AgentScheduler {
       if (intents === undefined || intents === null) continue;
       const partner = characterId === event.fromId ? event.toId : event.fromId;
       const want = intents.wants.find(
-        (w) => w.status === 'doing' && w.activityId === 'socialize' && w.targetCharacterId === partner,
+        (w) =>
+          (w.status === 'pending' || w.status === 'doing') &&
+          w.activityId === 'socialize' &&
+          w.targetCharacterId === partner,
       );
       if (want === undefined) continue;
       want.status = 'done';
@@ -855,6 +859,10 @@ export class AgentScheduler {
             status: 'pending',
             createdAtMin: this.deps.sim.clock.gameMinutes,
             targetCharacterId: due.withId,
+            // 赴约地点会合(E3):执行走「到老地方等」而非跨图追人(走廊互换死锁根因);
+            // 候场超时废弃改道,不吊死整天
+            meetingPlaceId: due.placeId,
+            expiresAtMin: this.deps.sim.clock.gameMinutes + BALANCE.MEETING_WAIT_MINUTES,
           });
           innerState.ensure(char.id).pendingInvitation = null; // 兑现一次
         }

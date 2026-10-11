@@ -751,7 +751,8 @@ function extraOf(
  * - 制作岗(E1):背包含料预检→站点锚点 craft{recipeId}/先 move_to 站点
  * - 卖货(E4):背包有带价物→在店 sell_item 整叠变现/先 move_to 商店(空包跳过)
  * - 人指向社交(E2→E6 两段式):带 target 的 socialize 远处 move_to 寻人,贴身交还
- *   社交管线生成对话(chatWith),want 由 social.chat 事件结算 done;对方不在则废弃
+ *   社交管线生成对话(chatWith),want 由 social.chat 事件结算 done;对方不在则废弃;
+ *   带 meetingPlaceId 的赴约 want 改「到老地方等」——各自去约定场所门口自然会合
  * - 驱力 want(E6.2 rule→驱力):生存压力由写侧巡检产 want,执行走 driveExecution
  *   专属分支——压力已过收口 done、通道消失废弃改道,不再直执 intent
  * - 救援 want(E6.2 triage respond→冲动):rescueExecution 到场即完成
@@ -993,6 +994,37 @@ export function wantSelect(
         abandonedWantIds: [...abandoned, picked.id],
         wantId: picked.id,
       };
+    }
+    // 赴约 want(E3 聚会邀约):有约定地点——「到老地方等」而非跨图追人。
+    // 双向实时坐标追逐在同速+对称寻路下会走廊互换死锁(2026-10-11 观察镇
+    // 小林↔阿泽 17 游戏时案例):各自去约定场所门口,入口处自然会合
+    if (picked.meetingPlaceId !== undefined) {
+      const venue = findPlaceByRef(map, picked.meetingPlaceId);
+      if (venue === null) {
+        return {
+          layer: 'plan',
+          action: 'continue',
+          reason: 'meeting_venue_gone',
+          abandonedWantIds: [...abandoned, picked.id],
+          wantId: picked.id,
+        };
+      }
+      if (!isInPlace(venue, char.x, char.y)) {
+        const spot = venue.door ?? venue.entrance;
+        return {
+          layer: 'plan',
+          action: 'react',
+          wantId: picked.id,
+          ...extra,
+          intent: { type: 'move_to', characterId: char.id, x: spot.x, y: spot.y },
+          bubble: `${picked.why},去${venue.name}门口等`,
+        };
+      }
+      if (!isInPlace(venue, pos.x, pos.y)) {
+        // 已到场对方未到:原地静候(过期由候选过滤废弃放行,不再折返去追)
+        return { layer: 'plan', action: 'continue', reason: 'meeting_waiting', wantId: picked.id, ...extra };
+      }
+      // 双方均已到场:落回下方通用距离分支(同场短程接近,有界不再跨图)
     }
     const distance = Math.abs(char.x - pos.x) + Math.abs(char.y - pos.y);
     if (distance > BALANCE.SOCIAL_CHAT_DISTANCE) {

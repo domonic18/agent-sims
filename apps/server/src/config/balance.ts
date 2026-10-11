@@ -17,6 +17,7 @@ import {
   ENCOUNTER_DISTANCE,
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
+  MEETING_WAIT_MINUTES,
   SOCIAL_CHAT_DISTANCE,
   SYS_CONFIG_FIELDS,
   WALK_SPEED_TILES_PER_TICK,
@@ -124,6 +125,8 @@ export interface BalanceConfig {
   /** 路上相遇(E8): 触发距离(曼哈顿)/同对冷却(游戏分,一次相遇只发一次事件) */
   ENCOUNTER_DISTANCE: number;
   ENCOUNTER_COOLDOWN_MINUTES: number;
+  /** 赴约候场时长(游戏分,E3 邀约):到场对方未现的等待预算,超时 want 废弃改道 */
+  MEETING_WAIT_MINUTES: number;
   /** 自然终止多轮对话(E3):单场对话最多句数;每轮 light 调用搭终止信号,零额外调用 */
   CHAT_MAX_ROUNDS: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
@@ -259,6 +262,7 @@ export const BALANCE: BalanceConfig = {
   SOCIAL_CHAT_DISTANCE,
   ENCOUNTER_DISTANCE,
   ENCOUNTER_COOLDOWN_MINUTES,
+  MEETING_WAIT_MINUTES,
   CHAT_MAX_ROUNDS: 4,
   FAMILIARITY_DECAY_PER_DAY: 1,
   SOCIAL_PAIR_COOLDOWN_MINUTES: 30,

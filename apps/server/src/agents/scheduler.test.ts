@@ -916,7 +916,7 @@ describe('AgentScheduler(E2 人指向社交 want)', () => {
         { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'npc-1', why: '找铁牛聊聊', urgency: 0.9, status: 'pending', createdAtMin: 0 },
       ],
     });
-    h.onEvent(chatEvent(1)); // self 强度4→idle 管线→wantSelect 寻人
+    h.onEvent(chatEvent(1, 'npc-2')); // 与他人闲聊触发强度→idle 管线→wantSelect 寻人(不结算:want 指向 npc-1)
     await vi.advanceTimersByTimeAsync(0);
     expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 20, y: 20 }]);
     expect(h.bubbles[0]!.text).toContain('铁牛');
@@ -928,6 +928,27 @@ describe('AgentScheduler(E2 人指向社交 want)', () => {
     expect(settled).toBeDefined();
     expect((settled!.perception as { want?: string }).want).toBe('w0');
     expect(h.intents).toHaveLength(1); // 结算后 idle 管线不再产新意图
+    h.scheduler.dispose();
+  });
+
+  it('social.chat 结算不问在途: pending 的指向 want 同收口(追逐/候场阶段漏结算回归)', async () => {
+    // 聊天可能由相遇桥/rule 层在 want 未走 chatWith 出口时落地(2026-10-11 观察
+    // 镇:追逐期间 5 场真实聊天全漏结算,want 不死整夜追人)——聊天落地即算兑现
+    const npc = char({ id: 'npc-1', name: '铁牛', x: 20, y: 20 });
+    const h = harness(0, char({ x: 30, y: 30 }), undefined, { extraCharacters: [npc] });
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'npc-1', why: '赴约:喝一杯', urgency: 0.9, status: 'pending', createdAtMin: 0 },
+      ],
+    });
+    h.onEvent(chatEvent(1)); // 聊天已落地:settle 先于 idle 管线,pending 直接收口
+    await vi.advanceTimersByTimeAsync(0);
+    expect(innerState.get(CHAR_ID)!.intents!.wants[0]!.status).toBe('done');
+    expect(h.intents).toHaveLength(0); // 已兑现,不再寻人
+    const settled = h.traceRows.find((r) => (r.perception as { with?: string }).with === 'npc-1');
+    expect((settled!.perception as { want?: string }).want).toBe('w0');
     h.scheduler.dispose();
   });
 });
@@ -971,7 +992,10 @@ describe('AgentScheduler(E3 聚会邀约)', () => {
       targetCharacterId: 'npc-1',
       why: '赴约:晒太阳',
       urgency: 0.9,
+      meetingPlaceId: 'park', // 赴约地点会合:执行「到老地方等」而非跨图追人
     });
+    // 候场超时:对方一直没现身,到点废弃改道不吊死整天
+    expect(wants[0]!.expiresAtMin).toBe(wants[0]!.createdAtMin + 360);
     expect(innerState.get(CHAR_ID)!.pendingInvitation).toBeNull(); // 兑现一次
     expect(seen.some((text) => text.includes('昨天的约定'))).toBe(true);
     h.scheduler.dispose();
