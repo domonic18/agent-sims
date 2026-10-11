@@ -233,6 +233,20 @@ export class SocialLoop {
     );
   }
 
+  /** 在途 event 源 socialize want(任意对象,E9 搭话节流):存在即视为「正在回应
+   * 一场搭话」,相遇分流不再新增第二场——并发上限 1 */
+  private hasEventChatWant(characterId: string): boolean {
+    const intents = innerState.get(characterId)?.intents;
+    return (
+      intents?.wants.some(
+        (w) =>
+          (w.status === 'pending' || w.status === 'doing') &&
+          w.origin === 'event' &&
+          w.activityId === 'socialize',
+      ) ?? false
+    );
+  }
+
   /** 点火候选(E6.4 布尔门槛):已认识(familiarity>0)且对方存活、关系不嫌弃
    * (affinity>-30)、同对冷却外;拼两档同地(chatReady 贴身/samePlace 同场未近)。
    * desire 打分已废——聊不聊由共处与冷却决定,关系好坏交给 affinity 排序与
@@ -444,6 +458,25 @@ export class SocialLoop {
     const target = initiator === a ? b : a;
     const key = [a.id, b.id].sort().join('|');
     if (this.rendezvous.has(key) || this.generating.has(key)) return;
+    // 搭话节流(E9):应答方已在回应别人的搭话(在途 event 源 socialize want 并发
+    // 上限 1)且并未主动找发起方时,本次相遇只擦肩——不停步不召唤不写 want。高人流
+    // 枢纽的相遇流曾以每 30-65 游戏分一个 0.9 档搭话 want 逐拍插队,把在契 want 的
+    // 执行窗口全部占满(2026-10-11 观察镇小林 meal want 空转 18 游戏时根因之一);
+    // 须在 requestStopMove 之前判定,否则擦肩会变成凭空定身
+    const targetSeeksInitiator = initiator === a ? bSeeks : aSeeks;
+    if (!targetSeeksInitiator && this.hasEventChatWant(target.id)) {
+      this.deps.trace.record(initiator.id, sim.clock.gameMinutes, {
+        trigger: 'eventbus',
+        perception: {
+          motive: 'social',
+          encounterDropped: true,
+          reason: 'event_chat_busy',
+          target: target.id,
+        },
+        decision: { layer: 'rule', conclusion: 'continue' },
+      });
+      return;
+    }
     sim.requestStopMove(a.id);
     sim.requestStopMove(b.id);
     this.deps.trace.record(initiator.id, sim.clock.gameMinutes, {

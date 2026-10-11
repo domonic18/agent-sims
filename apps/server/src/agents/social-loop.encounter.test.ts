@@ -213,3 +213,85 @@ describe('路上相遇消化(E8 意愿分流)', () => {
     expect(innerState.get('bbbb2222')!.intents!.wants.filter((w) => w.origin === 'event')).toHaveLength(1);
   });
 });
+
+describe('搭话节流(E9:在途 event 源 socialize want 并发上限 1)', () => {
+  afterEach(() => {
+    for (const id of ['aaaa1111', 'bbbb2222']) {
+      autonomy.disable(id);
+      innerState.clear(id);
+    }
+  });
+
+  function eventChatWant(targetId: string): Want {
+    return {
+      id: `w-ev-${targetId}`,
+      activityId: 'socialize',
+      origin: 'event',
+      targetCharacterId: targetId,
+      why: '有人过来搭话,回应一下',
+      urgency: 0.9,
+      expiresAtMin: 10_000,
+      status: 'pending',
+      createdAtMin: 0,
+    };
+  }
+
+  it('应答方已在回应他人搭话(在途 event want 指向第三方):相遇只擦肩,不停步不召唤', () => {
+    const { sim, loop, executeWants, traceCalls, at } = harness();
+    const day = sim.clock.day;
+    const now = sim.clock.gameMinutes;
+    innerState.setIntents('aaaa1111', {
+      day,
+      source: 'llm',
+      wants: [socializeWant('bbbb2222', now)],
+    });
+    // 乙正被路人丙的搭话占着(event want 在途)——甲的相遇不再插第二场
+    innerState.setIntents('bbbb2222', {
+      day,
+      source: 'llm',
+      wants: [eventChatWant('cccc3333')],
+    });
+    sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
+    sim.requestMoveTo('bbbb2222', at.x, at.y);
+    loop.onEncounter(encounter('aaaa1111', 'bbbb2222'));
+    // 双方各走各路(不停步),不建会合,不重评,乙的在途搭话不被顶掉
+    expect(sim.character('aaaa1111').path.length).toBeGreaterThan(0);
+    expect(sim.character('bbbb2222').path.length).toBeGreaterThan(0);
+    expect(loop.summonAwaiting('aaaa1111', 'bbbb2222')).toBe(false);
+    expect(executeWants).not.toHaveBeenCalled();
+    expect(innerState.get('bbbb2222')!.intents!.wants.filter((w) => w.origin === 'event')).toHaveLength(1);
+    // 发起方视角留痕,擦肩可审计
+    const dropped = traceCalls.find(
+      (c) =>
+        c.characterId === 'aaaa1111' &&
+        (c.entry as { perception?: { encounterDropped?: boolean } }).perception?.encounterDropped === true,
+    );
+    expect(dropped).toBeDefined();
+    expect((dropped!.entry as { perception?: { reason?: string } }).perception?.reason).toBe('event_chat_busy');
+  });
+
+  it('在途 event want 恰好指向发起方:不节流,照常会合且不重复写念头', () => {
+    const { sim, loop, executeWants, at } = harness();
+    const day = sim.clock.day;
+    const now = sim.clock.gameMinutes;
+    innerState.setIntents('aaaa1111', {
+      day,
+      source: 'llm',
+      wants: [socializeWant('bbbb2222', now)],
+    });
+    innerState.setIntents('bbbb2222', {
+      day,
+      source: 'llm',
+      wants: [eventChatWant('aaaa1111')],
+    });
+    sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
+    sim.requestMoveTo('bbbb2222', at.x, at.y);
+    loop.onEncounter(encounter('aaaa1111', 'bbbb2222'));
+    expect(sim.character('aaaa1111').path).toHaveLength(0);
+    expect(sim.character('bbbb2222').path).toHaveLength(0);
+    expect(loop.summonAwaiting('aaaa1111', 'bbbb2222')).toBe(true);
+    // 乙已有指向甲的 want,不再新增
+    expect(innerState.get('bbbb2222')!.intents!.wants.filter((w) => w.origin === 'event')).toHaveLength(1);
+    expect(executeWants).toHaveBeenCalledTimes(1);
+  });
+});

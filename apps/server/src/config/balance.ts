@@ -174,6 +174,10 @@ export interface BalanceConfig {
    * 评分须达在位者×此比例才许插队,否则在契者免评续做;抢占仍纯评分裁决(E6 哲学),
    * 只是把「更高分」从隐含 1.01 倍显式为比例阈值 */
   WANT_SEIZE_RATIO: number;
+  /** 执行恢复(E9):在契(doing)want 被打断后「无活动无移动」空闲持续超过该值
+   * (游戏分钟),只让 doing 候选入仲裁强制重放一次执行分支——免评续做从
+   * 「赢了仲裁才续做」补全为「空闲超时必续做」,高紧迫度挑战者流无法永久饿死在契者 */
+  WANT_IDLE_RECOVERY_MINUTES: number;
   /** 困倦压力(D3,纯数值替代 planNight 时间表):夜间/白天开始犯困的体力线,越困越想睡 */
   SLEEPY_NIGHT_ENERGY: number;
   SLEEPY_DAY_ENERGY: number;
@@ -303,6 +307,9 @@ export const BALANCE: BalanceConfig = {
   WANT_TIRED_ENERGY: 50,
   WANT_KNOWLEDGE_LOW: 30,
   WANT_SEIZE_RATIO: 1.4,
+  // E9 执行恢复:30 游戏分≈2 个巡检块(4x 下 7.5 现实分)——短于召唤半衰 90 分,
+  // 在契者饿死前必有恢复窗口,又不至于打断正常的会合静候
+  WANT_IDLE_RECOVERY_MINUTES: 30,
   SLEEPY_NIGHT_ENERGY: 60,
   SLEEPY_DAY_ENERGY: 25,
   RETROSPECT_MAX_PER_DAY: 4,

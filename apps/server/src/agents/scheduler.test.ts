@@ -531,6 +531,84 @@ describe('AgentScheduler(D3 意图执行)', () => {
   });
 });
 
+describe('AgentScheduler(E9 执行恢复:在契 want 空闲超时强制重放)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    autonomy.enable(CHAR_ID);
+  });
+  afterEach(() => {
+    autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
+    innerState.clear(CHAR_ID);
+    vi.useRealTimers();
+  });
+
+  it('挑战者流饿死在契者: 空闲超阈值后只让 doing 候选入仲裁,重放执行分支(2026-10-11 小林活锁)', () => {
+    // 复刻观察镇案例: stroll 0.4 在契被打断空转,event 搭话 0.9 逐拍插队;
+    // 30 游戏分空闲超时后恢复管线接管,在契者必拿到执行窗口,pending 挑战者让位
+    const npc = char({ id: 'npc-1', name: '路人', x: 5, y: 5 });
+    const h = harness(600, char({ energy: 80 }), undefined, { extraCharacters: [npc] });
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [
+        { id: 'w0-stroll', activityId: 'stroll', why: '去公园走走', origin: 'plan', urgency: 0.4, status: 'doing', createdAtMin: 590 },
+        { id: 'w0-chat1', activityId: 'socialize', why: '路人甲过来搭话,回应一下', origin: 'event', targetCharacterId: 'npc-1', urgency: 0.9, status: 'pending', createdAtMin: 600 },
+      ],
+    });
+    // 阈值内: 常规仲裁照旧,挑战者 0.9 抢占寻人(恢复语义不改变抢占规则)
+    vi.advanceTimersByTime(2_000);
+    expect(h.intents[0]).toMatchObject({ type: 'move_to', x: 5, y: 5 });
+    expect(innerState.get(CHAR_ID)?.intents?.wants.find((w) => w.id === 'w0-chat1')?.status).toBe('doing');
+    // 挑战者被聊天结算(生产由 settleSocialChat 收口 done),新挑战者又来排队;
+    // 在契 stroll 仍 doing,角色无活动无移动——空闲计满 30 分
+    const intents = innerState.get(CHAR_ID)!.intents!;
+    intents.wants = intents.wants.map((w) => (w.id === 'w0-chat1' ? { ...w, status: 'done' as const } : w));
+    intents.wants.push({
+      id: 'w0-chat2', activityId: 'socialize', why: '路人乙过来搭话,回应一下',
+      origin: 'event', targetCharacterId: 'npc-1', urgency: 0.9, status: 'pending', createdAtMin: 610,
+    });
+    h.clock.gameMinutes += 30;
+    vi.advanceTimersByTime(2_000);
+    // 恢复接管: stroll 强制重放出走向公园入口的 move_to(而非去路人位)
+    expect(h.intents.at(-1)).toMatchObject({ type: 'move_to', x: 9, y: 25 });
+    const recovery = h.traceRows.find(
+      (r) => (r.perception as { idleRecovery?: boolean } | null)?.idleRecovery === true,
+    );
+    expect(recovery).toBeDefined();
+    expect((recovery!.decision as { intent?: string }).intent).toBe('want:w0-stroll');
+    // pending 挑战者未被标 doing——执行窗口归在契者,挑战者下轮常规仲裁再评
+    expect(innerState.get(CHAR_ID)?.intents?.wants.find((w) => w.id === 'w0-chat2')?.status).toBe('pending');
+    h.scheduler.dispose();
+  });
+
+  it('阈值内与忙碌时不触发: 空闲计时被忙碌清零,恢复不抢常规仲裁的班', () => {
+    const c = char({ energy: 80 });
+    const h = harness(600, c);
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [
+        { id: 'w0-study', activityId: 'study', why: '得空继续攒学问', origin: 'plan', urgency: 0.5, status: 'doing', createdAtMin: 500 },
+      ],
+    });
+    // 途中(有路径):忙碌不计时,常规 select 也被忙碌门槛拦下,零意图零恢复
+    c.path = [{ x: 1, y: 1 }];
+    h.clock.gameMinutes += 60;
+    vi.advanceTimersByTime(2_000);
+    expect(h.intents).toHaveLength(0);
+    // 落地空闲:计时从零起算,一个阈值内恢复不开,常规仲裁正常续做在契者
+    c.path = [];
+    h.clock.gameMinutes += 15;
+    vi.advanceTimersByTime(2_000);
+    expect(h.intents.at(-1)).toMatchObject({ type: 'move_to' });
+    expect(
+      h.traceRows.some((r) => (r.perception as { idleRecovery?: boolean } | null)?.idleRecovery === true),
+    ).toBe(false);
+    h.scheduler.dispose();
+  });
+});
+
 describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
   beforeEach(() => {
     vi.useFakeTimers();

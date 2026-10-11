@@ -96,6 +96,8 @@ export class AgentScheduler {
   private readonly intentRejects = new Map<string, number>();
   /** 意图退避期(绝对 gameMinutes):被打断/被拒后固定短退避,期内 want 层静默 */
   private readonly intentSkipUntil = new Map<string, number>();
+  /** 空闲起点(E9 执行恢复):角色「有 doing want 但无活动无移动」的起始 gameMinutes */
+  private readonly idleSince = new Map<string, number>();
   private readonly planning = new Set<string>();
   private readonly registry = new ResponseRegistry();
   /** ⑤ 预算簿记(scheduler 独占写,triage 只读快照):日/当日次数/最近评估时刻 */
@@ -905,6 +907,10 @@ export class AgentScheduler {
     const skipUntil = this.intentSkipUntil.get(char.id) ?? Number.NEGATIVE_INFINITY;
     if (sim.clock.gameMinutes < skipUntil) return null;
     const debug: { candidates: WantCandidateDebug[] } = { candidates: [] };
+    // 执行恢复(E9):空闲超阈值的在契 want 先于常规仲裁强制重放——
+    // 挑战者流不能永久饿死在契者(详见 recoverStalledWant)
+    const recovered = this.recoverStalledWant(char, trigger);
+    if (recovered !== null) return recovered;
     const decision = wantSelect(
       char,
       innerState.get(char.id)?.intents,
@@ -934,6 +940,75 @@ export class AgentScheduler {
       ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
     });
     return decision;
+  }
+
+  /**
+   * 执行恢复(E9):在契(doing)want 的「免评续做」兜底。E6.3 契约只保证在契者
+   * 赢得仲裁时重放执行分支,而高紧迫度挑战者流(E8 相遇召唤 0.9 档)可把仲裁窗口
+   * 逐拍占满,被打断的在契者永远排不上队(2026-10-11 观察镇小林 meal want 空转
+   * 18 游戏时案例)。这里跟踪「有 doing want 但无活动无移动」的持续时长,超过
+   * WANT_IDLE_RECOVERY_MINUTES 即只让 doing 候选入仲裁强制重放一次执行分支——
+   * 常规轮的抢占语义不变,只是空闲超时后在契者必拿到一个执行窗口。合法静候
+   * (会合/生成/冷却)重放结果仍是 continue,零副作用天然安全。
+   */
+  private recoverStalledWant(
+    char: WorldCharacter,
+    trigger: 'threshold' | 'eventbus',
+  ): Decision | null {
+    const { sim } = this.deps;
+    const intents = innerState.get(char.id)?.intents ?? null;
+    const doing = intents?.wants.filter((w) => w.status === 'doing') ?? [];
+    if (char.activity !== null || char.path.length > 0 || doing.length === 0) {
+      this.idleSince.delete(char.id);
+      return null;
+    }
+    const since = this.idleSince.get(char.id);
+    if (since === undefined) {
+      this.idleSince.set(char.id, sim.clock.gameMinutes);
+      return null;
+    }
+    if (sim.clock.gameMinutes - since < BALANCE.WANT_IDLE_RECOVERY_MINUTES) return null;
+    this.idleSince.delete(char.id);
+    if (intents === null || intents.day !== sim.clock.day) return null;
+    const debug: { candidates: WantCandidateDebug[] } = { candidates: [] };
+    const decision = wantSelect(
+      char,
+      { ...intents, wants: doing },
+      sim.clock.day,
+      sim.map.definition,
+      this.anchorsAt(),
+      biasOf(hosting.get(char.id)?.compiled ?? null),
+      this.wantWorld(char),
+      debug,
+    );
+    if (decision === null) return null;
+    // 强制重放同样可能当场收口(驱力压力已过/通道消失)——副作用须照常落库
+    if (decision.abandonedWantIds !== undefined && decision.abandonedWantIds.length > 0) {
+      this.abandonWants(char.id, decision.abandonedWantIds);
+    }
+    if (decision.doneWantIds !== undefined && decision.doneWantIds.length > 0) {
+      this.completeWants(char.id, decision.doneWantIds);
+    }
+    this.trace.record(char.id, sim.clock.gameMinutes, {
+      trigger,
+      perception: {
+        select: true,
+        idleRecovery: true,
+        stalledMinutes: sim.clock.gameMinutes - since,
+        action: decision.action,
+      },
+      decision: {
+        layer: 'select',
+        conclusion: decision.action === 'react' ? 'react' : 'continue',
+        ...(decision.wantId !== undefined ? { intent: `want:${decision.wantId}` } : {}),
+        ...(decision.action === 'continue' && decision.reason !== undefined
+          ? { reason: decision.reason }
+          : {}),
+        candidates: debug.candidates,
+      },
+      ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
+    });
+    return decision.action === 'react' ? decision : null;
   }
 
   /** want 当场收口落库(fast 层判已达成:E6.2 驱力压力已过/救援已到场) */
