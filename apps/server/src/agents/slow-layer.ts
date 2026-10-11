@@ -236,7 +236,12 @@ export function describeIntents(intents: DayIntents): string {
     .join(';');
 }
 
-/** 意图工具规格(结构化输出):activity 白名单,urgency 0~1,why 一句第一人称理由 */
+/** 主观档标定(E7 双轴分离):plan 层 urgency 是「主观重要度」,clamp 到 [0.3,0.7]——
+ * 生理紧急(0.7~0.95)由驱力独占,主观永不冒充生理(I2 契约) */
+const URGENCY_SUBJECTIVE_MIN = 0.3;
+const URGENCY_SUBJECTIVE_MAX = 0.7;
+
+/** 意图工具规格(结构化输出):activity 白名单,urgency 0.3~0.7 主观档,why 一句第一人称理由 */
 function intentsTool(): StructuredToolSpec {
   return {
     name: 'submit_day_intents',
@@ -256,7 +261,12 @@ function intentsTool(): StructuredToolSpec {
                 type: 'string',
                 description: '想找谁(可选,仅 activity=socialize 时填熟人名字)',
               },
-              urgency: { type: 'number', minimum: 0, maximum: 1 },
+              urgency: {
+                type: 'number',
+                minimum: 0,
+                maximum: 1,
+                description: '主观重要度,取值 0.3~0.7(饥渴冷暖等生理紧急由系统自评,勿代答)',
+              },
               why: { type: 'string' },
             },
           },
@@ -267,7 +277,8 @@ function intentsTool(): StructuredToolSpec {
 }
 
 /** 工具入参→wants:入参为 {wants:[...]}(chatStructured 交付整个工具入参对象);
- * 剔除非法行(活动不在白名单/urgency 非数字),urgency 截断到 0~1,why 缺省兜「随性而为」;
+ * 剔除非法行(活动不在白名单/urgency 非数字),urgency 截断到主观档 0.3~0.7(E7),
+ * why 缺省兜「随性而为」;
  * target 人名经 resolveTarget 解析为熟人 id,解析不了剥掉 target 保留 want(E2);
  * wants 缺失非数组或无有效行判失败(触发带错重试,调用方回落 fallback)。 */
 export function parseIntents(
@@ -303,14 +314,14 @@ export function parseIntents(
       activityId: activity,
       origin: 'plan',
       why,
-      urgency: Math.min(1, Math.max(0, urgency)),
+      urgency: Math.min(URGENCY_SUBJECTIVE_MAX, Math.max(URGENCY_SUBJECTIVE_MIN, urgency)),
       status: 'pending',
       createdAtMin: nowMin,
       ...(targetCharacterId !== undefined ? { targetCharacterId } : {}),
     });
   }
   if (wants.length === 0) {
-    return { ok: false, reason: '无合法意图(activity 须在可选活动内,urgency 须为 0~1 数字)' };
+    return { ok: false, reason: '无合法意图(activity 须在可选活动内,urgency 须为数字)' };
   }
   return { ok: true, value: wants };
 }
@@ -339,7 +350,7 @@ const FALLBACK_WHY: Record<string, readonly string[]> = {
 };
 
 /** 回落意图(LLM 不可用/输出非法):按 bias 分+随机扰动排序取 3~4 条,
- * avoid(bias=-1)活动绝不出现;urgency 随倾向分浮动——个性化替代同款模板 */
+ * avoid(bias=-1)活动绝不出现;urgency 随倾向分浮动(主观档 clamp,E7)——个性化替代同款模板 */
 export function fallbackIntents(day: number, nowMin: number, bias: Readonly<Record<string, number>>): Want[] {
   const candidates = INTENT_ACTIVITY_IDS
     .filter((id) => (bias[id] ?? 0) > -1)
@@ -353,7 +364,10 @@ export function fallbackIntents(day: number, nowMin: number, bias: Readonly<Reco
       activityId: c.id,
       origin: 'plan' as const,
       why: whys[Math.floor(Math.random() * whys.length)]!,
-      urgency: Math.round(Math.min(0.9, Math.max(0.2, 0.4 + c.score * 0.3)) * 100) / 100,
+      urgency:
+        Math.round(
+          Math.min(URGENCY_SUBJECTIVE_MAX, Math.max(URGENCY_SUBJECTIVE_MIN, 0.4 + c.score * 0.3)) * 100,
+        ) / 100,
       status: 'pending' as const,
       createdAtMin: nowMin,
     };

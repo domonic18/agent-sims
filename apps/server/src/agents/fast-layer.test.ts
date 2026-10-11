@@ -149,16 +149,16 @@ describe('driveDecide(E6.2 驱力巡检,压力→urgency 不产动作)', () => {
     });
     expect(byId(buyable, 'eat')).toBeDefined();
 
-    // 非饥饿+穷+有岗(知识 0 → 杂工) → earn
+    // 非饥饿+穷+有岗(知识 0 → 杂工) → earn(增益随发射折入,E7)
     const earn = decideP(char({ energy: 60, coins: 0 }));
-    expect(byId(earn, 'earn')?.urgency).toBe(BALANCE.DRIVE_EARN_URGENCY);
+    expect(byId(earn, 'earn')?.urgency).toBe(BALANCE.DRIVE_EARN_URGENCY * BALANCE.DRIVE_EARN_BOOST);
 
-    // 饿极(买不起)+体力在直采窗+有节点 → forage
+    // 饿极(买不起)+体力在直采窗+有节点 → forage(增益随发射折入,E7)
     const forage = decideP(char({ energy: 25, coins: 0 }), NOON, {
       shopStock: () => 0,
       nearestEdibleNode: () => ({ id: 'b', x: 1, y: 1 }),
     });
-    expect(byId(forage, 'forage')?.urgency).toBe(BALANCE.DRIVE_FORAGE_URGENCY);
+    expect(byId(forage, 'forage')?.urgency).toBe(BALANCE.DRIVE_FORAGE_URGENCY * BALANCE.DRIVE_FORAGE_BOOST);
 
     // 通道全无(买不起+无岗+无节点)→ 零压力(不再对着售罄货架撞墙)
     expect(decideP(char({ energy: 25, coins: 0 }), NOON, { shopStock: () => 0 })).toEqual([]);
@@ -485,6 +485,76 @@ describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', 
     const rich = wantSelect(char({ coins: 500 }), day, 1, TOWN_MAP, anchorsOf);
     // work: 0.8×0.6=0.48 < stroll: 0.9
     expect(rich!.wantId).toBe('w1-0');
+  });
+
+  // ---------- E7 仲裁生存不变量: want 二分类 + lifestyle 体力坡道 ----------
+
+  it('E7 坡道: bias 高的 lifestyle 随体力下降被折减,eat 驱力反超;≤FLOOR 整体退场', () => {
+    const day = intents(1, [
+      { activityId: 'stroll', urgency: 0.7, why: '散步' },
+      { activityId: 'eat', urgency: 0.8, origin: 'drive', why: '饿了' },
+    ]);
+    const bias = { stroll: 2 };
+    // 30 体力(D≈0.86): stroll 2.1×0.86≈1.8 仍压过 eat 0.75——亚健康区人格保留
+    const at30 = wantSelect(char({ energy: 30, backpack: { berry: 1 } }), day, 1, TOWN_MAP, anchorsOf, bias);
+    expect(at30!.wantId).toBe('w1-0');
+    // 22 体力(D≈0.29): stroll ≈0.6 < eat(0.75+0.2×deficit)——自救接管
+    const at22 = wantSelect(char({ energy: 22, backpack: { berry: 1 } }), day, 1, TOWN_MAP, anchorsOf, bias);
+    expect(at22!.wantId).toBe('w1-1');
+    // 15 体力(<FLOOR 18): stroll 退场,eat 唯一可评——不变量构造性成立,与 bias 无关
+    const at15 = wantSelect(char({ energy: 15, backpack: { berry: 1 } }), day, 1, TOWN_MAP, anchorsOf, bias);
+    expect(at15!.wantId).toBe('w1-1');
+  });
+
+  it('E7 seize 分域: 生存挑战者压过坡道折减的在位者即抢占(不受 1.4× 约束);lifestyle 内比例保护不变', () => {
+    // 21.5 体力: 在位 stroll 2.7×D≈0.68,挑战者 eat ≈0.81——eat 已是第一名但分差
+    // 不足 1.4×(旧语义在契者保持),跨类放行后 eat 接管
+    const day = intents(1, [
+      { activityId: 'stroll', urgency: 0.9, status: 'doing', why: '散步' },
+      { activityId: 'eat', urgency: 0.8, origin: 'drive', why: '饿了' },
+    ]);
+    const seized = wantSelect(
+      char({ energy: 21.5, backpack: { berry: 1 } }),
+      day,
+      1,
+      TOWN_MAP,
+      anchorsOf,
+      { stroll: 2 },
+    );
+    expect(seized!.wantId).toBe('w1-1');
+
+    // 同为 lifestyle: 挑战者分差不足 1.4× → 在契者保持(E6.3 语义不变)
+    const day2 = intents(1, [
+      { activityId: 'study', urgency: 0.5, status: 'doing', why: '学习' },
+      { activityId: 'stroll', urgency: 0.6, why: '散步' },
+    ]);
+    const kept = wantSelect(char({ energy: 80 }), day2, 1, TOWN_MAP, anchorsOf);
+    expect(kept!.wantId).toBe('w1-0');
+  });
+
+  it('E7 家族按性质不按 origin: drive 来源 socialize 在 FLOOR 下照样让位 eat', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, origin: 'drive', why: '找人聊天' },
+      { activityId: 'eat', urgency: 0.8, origin: 'drive', why: '饿了' },
+    ]);
+    const low = wantSelect(char({ energy: 16, backpack: { berry: 1 } }), day, 1, TOWN_MAP, anchorsOf);
+    expect(low!.wantId).toBe('w1-1');
+  });
+
+  it('E7 观测: candidates 快照带 family/damped,score 为折减后有效分', () => {
+    const day = intents(1, [
+      { activityId: 'stroll', urgency: 0.7, why: '散步' },
+      { activityId: 'meal', urgency: 0.6, why: '吃饭' },
+    ]);
+    const debug: { candidates: WantCandidateDebug[] } = { candidates: [] };
+    wantSelect(char({ energy: 22 }), day, 1, TOWN_MAP, anchorsOf, { stroll: 2 }, {}, debug);
+    const stroll = debug.candidates.find((c) => c.activityId === 'stroll')!;
+    expect(stroll.family).toBe('lifestyle');
+    expect(stroll.damped).toBe(true);
+    expect(stroll.score).toBeLessThan(0.72); // 2.1×D(22)≈0.63,明显低于裸分 2.1
+    const meal = debug.candidates.find((c) => c.activityId === 'meal')!;
+    expect(meal.family).toBe('restorative');
+    expect(meal.damped).toBe(false);
   });
 
   it('忙(活动/移动)与失能 → null,意图不越权打断进行中行为', () => {

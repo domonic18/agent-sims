@@ -392,7 +392,7 @@ describe('AgentScheduler(D3 意图执行)', () => {
     await vi.advanceTimersByTimeAsync(2_000); // 意图生成
     h.clock.gameMinutes += AUTONOMY_CHECK_INTERVAL_MINUTES;
     await vi.advanceTimersByTimeAsync(2_000);
-    // 桩不改数值:驱力 eat 唯一 eligible(energy 20≤闸线,study 非基础被体力闸拦下),
+    // 桩不改数值:驱力 eat 高分胜出(E7 坡道把 study 压到 ≈0.1 分),
     // 每个巡检块都重评执行吃苹果
     expect(h.intents[0]).toEqual({ type: 'eat_item', characterId: CHAR_ID, itemId: 'apple' });
     expect(h.intents.every((i) => i.type === 'eat_item')).toBe(true);
@@ -466,7 +466,7 @@ describe('AgentScheduler(D3 意图执行)', () => {
     // 身旁有浆果丛——写侧预检(ruleWorld)与执行侧(wantWorld)必须同源可见该节点;
     // E6.2 平移曾漏注入 nearestEdibleNode 令执行恒 stuck→abandoned,饿死循环。
     // 坐标取 TOWN_MAP 相邻可行走格(25,25)+(26,25):角色站不可走格会令寻路预检失败;
-    // 起始 gm 600(白天档): 夜间 sleep 驱力 0.85 会压过 forage 0.8,白天 0.7 则稳输
+    // 起始 gm 600(白天档): E7 发射增益后 forage 1.04 连夜间 sleep 0.85 也压得过,白天更稳
     const h = harness(
       600,
       char({ x: 25, y: 25, energy: 25, coins: 0 }),

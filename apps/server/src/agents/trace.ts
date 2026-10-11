@@ -39,7 +39,12 @@ export interface TraceDecision {
     activityId: string;
     origin: string;
     urgency: number;
+    /** 有效分(lifestyle 已含体力坡道折减,E7) */
     score: number;
+    /** want 家族(E7): restorative=生存 | lifestyle=生活 */
+    family?: 'restorative' | 'lifestyle';
+    /** lifestyle 且被坡道折减过 */
+    damped?: boolean;
     /** 落选原因(如 seize=挑战者分差不足) */
     reject?: string;
   }>;

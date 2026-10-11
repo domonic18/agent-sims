@@ -43,7 +43,12 @@ export interface WantCandidateDebug {
   activityId: string;
   origin: string;
   urgency: number;
+  /** 有效分(lifestyle 已含体力坡道折减) */
   score: number;
+  /** want 家族(E7): restorative=生存 | lifestyle=生活 */
+  family?: 'restorative' | 'lifestyle';
+  /** lifestyle 且被坡道折减过(≠未折减) */
+  damped?: boolean;
   /** 落选原因: seize=在契保护(挑战者分差不足) | score=评分落选 | energy=体力闸 */
   reject?: string;
 }
@@ -97,6 +102,32 @@ export type DriveActivityId = (typeof DRIVE_ACTIVITY_IDS)[number];
 
 export function isDriveActivity(activityId: string): boolean {
   return (DRIVE_ACTIVITY_IDS as readonly string[]).includes(activityId);
+}
+
+// ---------- 仲裁生存不变量(E7):want 二分类 + lifestyle 体力坡道 ----------
+
+/** want 家族(E7):restorative=生存家族(生理驱力四词汇+基础维生活动+救援),
+ * lifestyle=其余(含 drive 来源的 socialize——饿肚子时社交让位)。
+ * 人设表达「怎么做」(哪个岗/什么活动 bias),不表达「要不要活」(生存家族人设中性) */
+export type WantFamily = 'restorative' | 'lifestyle';
+
+const RESTORATIVE_IDS: ReadonlySet<string> = new Set([
+  ...(DRIVE_ACTIVITY_IDS as readonly string[]),
+  ...(BASIC_ACTIVITY_IDS as readonly string[]),
+  'rescue',
+]);
+
+export function wantFamily(w: { activityId: string }): WantFamily {
+  return RESTORATIVE_IDS.has(w.activityId) ? 'restorative' : 'lifestyle';
+}
+
+/** lifestyle 体力坡道(E7):[SURVIVAL_FLOOR, LIFESTYLE_CEIL] 线性衰减,
+ * 构造性不变量——体力≤FLOOR 时 lifestyle 分数必败(0 乘任何分数=0,与 bias 无关) */
+export function lifestyleDamping(energy: number): number {
+  return Math.min(
+    1,
+    Math.max(0, (energy - BALANCE.SURVIVAL_FLOOR) / (BALANCE.LIFESTYLE_CEIL - BALANCE.SURVIVAL_FLOOR)),
+  );
 }
 
 /** 驱力压力(E6.2):恒稳态压力的 want 载荷——生成器只答「我多想要」(压力→urgency),
@@ -180,11 +211,17 @@ export function driveDecide(
     char.energy >= BALANCE.POVERTY_MIN_ENERGY &&
     earnChannelAvailable(char, world)
   ) {
-    pressures.push({ activityId: 'earn', urgency: BALANCE.DRIVE_EARN_URGENCY, why: '口袋见底,得挣点钱了' });
+    // E7 增益随发射走:缺钱谋生 urgency 放大折入发射侧(评分管线不感知 boost,
+    // 消灭 needBoost 伪活动 id 键位错位类 bug)
+    pressures.push({
+      activityId: 'earn',
+      urgency: BALANCE.DRIVE_EARN_URGENCY * BALANCE.DRIVE_EARN_BOOST,
+      why: '口袋见底,得挣点钱了',
+    });
   } else if (hungry && forageChannelAvailable(char, world)) {
     pressures.push({
       activityId: 'forage',
-      urgency: BALANCE.DRIVE_FORAGE_URGENCY,
+      urgency: BALANCE.DRIVE_FORAGE_URGENCY * BALANCE.DRIVE_FORAGE_BOOST,
       why: '饿得不行,店也没的买,采点吃的',
     });
   }
@@ -659,7 +696,9 @@ function hasAnyPlace(map: TileMapDefinition, placeIds: readonly string[]): boole
 }
 
 /** 数值需求增益(D3 弹性意图择行;E4 缺钱扩容):缺钱工作欲↑/卖货变现↑/采集备货↑,
- * 钱多工作↓,疲惫休息就餐↑,没学识想学 */
+ * 钱多工作↓,疲惫休息就餐↑,没学识想学。
+ * 只服务真实活动 id(plan/impulse 词表);驱力伪活动 id(eat/earn/forage)的增益
+ * 在 driveDecide 发射时折入 urgency(E7),本函数对伪 id 恒返 1——勿在此按伪 id 加分支 */
 function needBoost(char: WorldCharacter, activityId: string): number {
   if (char.coins < BALANCE.WANT_WORK_COIN_PRESSURE) {
     if (activityId === 'work') return 1.5;
@@ -712,7 +751,8 @@ function extraOf(
  * - 救援 want(E6.2 triage respond→冲动):rescueExecution 到场即完成
  * 不可执行的 want 当场废弃(rest 无居所/无锚点无场所);门槛不够/缺料/无节点
  * 只是本轮跳过(pending 保留——学了知识/采到料/节点重生后可再评);
- * 体力见底时非基础块让位生存压力(驱力/救援豁免)。无意图/意图耗尽返回 null。
+ * 体力见底时 lifestyle 让位生存家族(E7 二分类+体力坡道: FLOOR 以下整体退场,
+ * FLOOR~CEIL 渐变折减;生存挑战者跨类抢占不受在契比例约束)。无意图/意图耗尽返回 null。
  */
 export function wantSelect(
   char: WorldCharacter,
@@ -780,12 +820,10 @@ export function wantSelect(
     }
     return true;
   });
+  // 生存家族恒可评;lifestyle 体力≤SURVIVAL_FLOOR 整体退场(执行保护:低体力
+  // 待机代谢远低于活动消耗),FLOOR~CEIL 之间由评分坡道渐变接管(E7 不变量)
   const eligible = candidates.filter(
-    (w) =>
-      w.origin === 'drive' ||
-      w.activityId === 'rescue' ||
-      char.energy > BALANCE.LOW_ENERGY_THRESHOLD ||
-      (BASIC_ACTIVITY_IDS as readonly string[]).includes(w.activityId),
+    (w) => wantFamily(w) === 'restorative' || char.energy > BALANCE.SURVIVAL_FLOOR,
   );
   if (eligible.length === 0) {
     // 全被体力闸拦下:wants 保留(pending 不动),驱力生存压力照旧评分先行
@@ -793,15 +831,18 @@ export function wantSelect(
       ? { layer: 'plan', action: 'continue', reason: 'energy_gate', abandonedWantIds: abandoned }
       : null;
   }
+  const damping = lifestyleDamping(char.energy);
   const scored = eligible
     .map((w) => ({
       want: w,
+      family: wantFamily(w),
       score:
         w.urgency *
         (1 + (bias[w.activityId] ?? 0)) *
         needBoost(char, w.activityId) *
         (0.95 + Math.random() * 0.1),
     }))
+    .map((s) => ({ ...s, score: s.family === 'restorative' ? s.score : s.score * damping }))
     .sort((a, b) => b.score - a.score);
   // 执行契约(E6.3): 曾被选中(doing)=在契——空闲重评走「挑战者 vs 在位者」,
   // 挑战者须显著更高分(WANT_SEIZE_RATIO)才许插队,否则在契者免评续做(从当前
@@ -810,12 +851,16 @@ export function wantSelect(
   // 契约把调度升级为带抢占阈值的优先级调度——抢占仍纯评分裁决(E6 哲学),只是
   // 把「更高分」从隐含 1.01 倍显式为比例阈值。doing 多条并存=历次插队残留,
   // 在契集中评分最高者为在位者;死契由上方过期/失效过滤清出,不占坑。
+  // seize 分域(E7):保护只在同类内生效——生存挑战者对 lifestyle 在位者恒允许
+  // 抢占(快饿死了不许被「在做的事」挡住救援),反向(lifestyle→生存)照常受比例约束
   const incumbent = scored.find((s) => s.want.status === 'doing');
-  let picked = scored[0]!.want;
+  const challenger = scored[0]!;
+  let picked = challenger.want;
   if (
     incumbent !== undefined &&
-    incumbent !== scored[0] &&
-    scored[0]!.score <= incumbent.score * BALANCE.WANT_SEIZE_RATIO
+    incumbent !== challenger &&
+    challenger.score <= incumbent.score * BALANCE.WANT_SEIZE_RATIO &&
+    !(challenger.family === 'restorative' && incumbent.family === 'lifestyle')
   ) {
     picked = incumbent.want;
   }
@@ -826,11 +871,13 @@ export function wantSelect(
       origin: s.want.origin,
       urgency: s.want.urgency,
       score: Math.round(s.score * 1000) / 1000,
+      family: s.family,
+      damped: s.family === 'lifestyle' && damping < 1,
       ...(s.want.id === picked.id
         ? {}
         : {
             reject:
-              s === scored[0]
+              s === challenger
                 ? 'seize'
                 : s.want.status === 'doing'
                   ? 'incumbent_lost'
@@ -845,6 +892,7 @@ export function wantSelect(
           origin: w.origin,
           urgency: w.urgency,
           score: 0,
+          family: wantFamily(w),
           reject: 'energy',
         });
       }

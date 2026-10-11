@@ -72,6 +72,16 @@ export interface BalanceConfig {
   FRIDGE_VOLUME_LIMIT: number;
   /** 体力区段(M3.6f):≤阈值只允许基础活动(rest/stroll/meal) */
   LOW_ENERGY_THRESHOLD: number;
+  /** 仲裁生存不变量(E7):want 二分类 + lifestyle 体力坡道。
+   * SURVIVAL_FLOOR=保命线(≤此值 lifestyle 整体退场+执行保护闸);LIFESTYLE_CEIL=舒适线
+   * (≥此值 lifestyle 全额分,人设全功率);两线之间 lifestyle 分数线性衰减——
+   * 「人饿的时候对世界失去兴趣」的显式参数化,生存家族分数不受影响 */
+  SURVIVAL_FLOOR: number;
+  LIFESTYLE_CEIL: number;
+  /** 驱力发射增益(E7,增益随发射走):缺钱时 earn/forage 的 urgency 放大——
+   * 折入发射侧 urgency,评分管线保持单一公式;needBoost 只服务真实活动 id */
+  DRIVE_EARN_BOOST: number;
+  DRIVE_FORAGE_BOOST: number;
   /** Lab 复活(debug 通道)恢复的满状态数值 */
   REVIVE_ENERGY: number;
   /** 睡眠(M-G.2,数值文档 §2.7): 缺觉阈值(昨夜窗口累计分钟,低于即于 06:00 结算惩罚)
@@ -203,6 +213,10 @@ export const BALANCE: BalanceConfig = {
   BACKPACK_VOLUME_LIMIT,
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
+  SURVIVAL_FLOOR: 18,
+  LIFESTYLE_CEIL: 32,
+  DRIVE_EARN_BOOST: 1.5,
+  DRIVE_FORAGE_BOOST: 1.3,
   REVIVE_ENERGY: 100,
   SLEEP_MIN_MINUTES: 240,
   REFLECTION_IMPORTANCE_THRESHOLD: 80,

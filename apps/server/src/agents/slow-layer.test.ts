@@ -97,7 +97,7 @@ function llmStub(opts: {
 }
 
 describe('parseIntents(工具入参→wants)', () => {
-  it('合法行解析成 wants(activity 白名单+urgency 截断 0~1+id 按序生成)', () => {
+  it('合法行解析成 wants(activity 白名单+urgency 截断主观档 0.3~0.7+id 按序生成)', () => {
     expect(
       parseIntents(
         {
@@ -113,9 +113,9 @@ describe('parseIntents(工具入参→wants)', () => {
     ).toEqual({
       ok: true,
       value: [
-        { id: 'w5-0', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.8, status: 'pending', createdAtMin: 500 },
-        { id: 'w5-1', activityId: 'study', why: '想学新东西', origin: 'plan', urgency: 1, status: 'pending', createdAtMin: 500 },
-        { id: 'w5-2', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-0', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.7, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-1', activityId: 'study', why: '想学新东西', origin: 'plan', urgency: 0.7, status: 'pending', createdAtMin: 500 },
+        { id: 'w5-2', activityId: 'stroll', why: '透透气', origin: 'plan', urgency: 0.3, status: 'pending', createdAtMin: 500 },
       ],
     });
   });
@@ -167,7 +167,7 @@ describe('parseIntents(工具入参→wants)', () => {
         activityId: 'socialize',
         why: '找铁牛聊聊',
         origin: 'plan',
-        urgency: 0.9,
+        urgency: 0.7,
         status: 'pending',
         createdAtMin: 500,
         targetCharacterId: 'npc-9',
@@ -190,8 +190,8 @@ describe('fallbackIntents(个性化回落)', () => {
     expect(ids).not.toContain('socialize');
     for (const w of wants) {
       expect(w.status).toBe('pending');
-      expect(w.urgency).toBeGreaterThan(0);
-      expect(w.urgency).toBeLessThanOrEqual(0.9);
+      expect(w.urgency).toBeGreaterThanOrEqual(0.3);
+      expect(w.urgency).toBeLessThanOrEqual(0.7);
       expect(w.id).toMatch(/^w5-f\d$/);
       expect(w.why.trim()).not.toBe('');
     }
