@@ -1,0 +1,206 @@
+/*
+ * admin 工作站像素细节(仅 admin chunk 加载): 与 ui/theme.css 的 px 原语同语言。
+ * 深色底色一律走 antd token(adminTheme.ts),这里只放 token 表达不了的细节:
+ * 硬阴影按压、金色仪表条、点阵纹理、方形滚动条。
+ */
+
+/* ---- 外壳: 方形深色滚动条 ---- */
+.adm-shell ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.adm-shell ::-webkit-scrollbar-track {
+  background: var(--px-ink);
+}
+
+.adm-shell ::-webkit-scrollbar-thumb {
+  background: var(--px-slate);
+  border: 2px solid var(--px-ink);
+}
+
+.adm-shell ::-webkit-scrollbar-thumb:hover {
+  background: var(--px-gray);
+}
+
+/* ---- primary 按钮复刻 .px-btn 硬阴影按压感 ---- */
+.adm-shell .ant-btn-primary {
+  box-shadow: 0 3px 0 var(--px-ink);
+}
+
+.adm-shell .ant-btn-primary:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
+/* ---- Card 标题左侧金色仪表条 ---- */
+.adm-shell .ant-card-head-title {
+  position: relative;
+  padding-left: 12px;
+}
+
+.adm-shell .ant-card-head-title::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 14px;
+  background: var(--px-gold);
+  box-shadow: 2px 2px 0 var(--px-ink);
+}
+
+/* ---- 顶栏世界状态条 ---- */
+.adm-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.adm-head-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.adm-head-desc {
+  font-size: 12px;
+  color: var(--px-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.adm-head-spacer {
+  flex: 1;
+}
+
+.adm-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.adm-status-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adm-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--px-slate);
+  box-shadow: 0 0 0 2px var(--px-ink);
+  flex-shrink: 0;
+}
+
+.adm-dot.on {
+  background: var(--px-lime);
+}
+
+.adm-sep {
+  width: 2px;
+  height: 14px;
+  background: var(--px-slate);
+  opacity: 0.5;
+}
+
+.adm-mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: 0.5px;
+}
+
+@media (max-width: 1100px) {
+  .adm-head-desc {
+    display: none;
+  }
+}
+
+/* ---- 侧栏 ---- */
+.adm-logo {
+  margin: 14px 12px 10px;
+}
+
+.adm-logo-inner {
+  padding: 10px 8px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.adm-logo-title {
+  font-family: var(--px-font-pixel);
+  font-size: 11px;
+  color: var(--px-gold);
+  letter-spacing: 1px;
+}
+
+.adm-logo-sub {
+  font-size: 10px;
+  color: var(--px-dim);
+  letter-spacing: 4px;
+  margin-right: -4px;
+}
+
+.adm-sider-user {
+  padding: 10px 16px;
+  border-top: 1px solid rgba(86, 108, 134, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.adm-sider-user-name {
+  font-size: 12px;
+  color: var(--px-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- 登录页: ink 底 + slate 点阵纹理 + 八角切角登录卡 ---- */
+.adm-login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--px-ink);
+  background-image: radial-gradient(rgba(86, 108, 134, 0.22) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+.adm-login-card {
+  width: 360px;
+}
+
+.adm-login-inner {
+  padding: 22px 20px;
+}
+
+.adm-login-title {
+  font-family: var(--px-font-pixel);
+  font-size: 15px;
+  color: var(--px-gold);
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+.adm-login-sub {
+  font-size: 12px;
+  color: var(--px-dim);
+  margin-bottom: 16px;
+}
+
+.adm-loading {
+  color: var(--px-dim);
+  font-size: 13px;
+  padding: 24px 0;
+}

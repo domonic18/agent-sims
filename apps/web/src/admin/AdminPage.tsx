@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import {
   Alert,
   App as AntdApp,
   Avatar,
   Button,
-  Card,
   ConfigProvider,
   Dropdown,
   Form,
@@ -32,6 +31,8 @@ import zhCN from 'antd/locale/zh_CN';
 import 'dayjs/locale/zh-cn';
 import type { ModelConfigView } from '@sims/shared';
 import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } from './api';
+import { ADMIN_THEME } from './adminTheme';
+import { fmtTokens, useAdminStatus } from './useAdminStatus';
 import { ModelConfigPanel } from './ModelConfigPanel';
 import { TokenUsagePanel } from './TokenUsagePanel';
 import { AssetsPanel } from './AssetsPanel';
@@ -43,6 +44,7 @@ import { RecipesPanel } from './RecipesPanel';
 import { AnimPreviewPanel } from './AnimPreviewPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { PromptsPanel } from './PromptsPanel';
+import './admin.css';
 
 function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   const { message } = AntdApp.useApp();
@@ -62,33 +64,29 @@ function LoginForm({ onSuccess }: { onSuccess: (username: string) => void }) {
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f5f5f5',
-      }}
-    >
-      <Card title="agent-sims 后台" style={{ width: 360 }}>
-        <Form
-          layout="vertical"
-          requiredMark={false}
-          initialValues={{ username: 'admin' }}
-          onFinish={(values) => void onFinish(values)}
-        >
-          <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input autoComplete="username" />
-          </Form.Item>
-          <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password autoComplete="current-password" autoFocus />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" block loading={submitting}>
-            登录
-          </Button>
-        </Form>
-      </Card>
+    <div className="adm-login">
+      <div className="px-box adm-login-card">
+        <div className="px-inner adm-login-inner">
+          <div className="adm-login-title px-title-shadow">AGENT·SIMS</div>
+          <div className="adm-login-sub">控制台登录</div>
+          <Form
+            layout="vertical"
+            requiredMark={false}
+            initialValues={{ username: 'admin' }}
+            onFinish={(values) => void onFinish(values)}
+          >
+            <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
+              <Input autoComplete="username" />
+            </Form.Item>
+            <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+              <Input.Password autoComplete="current-password" autoFocus />
+            </Form.Item>
+            <Button type="primary" htmlType="submit" block loading={submitting}>
+              进入控制台
+            </Button>
+          </Form>
+        </div>
+      </div>
     </div>
   );
 }
@@ -112,9 +110,9 @@ const NAV_ITEMS: MenuProps['items'] = [
     label: '运营',
     children: [
       { key: 'world', icon: <GlobalOutlined />, label: '世界管理' },
+      { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'params', icon: <ControlOutlined />, label: '世界参数' },
       { key: 'recipes', icon: <ExperimentOutlined />, label: '世界配方' },
-      { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
       { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
       { key: 'anim', icon: <PlayCircleOutlined />, label: '动画演示器' },
@@ -130,12 +128,28 @@ const NAV_ITEMS: MenuProps['items'] = [
   },
 ];
 
+function StatusStrip({ status }: { status: ReturnType<typeof useAdminStatus> }) {
+  return (
+    <div className="adm-status">
+      <span className="adm-status-item">
+        <i className={status.world ? 'adm-dot on' : 'adm-dot'} />
+        {status.world ? `${status.world.name} · ${status.world.characters} 角色` : '无活跃世界'}
+      </span>
+      <span className="adm-sep" />
+      <span className="adm-status-item adm-mono">
+        今日 {fmtTokens(status.tokensToday)} tok · {status.callsToday ?? '—'} 次
+      </span>
+    </div>
+  );
+}
+
 function AdminShell() {
   const [authed, setAuthed] = useState(() => getToken() !== null);
   const [username, setUsername] = useState('');
   const [tab, setTab] = useState<AdminTab>('world');
   const [configs, setConfigs] = useState<ModelConfigView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const status = useAdminStatus(authed);
 
   const load = useCallback(async () => {
     try {
@@ -159,6 +173,33 @@ function AdminShell() {
     if (authed && tab === 'models') void load();
   }, [authed, tab, load]);
 
+  const PANELS: Record<AdminTab, { title: string; desc: string; render: () => ReactNode }> = {
+    world: { title: '世界管理', desc: '世界生命周期与居民编制', render: () => <WorldPanel /> },
+    models: {
+      title: '模型配置',
+      desc: '四槽位模型接入与连通性',
+      render: () => (
+        <>
+          {loadError && <Alert type="error" showIcon message={loadError} style={{ marginBottom: 16 }} />}
+          {!configs ? (
+            <div className="adm-loading">加载中…</div>
+          ) : (
+            <ModelConfigPanel configs={configs} onChanged={() => void load()} />
+          )}
+        </>
+      ),
+    },
+    params: { title: '世界参数', desc: '全局数值与系统配置', render: () => <SysConfigPanel /> },
+    recipes: { title: '世界配方', desc: '采集·制作·出售链路配方', render: () => <RecipesPanel /> },
+    usage: { title: 'Token 用量', desc: '模型消耗统计与调用流水', render: () => <TokenUsagePanel /> },
+    assets: { title: '素材管理', desc: '素材库分类·审核与发布', render: () => <AssetsPanel /> },
+    anim: { title: '动画演示器', desc: '角色动画帧预览', render: () => <AnimPreviewPanel /> },
+    traces: { title: '决策追踪', desc: 'Agent 决策链与 want 生命周期', render: () => <AgentTracePanel /> },
+    logs: { title: '运行日志', desc: '技术与审计日志检索', render: () => <LogsPanel /> },
+    prompts: { title: '提示词', desc: '当前生效的提示词模板', render: () => <PromptsPanel /> },
+    settings: { title: '账户安全', desc: '登录密码管理', render: () => <SettingsPanel username={username} /> },
+  };
+
   if (!authed) {
     return (
       <LoginForm
@@ -176,23 +217,17 @@ function AdminShell() {
     setAuthed(false);
   };
 
+  const panel = PANELS[tab];
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Layout.Sider
-        width={220}
-        theme="light"
-        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}
-      >
+    <Layout className="adm-shell" style={{ minHeight: '100vh' }}>
+      <Layout.Sider width={200} style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}>
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <div
-            style={{
-              padding: '18px 16px',
-              fontSize: 15,
-              fontWeight: 600,
-              borderBottom: '1px solid #f0f0f0',
-            }}
-          >
-            agent-sims 后台
+          <div className="px-box adm-logo">
+            <div className="px-inner adm-logo-inner">
+              <span className="adm-logo-title px-title-shadow">AGENT·SIMS</span>
+              <span className="adm-logo-sub">控制台</span>
+            </div>
           </div>
           <Menu
             mode="inline"
@@ -201,21 +236,8 @@ function AdminShell() {
             onClick={({ key }) => setTab(key as AdminTab)}
             style={{ flex: 1, borderInlineEnd: 'none' }}
           />
-          <div
-            style={{
-              padding: '12px 16px',
-              borderTop: '1px solid #f0f0f0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-            }}
-          >
-            <span
-              style={{ fontSize: 12, color: '#57606a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-              {username || '已登录'}
-            </span>
+          <div className="adm-sider-user">
+            <span className="adm-sider-user-name">{username || '已登录'}</span>
             <Dropdown
               menu={{ items: [{ key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: logout }] }}
               trigger={['click']}
@@ -225,40 +247,17 @@ function AdminShell() {
           </div>
         </div>
       </Layout.Sider>
-      <Layout.Content style={{ padding: 24 }}>
-        <div style={{ maxWidth: 1080, margin: '0 auto' }}>
-          {tab === 'world' ? (
-            <WorldPanel />
-          ) : tab === 'params' ? (
-            <SysConfigPanel />
-          ) : tab === 'recipes' ? (
-            <RecipesPanel />
-          ) : tab === 'anim' ? (
-            <AnimPreviewPanel />
-          ) : tab === 'usage' ? (
-            <TokenUsagePanel />
-          ) : tab === 'assets' ? (
-            <AssetsPanel />
-          ) : tab === 'traces' ? (
-            <AgentTracePanel />
-          ) : tab === 'logs' ? (
-            <LogsPanel />
-          ) : tab === 'prompts' ? (
-            <PromptsPanel />
-          ) : tab === 'settings' ? (
-            <SettingsPanel username={username} />
-          ) : (
-            <>
-              {loadError && <Alert type="error" showIcon message={loadError} style={{ marginBottom: 16 }} />}
-              {!configs ? (
-                <p>加载中…</p>
-              ) : (
-                <ModelConfigPanel configs={configs} onChanged={() => void load()} />
-              )}
-            </>
-          )}
-        </div>
-      </Layout.Content>
+      <Layout>
+        <Layout.Header className="adm-head">
+          <span className="adm-head-title">{panel.title}</span>
+          <span className="adm-head-desc">{panel.desc}</span>
+          <span className="adm-head-spacer" />
+          <StatusStrip status={status} />
+        </Layout.Header>
+        <Layout.Content style={{ padding: 20 }}>
+          <div style={{ maxWidth: 1280, margin: '0 auto' }}>{panel.render()}</div>
+        </Layout.Content>
+      </Layout>
     </Layout>
   );
 }
@@ -266,7 +265,7 @@ function AdminShell() {
 /** ConfigProvider/AntdApp 挂在本页内部(非 main.tsx):antd 及其 CSS-in-JS 只进 admin chunk */
 export default function AdminPage() {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={zhCN} theme={ADMIN_THEME}>
       <AntdApp>
         <AdminShell />
       </AntdApp>
