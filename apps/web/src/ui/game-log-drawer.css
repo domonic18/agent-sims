@@ -18,6 +18,19 @@
   z-index: 30;
 }
 
+/* 窄视口: 顶栏按钮群换行后 .log-root 右缘内移,380px 抽屉右锚会被推出屏左,
+   改为固定悬于视口两侧留边(与 toasts 同顶距) */
+@media (max-width: 520px) {
+  .log-drawer {
+    position: fixed;
+    top: 72px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-width: none;
+  }
+}
+
 .log-drawer-inner {
   display: flex;
   flex-direction: column;
