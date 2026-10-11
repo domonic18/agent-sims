@@ -1,4 +1,9 @@
-import { findPlaceAt, pickChatLine } from '@sims/shared';
+import {
+  findPlaceAt,
+  getActivityDefinition,
+  pickChatLine,
+  type SocialEncounterEvent,
+} from '@sims/shared';
 import { and, eq } from 'drizzle-orm';
 import { BALANCE } from '../config/balance.js';
 import type { DbHandle } from '../db/client.js';
@@ -412,6 +417,53 @@ export class SocialLoop {
       // 会合收口:落地/走散均散场,下次聊天新一轮召唤
       this.rendezvous.delete(key);
     }
+  }
+
+  /**
+   * 路上相遇消化(E8):世界层 tick 级 social.encounter 的认知侧分流。相遇是快于
+   * 决策采样(15 游戏分/块)的瞬时事实——采样式贴身判定对相向而行两人命中率仅
+   * ~7%,「路上碰见却各自走到目的地」的追逐循环由此而来。按意愿分流,零模型:
+   * 任一方有指向对方的在途 socialize want=想聊——双方停步进既有会合协议(双向
+   * 都想聊时 id 字典序小者为发起方,谁发起只决定协议角色,不影响都想聊的事实);
+   * 双方都无意愿=擦肩而过(正确行为,高频零惊动);任一方不可打断活动(睡觉/
+   * 进餐)或非自治=不打扰。停步是「见面停下来说话」的物理表达(协议机械动作,
+   * 同 rent 即时结算先例;双方 want 真实存在于意图存储,执行仍归 wantSelect)。
+   */
+  onEncounter(event: SocialEncounterEvent): void {
+    const { sim } = this.deps;
+    const a = sim.characters.get(event.aId);
+    const b = sim.characters.get(event.bId);
+    if (a === undefined || b === undefined) return;
+    if (!a.alive || !b.alive || a.collapsed || b.collapsed) return;
+    if (!autonomy.has(a.id) || !autonomy.has(b.id)) return;
+    const aSeeks = this.hasSocialWant(a.id, b.id);
+    const bSeeks = this.hasSocialWant(b.id, a.id);
+    if (!aSeeks && !bSeeks) return;
+    if (SocialLoop.isUntouchable(a) || SocialLoop.isUntouchable(b)) return;
+    const initiator = aSeeks && bSeeks ? (a.id < b.id ? a : b) : aSeeks ? a : b;
+    const target = initiator === a ? b : a;
+    const key = [a.id, b.id].sort().join('|');
+    if (this.rendezvous.has(key) || this.generating.has(key)) return;
+    sim.requestStopMove(a.id);
+    sim.requestStopMove(b.id);
+    this.deps.trace.record(initiator.id, sim.clock.gameMinutes, {
+      trigger: 'eventbus',
+      perception: {
+        motive: 'social',
+        encounter: target.id,
+        bidirectional: aSeeks && bSeeks,
+      },
+      decision: { layer: 'rule', conclusion: 'react', intent: 'want:socialize' },
+    });
+    this.summon(initiator, target, 'eventbus');
+  }
+
+  /** 不可打断活动(睡觉/进餐):相遇不打扰——别人在睡凑上去聊不合常理 */
+  private static isUntouchable(c: WorldCharacter): boolean {
+    return (
+      c.activity !== null &&
+      (getActivityDefinition(c.activity.activityId)?.interruptibility ?? 'high') === 'none'
+    );
   }
 
   /**

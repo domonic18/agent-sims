@@ -18,6 +18,11 @@ export const LOW_ENERGY_THRESHOLD = 20;
 /** 闲聊同处一地距离(曼哈顿,§6.2):chat 判定,UI 聊天按钮同源禁用;
  * 原名 SOCIAL_PRESENCE_DISTANCE(2026-10-07 同场增益删除后更名) */
 export const SOCIAL_CHAT_DISTANCE = 2;
+/** 路上相遇触发距离(曼哈顿,E8):世界层 tick 级检测,进入该带即发 social.encounter。
+ * 与 SOCIAL_CHAT_DISTANCE 语义不同(事件触发阈值 vs 会合成功判定),数值当前同源对齐 */
+export const ENCOUNTER_DISTANCE = 2;
+/** 相遇同对冷却(游戏分,E8):一次相遇只触发一次事件,冷却近似边沿触发 */
+export const ENCOUNTER_COOLDOWN_MINUTES = 15;
 /** 同对角色每日「有收益」闲聊次数(数值文档 §6.2);超出可继续聊但收益为 0,UI 提示同源 */
 export const CHAT_DAILY_GAINED = 6;
 /** 救治窗口(goal-design §7,M-G.5):24 游戏小时——growth 累倒送医/survival 重伤休整共用;

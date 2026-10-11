@@ -13,6 +13,8 @@
 import {
   BACKPACK_VOLUME_LIMIT,
   CHAT_DAILY_GAINED,
+  ENCOUNTER_COOLDOWN_MINUTES,
+  ENCOUNTER_DISTANCE,
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
   SOCIAL_CHAT_DISTANCE,
@@ -119,6 +121,9 @@ export interface BalanceConfig {
   CHAT_DECAY_STEPS: readonly number[];
   /** 闲聊同处一地距离(曼哈顿;双端同源常量,原 PRESENCE 更名) */
   SOCIAL_CHAT_DISTANCE: number;
+  /** 路上相遇(E8): 触发距离(曼哈顿)/同对冷却(游戏分,一次相遇只发一次事件) */
+  ENCOUNTER_DISTANCE: number;
+  ENCOUNTER_COOLDOWN_MINUTES: number;
   /** 自然终止多轮对话(E3):单场对话最多句数;每轮 light 调用搭终止信号,零额外调用 */
   CHAT_MAX_ROUNDS: number;
   /** 熟悉度每日衰减(世界日翻转时结算) */
@@ -252,6 +257,8 @@ export const BALANCE: BalanceConfig = {
   CHAT_DAILY_GAINED,
   CHAT_DECAY_STEPS: [1, 0.6, 0.4, 0.3, 0.2, 0.1],
   SOCIAL_CHAT_DISTANCE,
+  ENCOUNTER_DISTANCE,
+  ENCOUNTER_COOLDOWN_MINUTES,
   CHAT_MAX_ROUNDS: 4,
   FAMILIARITY_DECAY_PER_DAY: 1,
   SOCIAL_PAIR_COOLDOWN_MINUTES: 30,

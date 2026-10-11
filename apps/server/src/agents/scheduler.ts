@@ -344,6 +344,12 @@ export class AgentScheduler {
   private onEvent(event: WorldEvent): void {
     if (event.type === 'activity.finished') this.settleWant(event);
     if (event.type === 'social.chat') this.settleSocialChat(event);
+    // E8 路上相遇:当事人判定(社交意愿)与消化(停步会合)一体,不走通用分级——
+    // 事件对第三者是 near=1 噪音,对当事人自证相关(有 want 在途才消化)
+    if (event.type === 'social.encounter') {
+      this.socialLoop.onEncounter(event);
+      return;
+    }
     if (!isTriagedEvent(event)) return;
     this.registry.observe(event);
     const { sim } = this.deps;

@@ -49,6 +49,7 @@ const CATEGORY_OF: Record<WorldEvent['type'], EventLogCategory> = {
   'work_task.completed': 'work',
   'craft.completed': 'work',
   'social.chat': 'social',
+  'social.encounter': 'social',
   'friendship.formed': 'social',
   'first.met': 'social',
   'character.arrived': 'life',
@@ -200,6 +201,13 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
         characterId: event.fromId,
       };
     }
+    case 'social.encounter':
+      return {
+        icon: '🚶',
+        text: `${nameOf(event.aId)} 与 ${nameOf(event.bId)} 路上相遇`,
+        tone: 'info',
+        characterId: event.aId,
+      };
     case 'friendship.formed':
       return {
         icon: '🤝',

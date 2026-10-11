@@ -59,6 +59,8 @@ export function eventSubjects(event: WorldEvent): string[] {
       return [event.characterId];
     case 'social.chat':
       return [event.fromId, event.toId];
+    case 'social.encounter':
+      return [event.aId, event.bId];
     case 'friendship.formed':
       return [event.aId, event.bId];
     case 'first.met':

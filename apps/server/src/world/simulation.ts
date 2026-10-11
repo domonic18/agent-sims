@@ -3,6 +3,7 @@ import type {
   CharacterArrivedEvent,
   MaintenanceSpot,
   ResourceNode,
+  SocialEncounterEvent,
   TraitVector,
   WorldControlEvent,
   WorldEvent,
@@ -131,6 +132,8 @@ export class Simulation {
   gameType: GameType = 'growth';
   /** 随机源(损耗生成器 roll;默认 Math.random,测试注入确定性实现) */
   readonly rng: RandomFn;
+  /** 路上相遇同对冷却(E8):pairKey → 上次触发 gameMinutes,冷却外且进入贴身带才发事件 */
+  private readonly encounterCooldown = new Map<string, number>();
 
   constructor(rng: RandomFn = Math.random) {
     this.rng = rng;
@@ -176,6 +179,7 @@ export class Simulation {
     this.characters.clear();
     this.socials.clear();
     this.maintenanceSpots.clear();
+    this.encounterCooldown.clear();
     this._rebuildResourceNodes();
     this._initShopStock();
     this.tick = 0;
@@ -592,6 +596,41 @@ export class Simulation {
       this._checkDeath(character);
       this._checkCollapse(character);
       this._checkReviveWindow(character);
+    }
+    this._detectEncounters();
+  }
+
+  /**
+   * 路上相遇检测(E8,tick 级连续观测):决策层 15 游戏分采样看不见快于采样粒度的
+   * 相遇(相向而行交错窗口≈1 游戏分,命中率≈7%),「瞬时物理事实」归世界层连续观测、
+   * 经事件桥接离散决策层(与 character.arrived 同构)。触发三条件: 双方存活、距离
+   * 进入贴身带、同对冷却外;双方都站定不动不触发(静止共处是生活常态,移动交错才是
+   * 相遇)。零认知信息:世界只报告「两人靠近了」,聊不聊归认知层分流。
+   */
+  private _detectEncounters(): void {
+    const now = this.clock.gameMinutes;
+    const alive = [...this.characters.values()].filter((c) => c.alive && !c.collapsed);
+    for (let i = 0; i < alive.length; i++) {
+      for (let j = i + 1; j < alive.length; j++) {
+        const a = alive[i]!;
+        const b = alive[j]!;
+        if (a.path.length === 0 && b.path.length === 0) continue;
+        const distance = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        if (distance > BALANCE.ENCOUNTER_DISTANCE) continue;
+        const key = [a.id, b.id].sort().join('|');
+        const lastAt = this.encounterCooldown.get(key);
+        if (lastAt !== undefined && now - lastAt < BALANCE.ENCOUNTER_COOLDOWN_MINUTES) continue;
+        this.encounterCooldown.set(key, now);
+        const event: SocialEncounterEvent = {
+          type: 'social.encounter',
+          aId: a.id,
+          bId: b.id,
+          tick: this.tick,
+          x: a.x,
+          y: a.y,
+        };
+        this.events.emit(event);
+      }
     }
   }
 

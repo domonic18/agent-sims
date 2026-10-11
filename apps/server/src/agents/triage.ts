@@ -111,6 +111,9 @@ const EVENT_STRENGTH: Partial<
   'friendship.formed': { self: 6, near: 3 },
   'first.met': { self: 4, near: 2 },
   'social.chat': { self: 4, near: 2 },
+  // E8: 我正找人时迎面遇上目标——强度 6 足以打断走路/低打断活动;路人相遇=near 1
+  // 环境噪音(别人碰面与我无关),相关性门直接忽略
+  'social.encounter': { self: 6, near: 1 },
   'activity.started': { self: 2, near: 0 },
   'activity.finished': { self: 2, near: 0 },
   'work_task.accepted': { self: 2, near: 0 },

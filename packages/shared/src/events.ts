@@ -150,6 +150,19 @@ export const socialChatEventSchema = z.object({
 
 export type SocialChatEvent = z.infer<typeof socialChatEventSchema>;
 
+/** 路上相遇(E8):世界层 tick 级检测的瞬时物理事实——两存活角色距离进入贴身带
+ * (同对冷却内只发一次)。认知层按意愿分流:想聊的停下进入会合协议,否则擦肩而过 */
+export const socialEncounterEventSchema = z.object({
+  type: z.literal('social.encounter'),
+  aId: z.string().min(1),
+  bId: z.string().min(1),
+  tick: z.number().int(),
+  x: z.number().int(),
+  y: z.number().int(),
+});
+
+export type SocialEncounterEvent = z.infer<typeof socialEncounterEventSchema>;
+
 /** 首次结成关系(朋友/挚友):观察者故事流事件 */
 export const friendshipFormedEventSchema = z.object({
   type: z.literal('friendship.formed'),
@@ -288,6 +301,7 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   worldRecipesEventSchema,
   worldResetEventSchema,
   socialChatEventSchema,
+  socialEncounterEventSchema,
   friendshipFormedEventSchema,
   firstMetEventSchema,
   maintenanceSpawnedEventSchema,
