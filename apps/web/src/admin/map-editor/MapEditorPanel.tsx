@@ -3,7 +3,7 @@
  * + 左工具面板 + 中央画布 + 右侧 属性/图层/体检 Tabs。保存走批A maps API;
  * 发布门禁=checkLayout 零硬错误。Cmd/Ctrl+S 保存,Delete 删选中,Esc 取消选中。
  */
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntdApp, Badge, Button, Divider, Input, Tabs, Tooltip, Typography } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -15,6 +15,7 @@ import {
 } from '@ant-design/icons';
 import type { TileMapDefinition } from '@sims/shared';
 import { createMap, publishMap, updateMap } from '../api';
+import { MapAgentSidebar } from '../map-agent/MapAgentSidebar';
 import { EditorCanvas } from './EditorCanvas';
 import { ToolPanel } from './ToolPanel';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -50,6 +51,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
   const redoCount = useEditor((s) => s.history.redo.length);
   const showGrid = useEditor((s) => s.showGrid);
   const showLabels = useEditor((s) => s.showLabels);
+  const [agentOpen, setAgentOpen] = useState(false);
   const loadedRef = useRef(false);
 
   useEffect(() => {
@@ -194,8 +196,8 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
           名称
         </Button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <Tooltip title="AI 对话改图(下一批接入)">
-            <Button size="small" icon={<ExperimentOutlined />} disabled>
+          <Tooltip title="与 AI 对话生成/修改地图,改动实时进画布且可撤销">
+            <Button size="small" icon={<ExperimentOutlined />} onClick={() => setAgentOpen(true)}>
               AI 助手
             </Button>
           </Tooltip>
@@ -254,6 +256,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
       <Typography.Text type="secondary" style={{ fontSize: 11, marginTop: 4 }}>
         选择工具:点选对象、拖已选场所平移;矩形工具拖画;滚轮缩放、空格/中键拖拽平移;Cmd/Ctrl+S 保存、Cmd/Ctrl+Z 撤销(Shift 重做)、Delete 删除选中、Esc 取消选中
       </Typography.Text>
+      <MapAgentSidebar open={agentOpen} onClose={() => setAgentOpen(false)} />
     </div>
   );
 }

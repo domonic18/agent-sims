@@ -65,3 +65,33 @@ export interface MapGenerateResponse {
   /** 实际使用的种子(请求缺省时由服务端生成,回显供复现) */
   seed: number;
 }
+
+/** AI 改图会话索引条目(对话正文在 checkpointer,不在此处) */
+export interface MapAgentThreadItem {
+  threadId: string;
+  mapId: string | null;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MapAgentThreadListResponse {
+  items: MapAgentThreadItem[];
+}
+
+export interface MapAgentThreadDetail {
+  threadId: string;
+  mapId: string | null;
+  title: string;
+  /** LangChainMessage 投影(assistant-ui 可累积形状) */
+  messages: Record<string, unknown>[];
+}
+
+/** POST /threads/:id/runs 请求体(SSE 响应) */
+export interface MapAgentRunRequest {
+  message: string;
+  /** 关联地图;run 结束 agent 修改回写其草稿 */
+  mapId?: string | null;
+  /** 编辑器当前定义优先作为文档来源 */
+  definition?: unknown;
+}

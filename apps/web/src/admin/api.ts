@@ -21,6 +21,10 @@ import {
   type CreateWorldRequest,
   type GameType,
   type MapDetailResponse,
+  type MapAgentRunRequest,
+  type MapAgentThreadDetail,
+  type MapAgentThreadItem,
+  type MapAgentThreadListResponse,
   type MapGenerateRequest,
   type MapGenerateResponse,
   type MapListResponse,
@@ -297,6 +301,47 @@ export async function generateMap(payload: MapGenerateRequest): Promise<MapGener
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// ============ AI 改图助手(批C) ============
+
+export async function createMapAgentThread(mapId: string | null): Promise<MapAgentThreadItem> {
+  return await adminFetch<MapAgentThreadItem>(ADMIN_API.mapAgentThreads, {
+    method: 'POST',
+    body: JSON.stringify({ mapId }),
+  });
+}
+
+export async function fetchMapAgentThreads(): Promise<MapAgentThreadListResponse> {
+  return await adminFetch<MapAgentThreadListResponse>(ADMIN_API.mapAgentThreads);
+}
+
+export async function fetchMapAgentThread(id: string): Promise<MapAgentThreadDetail> {
+  return await adminFetch<MapAgentThreadDetail>(ADMIN_API.mapAgentThread(id));
+}
+
+export async function deleteMapAgentThread(id: string): Promise<void> {
+  await adminFetch<unknown>(ADMIN_API.mapAgentThread(id), { method: 'DELETE' });
+}
+
+/** runs SSE 流式请求(POST + Bearer;adminFetch 不支持流,此处单独走 fetch) */
+export async function streamMapAgentRun(id: string, payload: MapAgentRunRequest, signal: AbortSignal): Promise<Response> {
+  const token = getToken();
+  const res = await fetch(ADMIN_API.mapAgentRun(id), {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'text/event-stream',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!res.ok || res.body === null) {
+    const body = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new ApiError(res.status, body?.error ?? `请求失败(HTTP ${res.status})`);
+  }
+  return res;
 }
 
 // ============ 世界存档多档(C6) ============

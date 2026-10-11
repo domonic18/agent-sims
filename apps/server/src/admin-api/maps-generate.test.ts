@@ -10,7 +10,7 @@ describe('POST /api/admin/maps/generate', () => {
   const authHeader = (): string =>
     `Bearer ${issueAdminToken({ username: 'vitest', masterKey: env.MASTER_KEY, ttlMs: 3_600_000 }).token}`;
 
-  const generate = (payload: Record<string, unknown>): ReturnType<typeof app.inject> =>
+  const generate = (payload: Record<string, unknown>) =>
     app.inject({
       method: 'POST',
       url: '/api/admin/maps/generate',

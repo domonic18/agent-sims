@@ -58,10 +58,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // antd 只被 /admin 懒加载 chunk 引用,独立 vendor 分包,游戏 bundle 零污染;
-        // phaser 独立分包(L3):引擎版本稳定,跨部署缓存复用,游戏代码迭代不打掉它
+        // phaser 独立分包(L3):引擎版本稳定,跨部署缓存复用,游戏代码迭代不打掉它;
+        // assistant-ui 只被编辑器 AI 助手引用,与 antd 同理隔离出 admin 主包
         manualChunks: {
           antd: ['antd', '@ant-design/icons', 'dayjs'],
           phaser: ['phaser'],
+          assistant: ['@assistant-ui/react', '@assistant-ui/react-langgraph'],
         },
       },
     },

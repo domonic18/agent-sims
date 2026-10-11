@@ -58,6 +58,9 @@ export const ADMIN_API = {
   map: (id: string) => `/api/admin/maps/${id}`,
   mapPublish: (id: string) => `/api/admin/maps/${id}/publish`,
   mapArchive: (id: string) => `/api/admin/maps/${id}/archive`,
+  mapAgentThreads: '/api/admin/map-agent/threads',
+  mapAgentThread: (id: string) => `/api/admin/map-agent/threads/${id}`,
+  mapAgentRun: (id: string) => `/api/admin/map-agent/threads/${id}/runs`,
 } as const;
 
 /** GET /api/world/ui-meta 响应(公开): 游戏页左下角模型徽标;

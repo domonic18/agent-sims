@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.3",
+    "@assistant-ui/react": "^0.15.16",
+    "@assistant-ui/react-langgraph": "^0.14.24",
     "@sims/shared": "workspace:*",
     "antd": "^5.18",
     "dayjs": "^1.11",

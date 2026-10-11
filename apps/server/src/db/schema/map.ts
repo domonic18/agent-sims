@@ -21,3 +21,19 @@ export const maps = pgTable(
   },
   (table) => [index('maps_status_idx').on(table.status, table.updatedAt)],
 );
+
+/**
+ * AI 改图线程索引(MS-1 批C):id 即 langgraph thread_id(checkpointer 存对话),
+ * 这里只做列表/归属;文档以编辑器为数据源,不落库。
+ */
+export const mapAgentThreads = pgTable(
+  'map_agent_threads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    mapId: uuid('map_id').references(() => maps.id, { onDelete: 'set null' }),
+    title: text('title').notNull().default('新对话'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('map_agent_threads_map_idx').on(table.mapId, table.updatedAt)],
+);
