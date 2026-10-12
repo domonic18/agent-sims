@@ -1,8 +1,9 @@
 /**
  * 地图定义展开与校验(MS-1 自 server world/map.ts 上提):展开障碍矩形与
  * 结构校验为纯函数,服务端 TileMap 与后台编辑器(实时校验/布局体检)共用
- * 同一份实现,防双端判定漂移。错误文案即 server 历史契约(worldgen 重试
- * 与 map.test.ts 断言依赖),不可改动。
+ * 同一份实现,防双端判定漂移。错误文案的关键短语即 server 历史契约
+ * (worldgen 重试与 map.test.ts 正则断言依赖),不可改动;可追加坐标/
+ * 家具标识等定位上下文。
  */
 import {
   furnitureRectsOf,
@@ -54,6 +55,8 @@ export interface MapIssue {
   message: string;
   /** 关联场所 id(场所/家具/门/入口类问题携带) */
   placeId?: string;
+  /** 关联家具序号(该场所 furniture 数组下标,编辑器可精确定位单件家具) */
+  furnitureIndex?: number;
   /** 关联资源节点序号(resources 数组下标) */
   resourceIndex?: number;
 }
@@ -61,8 +64,9 @@ export interface MapIssue {
 /**
  * 定义结构校验(收集全部问题不短路):入口在占地外且可行走;门洞在边缘/
  * 与入口四邻相接/可行走;家具占地在室内(墙内圈)或场所矩形内、activityId
- * 与 use 成对、使用格紧邻家具且可行走;室内自门洞 BFS 连通全部使用格;
- * 资源节点互不重叠且落在既有障碍之外。顺序与 server 历史实现一致。
+ * 与 use 成对、使用格紧邻家具且可行走;门洞内侧被家具堵死单独点名元凶,
+ * 否则室内自门洞 BFS 连通全部使用格;资源节点互不重叠且落在既有障碍之外。
+ * 顺序与 server 历史实现一致。
  */
 export function validateMapDefinition(definition: TileMapDefinition): MapIssue[] {
   const issues: MapIssue[] = [];
@@ -122,11 +126,12 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
   const validateFurniture = (place: PlaceDefinition, indoor: boolean): void => {
     const interior = (v: number, base: number, size: number): boolean =>
       v > base && v < base + size - 1;
-    for (const f of place.furniture ?? []) {
+    for (const [index, f] of (place.furniture ?? []).entries()) {
       if (f.w < 1 || f.h < 1) {
         issues.push({
           code: 'furniture',
           placeId: place.id,
+          furnitureIndex: index,
           message: `场所 ${place.id} 家具 ${f.kind} 占地非法: w/h 须 ≥1`,
         });
         continue;
@@ -144,14 +149,16 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
         issues.push({
           code: 'furniture',
           placeId: place.id,
-          message: `场所 ${place.id} 家具 ${f.kind} 位置非法: 占地须在${indoor ? '室内(墙内圈)' : '场所矩形内'}`,
+          furnitureIndex: index,
+          message: `场所 ${place.id} 家具 ${f.kind}(${f.x},${f.y}) 位置非法: 占地须在${indoor ? '室内(墙内圈)' : '场所矩形内'}`,
         });
       }
       if ((f.activityId === undefined) !== (f.use === undefined)) {
         issues.push({
           code: 'furniture',
           placeId: place.id,
-          message: `场所 ${place.id} 家具 ${f.kind} 非法: activityId 与 use 须成对出现`,
+          furnitureIndex: index,
+          message: `场所 ${place.id} 家具 ${f.kind}(${f.x},${f.y}) 非法: activityId 与 use 须成对出现`,
         });
         continue;
       }
@@ -163,25 +170,53 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
         issues.push({
           code: 'furniture',
           placeId: place.id,
-          message: `场所 ${place.id} 家具 ${f.kind} 使用格非法: (${f.use.x},${f.use.y}) 须紧邻家具占地`,
+          furnitureIndex: index,
+          message: `场所 ${place.id} 家具 ${f.kind}(${f.x},${f.y}) 使用格非法: (${f.use.x},${f.use.y}) 须紧邻家具占地`,
         });
       }
       if (!isWalkable(f.use.x, f.use.y)) {
         issues.push({
           code: 'furniture',
           placeId: place.id,
-          message: `场所 ${place.id} 家具 ${f.kind} 使用格非法: (${f.use.x},${f.use.y}) 被阻塞`,
+          furnitureIndex: index,
+          message: `场所 ${place.id} 家具 ${f.kind}(${f.x},${f.y}) 使用格非法: (${f.use.x},${f.use.y}) 被阻塞`,
         });
       }
     }
   };
 
-  /** 门洞 BFS 可达性:门洞须连通全部锚点使用格(防家具布置把室内割裂) */
+  /** 门洞可达性:内侧被家具堵死直接点名元凶;否则 BFS 连通全部锚点使用格(防室内割裂) */
   const validateInteriorReachability = (place: PlaceDefinition): void => {
     const door = place.door!;
-    const uses = (place.furniture ?? [])
-      .filter((f) => f.use !== undefined)
-      .map((f) => f.use!);
+    const furniture = place.furniture ?? [];
+    // 门洞朝室内的相邻格(位于占地内的四邻)全部不可行走 = 门被堵死,
+    // 此时逐使用格报 BFS 不可达只会指向无辜锚点,改为定位压住门内的家具
+    const insideNeighbors: Array<{ x: number; y: number }> = [];
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
+      const nx = door.x + dx;
+      const ny = door.y + dy;
+      if (nx >= place.x && nx < place.x + place.w && ny >= place.y && ny < place.y + place.h) {
+        insideNeighbors.push({ x: nx, y: ny });
+      }
+    }
+    if (insideNeighbors.length > 0 && insideNeighbors.every((c) => !isWalkable(c.x, c.y))) {
+      const culprits = furniture
+        .map((f, index) => ({ f, index }))
+        .filter(({ f }) => insideNeighbors.some((c) => inRect(c.x, c.y, f)));
+      issues.push({
+        code: 'interior',
+        placeId: place.id,
+        furnitureIndex: culprits.length === 1 ? culprits[0]!.index : undefined,
+        message:
+          culprits.length > 0
+            ? `场所 ${place.id} 门洞 (${door.x},${door.y}) 被家具 ${culprits.map(({ f }) => `${f.kind}(${f.x},${f.y})`).join('/')} 堵死,室内无法进出`
+            : `场所 ${place.id} 门洞 (${door.x},${door.y}) 内侧被障碍堵死,室内无法进出`,
+      });
+      return;
+    }
+    const uses = furniture
+      .map((f, index) => ({ f, index }))
+      .filter(({ f }) => f.use !== undefined);
     if (uses.length === 0) return;
     const seen = new Set<string>([`${door.x},${door.y}`]);
     const queue: Array<{ x: number; y: number }> = [door];
@@ -196,12 +231,14 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
         queue.push({ x: nx, y: ny });
       }
     }
-    for (const use of uses) {
+    for (const { f, index } of uses) {
+      const use = f.use!;
       if (!seen.has(`${use.x},${use.y}`)) {
         issues.push({
           code: 'interior',
           placeId: place.id,
-          message: `场所 ${place.id} 室内不连通: 门洞 (${door.x},${door.y}) 无法到达使用格 (${use.x},${use.y})`,
+          furnitureIndex: index,
+          message: `场所 ${place.id} 室内不连通: 门洞 (${door.x},${door.y}) 无法到达 ${f.kind}(${f.x},${f.y}) 使用格 (${use.x},${use.y})`,
         });
       }
     }

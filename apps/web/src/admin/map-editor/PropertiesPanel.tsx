@@ -3,13 +3,28 @@
  * 字段(家具级点选有独立精简面板,不再整屋堆叠)。所有变更走 commit 且带
  * coalesce 键(逐键输入合并为一条 undo 命令);家具直接编辑自身节点。
  */
-import { Button, Input, InputNumber, Select, Typography } from 'antd';
+import { Alert, Button, Input, InputNumber, Select, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { ACTIVITY_IDS, type FurnitureDefinition, type PlaceDefinition } from '@sims/shared';
 import { FURNITURE_KINDS, FURNITURE_LABELS, furnitureLabel } from '@sims/shared';
 import { getAtPath, type Path } from './history';
 import { selectionPath, useEditor } from './editorStore';
+import type { HealthFinding } from './health';
 import { placeKindOf } from './kinds';
+
+/** 当前对象的体检告警(随 doc 实时重算,修复即消失) */
+function ObjectAlert({ findings }: { findings: HealthFinding[] }) {
+  if (findings.length === 0) return null;
+  const hasError = findings.some((f) => f.level === 'error');
+  return (
+    <Alert
+      type={hasError ? 'error' : 'warning'}
+      showIcon
+      style={{ fontSize: 12 }}
+      message={findings.map((f) => f.message).join('；')}
+    />
+  );
+}
 
 const ROW = { display: 'flex', alignItems: 'center', gap: 6 } as const;
 const CELL = { width: 68 } as const;
@@ -72,11 +87,20 @@ function RectFields({
   );
 }
 
-function PlaceForm({ place, index }: { place: PlaceDefinition; index: number }) {
+function PlaceForm({
+  place,
+  index,
+  findings,
+}: {
+  place: PlaceDefinition;
+  index: number;
+  findings: HealthFinding[];
+}) {
   const doc = useEditor((s) => s.doc);
   const commit = useEditor((s) => s.commit);
   const select = useEditor((s) => s.select);
   const coalesce = (field: string): string => `place:${place.id}:${field}`;
+  const myFindings = findings.filter((f) => f.placeIds?.[0] === place.id && f.furnitureIndex === undefined);
 
   const update = (patch: Partial<PlaceDefinition>, label: string, key?: string): void => {
     const before = doc.places[index];
@@ -125,6 +149,7 @@ function PlaceForm({ place, index }: { place: PlaceDefinition; index: number }) 
         <span style={{ color: '#94b0c2' }}>{placeKindOf(place.id) ?? '场所'}</span>
         <span style={{ color: '#566c86' }}>{place.id}</span>
       </div>
+      <ObjectAlert findings={myFindings} />
       <div style={ROW}>
         <span style={{ fontSize: 12, color: '#94b0c2', width: 30 }}>名称</span>
         <Input
@@ -206,17 +231,19 @@ function PlaceForm({ place, index }: { place: PlaceDefinition; index: number }) 
   );
 }
 
-/** 家具独立面板(问题1):只呈现选中单件家具的字段 */
+/** 家具独立面板(问题1):只呈现选中单件家具的字段,内嵌本件家具的体检告警 */
 function FurnitureForm({
   place,
   furn,
   placeIndex,
   furnIndex,
+  findings,
 }: {
   place: PlaceDefinition;
   furn: FurnitureDefinition;
   placeIndex: number;
   furnIndex: number;
+  findings: HealthFinding[];
 }) {
   const doc = useEditor((s) => s.doc);
   const commit = useEditor((s) => s.commit);
@@ -235,6 +262,7 @@ function FurnitureForm({
   };
   const label = furnitureLabel(furn.kind);
   const usePt = furn.use ?? { x: furn.x, y: furn.y + furn.h };
+  const myFindings = findings.filter((f) => f.placeIds?.[0] === place.id && f.furnitureIndex === furnIndex);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
@@ -242,6 +270,7 @@ function FurnitureForm({
         <span style={{ color: '#94b0c2' }}>家具 · {label}</span>
         <span style={{ color: '#566c86' }}>{place.name}</span>
       </div>
+      <ObjectAlert findings={myFindings} />
       <div style={ROW}>
         <span style={{ fontSize: 12, color: '#94b0c2', width: 30 }}>种类</span>
         <Select
@@ -302,7 +331,7 @@ function FurnitureForm({
   );
 }
 
-export function PropertiesPanel() {
+export function PropertiesPanel({ findings = [] }: { findings?: HealthFinding[] }) {
   const doc = useEditor((s) => s.doc);
   const selection = useEditor((s) => s.selection);
   const commit = useEditor((s) => s.commit);
@@ -322,7 +351,7 @@ export function PropertiesPanel() {
 
   if (selection.kind === 'place') {
     const index = path[1] as number;
-    return <PlaceForm place={obj as PlaceDefinition} index={index} />;
+    return <PlaceForm place={obj as PlaceDefinition} index={index} findings={findings} />;
   }
 
   if (selection.kind === 'furniture') {
@@ -337,6 +366,7 @@ export function PropertiesPanel() {
         furn={obj as FurnitureDefinition}
         placeIndex={placeIndex}
         furnIndex={path[3] as number}
+        findings={findings}
       />
     );
   }

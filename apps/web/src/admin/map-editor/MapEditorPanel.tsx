@@ -7,10 +7,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { App as AntdApp, Badge, Button, Divider, Input, Segmented, Tabs, Tooltip, Typography } from 'antd';
 import {
   ArrowLeftOutlined,
+  BlockOutlined,
+  AppstoreOutlined,
   ExperimentOutlined,
+  PictureOutlined,
   RedoOutlined,
   SafetyCertificateOutlined,
   SaveOutlined,
+  TagOutlined,
   UndoOutlined,
 } from '@ant-design/icons';
 import type { TileMapDefinition } from '@sims/shared';
@@ -68,6 +72,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
   const showLabels = useEditor((s) => s.showLabels);
   const viewMode = useEditor((s) => s.viewMode);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [sideTab, setSideTab] = useState<'props' | 'layers' | 'health'>('props');
   const loadedRef = useRef(false);
 
   useEffect(() => {
@@ -212,23 +217,49 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
         )}
         <Divider type="vertical" />
         <Tooltip title="撤销(Cmd/Ctrl+Z)">
-          <Button size="small" icon={<UndoOutlined />} disabled={undoCount === 0} onClick={() => useEditor.getState().undo()} />
+          <Button
+            size="small"
+            type="text"
+            icon={<UndoOutlined />}
+            disabled={undoCount === 0}
+            onClick={() => useEditor.getState().undo()}
+          />
         </Tooltip>
-        <Button size="small" icon={<RedoOutlined />} disabled={redoCount === 0} onClick={() => useEditor.getState().redo()} />
+        <Tooltip title="重做(Shift+Cmd/Ctrl+Z)">
+          <Button
+            size="small"
+            type="text"
+            icon={<RedoOutlined />}
+            disabled={redoCount === 0}
+            onClick={() => useEditor.getState().redo()}
+          />
+        </Tooltip>
         <Divider type="vertical" />
-        <Button size="small" onClick={() => useEditor.getState().toggleGrid()} type={showGrid ? 'default' : 'dashed'}>
-          网格
-        </Button>
-        <Button size="small" onClick={() => useEditor.getState().toggleLabels()} type={showLabels ? 'default' : 'dashed'}>
-          名称
-        </Button>
+        <Tooltip title={showGrid ? '隐藏网格' : '显示网格'}>
+          <Button
+            size="small"
+            type={showGrid ? 'primary' : 'text'}
+            ghost={showGrid}
+            icon={<AppstoreOutlined />}
+            onClick={() => useEditor.getState().toggleGrid()}
+          />
+        </Tooltip>
+        <Tooltip title={showLabels ? '隐藏名称标签' : '显示名称标签'}>
+          <Button
+            size="small"
+            type={showLabels ? 'primary' : 'text'}
+            ghost={showLabels}
+            icon={<TagOutlined />}
+            onClick={() => useEditor.getState().toggleLabels()}
+          />
+        </Tooltip>
         <Segmented
           size="small"
           value={viewMode}
           onChange={(v) => useEditor.getState().setViewMode(v as 'semantic' | 'real')}
           options={[
-            { label: '语义视图', value: 'semantic' },
-            { label: '效果视图', value: 'real' },
+            { label: '语义视图', value: 'semantic', icon: <BlockOutlined /> },
+            { label: '效果视图', value: 'real', icon: <PictureOutlined /> },
           ]}
         />
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
@@ -274,8 +305,10 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
         >
           <Tabs
             size="small"
+            activeKey={sideTab}
+            onChange={(k) => setSideTab(k as 'props' | 'layers' | 'health')}
             items={[
-              { key: 'props', label: '属性', children: <PropertiesPanel /> },
+              { key: 'props', label: '属性', children: <PropertiesPanel findings={health.findings} /> },
               { key: 'layers', label: '图层', children: <LayerPanel /> },
               {
                 key: 'health',
@@ -284,7 +317,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
                     体检
                   </Badge>
                 ),
-                children: <HealthPanel />,
+                children: <HealthPanel result={health} onLocate={() => setSideTab('props')} />,
               },
             ]}
           />

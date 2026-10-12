@@ -50,6 +50,21 @@ describe('path 工具', () => {
     // 深层路径中途容器也不变异
     expect(doc.places[0]).toHaveProperty('name');
   });
+
+  it('remove:嵌套数组段删除后仍是数组(场所内家具)', () => {
+    const doc = baseDoc();
+    const withFurn = setAtPath(doc, ['places', 0, 'furniture'], [
+      { kind: 'bed', x: 1, y: 1, w: 1, h: 1 },
+      { kind: 'bed', x: 2, y: 1, w: 1, h: 1 },
+    ]);
+    const removed = removeAtPath(withFurn, ['places', 0, 'furniture', 0]);
+    expect(Array.isArray(removed.places[0]!.furniture)).toBe(true);
+    expect(removed.places[0]!.furniture).toHaveLength(1);
+    // undo 删除=setAtPath 回填,数组形态保持
+    const restored = setAtPath(removed, ['places', 0, 'furniture', 0], withFurn.places[0]!.furniture![0]);
+    expect(Array.isArray(restored.places[0]!.furniture)).toBe(true);
+    expect(restored.places[0]!.furniture![0]).toEqual(withFurn.places[0]!.furniture![0]);
+  });
 });
 
 describe('commit/record 双栈', () => {

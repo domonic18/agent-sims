@@ -42,7 +42,7 @@ export function setAtPath<T>(doc: T, path: Path, value: unknown): T {
   return { ...record, [head]: setAtPath(record[head], rest, value) } as T;
 }
 
-/** 删除数组元素/对象键(与 setAtPath 对称) */
+/** 删除数组元素/对象键(与 setAtPath 对称;嵌套数组段保持数组形态) */
 export function removeAtPath<T>(doc: T, path: Path): T {
   if (path.length === 0) return doc;
   const head = path[0]!;
@@ -56,6 +56,11 @@ export function removeAtPath<T>(doc: T, path: Path): T {
     const record = { ...(doc as Record<PathSegment, unknown>) };
     delete record[head];
     return record as T;
+  }
+  if (Array.isArray(doc)) {
+    const next = doc.slice();
+    next[head as number] = removeAtPath(doc[head as number], rest);
+    return next as T;
   }
   const record = doc as Record<PathSegment, unknown>;
   return { ...record, [head]: removeAtPath(record[head], rest) } as T;

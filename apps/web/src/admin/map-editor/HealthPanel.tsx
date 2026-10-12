@@ -1,11 +1,11 @@
 /**
- * 体检面板(批B):checkLayout 结果可视化——发布门禁摘要+密度档位+问题清单
- * (点场所类问题跳选中)。doc 变化实时重算(useMemo)。
+ * 体检面板(批B+问题3):checkLayout 结果可视化——发布门禁摘要+密度档位+
+ * 问题清单。计算在 MapEditorPanel 统一做(与发布门禁/属性面板告警同一份),
+ * 此处只展示;家具类问题「定位家具」直达单件选中,修复后随 doc 实时消账。
  */
-import { useMemo } from 'react';
 import { Alert, Button, Tag, Typography } from 'antd';
 import { useEditor } from './editorStore';
-import { checkLayout, type HealthCode, type HealthFinding } from './health';
+import type { HealthCode, HealthFinding, HealthResult } from './health';
 
 const CODE_LABELS: Record<HealthCode, string> = {
   structure: '结构',
@@ -18,32 +18,35 @@ const CODE_LABELS: Record<HealthCode, string> = {
 
 const TIER_LABELS = { dense: '偏紧凑', balanced: '均衡', sparse: '偏宽松' } as const;
 
-function FindingRow({ finding }: { finding: HealthFinding }) {
+function FindingRow({ finding, onLocate }: { finding: HealthFinding; onLocate?: () => void }) {
   const select = useEditor((s) => s.select);
-  const clickable = (finding.placeIds ?? []).length > 0;
+  const placeId = finding.placeIds?.[0];
+  const toFurniture = finding.furnitureIndex !== undefined;
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', padding: '4px 0' }}>
       <Tag color={finding.level === 'error' ? 'error' : 'warning'} style={{ flexShrink: 0, marginInlineEnd: 0 }}>
         {CODE_LABELS[finding.code]}
       </Tag>
       <span style={{ fontSize: 12, lineHeight: '20px' }}>{finding.message}</span>
-      {clickable && (
+      {placeId !== undefined && (
         <Button
           size="small"
           type="link"
           style={{ flexShrink: 0, padding: 0, height: 20 }}
-          onClick={() => select({ kind: 'place', id: finding.placeIds![0]! })}
+          onClick={() => {
+            if (toFurniture) select({ kind: 'furniture', placeId, index: finding.furnitureIndex! });
+            else select({ kind: 'place', id: placeId });
+            onLocate?.();
+          }}
         >
-          定位
+          {toFurniture ? '定位家具' : '定位'}
         </Button>
       )}
     </div>
   );
 }
 
-export function HealthPanel() {
-  const doc = useEditor((s) => s.doc);
-  const result = useMemo(() => checkLayout(doc), [doc]);
+export function HealthPanel({ result, onLocate }: { result: HealthResult; onLocate?: () => void }) {
   const errors = result.findings.filter((f) => f.level === 'error');
   const warnings = result.findings.filter((f) => f.level === 'warning');
   const d = result.density;
@@ -63,10 +66,10 @@ export function HealthPanel() {
           <Typography.Text type="secondary">没有任何问题,布局很干净</Typography.Text>
         )}
         {errors.map((f, i) => (
-          <FindingRow key={`e${i}`} finding={f} />
+          <FindingRow key={`e${i}`} finding={f} onLocate={onLocate} />
         ))}
         {warnings.map((f, i) => (
-          <FindingRow key={`w${i}`} finding={f} />
+          <FindingRow key={`w${i}`} finding={f} onLocate={onLocate} />
         ))}
       </div>
       <Typography.Text type="secondary" style={{ fontSize: 11 }}>

@@ -26,6 +26,8 @@ export interface HealthFinding {
   message: string;
   /** 关联场所 id(可点击定位到选中) */
   placeIds?: string[];
+  /** 关联家具序号(该场所 furniture 数组下标,定位可直达单件家具) */
+  furnitureIndex?: number;
 }
 
 export interface DensityEstimate {
@@ -104,6 +106,7 @@ export function checkLayout(definition: TileMapDefinition): HealthResult {
       code: 'structure',
       message: issue.message,
       placeIds: issue.placeId !== undefined ? [issue.placeId] : undefined,
+      furnitureIndex: issue.furnitureIndex,
     });
   }
 
