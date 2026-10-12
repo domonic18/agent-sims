@@ -35,6 +35,7 @@ import 'dayjs/locale/zh-cn';
 import type { ModelConfigView } from '@sims/shared';
 import { ApiError, clearToken, fetchModelConfigs, getToken, login, setToken } from './api';
 import { ADMIN_THEME } from './adminTheme';
+import { useLayout } from './layoutStore';
 import { fmtTokens, useAdminStatus } from './useAdminStatus';
 import { ModelConfigPanel } from './ModelConfigPanel';
 import { TokenUsagePanel } from './TokenUsagePanel';
@@ -171,6 +172,8 @@ function AdminShell() {
   // hooks 必须全部先于 if (!authed) 早退调用,否则登录翻转 authed 后 hook 数量变化直接崩溃
   const isMobile = useIsMobile();
   const [navOpen, setNavOpen] = useState(false);
+  // 地图编辑器等全屏工作台挂载时铺满内容区(问题2:去 maxWidth/内边距留白)
+  const fullBleed = useLayout((s) => s.fullBleed);
 
   const load = useCallback(async () => {
     try {
@@ -296,8 +299,13 @@ function AdminShell() {
           <span className="adm-head-spacer" />
           <StatusStrip status={status} />
         </Layout.Header>
-        <Layout.Content className="adm-content">
-          <div style={{ maxWidth: 1280, margin: '0 auto' }}>{panel.render()}</div>
+        <Layout.Content
+          className="adm-content"
+          style={fullBleed ? { padding: 0, overflow: 'hidden' } : undefined}
+        >
+          <div style={fullBleed ? { maxWidth: 'none' } : { maxWidth: 1280, margin: '0 auto' }}>
+            {panel.render()}
+          </div>
         </Layout.Content>
       </Layout>
       {isMobile && (

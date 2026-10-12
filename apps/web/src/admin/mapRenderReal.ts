@@ -290,7 +290,7 @@ export function renderTownMapReal(
   const trees = decor?.trees ?? APARTMENT_TREES;
   for (const [tx, ty] of trees) drawPropSprite(ctx, tx, ty, (tx * 3 + ty) % 2 === 0 ? 'tree-a' : 'tree-b', tile);
   if (decor !== undefined) {
-    for (const [bx, by] of decor.bushes) drawGroundTile(ctx, bx, by, TILE_SLUG.bush, tile);
+    for (const [bx, by] of decor.bushes ?? []) drawGroundTile(ctx, bx, by, TILE_SLUG.bush, tile);
   }
 
   for (const res of map.resources ?? []) {

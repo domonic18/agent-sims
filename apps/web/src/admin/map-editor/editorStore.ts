@@ -6,6 +6,7 @@
  */
 import { create } from 'zustand';
 import type { PlaceKind, ResourceNode, TileMapDefinition } from '@sims/shared';
+import { normalizeDefinition } from './normalize';
 import {
   commit as commitCommand,
   createHistory,
@@ -157,7 +158,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     set({
       mapId: init.mapId,
       name: init.name,
-      doc: init.definition,
+      doc: normalizeDefinition(init.definition),
       dirty: false,
       selection: null,
       history: createHistory(),

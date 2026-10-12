@@ -1,46 +1,12 @@
 /**
- * 工具面板(批B):工具切换+按工具的子选项(场所 kind 调色板/装饰组/资源种),
- * 附操作提示。全部状态走 editorStore,画布直接读取。工具用图标网格呈现
- * (悬浮提示带数字热键),抓手平移供纯查看。
+ * 工具选项面板(问题1重构后):工具格已迁至 ToolRail,这里只承载当前工具
+ * 的上下文选项(场所 kind 调色板/装饰组/资源种)+操作提示。
  */
-import {
-  BgColorsOutlined,
-  BorderOuterOutlined,
-  DragOutlined,
-  GoldOutlined,
-  HomeOutlined,
-  NodeIndexOutlined,
-  SelectOutlined,
-  StopOutlined,
-} from '@ant-design/icons';
-import { Segmented, Tooltip, Typography } from 'antd';
-import type { ReactElement } from 'react';
+import { Typography } from 'antd';
 import type { ResourceNode } from '@sims/shared';
 import { useEditor, type EditorTool } from './editorStore';
 import { KIND_ORDER, KIND_PRESETS, kindColor } from './kinds';
-
-const TOOLS: { value: EditorTool; label: string; icon: ReactElement }[] = [
-  { value: 'select', label: '选择', icon: <SelectOutlined /> },
-  { value: 'pan', label: '抓手', icon: <DragOutlined /> },
-  { value: 'place', label: '场所', icon: <HomeOutlined /> },
-  { value: 'path', label: '路径', icon: <NodeIndexOutlined /> },
-  { value: 'fence', label: '围栏', icon: <BorderOuterOutlined /> },
-  { value: 'resource', label: '资源', icon: <GoldOutlined /> },
-  { value: 'decor', label: '装饰', icon: <BgColorsOutlined /> },
-  { value: 'blocked', label: '堵塞', icon: <StopOutlined /> },
-];
-
-/** 数字热键(与 MapEditorPanel 全局 keydown 一致) */
-export const TOOL_HOTKEYS: Readonly<Record<EditorTool, string>> = {
-  select: '1',
-  pan: '2',
-  place: '3',
-  path: '4',
-  fence: '5',
-  resource: '6',
-  decor: '7',
-  blocked: '8',
-};
+import { TOOL_HOTKEYS, TOOLS } from './ToolRail';
 
 const DECOR_GROUPS = [
   { value: 'trees', label: '树' },
@@ -72,50 +38,30 @@ const HINTS: Record<EditorTool, string> = {
 
 export function ToolPanel() {
   const tool = useEditor((s) => s.tool);
-  const setTool = useEditor((s) => s.setTool);
   const placeKind = useEditor((s) => s.placeKind);
   const setPlaceKind = useEditor((s) => s.setPlaceKind);
   const decorGroup = useEditor((s) => s.decorGroup);
   const setDecorGroup = useEditor((s) => s.setDecorGroup);
   const resourceKind = useEditor((s) => s.resourceKind);
   const setResourceKind = useEditor((s) => s.setResourceKind);
+  const toolLabel = TOOLS.find((t) => t.value === tool)?.label ?? '';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-        {TOOLS.map(({ value, label, icon }) => {
-          const active = tool === value;
-          return (
-            <Tooltip key={value} title={`${label}(${TOOL_HOTKEYS[value]})`}>
-              <button
-                type="button"
-                onClick={() => setTool(value)}
-                aria-label={label}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '6px 0',
-                  fontSize: 15,
-                  cursor: 'pointer',
-                  borderRadius: 4,
-                  border: active ? '1px solid #ffcd75' : '1px solid #2b3157',
-                  background: active ? 'rgba(255,205,117,0.14)' : 'transparent',
-                  color: active ? '#ffcd75' : '#94b0c2',
-                }}
-              >
-                {icon}
-              </button>
-            </Tooltip>
-          );
-        })}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Typography.Text strong style={{ fontSize: 12 }}>
+          {toolLabel}
+        </Typography.Text>
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          热键 {TOOL_HOTKEYS[tool]}
+        </Typography.Text>
       </div>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {HINTS[tool]}
       </Typography.Text>
 
       {tool === 'place' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
           {KIND_ORDER.map((kind) => (
             <button
               key={kind}
@@ -143,20 +89,49 @@ export function ToolPanel() {
         </div>
       )}
       {tool === 'decor' && (
-        <Segmented
-          block
-          options={DECOR_GROUPS.map((g) => ({ label: g.label, value: g.value }))}
-          value={decorGroup}
-          onChange={(v) => setDecorGroup(v as (typeof DECOR_GROUPS)[number]['value'])}
-        />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
+          {DECOR_GROUPS.map((g) => (
+            <button
+              key={g.value}
+              type="button"
+              onClick={() => setDecorGroup(g.value)}
+              style={{
+                padding: '4px 6px',
+                fontSize: 12,
+                cursor: 'pointer',
+                borderRadius: 4,
+                border: decorGroup === g.value ? '1px solid #41a6f6' : '1px solid transparent',
+                background: decorGroup === g.value ? '#1c2f4a' : 'transparent',
+                color: 'inherit',
+              }}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
       )}
       {tool === 'resource' && (
-        <Segmented
-          block
-          options={RESOURCE_KINDS.map((r) => ({ label: r.label, value: r.value }))}
-          value={resourceKind}
-          onChange={(v) => setResourceKind(v as ResourceNode['kind'])}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {RESOURCE_KINDS.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              onClick={() => setResourceKind(r.value)}
+              style={{
+                padding: '4px 6px',
+                fontSize: 12,
+                textAlign: 'left',
+                cursor: 'pointer',
+                borderRadius: 4,
+                border: resourceKind === r.value ? '1px solid #41a6f6' : '1px solid transparent',
+                background: resourceKind === r.value ? '#1c2f4a' : 'transparent',
+                color: 'inherit',
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

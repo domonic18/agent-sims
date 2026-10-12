@@ -15,9 +15,11 @@ import {
 } from '@ant-design/icons';
 import type { TileMapDefinition } from '@sims/shared';
 import { createMap, publishMap, updateMap } from '../api';
+import { useLayout } from '../layoutStore';
 import { MapAgentSidebar } from '../map-agent/MapAgentSidebar';
 import { EditorCanvas } from './EditorCanvas';
 import { ToolPanel } from './ToolPanel';
+import { ToolRail } from './ToolRail';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LayerPanel } from './LayerPanel';
 import { HealthPanel } from './HealthPanel';
@@ -72,6 +74,12 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
     loadedRef.current = true;
     useEditor.getState().loadMap(launch);
   }, [launch]);
+
+  // 全屏工作台:挂载申请铺满 admin 内容区,卸载归还普通版式
+  useEffect(() => {
+    useLayout.getState().setFullBleed(true);
+    return () => useLayout.getState().setFullBleed(false);
+  }, []);
 
   const health = useMemo(() => checkLayout(doc), [doc]);
   const errorCount = health.findings.filter((f) => f.level === 'error').length;
@@ -185,7 +193,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 190px)', minHeight: 480 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', minHeight: 480, padding: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
         <Button size="small" icon={<ArrowLeftOutlined />} onClick={tryBack}>
           返回
@@ -237,11 +245,12 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
         </div>
       </div>
       <div style={{ flex: 1, display: 'flex', minHeight: 0, gap: 8 }}>
+        <ToolRail />
         <div
           style={{
-            width: 216,
+            width: 190,
             flexShrink: 0,
-            padding: 8,
+            padding: 10,
             border: '1px solid #2b3157',
             borderRadius: 6,
             overflow: 'auto',
@@ -256,7 +265,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
           style={{
             width: 320,
             flexShrink: 0,
-            padding: 8,
+            padding: 10,
             border: '1px solid #2b3157',
             borderRadius: 6,
             overflow: 'auto',

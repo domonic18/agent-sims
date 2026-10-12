@@ -42,6 +42,7 @@ function hitTest(doc: TileMapDefinition, tx: number, ty: number): Selection | nu
   if (doc.decor !== undefined) {
     for (const group of decorGroups) {
       const pts = doc.decor[group];
+      if (pts === undefined) continue;
       const idx = pts.findIndex((p) => p[0] === tx && p[1] === ty);
       if (idx >= 0) return { kind: 'decor', group, index: idx };
     }

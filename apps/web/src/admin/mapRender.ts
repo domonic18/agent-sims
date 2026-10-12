@@ -120,6 +120,23 @@ export function renderMapDefinition(
   ctx.fillStyle = '#151726';
   for (const blocked of definition.blockedRects) rect(ctx, blocked, tile);
 
+  // 点状装饰(树/灯/花/灌木):标记点让语义视图下放置有即时反馈
+  const decor = definition.decor;
+  if (decor !== undefined) {
+    const dot = (pts: ReadonlyArray<readonly [number, number]>, color: string, ratio: number): void => {
+      ctx.fillStyle = color;
+      for (const [x, y] of pts) {
+        ctx.beginPath();
+        ctx.arc((x + 0.5) * tile, (y + 0.5) * tile, Math.max(1.5, tile * ratio), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    dot(decor.trees, '#38b764', 0.3);
+    dot(decor.lamps, '#ffcd75', 0.22);
+    dot(decor.flowers, '#ef7d57', 0.18);
+    dot(decor.bushes, '#a7f070', 0.22);
+  }
+
   // 镇核心区(金色虚线框)
   if (definition.townCore !== undefined) {
     ctx.strokeStyle = '#ffcd75';

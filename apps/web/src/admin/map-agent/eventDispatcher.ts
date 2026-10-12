@@ -6,6 +6,7 @@
  */
 import type { MapAgentTodo, TileMapDefinition } from '@sims/shared';
 import { useEditor } from '../map-editor/editorStore';
+import { normalizeDefinition } from '../map-editor/normalize';
 import { useMapAgent, type AgentQuestion } from './mapAgentStore';
 
 /** write_todos 状态抽取(宽松:非空 {content,status} 才收;空清单视为无计划) */
@@ -50,17 +51,19 @@ function looksLikeDefinition(v: unknown): v is TileMapDefinition {
   return typeof d.width === 'number' && typeof d.height === 'number' && Array.isArray(d.places);
 }
 
-/** agent 整图替换 → 编辑器单条命令(undo 可整体回退);无变化跳过 */
+/** agent 整图替换 → 编辑器单条命令(undo 可整体回退);无变化跳过。
+ * 归一化后落库:agent 产物可能缺 decor 组/可选数组,不补齐会让画布交互崩。 */
 export function applyAgentDoc(definition: unknown, label: unknown): boolean {
   if (!looksLikeDefinition(definition)) return false;
   const s = useEditor.getState();
-  if (JSON.stringify(s.doc) === JSON.stringify(definition)) return false;
+  const next = normalizeDefinition(definition);
+  if (JSON.stringify(s.doc) === JSON.stringify(next)) return false;
   s.commit({
     kind: 'update',
     label: `AI:${typeof label === 'string' && label !== '' ? label : '修改地图'}`,
     path: [],
     before: s.doc,
-    after: definition,
+    after: next,
   });
   return true;
 }
