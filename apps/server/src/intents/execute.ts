@@ -1,5 +1,6 @@
 import {
   getActivityDefinition,
+  getBuildBlueprint,
   getItem,
   getPropertyDefinition,
   getRecipe,
@@ -69,16 +70,23 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       return { ok: true, message: `${character.name} 吃掉「${name}」(背包)` };
     }
     case 'store_item': {
-      const character = sim.requestStoreItem(intent.characterId, intent.itemId, intent.count);
+      const target = intent.target ?? 'fridge';
+      const character = sim.requestStoreItem(intent.characterId, intent.itemId, intent.count, target);
       const name = getItem(intent.itemId)?.name ?? intent.itemId;
+      if (target === 'storage') {
+        const stored = sim.storage[intent.itemId] ?? 0;
+        return { ok: true, message: `${character.name} 存入单仓「${name}」×${intent.count}(单仓现有 ${stored} 份)` };
+      }
       const stored = character.fridge[intent.itemId] ?? 0;
       return { ok: true, message: `${character.name} 存入冰箱「${name}」×${intent.count}(冰箱现有 ${stored} 份)` };
     }
     case 'take_item': {
-      const character = sim.requestTakeItem(intent.characterId, intent.itemId, intent.count);
+      const target = intent.target ?? 'fridge';
+      const character = sim.requestTakeItem(intent.characterId, intent.itemId, intent.count, target);
       const name = getItem(intent.itemId)?.name ?? intent.itemId;
       const carried = character.backpack[intent.itemId] ?? 0;
-      return { ok: true, message: `${character.name} 从冰箱取出「${name}」×${intent.count}(背包现有 ${carried} 份)` };
+      const from = target === 'storage' ? '单仓' : '冰箱';
+      return { ok: true, message: `${character.name} 从${from}取出「${name}」×${intent.count}(背包现有 ${carried} 份)` };
     }
     case 'sell_item': {
       const character = sim.requestSellItem(intent.characterId, intent.itemId, intent.count);
@@ -129,6 +137,21 @@ export function executeIntent(sim: Simulation, intent: Intent): IntentResult {
       const character = sim.requestCraft(intent.characterId, intent.recipeId);
       const name = getRecipe(intent.recipeId)?.name ?? intent.recipeId;
       return { ok: true, message: `${character.name} 开始制作「${name}」,材料已从背包扣除` };
+    }
+    case 'build': {
+      const character = sim.requestBuild(
+        intent.characterId,
+        intent.blueprintId,
+        intent.x,
+        intent.y,
+        intent.w,
+        intent.h,
+      );
+      const label = getBuildBlueprint(intent.blueprintId)?.label ?? intent.blueprintId;
+      return {
+        ok: true,
+        message: `${character.name} 接下「${label}」建造单,材料已从单仓扣除,前往施工`,
+      };
     }
   }
 }

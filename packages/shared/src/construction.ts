@@ -129,7 +129,10 @@ export interface BuiltState {
   nextPlaceSeq: number;
 }
 
-/** 在建工单(批2 意图流转;批1 仅类型与存档通道) */
+/**
+ * 在建工单(批2 意图流转):materials/durationMinutes/pay 为下单时快照
+ * (蓝图热改不追溯在制单,结算凭快照);builderId=接单施工者,中断退料销单。
+ */
 export interface ConstructionSite {
   id: string;
   blueprintId: BuildBlueprintId;
@@ -138,6 +141,10 @@ export interface ConstructionSite {
   w: number;
   h: number;
   createdAtGameMinute: number;
+  builderId: string;
+  materials: Record<string, number>;
+  durationMinutes: number;
+  pay: number;
 }
 
 /** 蓝图盖章:相对模板平移到 (x,y),门洞底边中点、入口其下,id 按 seq 命名 */

@@ -1,3 +1,4 @@
+import type { ConstructionSite } from './construction.js';
 import type { WorldEvent } from './events.js';
 import type { GameType } from './worldgen.js';
 import type { MaintenanceSpot } from './maintenance.js';
@@ -127,6 +128,12 @@ export interface WorldSnapshotMessage {
   resources: ResourceNode[];
   /** 商店货架余量(食物经济 2026-10-07):itemId→剩余份数,售罄即止不补货;web 展示/禁购 */
   shopStock: Record<string, number>;
+  /** 在建工单全量(S2批2):web 脚手架 diff 渲染 */
+  constructionSites: ConstructionSite[];
+  /** 镇核心单仓(S2批2):itemId→存量;建造材料经此出入 */
+  storage: Record<string, number>;
+  /** 单仓实体格(townCore 底边中点派生;null=本世界无镇核心,存取禁用) */
+  storageSpot: { x: number; y: number } | null;
 }
 
 /** world.event 消息封装:事件本体即 shared WorldEvent */

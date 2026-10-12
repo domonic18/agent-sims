@@ -40,7 +40,7 @@ import {
   stopActivity,
 } from './activity.js';
 import { GameClock } from './clock.js';
-import { applyBuilt } from './construction.js';
+import { applyBuilt, deriveStorageSpot, requestBuild, stepConstruction } from './construction.js';
 import {
   applyHealthTick,
   applyVitalDecay,
@@ -100,6 +100,8 @@ export interface SimulationArchive {
   built?: BuiltState;
   constructionSites?: Array<[string, ConstructionSite]>;
   storage?: Record<string, number>;
+  /** 工单 id 序号源(site-N;旧档缺省回 1) */
+  nextSiteSeq?: number;
 }
 
 /**
@@ -128,10 +130,14 @@ export class Simulation {
   baseDefinition: TileMapDefinition = TOWN_MAP;
   /** 建造产物声明层:places/fences 相对基础图的增量(空 = 与基础图同) */
   built: BuiltState = { places: [], fences: [], nextPlaceSeq: 1 };
-  /** 在建工单(S2批2 启用;批1 仅类型与存档通道) */
+  /** 在建工单(S2批2):key = site-N;中断退料销单,完工落地销单 */
   readonly constructionSites = new Map<string, ConstructionSite>();
-  /** 镇核心单仓(S2批2 启用;批1 仅存档通道) */
+  /** 工单 id 序号源(site-N) */
+  nextSiteSeq = 1;
+  /** 镇核心单仓(S2批2):建造材料与盈余物资的世界级库存 */
   storage: Record<string, number> = {};
+  /** 单仓实体格(townCore 底边中点;setMap 随图派生;null=存取禁用) */
+  storageSpot: { x: number; y: number } | null = null;
   /** 世界事件总线:离散事件与控制变更即时分发,感知/同步层订阅 */
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
@@ -170,6 +176,7 @@ export class Simulation {
   setMap(definition: TileMapDefinition, opts: { asBase?: boolean } = {}): void {
     if (opts.asBase ?? true) this.baseDefinition = definition;
     this._map = TileMap.fromDefinition(definition);
+    this.storageSpot = deriveStorageSpot(definition);
     this._rebuildResourceNodes();
   }
 
@@ -210,6 +217,7 @@ export class Simulation {
     this.encounterCooldown.clear();
     this.built = { places: [], fences: [], nextPlaceSeq: 1 };
     this.constructionSites.clear();
+    this.nextSiteSeq = 1;
     this.storage = {};
     this._rebuildResourceNodes();
     this._initShopStock();
@@ -294,12 +302,22 @@ export class Simulation {
     return eatItem(this, characterId, itemId);
   }
 
-  requestStoreItem(characterId: string, itemId: string, count: number): WorldCharacter {
-    return storeItem(this, characterId, itemId, count);
+  requestStoreItem(
+    characterId: string,
+    itemId: string,
+    count: number,
+    target: 'fridge' | 'storage' = 'fridge',
+  ): WorldCharacter {
+    return storeItem(this, characterId, itemId, count, target);
   }
 
-  requestTakeItem(characterId: string, itemId: string, count: number): WorldCharacter {
-    return takeItem(this, characterId, itemId, count);
+  requestTakeItem(
+    characterId: string,
+    itemId: string,
+    count: number,
+    target: 'fridge' | 'storage' = 'fridge',
+  ): WorldCharacter {
+    return takeItem(this, characterId, itemId, count, target);
   }
 
   requestSellItem(characterId: string, itemId: string, count: number): WorldCharacter {
@@ -328,6 +346,18 @@ export class Simulation {
   /** 配方制作(M-G.6):验料扣料并开始站点作业,完成产出/中断退料由结算分流 */
   requestCraft(characterId: string, recipeId: string): WorldCharacter {
     return requestCraft(this, characterId, recipeId);
+  }
+
+  /** 建造接单(S2批2):选区评估+单仓扣料建单+寻路,施工由 _stepConstruction 计时 */
+  requestBuild(
+    characterId: string,
+    blueprintId: string,
+    x: number,
+    y: number,
+    w?: number,
+    h?: number,
+  ): WorldCharacter {
+    return requestBuild(this, characterId, blueprintId, x, y, w, h);
   }
 
   /** 重新规划到目标的路径(意图指令层校验后调用);移动打断进行中活动 */
@@ -488,6 +518,7 @@ export class Simulation {
         ...this.constructionSites.entries(),
       ])) as Array<[string, ConstructionSite]>,
       storage: { ...this.storage },
+      nextSiteSeq: this.nextSiteSeq,
     };
   }
 
@@ -541,6 +572,7 @@ export class Simulation {
       this.constructionSites.set(key, JSON.parse(JSON.stringify(value)) as ConstructionSite);
     }
     this.storage = { ...(archive.storage ?? {}) };
+    this.nextSiteSeq = archive.nextSiteSeq ?? 1;
     for (const character of archive.characters) {
       this.characters.set(character.id, JSON.parse(JSON.stringify(character)) as WorldCharacter);
     }
@@ -604,8 +636,13 @@ export class Simulation {
         const definition = getActivityDefinition(character.activity.activityId);
         if (definition !== null) {
           if (character.activity.targetId !== null) {
-            // 维护工单(M-G.5):在途不结算;到位每分钟先验目标有效再计时
-            this._stepWorkTask(character, definition);
+            if (character.activity.activityId === 'construction') {
+              // 建造施工(S2批2):在途不结算;到位按挂单快照计时
+              this._stepConstruction(character, definition);
+            } else {
+              // 维护工单(M-G.5):在途不结算;到位每分钟先验目标有效再计时
+              this._stepWorkTask(character, definition);
+            }
           } else {
             const craftRecipe =
               character.activity.craftRecipeId !== undefined
@@ -686,6 +723,10 @@ export class Simulation {
 
   private _stepWorkTask(character: WorldCharacter, definition: ActivityDefinition): void {
     stepWorkTask(this, character, definition);
+  }
+
+  private _stepConstruction(character: WorldCharacter, definition: ActivityDefinition): void {
+    stepConstruction(this, character, definition);
   }
 
   private _completeCraft(character: WorldCharacter): void {

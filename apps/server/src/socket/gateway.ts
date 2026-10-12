@@ -80,7 +80,13 @@ export function attachSocketGateway(
       if (typeof characterId === 'string' && hosting.has(characterId)) {
         return reply({ ok: false, message: '角色托管中,请先接管再操作' });
       }
-      reply(runIntent(sim, payload));
+      const result = runIntent(sim, payload);
+      reply(result);
+      // 成功意图后立即补推快照:暂停态无 tick 广播,不补推则扣料/工单等
+      // 状态变化要等恢复运行才可见(建造选区接单在暂停下会显得无响应)
+      if (result.ok) {
+        io.emit(SOCKET_EVENTS.snapshot, sim.snapshot() satisfies WorldSnapshotMessage);
+      }
     });
     socket.on('disconnect', () => {
       clients.remove(socket.id);

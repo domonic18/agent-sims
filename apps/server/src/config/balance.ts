@@ -19,6 +19,7 @@ import {
   LOW_ENERGY_THRESHOLD,
   MEETING_WAIT_MINUTES,
   SOCIAL_CHAT_DISTANCE,
+  STORAGE_VOLUME_LIMIT,
   SYS_CONFIG_FIELDS,
   WALK_SPEED_TILES_PER_TICK,
 } from '@sims/shared';
@@ -75,6 +76,8 @@ export interface BalanceConfig {
   FRIDGE_VOLUME_LIMIT: number;
   /** 体力区段(M3.6f):≤阈值只允许基础活动(rest/stroll/meal) */
   LOW_ENERGY_THRESHOLD: number;
+  /** 镇核心单仓体积上限(S2批2,数值文档 §5.6):全世界共享库存的总量闸 */
+  STORAGE_VOLUME_LIMIT: number;
   /** 仲裁生存不变量(E7):want 二分类 + lifestyle 体力坡道。
    * SURVIVAL_FLOOR=保命线(≤此值 lifestyle 整体退场+执行保护闸);LIFESTYLE_CEIL=舒适线
    * (≥此值 lifestyle 全额分,人设全功率);两线之间 lifestyle 分数线性衰减——
@@ -225,6 +228,7 @@ export const BALANCE: BalanceConfig = {
   BACKPACK_VOLUME_LIMIT,
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
+  STORAGE_VOLUME_LIMIT,
   SURVIVAL_FLOOR: 18,
   LIFESTYLE_CEIL: 32,
   DRIVE_EARN_BOOST: 1.5,

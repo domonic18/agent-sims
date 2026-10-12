@@ -20,6 +20,7 @@ import {
   type CharacterActivity,
   type WorldCharacter,
 } from './character.js';
+import { cancelConstructionSite } from './construction.js';
 import { ensureRestAccess } from './housing.js';
 import type { Simulation } from './simulation.js';
 
@@ -42,6 +43,10 @@ export function finishActivity(
     for (const input of activity.craftInputs) {
       character.backpack[input.itemId] = (character.backpack[input.itemId] ?? 0) + input.count;
     }
+  }
+  // 建造中断销单(S2批2):材料退回单仓+工单撤销(完工路径工单已销,no-op)
+  if (activity.activityId === 'construction' && reason !== 'completed') {
+    cancelConstructionSite(sim, activity.targetId, character.id);
   }
   const event: ActivityFinishedEvent = {
     type: 'activity.finished',
@@ -82,6 +87,10 @@ export function startActivity(
   // 卖货(E4):want 载体活动,收益走 sell_item 结算,直发 start_activity 无意义
   if (activityId === 'sell_goods') {
     throw new Error(`${definition.name} 须经 sell_item 意图或物品栏卖出`);
+  }
+  // 建造施工(S2批2):须经 build 意图接单(选区评估+单仓扣料+寻路)
+  if (activityId === 'construction') {
+    throw new Error(`${definition.name} 须经 build 意图接单(单仓扣料)`);
   }
   const character = sim.character(characterId);
   ensureAlive(character);

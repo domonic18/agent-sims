@@ -122,6 +122,7 @@ export function storeItem(
   characterId: string,
   itemId: string,
   count: number,
+  target: 'fridge' | 'storage' = 'fridge',
 ): WorldCharacter {
   const item = getItem(itemId);
   if (item === null) {
@@ -130,10 +131,25 @@ export function storeItem(
   const character = sim.character(characterId);
   ensureAlive(character);
   ensureNotCollapsed(character);
-  ensureAtOwnHome(sim, character, '存入冰箱');
   if ((character.backpack[itemId] ?? 0) < count) {
     throw new Error(`${character.name} 背包里「${item.name}」不足 ${count} 个`);
   }
+  if (target === 'storage') {
+    ensureAtStorage(sim, character, '存入单仓');
+    const used = inventoryVolume(sim.storage);
+    if (used + item.volume * count > BALANCE.STORAGE_VOLUME_LIMIT) {
+      throw new Error(
+        `单仓已满(${used}/${BALANCE.STORAGE_VOLUME_LIMIT}),放不下 ${count} 个「${item.name}」(余 ${BALANCE.STORAGE_VOLUME_LIMIT - used} 体积)`,
+      );
+    }
+    character.backpack[itemId] = character.backpack[itemId]! - count;
+    if (character.backpack[itemId]! <= 0) {
+      delete character.backpack[itemId];
+    }
+    sim.storage[itemId] = (sim.storage[itemId] ?? 0) + count;
+    return character;
+  }
+  ensureAtOwnHome(sim, character, '存入冰箱');
   const used = inventoryVolume(character.fridge);
   if (used + item.volume * count > BALANCE.FRIDGE_VOLUME_LIMIT) {
     throw new Error(
@@ -148,12 +164,13 @@ export function storeItem(
   return character;
 }
 
-/** 家中冰箱→背包:须在自己住所且租约有效,背包容积足够 */
+/** 库→背包:家中冰箱→背包 须在自己住所且租约有效;镇核心单仓→背包 须站单仓旁 */
 export function takeItem(
   sim: Simulation,
   characterId: string,
   itemId: string,
   count: number,
+  target: 'fridge' | 'storage' = 'fridge',
 ): WorldCharacter {
   const item = getItem(itemId);
   if (item === null) {
@@ -162,9 +179,16 @@ export function takeItem(
   const character = sim.character(characterId);
   ensureAlive(character);
   ensureNotCollapsed(character);
-  ensureAtOwnHome(sim, character, '从冰箱取出');
-  if ((character.fridge[itemId] ?? 0) < count) {
-    throw new Error(`${character.name} 冰箱里「${item.name}」不足 ${count} 个`);
+  if (target === 'storage') {
+    ensureAtStorage(sim, character, '从单仓取出');
+    if ((sim.storage[itemId] ?? 0) < count) {
+      throw new Error(`单仓里「${item.name}」不足 ${count} 个`);
+    }
+  } else {
+    ensureAtOwnHome(sim, character, '从冰箱取出');
+    if ((character.fridge[itemId] ?? 0) < count) {
+      throw new Error(`${character.name} 冰箱里「${item.name}」不足 ${count} 个`);
+    }
   }
   const used = inventoryVolume(character.backpack);
   if (used + item.volume * count > BALANCE.BACKPACK_VOLUME_LIMIT) {
@@ -172,10 +196,29 @@ export function takeItem(
       `背包已满(${used}/${BALANCE.BACKPACK_VOLUME_LIMIT}),装不下 ${count} 个「${item.name}」(余 ${BALANCE.BACKPACK_VOLUME_LIMIT - used} 体积)`,
     );
   }
-  character.fridge[itemId] = character.fridge[itemId]! - count;
-  if (character.fridge[itemId]! <= 0) {
-    delete character.fridge[itemId];
+  if (target === 'storage') {
+    sim.storage[itemId] = sim.storage[itemId]! - count;
+    if (sim.storage[itemId]! <= 0) {
+      delete sim.storage[itemId];
+    }
+  } else {
+    character.fridge[itemId] = character.fridge[itemId]! - count;
+    if (character.fridge[itemId]! <= 0) {
+      delete character.fridge[itemId];
+    }
   }
   character.backpack[itemId] = (character.backpack[itemId] ?? 0) + count;
   return character;
+}
+
+/** 单仓位置门槛(S2批2):须站单仓实体格或四邻(曼哈顿≤1);无镇核心即禁用 */
+function ensureAtStorage(sim: Simulation, character: WorldCharacter, action: string): void {
+  const spot = sim.storageSpot;
+  if (spot === null) {
+    throw new Error('本世界无镇核心单仓');
+  }
+  const distance = Math.abs(character.x - spot.x) + Math.abs(character.y - spot.y);
+  if (distance > 1) {
+    throw new Error(`${character.name} 须站单仓旁才能${action}(单仓在 (${spot.x},${spot.y}))`);
+  }
 }

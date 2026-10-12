@@ -49,6 +49,9 @@ describe('Simulation 模拟核心', () => {
       maintenance: expect.any(Array), // 60 tick 恰逢杂物周期界,内容随默认 rng 不定
       resources: expect.any(Array), // M-G.6 资源节点从 TOWN_MAP 种子重建
       shopStock: { apple: 3, bread: 3, cake: 3, coffee: 3, hotdog: 3, milk: 3, sandwich: 3, sushi: 3 }, // 初始存量铺货(04 §3.2)
+      constructionSites: [], // S2批2:建造流程字段(TOWN_MAP 无镇核心,单仓恒空)
+      storage: {},
+      storageSpot: null,
     });
   });
 });

@@ -50,22 +50,25 @@ export const eatItemIntentSchema = z.object({
 
 export type EatItemIntent = z.infer<typeof eatItemIntentSchema>;
 
-/** 存入冰箱(M3.6g):背包→家中冰箱,须在自家住房内且租约有效 */
+/** 存入(M3.6g;S2批2 扩单仓):背包→target 库,target=fridge 须在自家住房内
+ * 且租约有效,target=storage 须站镇核心单仓旁(缺省 fridge 向后兼容) */
 export const storeItemIntentSchema = z.object({
   type: z.literal('store_item'),
   characterId: z.string().min(1),
   itemId: z.string().min(1),
   count: z.number().int().min(1),
+  target: z.enum(['fridge', 'storage']).optional(),
 });
 
 export type StoreItemIntent = z.infer<typeof storeItemIntentSchema>;
 
-/** 取出(M3.6g):家中冰箱→背包,须在自家住房内且租约有效 */
+/** 取出(M3.6g;S2批2 扩单仓):target 库→背包,位置门槛同 store_item */
 export const takeItemIntentSchema = z.object({
   type: z.literal('take_item'),
   characterId: z.string().min(1),
   itemId: z.string().min(1),
   count: z.number().int().min(1),
+  target: z.enum(['fridge', 'storage']).optional(),
 });
 
 export type TakeItemIntent = z.infer<typeof takeItemIntentSchema>;
@@ -129,6 +132,20 @@ export const craftIntentSchema = z.object({
 
 export type CraftIntent = z.infer<typeof craftIntentSchema>;
 
+/** 建造(S2批2):发起者即施工者;place 类按蓝图尺寸落位(只传左上角),
+ * fence 类须传条形 w/h;材料从镇核心单仓扣,中断退料销单无薪 */
+export const buildIntentSchema = z.object({
+  type: z.literal('build'),
+  characterId: z.string().min(1),
+  blueprintId: z.string().min(1),
+  x: z.number().int(),
+  y: z.number().int(),
+  w: z.number().int().min(1).optional(),
+  h: z.number().int().min(1).optional(),
+});
+
+export type BuildIntent = z.infer<typeof buildIntentSchema>;
+
 export const intentSchema = z.discriminatedUnion('type', [
   moveToIntentSchema,
   stopMoveIntentSchema,
@@ -144,6 +161,7 @@ export const intentSchema = z.discriminatedUnion('type', [
   sellItemIntentSchema,
   workTaskIntentSchema,
   craftIntentSchema,
+  buildIntentSchema,
 ]);
 
 export type Intent = z.infer<typeof intentSchema>;

@@ -37,6 +37,7 @@ export const ACTIVITY_IDS = [
   'craft_bread',
   'craft_sandwich',
   'sell_goods',
+  'construction',
 ] as const;
 
 export type ActivityId = (typeof ACTIVITY_IDS)[number];
@@ -316,6 +317,16 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     placeIds: ['shop'],
     durationMinutes: 15,
     effects: { energy: -0.05, score: 0.05, coins: 0 },
+  },
+  // 建造施工(S2批2,plan/03):无场所锚点,须经 build 意图接单(扣料建单+寻路);
+  // 时长/薪酬不走本表与速率——按在建工单快照结算(durationOverride+按单入账)
+  {
+    id: 'construction',
+    name: '施工',
+    placeIds: [],
+    durationMinutes: 15,
+    effects: { energy: -0.15, score: 0, coins: 0 },
+    category: 'build',
   },
 ];
 

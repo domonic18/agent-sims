@@ -288,6 +288,49 @@ export const hostingChangedEventSchema = z.object({
 
 export type HostingChangedEvent = z.infer<typeof hostingChangedEventSchema>;
 
+/** 建造开工(S2批2):单仓扣料+工单落位,施工者寻路前往 */
+export const constructionPlacedEventSchema = z.object({
+  type: z.literal('construction.placed'),
+  siteId: z.string().min(1),
+  characterId: z.string().min(1),
+  blueprintId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type ConstructionPlacedEvent = z.infer<typeof constructionPlacedEventSchema>;
+
+/** 建造完成:建筑/围栏落地(merge 图生效),按单入账;placeId=落地产物 id(fence 为 null) */
+export const constructionCompletedEventSchema = z.object({
+  type: z.literal('construction.completed'),
+  siteId: z.string().min(1),
+  characterId: z.string().min(1),
+  blueprintId: z.string().min(1),
+  placeId: z.string().nullable(),
+  pay: z.number(),
+  tick: z.number().int(),
+});
+
+export type ConstructionCompletedEvent = z.infer<typeof constructionCompletedEventSchema>;
+
+/** 建造中断销单(停止/移动打断/倒下):材料退回单仓,无薪(craft 诚实原则同构) */
+export const constructionCancelledEventSchema = z.object({
+  type: z.literal('construction.cancelled'),
+  siteId: z.string().min(1),
+  characterId: z.string().min(1),
+  blueprintId: z.string().min(1),
+  tick: z.number().int(),
+});
+
+export type ConstructionCancelledEvent = z.infer<typeof constructionCancelledEventSchema>;
+
+/** 合并图变更(S2建造层 applyBuilt 唯一漏斗):前端 refetch /api/world/map 重绘地形 */
+export const worldMapChangedEventSchema = z.object({
+  type: z.literal('world.map_changed'),
+  tick: z.number().int(),
+});
+
+export type WorldMapChangedEvent = z.infer<typeof worldMapChangedEventSchema>;
+
 export const worldEventSchema = z.discriminatedUnion('type', [
   characterArrivedEventSchema,
   activityStartedEventSchema,
@@ -312,6 +355,10 @@ export const worldEventSchema = z.discriminatedUnion('type', [
   sleepDebtAppliedEventSchema,
   sleepSettledEventSchema,
   hostingChangedEventSchema,
+  constructionPlacedEventSchema,
+  constructionCompletedEventSchema,
+  constructionCancelledEventSchema,
+  worldMapChangedEventSchema,
 ]);
 
 export type WorldEvent = z.infer<typeof worldEventSchema>;

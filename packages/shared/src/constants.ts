@@ -13,6 +13,8 @@ export const WALK_SPEED_TILES_PER_TICK = 2;
 export const BACKPACK_VOLUME_LIMIT = 8;
 /** 冰箱容积上限(体积单位,数值文档 §3.2) */
 export const FRIDGE_VOLUME_LIMIT = 30;
+/** 镇核心单仓容积上限(体积单位,S2批2 数值文档 §5.6):全世界共享库存总量闸 */
+export const STORAGE_VOLUME_LIMIT = 200;
 /** 低体力阈值:≤该值仅允许基础活动(rest/stroll/meal),UI 同步亮警示 */
 export const LOW_ENERGY_THRESHOLD = 20;
 /** 闲聊同处一地距离(曼哈顿,§6.2):chat 判定,UI 聊天按钮同源禁用;
