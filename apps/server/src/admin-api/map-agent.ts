@@ -9,10 +9,12 @@ import { z } from 'zod';
 import type { TileMapDefinition } from '@sims/shared';
 import type { DbHandle } from '../db/client.js';
 import { mapAgentThreads, maps } from '../db/schema/index.js';
+import { LlmError } from '../llm/types.js';
 import { recordTokenUsage } from '../llm/usage.js';
 import { getMapAgent } from '../map-agent/index.js';
 import { beginThreadDoc, endThreadDoc } from '../map-agent/doc-store.js';
 import { serializeMessage, serializeTodos, serializeUpdates, type CollectedUsage } from '../map-agent/serialize.js';
+import { describeDocNote, describeMapScreenshot } from '../map-agent/vision.js';
 
 const createSchema = z.object({ mapId: z.string().uuid().nullish() });
 
@@ -20,6 +22,8 @@ const runSchema = z.object({
   message: z.string().trim().min(1).max(8000),
   mapId: z.string().uuid().nullish(),
   definition: z.unknown().optional(),
+  /** 效果截图 PNG data URL(vision 槽位评估后注入上下文;上限约 6MB 图) */
+  screenshot: z.string().startsWith('data:image/png;base64,').max(8_000_000).optional(),
 });
 
 /** 编辑器定义宽松判定(前端发来的本就是 TileMapDefinition,防呆即可) */
@@ -105,6 +109,25 @@ export function registerMapAgentRoutes(app: FastifyInstance, handle: DbHandle): 
       return await reply.code(400).send({ error: err instanceof Error ? err.message : '模型装配失败' });
     }
 
+    // 效果截图先经 vision 槽位评估再拼进用户消息(SSE 开始前完成,失败以 400
+    // 返回可读提示——配置缺失与调用失败都不该吞成流内错误)
+    let runMessage = parsed.data.message;
+    if (parsed.data.screenshot !== undefined) {
+      try {
+        const assessment = await describeMapScreenshot(handle, parsed.data.screenshot, describeDocNote(doc));
+        runMessage = `${parsed.data.message}\n\n---\n[地图效果截图评估(vision 模型所见,当前游戏实际渲染外观)]\n${assessment}`;
+      } catch (err) {
+        const detail = err instanceof LlmError
+          ? `(${err.slot}) ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err);
+        return await reply.code(400).send({
+          error: `效果截图评估失败${detail.startsWith('(') ? detail : `: ${detail}`};可在「模型配置」设置 vision 槽位,或点击输入框旁的图片按钮关闭附图`,
+        });
+      }
+    }
+
     beginThreadDoc(id, { mapId, doc });
     const usage: CollectedUsage = { promptTokens: 0, completionTokens: 0 };
     const title = threadRow.title === '新对话' ? parsed.data.message.slice(0, 24) : threadRow.title;
@@ -131,7 +154,7 @@ export function registerMapAgentRoutes(app: FastifyInstance, handle: DbHandle): 
         // ReactAgent.stream 返回 Promise<流>;多 streamMode 下逐项为 [mode, payload],
         // messages 载荷又是 [chunk, metadata] 二元组——两层都要解
         const stream = await agent.stream(
-          { messages: [{ role: 'user', content: parsed.data.message }] },
+          { messages: [{ role: 'user', content: runMessage }] },
           {
             configurable: { thread_id: id },
             streamMode: ['messages', 'updates', 'custom'],

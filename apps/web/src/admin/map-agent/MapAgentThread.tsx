@@ -1,5 +1,8 @@
-/** 助手 Thread 视图:执行计划条+消息流+问题卡+输入框;历史加载骨架与运行中跳点。 */
+/** 助手 Thread 视图:执行计划条+消息流+问题卡+输入框(附图开关);历史加载骨架与运行中跳点。 */
 import { ComposerPrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react';
+import { PictureOutlined } from '@ant-design/icons';
+import { Tooltip } from 'antd';
+import { useMapAgent } from './mapAgentStore';
 import { AssistantMessage, UserMessage } from './Messages';
 import { MapAgentQuestionCard } from './QuestionCard';
 import { TodoListBar } from './TodoListBar';
@@ -24,6 +27,8 @@ function RunningIndicator() {
 
 export function MapAgentThread() {
   const isLoading = useAuiState((s) => s.thread.isLoading);
+  const attachScreenshot = useMapAgent((s) => s.attachScreenshot);
+  const toggleAttachScreenshot = useMapAgent((s) => s.toggleAttachScreenshot);
   return (
     <ThreadPrimitive.Root style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <TodoListBar />
@@ -77,6 +82,24 @@ export function MapAgentThread() {
           background: 'rgba(255,255,255,0.04)',
         }}
       >
+        <Tooltip title={attachScreenshot ? '随消息附带地图效果截图,视觉模型先评估再改图(点击关闭)' : '关闭中:AI 只看数据不看效果截图(点击开启,需配置 vision 槽位)'}>
+          <button
+            type="button"
+            onClick={toggleAttachScreenshot}
+            aria-label="附带地图效果截图"
+            style={{
+              border: 'none',
+              borderRadius: 6,
+              padding: '4px 8px',
+              fontSize: 14,
+              cursor: 'pointer',
+              background: attachScreenshot ? 'rgba(255,205,117,0.16)' : 'transparent',
+              color: attachScreenshot ? '#ffcd75' : '#6b7280',
+            }}
+          >
+            <PictureOutlined />
+          </button>
+        </Tooltip>
         <ComposerPrimitive.Input
           rows={1}
           placeholder="描述改图需求…"

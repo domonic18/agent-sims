@@ -102,4 +102,6 @@ export interface MapAgentRunRequest {
   mapId?: string | null;
   /** 编辑器当前定义优先作为文档来源 */
   definition?: unknown;
+  /** 地图效果截图(PNG data URL;vision 槽位评估后注入 agent 上下文) */
+  screenshot?: string;
 }

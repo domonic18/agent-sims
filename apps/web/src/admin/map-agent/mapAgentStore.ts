@@ -27,6 +27,8 @@ interface MapAgentState {
   threads: MapAgentThreadItem[];
   /** write_todos 执行计划(updates 通道实时推进;null=本线程无计划) */
   todos: MapAgentTodo[] | null;
+  /** 发送时附带地图效果截图(vision 槽位评估后注入上下文) */
+  attachScreenshot: boolean;
 
   openDrawer(): void;
   closeDrawer(): void;
@@ -34,6 +36,7 @@ interface MapAgentState {
   setQuestion(question: AgentQuestion | null): void;
   setThreads(items: MapAgentThreadItem[]): void;
   setTodos(todos: MapAgentTodo[] | null): void;
+  toggleAttachScreenshot(): void;
 }
 
 export const useMapAgent = create<MapAgentState>((set) => ({
@@ -42,6 +45,7 @@ export const useMapAgent = create<MapAgentState>((set) => ({
   question: null,
   threads: [],
   todos: null,
+  attachScreenshot: true,
 
   openDrawer: () => set({ open: true }),
   closeDrawer: () => set({ open: false }),
@@ -50,4 +54,5 @@ export const useMapAgent = create<MapAgentState>((set) => ({
   setQuestion: (question) => set({ question }),
   setThreads: (threads) => set({ threads }),
   setTodos: (todos) => set({ todos }),
+  toggleAttachScreenshot: () => set((s) => ({ attachScreenshot: !s.attachScreenshot })),
 }));

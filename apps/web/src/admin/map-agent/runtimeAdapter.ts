@@ -22,6 +22,7 @@ import {
 import { useEditor } from '../map-editor/editorStore';
 import { useMapAgent } from './mapAgentStore';
 import { dispatchAgentCustomEvent, dispatchAgentUpdates } from './eventDispatcher';
+import { captureMapScreenshot } from './screenshot';
 
 /** LangChainMessage 内容 → 纯文本(string 或 text 分片数组) */
 function extractText(message: unknown): string {
@@ -115,10 +116,15 @@ export function createMapAgentRuntimeAdapter(): MapAgentRuntimeAdapter {
       const message = extractText(last).trim();
       if (message === '') throw new Error('消息为空,无法发送');
       const editor = useEditor.getState();
+      // 开关开启才离屏出图(异步装载素材;失败返回 null 照常发文本)
+      const screenshot = useMapAgent.getState().attachScreenshot
+        ? await captureMapScreenshot()
+        : undefined;
       const payload = {
         message,
         mapId: editor.mapId,
         definition: editor.doc as unknown as TileMapDefinition,
+        ...(screenshot !== null ? { screenshot } : {}),
       };
       const res = await streamMapAgentRun(externalId, payload, config.abortSignal);
       if (res.body === null) throw new Error('响应无正文流');
