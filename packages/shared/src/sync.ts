@@ -134,6 +134,8 @@ export interface WorldSnapshotMessage {
   storage: Record<string, number>;
   /** 单仓实体格(townCore 底边中点派生;null=本世界无镇核心,存取禁用) */
   storageSpot: { x: number; y: number } | null;
+  /** 世界参数生效全集(S2批3):随快照下发,冷加载即得;web 逐键对比变化才落 store */
+  params: Record<string, number>;
 }
 
 /** world.event 消息封装:事件本体即 shared WorldEvent */

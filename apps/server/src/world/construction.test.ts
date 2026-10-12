@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   blockedRectsOf,
   TOWN_MAP,
@@ -12,6 +12,7 @@ import {
   debugRemoveBuiltPlace,
   requestBuild,
 } from './construction.js';
+import { applyWorldParams } from '../config/balance.js';
 import { Simulation, type SimulationArchive } from './simulation.js';
 
 /** 隔断连通用合成底图(与 shared 矩阵底图同构):两屋对置,中轴留空 */
@@ -362,5 +363,57 @@ describe('镇核心单仓(S2批2)', () => {
     full.character('c1').backpack['wood'] = 1;
     full.storage['wood'] = 200;
     expect(() => full.requestStoreItem('c1', 'wood', 1, 'storage')).toThrow(/单仓已满/);
+  });
+
+  it('单仓容积可经世界参数收紧(S2批3)', () => {
+    applyWorldParams();
+    const { sim, spot } = storageSim();
+    sim.spawnCharacter('c1', spot.x, spot.y + 1);
+    sim.setParams({ STORAGE_VOLUME_LIMIT: 2 });
+    sim.character('c1').backpack['wood'] = 3;
+    sim.requestStoreItem('c1', 'wood', 2, 'storage');
+    expect(sim.storage['wood']).toBe(2);
+    expect(() => sim.requestStoreItem('c1', 'wood', 1, 'storage')).toThrow(/单仓已满/);
+    applyWorldParams();
+  });
+});
+
+describe('建造世界参数(S2批3)', () => {
+  afterEach(() => applyWorldParams()); // BALANCE 是模块级可变单例,参数测试后复位防泄漏
+
+  it('关知识门槛开关后 0 班可建(默认开则拒)', () => {
+    applyWorldParams();
+    const sim = survivalSim();
+    spawnBuilder(sim, 'b0', 0);
+    seedStorage(sim, { wood: 12, stone: 8, metal: 4 });
+    const rect = findFreeRect(TOWN_MAP, 7, 5);
+    expect(() => requestBuild(sim, 'b0', 'build_home', rect.x, rect.y)).toThrow(/知识不足/);
+    sim.setParams({ CONSTRUCTION_KNOWLEDGE_GATE: 0 });
+    requestBuild(sim, 'b0', 'build_home', rect.x, rect.y);
+    expect(sim.constructionSites.get('site-1')).toMatchObject({ blueprintId: 'build_home' });
+  });
+
+  it('工时倍率缩放 place 工时且工资不变,下单快照不追溯在制单', () => {
+    applyWorldParams();
+    const sim = survivalSim();
+    spawnBuilder(sim, 'b1');
+    seedStorage(sim, { wood: 12, stone: 8, metal: 4 });
+    sim.setParams({ CONSTRUCTION_TIME_SCALE: 2 });
+    const rect = findFreeRect(TOWN_MAP, 7, 5);
+    requestBuild(sim, 'b1', 'build_home', rect.x, rect.y);
+    expect(sim.constructionSites.get('site-1')).toMatchObject({ durationMinutes: 960, pay: 60 });
+    sim.setParams({ CONSTRUCTION_TIME_SCALE: 1 });
+    expect(sim.constructionSites.get('site-1')!.durationMinutes).toBe(960);
+  });
+
+  it('围栏工时按倍率缩放: (15+6×3)×2=66', () => {
+    applyWorldParams();
+    const sim = survivalSim();
+    spawnBuilder(sim, 'b1');
+    seedStorage(sim, { wood: 6 });
+    sim.setParams({ CONSTRUCTION_TIME_SCALE: 2 });
+    const rect = findFreeRect(TOWN_MAP, 1, 3);
+    requestBuild(sim, 'b1', 'build_fence', rect.x, rect.y, 1, 3);
+    expect(sim.constructionSites.get('site-1')).toMatchObject({ durationMinutes: 66, pay: 6 });
   });
 });

@@ -1,5 +1,5 @@
 import type { WorldSnapshotMessage } from '@sims/shared';
-import { BALANCE } from '../config/balance.js';
+import { BALANCE, currentWorldParams } from '../config/balance.js';
 import { innerState } from '../agents/cognition.js';
 import type { Simulation } from './simulation.js';
 
@@ -84,5 +84,6 @@ export function worldSnapshot(sim: Simulation): WorldSnapshotMessage {
     constructionSites: [...sim.constructionSites.values()].map((site) => ({ ...site })),
     storage: { ...sim.storage },
     storageSpot: sim.storageSpot === null ? null : { ...sim.storageSpot },
+    params: currentWorldParams(),
   };
 }

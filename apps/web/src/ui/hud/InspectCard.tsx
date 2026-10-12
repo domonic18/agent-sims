@@ -316,9 +316,11 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
       title = '镇核心单仓';
       tag = '设施';
       tone = 'place';
+      // 容积为世界热调参数:优先读 worldStore.params(设置弹窗/参数事件回填),缺省回退双端常量
+      const volumeLimit = worldParams?.STORAGE_VOLUME_LIMIT ?? STORAGE_VOLUME_LIMIT;
       rows = [
         ['位置', `(${target.spot.x}, ${target.spot.y})`],
-        ['容积', `${inventoryVolume(storage)} / ${STORAGE_VOLUME_LIMIT}`],
+        ['容积', `${inventoryVolume(storage)} / ${volumeLimit}`],
       ];
       const stocked = Object.entries(storage)
         .map(([id, n]) => `${getItem(id)?.name ?? id}×${n}`)

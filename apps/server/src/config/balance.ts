@@ -76,8 +76,12 @@ export interface BalanceConfig {
   FRIDGE_VOLUME_LIMIT: number;
   /** 体力区段(M3.6f):≤阈值只允许基础活动(rest/stroll/meal) */
   LOW_ENERGY_THRESHOLD: number;
-  /** 镇核心单仓体积上限(S2批2,数值文档 §5.6):全世界共享库存的总量闸 */
+  /** 镇核心单仓体积上限(S2批2,数值文档 §5.7):全世界共享库存的总量闸 */
   STORAGE_VOLUME_LIMIT: number;
+  /** 建造世界参数(S2批3,数值文档 §5.7):知识门槛开关(1=按蓝图要求拦,0=0 班可建);
+   * 施工工时倍率(下单时快照进工单,工资不变,不改在制单) */
+  CONSTRUCTION_KNOWLEDGE_GATE: number;
+  CONSTRUCTION_TIME_SCALE: number;
   /** 仲裁生存不变量(E7):want 二分类 + lifestyle 体力坡道。
    * SURVIVAL_FLOOR=保命线(≤此值 lifestyle 整体退场+执行保护闸);LIFESTYLE_CEIL=舒适线
    * (≥此值 lifestyle 全额分,人设全功率);两线之间 lifestyle 分数线性衰减——
@@ -229,6 +233,8 @@ export const BALANCE: BalanceConfig = {
   FRIDGE_VOLUME_LIMIT,
   LOW_ENERGY_THRESHOLD,
   STORAGE_VOLUME_LIMIT,
+  CONSTRUCTION_KNOWLEDGE_GATE: 1,
+  CONSTRUCTION_TIME_SCALE: 1,
   SURVIVAL_FLOOR: 18,
   LIFESTYLE_CEIL: 32,
   DRIVE_EARN_BOOST: 1.5,

@@ -14,7 +14,7 @@ export const SYS_CONFIG_EFFECT_LABELS: Record<SysConfigEffect, string> = {
   spawn: '新角色生效',
 };
 
-export const SYS_CONFIG_GROUPS = ['time', 'vitals', 'economy', 'social', 'resources'] as const;
+export const SYS_CONFIG_GROUPS = ['time', 'vitals', 'economy', 'social', 'resources', 'construction'] as const;
 
 export type SysConfigGroup = (typeof SYS_CONFIG_GROUPS)[number];
 
@@ -24,6 +24,7 @@ export const SYS_CONFIG_GROUP_LABELS: Record<SysConfigGroup, string> = {
   economy: '经济',
   social: '社交',
   resources: '资源与刷新',
+  construction: '建造',
 };
 
 export interface SysConfigField {
@@ -194,6 +195,19 @@ export const SYS_CONFIG_FIELDS: readonly SysConfigField[] = [
   {
     key: 'NODE_RESPAWN_DAYS', label: '节点重生天数', group: 'resources', type: 'int', min: 1, max: 7,
     effect: 'live', desc: '采竭节点回满所需天数(次日 00:00 计),1=次日回满',
+  },
+  // —— 建造(S2批3,蓝图与施工仅 survival 模式开放) ——
+  {
+    key: 'CONSTRUCTION_KNOWLEDGE_GATE', label: '知识门槛开关', group: 'construction', type: 'int', min: 0, max: 1,
+    effect: 'live', desc: '建造蓝图是否要求知识门槛(1=开: 按蓝图要求拦 0 班;0=关: 0 班即可接建造单)',
+  },
+  {
+    key: 'CONSTRUCTION_TIME_SCALE', label: '施工工时倍率', group: 'construction', type: 'float', min: 0.25, max: 4, step: 0.25,
+    effect: 'live', desc: '建造工单工时按该倍率缩放(2=耗时翻倍),工资不变;下单时快照进工单,不改在制单',
+  },
+  {
+    key: 'STORAGE_VOLUME_LIMIT', label: '单仓容积', group: 'construction', type: 'int', min: 20, max: 2000, step: 10,
+    effect: 'live', desc: '镇核心单仓的总体积上限(按物品体积求和),满仓拒绝存入',
   },
 ];
 

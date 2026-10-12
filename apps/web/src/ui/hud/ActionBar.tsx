@@ -124,6 +124,7 @@ export function ActionBar({
   const map = useWorldStore((state) => state.map);
   const buildDraft = useWorldStore((state) => state.buildDraft);
   const setBuildDraft = useWorldStore((state) => state.setBuildDraft);
+  const worldParams = useWorldStore((state) => state.params);
   const [invOpen, setInvOpen] = useState(false);
 
   if (character === null || snapshot === null) return null;
@@ -160,9 +161,13 @@ export function ActionBar({
   };
 
   // 建造菜单(S2批2,仅镇核心世界):蓝图不合格置灰;选定进选区模式(画布点击/拖画落单)
+  // 世界参数感知(S2批3):门槛开关关闭则不拦知识;工时提示按倍率换算(server 裁决,此处仅展示)
   const storage = snapshot.storage;
+  const gateOn = (worldParams?.CONSTRUCTION_KNOWLEDGE_GATE ?? 1) === 1;
+  const timeScale = worldParams?.CONSTRUCTION_TIME_SCALE ?? 1;
+  const scaled = (minutes: number): number => Math.max(1, Math.round(minutes * timeScale));
   const buildItem = (bp: BuildBlueprint) => {
-    const knowledgeOk = character.knowledge >= bp.requiredKnowledge;
+    const knowledgeOk = !gateOn || character.knowledge >= bp.requiredKnowledge;
     const afford =
       bp.kind === 'fence'
         ? (storage['wood'] ?? 0) >= 1
@@ -175,8 +180,8 @@ export function ActionBar({
       text: bp.kind === 'fence' ? `${bp.label}(拖画条形)` : `${bp.label} ${bp.size!.w}×${bp.size!.h}`,
       hint:
         bp.kind === 'fence'
-          ? `每格扣 ${mats} · 工时 ${bp.fenceWork!.baseMinutes}+${bp.fenceWork!.minutesPerCell}/格 · ${bp.fenceWork!.wagePerCell}币/格 · 知识≥${bp.requiredKnowledge}`
-          : `单仓扣 ${mats} · 工时 ${bp.durationMinutes}分 · ${bp.wage}币 · 知识≥${bp.requiredKnowledge}`,
+          ? `每格扣 ${mats} · 工时 ${scaled(bp.fenceWork!.baseMinutes)}+${scaled(bp.fenceWork!.minutesPerCell)}/格 · ${bp.fenceWork!.wagePerCell}币/格 · ${gateOn ? `知识≥${bp.requiredKnowledge}` : '无门槛'}`
+          : `单仓扣 ${mats} · 工时 ${scaled(bp.durationMinutes)}分 · ${bp.wage}币 · ${gateOn ? `知识≥${bp.requiredKnowledge}` : '无门槛'}`,
       disabled: dead || !knowledgeOk || !afford,
       onPick: () => {
         setBuildDraft({ blueprintId: bp.id });

@@ -34,6 +34,7 @@ import type { Point } from './pathfinding.js';
 import { findPath } from './pathfinding.js';
 import { settleActivityMinute, finishActivity } from './activity.js';
 import { debtFactor } from './settlement.js';
+import { BALANCE } from '../config/balance.js';
 import type { Simulation } from './simulation.js';
 import { ensureAlive, ensureNotCollapsed, type WorldCharacter } from './character.js';
 
@@ -98,7 +99,7 @@ export function requestBuild(
   if (character.path.length > 0) {
     throw new Error(`${character.name} 移动中,到达后再接单`);
   }
-  if (character.knowledge < blueprint.requiredKnowledge) {
+  if (BALANCE.CONSTRUCTION_KNOWLEDGE_GATE === 1 && character.knowledge < blueprint.requiredKnowledge) {
     throw new Error(
       `${character.name} 知识不足: 建造需学习 ${blueprint.requiredKnowledge} 班(当前 ${character.knowledge})`,
     );
@@ -275,9 +276,12 @@ function buildOrderCosts(blueprint: BuildBlueprint, rect: BlockedRect): Record<s
 }
 
 function orderDurationMinutes(blueprint: BuildBlueprint, rect: BlockedRect): number {
-  if (blueprint.kind !== 'fence') return blueprint.durationMinutes;
-  const work = blueprint.fenceWork!;
-  return work.baseMinutes + work.minutesPerCell * rect.w * rect.h;
+  const raw =
+    blueprint.kind !== 'fence'
+      ? blueprint.durationMinutes
+      : blueprint.fenceWork!.baseMinutes + blueprint.fenceWork!.minutesPerCell * rect.w * rect.h;
+  // 工时倍率(S2批3 世界参数):下单时快照,工资与在制单不追溯
+  return Math.max(1, Math.round(raw * BALANCE.CONSTRUCTION_TIME_SCALE));
 }
 
 function orderPay(blueprint: BuildBlueprint, rect: BlockedRect): number {

@@ -31,6 +31,14 @@ export interface SequencedEvent {
 
 const EVENT_QUEUE_MAX = 128;
 
+/** 逐键对比:快照每 tick 携带 params 全集,仅在键值真变时落 store(防新引用触发订阅组件逐 tick 重渲染) */
+function paramsEqual(a: Record<string, number>, b: Record<string, number>): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key])
+  );
+}
+
 /** 配方读用选择器:世界快照未拉到时出厂表兜底(admin 未热改过时两者一致) */
 export const selectWorldRecipes = (state: WorldStore): Record<CraftRecipeId, RecipeDef> =>
   state.recipes ?? RECIPES;
@@ -121,7 +129,12 @@ export const useWorldStore = create<WorldStore>((set) => ({
         state.selectedCharacterId !== null && ids.includes(state.selectedCharacterId)
           ? state.selectedCharacterId
           : (ids[0] ?? null);
-      return { snapshot, selectedCharacterId: selected };
+      // params 保鲜(批3): 快照即生效参数,冷加载即得;热改路径仍走 world.params 事件
+      const params =
+        state.params === null || !paramsEqual(state.params, snapshot.params)
+          ? snapshot.params
+          : state.params;
+      return { snapshot, selectedCharacterId: selected, params };
     }),
   applyEvent: (event) =>
     set((state) => ({

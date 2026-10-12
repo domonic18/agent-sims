@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { REVIVE_WINDOW_MINUTES } from '@sims/shared';
 import { Simulation } from './simulation.js';
+import { currentWorldParams } from '../config/balance.js';
 
 describe('Simulation 模拟核心', () => {
   it('advanceTicks 每 tick 推进 1 游戏分钟', () => {
@@ -52,6 +53,7 @@ describe('Simulation 模拟核心', () => {
       constructionSites: [], // S2批2:建造流程字段(TOWN_MAP 无镇核心,单仓恒空)
       storage: {},
       storageSpot: null,
+      params: currentWorldParams(), // S2批3:快照携带参数全集(冷加载即得)
     });
   });
 });
