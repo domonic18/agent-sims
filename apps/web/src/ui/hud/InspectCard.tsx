@@ -4,10 +4,12 @@ import {
   furnitureLabel,
   getActivityDefinition,
   getItem,
+  inventoryVolume,
   GATHER_TASKS,
   MAINTENANCE_TASKS,
   NODE_MAX_CHARGES,
   resourceNodeLabel,
+  STORAGE_VOLUME_LIMIT,
   type ActivityDefinition,
   type GatherTaskDef,
   type ResourceNode,
@@ -83,6 +85,8 @@ function emojiOf(target: InspectTarget): string {
       return target.resource.kind === 'berry_bush' ? '🍓' : '🗑';
     case 'maintenance':
       return target.spot.kind === 'litter' ? '🧹' : '🔨';
+    case 'storage':
+      return '📦';
     default: {
       const id = target.place.id;
       const hit = PLACE_EMOJI.find(([prefix]) => id.startsWith(prefix));
@@ -126,6 +130,8 @@ export interface InspectCardProps {
   onSleep: () => void;
   onWorkTask: (targetId: string) => void;
   onMove: (x: number, y: number) => void;
+  onStore: (itemId: string, count: number) => void;
+  onTake: (itemId: string, count: number) => void;
 }
 
 /**
@@ -133,10 +139,77 @@ export interface InspectCardProps {
  * 场所建筑弹出——「这是什么、能干什么」;图标用该物件素材贴图(pixelated 放大),
  * 缺失回退 emoji。管理员态卡内附快捷操作(go-and-do 合成,未选中角色置灰)。
  */
+/** 单仓存取控件(管理员,须角色站单仓旁;选项=背包∪单仓物品并集) */
+function StorageControls({
+  character,
+  disabled,
+  onStore,
+  onTake,
+}: {
+  character: CharacterView | null;
+  disabled: boolean;
+  onStore: (itemId: string, count: number) => void;
+  onTake: (itemId: string, count: number) => void;
+}): React.JSX.Element | null {
+  const storage = useWorldStore((state) => state.snapshot?.storage ?? {});
+  const [itemId, setItemId] = useState('');
+  const [count, setCount] = useState('1');
+  const options = [...new Set([...Object.keys(character?.backpack ?? {}), ...Object.keys(storage)])];
+  const current = options.includes(itemId) ? itemId : (options[0] ?? '');
+  const countNum = Number.parseInt(count, 10);
+  const n = Number.isInteger(countNum) && countNum >= 1 ? countNum : 0;
+  const inBackpack = character?.backpack[current] ?? 0;
+  const inStorage = storage[current] ?? 0;
+  const label = getItem(current)?.name ?? current;
+  if (options.length === 0) return null;
+  return (
+    <div className="inspect-admin storage-ctl">
+      <span>单仓存取</span>
+      <select
+        value={current}
+        onChange={(e) => setItemId(e.target.value)}
+        title={`背包 ${inBackpack} 份 · 单仓 ${inStorage} 份`}
+      >
+        {options.map((id) => (
+          <option key={id} value={id}>
+            {getItem(id)?.name ?? id}(包{character?.backpack[id] ?? 0}/仓{storage[id] ?? 0})
+          </option>
+        ))}
+      </select>
+      <input
+        type="number"
+        min={1}
+        value={count}
+        onChange={(e) => setCount(e.target.value)}
+        title="存取数量"
+      />
+      <button
+        type="button"
+        className="px-btn"
+        disabled={disabled || current === '' || n < 1 || n > inBackpack}
+        title={n > inBackpack ? `背包只有 ${inBackpack} 份「${label}」` : `存入单仓「${label}」×${n}`}
+        onClick={() => onStore(current, n)}
+      >
+        存入
+      </button>
+      <button
+        type="button"
+        className="px-btn"
+        disabled={disabled || current === '' || n < 1 || n > inStorage}
+        title={n > inStorage ? `单仓只有 ${inStorage} 份「${label}」` : `从单仓取出「${label}」×${n}`}
+        onClick={() => onTake(current, n)}
+      >
+        取出
+      </button>
+    </div>
+  );
+}
+
 export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
   const target = useInspectStore((state) => state.target);
   const close = useInspectStore((state) => state.close);
   const worldParams = useWorldStore((state) => state.params);
+  const snapshot = useWorldStore((state) => state.snapshot);
   const slug = target !== null ? iconSlugOf(target) : null;
   const iconUrl = useIconUrl(slug);
   const [reportState, setReportState] = useState<'idle' | 'sending' | 'done' | 'error'>('idle');
@@ -238,6 +311,21 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
       };
       break;
     }
+    case 'storage': {
+      const storage = snapshot?.storage ?? {};
+      title = '镇核心单仓';
+      tag = '设施';
+      tone = 'place';
+      rows = [
+        ['位置', `(${target.spot.x}, ${target.spot.y})`],
+        ['容积', `${inventoryVolume(storage)} / ${STORAGE_VOLUME_LIMIT}`],
+      ];
+      const stocked = Object.entries(storage)
+        .map(([id, n]) => `${getItem(id)?.name ?? id}×${n}`)
+        .join('、');
+      desc = `全镇共享的建材仓${stocked !== '' ? `。现存: ${stocked}` : '(空)'}。采集所得先存入这里,建造蓝图从仓里扣料;存取须角色站在单仓旁。`;
+      break;
+    }
     default: {
       const place = target.place;
       title = place.name;
@@ -319,6 +407,14 @@ export function InspectCard(props: InspectCardProps): React.JSX.Element | null {
               </button>
             )}
           </div>
+        )}
+        {isAdmin && target.kind === 'storage' && (
+          <StorageControls
+            character={character}
+            disabled={disabled}
+            onStore={props.onStore}
+            onTake={props.onTake}
+          />
         )}
       </div>
     </div>

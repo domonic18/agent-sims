@@ -237,6 +237,11 @@
   color: var(--px-dim);
 }
 
+/* 单仓存取行(下拉+数量+双按钮)宽于卡片,换行防溢出卡片边界(溢出部分点击落画布) */
+.storage-ctl {
+  flex-wrap: wrap;
+}
+
 /* ---- M4e 托管/人设访谈弹窗 ---- */
 .hosting-mode-row {
   display: flex;

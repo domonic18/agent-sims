@@ -94,6 +94,10 @@ export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
     }
   }
 
+  // 镇核心分区(S2批2,仅 survival 生成图):灰石地面示区 + 顶部标注;
+  // 单仓实体(📦)在快照层 syncStorageSpotView 画,不在此静态绘制
+  if (map.townCore !== undefined) drawTownCore(scene, map);
+
   for (const place of map.places) {
     if (place.id === 'park') {
       drawPark(scene, map, place);
@@ -142,6 +146,26 @@ export function drawTownMap(scene: Phaser.Scene, map: TileMapDefinition): void {
   if (decor !== undefined) {
     for (const [bx, by] of decor.bushes) prop(scene, bx, by, TILE_SLUG.bush);
   }
+}
+
+/** 镇核心分区铺装 + 标注(存取/建造的材料枢纽) */
+function drawTownCore(scene: Phaser.Scene, map: TileMapDefinition): void {
+  const core = map.townCore!;
+  for (let y = core.y; y < core.y + core.h; y += 1) {
+    for (let x = core.x; x < core.x + core.w; x += 1) {
+      if (!map.blockedRects.some((r) => inRect(x, y, r))) {
+        ground(scene, x, y, TILE_SLUG.floorBrick);
+      }
+    }
+  }
+  scene.add
+    .text((core.x + core.w / 2) * TILE, core.y * TILE + 2, '镇核心·单仓', {
+      fontSize: '11px',
+      color: '#ffe9b0',
+    })
+    .setOrigin(0.5, 0)
+    .setDepth(20)
+    .setStroke('rgba(0,0,0,0.6)', 3);
 }
 
 /** 池塘:按格位铺 8 向水岸 + 中心水面 */

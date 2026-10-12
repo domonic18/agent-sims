@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   RECIPES,
+  type BuildBlueprintId,
   type CraftRecipeId,
   type HostingMode,
   type RecipeDef,
@@ -54,6 +55,11 @@ export interface WorldStore {
   focusPlaceId: string | null;
   /** 当前世界地图定义(WorldCanvas fetch 后写入;侧面板场所/锚点/商店查此源,不再绑内置图) */
   map: TileMapDefinition | null;
+  /** 地图版本号(setMap 即自增):WorldScene 轮询比对,变化即重载地形(world.map_changed) */
+  mapRevision: number;
+  /** 建造选区草稿(S2批2):null=未在建造;非空时画布点击/拖画下发 build 意图 */
+  buildDraft: { blueprintId: BuildBlueprintId } | null;
+  setBuildDraft: (draft: { blueprintId: BuildBlueprintId } | null) => void;
   /** 世界参数生效全集与规则视图(设置弹窗首开 GET 回填,此后 world.params/rules 事件保鲜) */
   params: Record<string, number> | null;
   rules: WorldRulesView | null;
@@ -99,12 +105,15 @@ export const useWorldStore = create<WorldStore>((set) => ({
   setCameraMode: (mode) => set({ cameraMode: mode }),
   focusPlaceId: null,
   map: null,
+  mapRevision: 0,
+  buildDraft: null,
+  setBuildDraft: (draft) => set({ buildDraft: draft }),
   params: null,
   rules: null,
   recipes: null,
   continuousWork: {},
   setStatus: (status) => set({ status }),
-  setMap: (map) => set({ map }),
+  setMap: (map) => set((state) => ({ map, mapRevision: state.mapRevision + 1 })),
   applySnapshot: (snapshot) =>
     set((state) => {
       const ids = snapshot.characters.map((character) => character.id);

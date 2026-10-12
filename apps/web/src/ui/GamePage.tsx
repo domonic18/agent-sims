@@ -122,10 +122,11 @@ export default function GamePage() {
     }
   };
 
-  // ESC 开关设置弹窗(游客无设置入口,ESC 无效)
+  // ESC 开关设置弹窗(游客无设置入口,ESC 无效);建造选区中 ESC 交画布取消
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !isAdmin) return;
+      if (useWorldStore.getState().buildDraft !== null) return;
       void (modal.kind === 'settings' ? closeSettings() : openSettings());
     };
     window.addEventListener('keydown', onKey);
@@ -325,6 +326,28 @@ export default function GamePage() {
         onMove={(x, y) => {
           if (character !== null) {
             void run({ type: 'move_to', characterId: character.id, x, y });
+          }
+        }}
+        onStore={(itemId, count) => {
+          if (character !== null) {
+            void run({
+              type: 'store_item',
+              characterId: character.id,
+              itemId,
+              count,
+              target: 'storage',
+            });
+          }
+        }}
+        onTake={(itemId, count) => {
+          if (character !== null) {
+            void run({
+              type: 'take_item',
+              characterId: character.id,
+              itemId,
+              count,
+              target: 'storage',
+            });
           }
         }}
       />

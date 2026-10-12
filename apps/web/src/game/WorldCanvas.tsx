@@ -2,20 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import Phaser from 'phaser';
 import { WorldScene } from './WorldScene';
 import { RENDER_DPR } from './text-style';
-import type { TileMapDefinition } from '@sims/shared';
 import { fetchGameAssetRegistry } from './manifest';
-import { getWorldRecipes } from '../net/worldApi';
+import { getWorldMap, getWorldRecipes } from '../net/worldApi';
 import { useWorldStore } from '../store/worldStore';
 import { toErrorMessage } from '../ui/errors';
 import { CameraModeChip } from '../ui/hud/CameraModeChip';
 
 /** Phaser 画布宿主:先取素材 manifest 再创建世界场景(主页面与 /lab 调试台复用) */
-/** 当前世界地图定义(M-L.5:创建向导生成的随机地图与内置地图同源渲染) */
-async function fetchMapDefinition(): Promise<TileMapDefinition> {
-  const res = await fetch('/api/world/map', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`世界地图加载失败(HTTP ${res.status})`);
-  return (await res.json()) as TileMapDefinition;
-}
 
 export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -30,7 +23,7 @@ export function WorldCanvas({ interactive = true }: { interactive?: boolean }) {
     const boot = useWorldStore.getState();
     boot.setBootPhase('world-data');
     boot.setTextureProgress(0);
-    void Promise.all([fetchGameAssetRegistry(), fetchMapDefinition(), getWorldRecipes().catch(() => null)])
+    void Promise.all([fetchGameAssetRegistry(), getWorldMap(), getWorldRecipes().catch(() => null)])
       .then(([registry, map, recipes]) => {
         if (cancelled) return;
         useWorldStore.getState().setBootPhase('textures');

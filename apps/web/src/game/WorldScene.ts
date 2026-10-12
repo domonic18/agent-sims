@@ -17,6 +17,7 @@ import {
 } from './character-view';
 import { buildLightLayer, drawSelectionMarker, FOUNTAIN_RECT, FountainFx } from './effects';
 import { flushDecisionBubbles } from './decision-bubble';
+import { commitBuild, drawBuildGhost, pointerTile, syncConstructionViews, syncStorageSpotView } from './construction-view';
 import { handleMapClick, KeyboardController } from './input';
 import { MAINTENANCE_SPRITES, syncMaintenanceViews } from './maintenance-view';
 import { RESOURCE_SPRITES, syncResourceViews } from './resources-view';
@@ -46,6 +47,22 @@ export class WorldScene extends Phaser.Scene {
   private readonly _maintenanceViews = new Map<string, Phaser.GameObjects.Container>();
   /** 资源节点贴图节点(M-G.6):key = node id */
   private readonly _resourceViews = new Map<string, Phaser.GameObjects.Container>();
+  /** 在建工单脚手架节点(S2批2):key = site id */
+  private readonly _constructionViews = new Map<string, Phaser.GameObjects.Container>();
+  /** 单仓实体标记(S2批2),null=无镇核心世界 */
+  private _storageView: Phaser.GameObjects.Container | null = null;
+  /** 建造幽灵预览层(S2批2):buildDraft 非空时每帧重画绿/红选区 */
+  private _buildGhost: Phaser.GameObjects.Graphics | null = null;
+  /** 建造选区锚点(pointerdown 捕获;fence 拖画起点,place 落点左上) */
+  private _buildAnchor: { x: number; y: number } | null = null;
+  /** 已对齐的地图版本(worldStore.mapRevision):变化即 registry 换图 + 场景重启 */
+  private _mapRevision = -1;
+  /** shutdown 钩子只挂一次(scene 实例跨 restart 复用,events 在 create 期才可用) */
+  private _shutdownHooked = false;
+  /** 命名 resize 处理:ScaleManager 是游戏级,shutdown 须显式摘除防 restart 重复挂 */
+  private readonly _onResize = (size: Phaser.Structs.Size): void => {
+    this._nightOverlay?.setSize(size.width, size.height);
+  };
   /** 当前世界地图(创建时从 registry 取,相机/灯光/点击统一以此为源) */
   private _map: TileMapDefinition | null = null;
   private _nightOverlay: Phaser.GameObjects.Rectangle | null = null;
@@ -122,6 +139,29 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
+    // 场景重启(world.map_changed 重载)会销毁场景内 GameObject:清掉实例持有的
+    // 引用与相机态,否则 diff 渲染会复用已销毁节点;ScaleManager 是游戏级须手动摘除。
+    // events 在 create 期才可用(scene 实例跨 restart 复用,布尔旗标防重复挂)
+    if (!this._shutdownHooked) {
+      this._shutdownHooked = true;
+      this.events.on('shutdown', () => {
+        this._views.clear();
+        this._maintenanceViews.clear();
+        this._resourceViews.clear();
+        this._constructionViews.clear();
+        this._storageView = null;
+        this._nightOverlay = null;
+        this._lightLayer = null;
+        this._selectionMarker = null;
+        this._buildGhost = null;
+        this._buildAnchor = null;
+        this._keyboard = null;
+        this._followId = null;
+        this._appliedMode = null;
+        this._dragStart = null;
+        this.scale.off('resize', this._onResize);
+      });
+    }
     // 场景已渲染(L1):加载罩进入「进入小镇」态(快照到位后由 GamePage 摘罩)
     useWorldStore.getState().setBootPhase('scene-ready');
     this.cameras.main.setBackgroundColor('#8fc978');
@@ -140,6 +180,11 @@ export class WorldScene extends Phaser.Scene {
     });
     this._lightLayer = buildLightLayer(this, map);
     this._selectionMarker = this.add.graphics().setDepth(9);
+    this._buildGhost = this.add.graphics().setDepth(30);
+    this._mapRevision = useWorldStore.getState().mapRevision;
+    // 建造选区:ESC 取消(键盘插件随场景 shutdown 清理,不与 GamePage 设置弹窗键冲突——
+    // 那边在 buildDraft 非空时让行)
+    this.input.keyboard?.on('keydown-ESC', () => useWorldStore.getState().setBuildDraft(null));
     // 喷泉是内置地图广场的固定装饰;生成地图无此物件不绘制
     this._fountain = new FountainFx(map.places.some((p) => p.id === 'park') ? FOUNTAIN_RECT : null);
 
@@ -157,10 +202,14 @@ export class WorldScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       this._dragStart = { px: pointer.x, py: pointer.y, scrollX: cam.scrollX, scrollY: cam.scrollY };
       this._dragMoved = false;
+      // 建造选区:捕获落点锚(fence 拖画起点 / place 占地左上)
+      this._buildAnchor =
+        useWorldStore.getState().buildDraft !== null ? pointerTile(this, pointer) : null;
     });
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
       const start = this._dragStart;
       if (start === null) return;
+      if (useWorldStore.getState().buildDraft !== null) return; // 选区拖拽用于拉围栏条,不平移
       if (
         !this._dragMoved &&
         Math.hypot(pointer.x - start.px, pointer.y - start.py) < DRAG_THRESHOLD_PX
@@ -182,7 +231,14 @@ export class WorldScene extends Phaser.Scene {
     this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       const start = this._dragStart;
       this._dragStart = null;
-      if (start === null || this._dragMoved) return;
+      if (start === null) return;
+      // 建造选区:抬起即落单(place 单击/fence 拖画),不触发点选/移动
+      if (useWorldStore.getState().buildDraft !== null) {
+        commitBuild(this, pointer, this._buildAnchor);
+        this._buildAnchor = null;
+        return;
+      }
+      if (this._dragMoved) return;
       handleMapClick(this, pointer, this._views, this._interactive, map);
     });
     if (this._interactive) {
@@ -229,10 +285,24 @@ export class WorldScene extends Phaser.Scene {
   }
 
   override update(time: number, delta: number): void {
-    const { snapshot, selectedCharacterId, events, cameraMode } = useWorldStore.getState();
+    const { snapshot, selectedCharacterId, events, cameraMode, mapRevision, map, buildDraft } =
+      useWorldStore.getState();
+    // world.map_changed(建造落地/后台改图):registry 换新图后整体重启场景,
+    // create 重读地形/灯光/相机边界与 preload 引用的新纹理
+    if (map !== null && mapRevision !== this._mapRevision) {
+      this._mapRevision = mapRevision;
+      this.registry.set('map', map);
+      this.scene.restart();
+      return;
+    }
     syncCharacterViews(this, this._views, snapshot?.characters ?? [], snapshot?.clock.gameMinutes ?? 0);
     syncMaintenanceViews(this, this._maintenanceViews, snapshot?.maintenance ?? []);
     syncResourceViews(this, this._resourceViews, snapshot?.resources ?? []);
+    syncConstructionViews(this, this._constructionViews, snapshot?.constructionSites ?? []);
+    this._storageView = syncStorageSpotView(this, this._storageView, snapshot?.storageSpot ?? null);
+    if (this._buildGhost !== null) {
+      drawBuildGhost(this._buildGhost, this, buildDraft, this._buildAnchor);
+    }
     this._drainSocialEvents(events);
     flushDecisionBubbles(this, this._views);
     this.anims.globalTimeScale = snapshot?.timeScale ?? 1;

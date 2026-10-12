@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import {
   ACTIVITY_DEFINITIONS,
+  BUILD_BLUEPRINTS,
   CRAFT_RECIPE_IDS,
   CHAT_DAILY_GAINED,
+  getBuildBlueprint,
   PROPERTY_DEFINITIONS,
   SHOP_ITEMS,
   resourceNodeLabel,
+  type BuildBlueprintId,
   type CraftRecipeId,
   type Intent,
   type WorldSnapshotMessage,
@@ -55,6 +58,10 @@ export function IntentForms({
       <div className="intent-group">
         <span className="intent-name">craft</span>
         <CraftForm character={character} onRun={onRun} />
+      </div>
+      <div className="intent-group">
+        <span className="intent-name">build</span>
+        <BuildForm character={character} onRun={onRun} />
       </div>
     </div>
   );
@@ -163,6 +170,7 @@ function ChatForm({
 function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: RunFn }) {
   const [itemId, setItemId] = useState(SHOP_ITEMS[0]?.id ?? '');
   const [count, setCount] = useState('1');
+  const [target, setTarget] = useState<'fridge' | 'storage'>('fridge');
   const countNum = (): number => {
     const parsed = Number.parseInt(count, 10);
     return Number.isInteger(parsed) && parsed >= 1 ? parsed : 0;
@@ -183,6 +191,14 @@ function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: R
         onChange={(e) => setCount(e.target.value)}
         title="存取数量(store/take 用)"
       />
+      <select
+        value={target}
+        onChange={(e) => setTarget(e.target.value as 'fridge' | 'storage')}
+        title="存取去向:冰箱(须在家)/镇核心单仓(survival,须站单仓旁)"
+      >
+        <option value="fridge">→冰箱</option>
+        <option value="storage">→单仓</option>
+      </select>
       <button
         type="button"
         disabled={itemId === ''}
@@ -210,8 +226,8 @@ function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: R
           const n = countNum();
           if (itemId !== '' && n >= 1) {
             void onRun(
-              { type: 'store_item', characterId: character.id, itemId, count: n },
-              `store_item(${itemId},${n})`,
+              { type: 'store_item', characterId: character.id, itemId, count: n, target },
+              `store_item(${itemId},${n},${target})`,
             );
           }
         }}
@@ -225,8 +241,8 @@ function ShopForm({ character, onRun }: { character: CharacterSnapshot; onRun: R
           const n = countNum();
           if (itemId !== '' && n >= 1) {
             void onRun(
-              { type: 'take_item', characterId: character.id, itemId, count: n },
-              `take_item(${itemId},${n})`,
+              { type: 'take_item', characterId: character.id, itemId, count: n, target },
+              `take_item(${itemId},${n},${target})`,
             );
           }
         }}
@@ -362,6 +378,63 @@ function CraftForm({ character, onRun }: { character: CharacterSnapshot; onRun: 
         onClick={() => void onRun({ type: 'craft', characterId: character.id, recipeId }, `craft(${recipeId})`)}
       >
         制作
+      </button>
+    </span>
+  );
+}
+
+/** build 意图调试表单:place 类只发落点(尺寸随蓝图),fence 类发 w/h 条形 */
+function BuildForm({ character, onRun }: { character: CharacterSnapshot; onRun: RunFn }) {
+  const [blueprintId, setBlueprintId] = useState<BuildBlueprintId>(BUILD_BLUEPRINTS[0]!.id);
+  const [x, setX] = useState(String(character.x));
+  const [y, setY] = useState(String(character.y));
+  const [w, setW] = useState('1');
+  const [h, setH] = useState('3');
+  const submit = (): void => {
+    const nx = Number.parseInt(x, 10);
+    const ny = Number.parseInt(y, 10);
+    if (!Number.isInteger(nx) || !Number.isInteger(ny)) return;
+    const blueprint = getBuildBlueprint(blueprintId);
+    if (blueprint === null) return;
+    if (blueprint.kind === 'fence') {
+      const nw = Number.parseInt(w, 10);
+      const nh = Number.parseInt(h, 10);
+      if (!Number.isInteger(nw) || !Number.isInteger(nh) || nw < 1 || nh < 1) return;
+      void onRun(
+        { type: 'build', characterId: character.id, blueprintId, x: nx, y: ny, w: nw, h: nh },
+        `build(${blueprintId},${nx},${ny},${nw}x${nh})`,
+      );
+      return;
+    }
+    void onRun(
+      { type: 'build', characterId: character.id, blueprintId, x: nx, y: ny },
+      `build(${blueprintId},${nx},${ny})`,
+    );
+  };
+  const blueprint = getBuildBlueprint(blueprintId);
+  return (
+    <span className="intent-controls">
+      <select
+        value={blueprintId}
+        onChange={(e) => setBlueprintId(e.target.value as BuildBlueprintId)}
+        title="全量蓝图直发(门槛/单仓/模式门禁由服务端裁决)"
+      >
+        {BUILD_BLUEPRINTS.map((bp) => (
+          <option key={bp.id} value={bp.id}>
+            {bp.label}·{bp.kind === 'fence' ? '条形' : `${bp.size!.w}x${bp.size!.h}`}
+          </option>
+        ))}
+      </select>
+      <input type="number" value={x} onChange={(e) => setX(e.target.value)} title="落点 x" />
+      <input type="number" value={y} onChange={(e) => setY(e.target.value)} title="落点 y" />
+      {blueprint?.kind === 'fence' && (
+        <>
+          <input type="number" value={w} onChange={(e) => setW(e.target.value)} title="条宽 w" />
+          <input type="number" value={h} onChange={(e) => setH(e.target.value)} title="条高 h" />
+        </>
+      )}
+      <button type="button" onClick={submit}>
+        接单
       </button>
     </span>
   );

@@ -77,6 +77,12 @@ export function handleMapClick(
     inspect.open({ kind: 'place', place: building });
     return;
   }
+  // 镇核心分区(S2批2):点单仓区域弹存取卡(存取须角色站单仓旁,卡内操作)
+  if (map.townCore !== undefined && inRect(tx, ty, map.townCore)) {
+    const spot = state.snapshot?.storageSpot ?? { x: tx, y: ty };
+    inspect.open({ kind: 'storage', spot });
+    return;
+  }
   state.focusPlace(null);
   inspect.close();
 

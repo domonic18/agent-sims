@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import type { MaintenanceSpot, PlaceDefinition, ResourceNode } from '@sims/shared';
 import type { FurnitureDefinition } from '@sims/shared';
 
-/** 点选物件(信息卡内容):优先级 角色 > 维护点/资源点 > 家具 > 场所 */
+/** 点选物件(信息卡内容):优先级 角色 > 维护点/资源点 > 家具 > 单仓 > 场所 */
 export type InspectTarget =
   | { kind: 'furniture'; furniture: FurnitureDefinition; placeName: string }
   | { kind: 'resource'; resource: ResourceNode }
   | { kind: 'maintenance'; spot: MaintenanceSpot }
+  | { kind: 'storage'; spot: { x: number; y: number } }
   | { kind: 'place'; place: PlaceDefinition };
 
 interface InspectState {

@@ -7,6 +7,7 @@ import type {
   MemoryPanelResponse,
   MemoryType,
   ModelPulseView,
+  TileMapDefinition,
   UiMetaView,
   WorldEventsHistoryResponse,
   WorldRecipesView,
@@ -60,6 +61,10 @@ export const updateWorldSettings = (update: WorldSettingsUpdate): Promise<WorldS
 /** 每世界配方公开读口(游客免登录;游戏页装载回填 worldStore) */
 export const getWorldRecipes = (): Promise<WorldRecipesView> =>
   jsonRequest<WorldRecipesView>('/api/world/recipes');
+
+/** 当前世界地图定义(建造层合并图:含 built 建筑与围栏;map_changed 后拉取重绘) */
+export const getWorldMap = (): Promise<TileMapDefinition> =>
+  jsonRequest<TileMapDefinition>('/api/world/map');
 
 /** 游戏页模型徽标(公开读):开关与模型名由服务端裁定,失败静默由调用方处理 */
 export const getUiMeta = (): Promise<UiMetaView> =>

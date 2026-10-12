@@ -11,6 +11,7 @@ import {
   type WorldPresenceMessage,
   type WorldSnapshotMessage,
 } from '@sims/shared';
+import { getWorldMap } from './worldApi';
 import { useAuthStore } from '../store/authStore';
 import { useWorldStore } from '../store/worldStore';
 import { pushDecisionMessage } from '../game/decision-bubble';
@@ -29,6 +30,28 @@ const {
 } = useWorldStore.getState();
 
 let worldSocket: Socket | null = null;
+
+/** 建造落地后拉合并图并写入 worldStore(mapRevision 自增驱动 WorldScene 重绘);
+ * 短窗多事件去抖:在途即挂起,完成后补拉最新一次 */
+let mapRefreshBusy = false;
+let mapRefreshPending = false;
+function refreshWorldMap(): void {
+  if (mapRefreshBusy) {
+    mapRefreshPending = true;
+    return;
+  }
+  mapRefreshBusy = true;
+  getWorldMap()
+    .then((map) => useWorldStore.getState().setMap(map))
+    .catch(() => {})
+    .finally(() => {
+      mapRefreshBusy = false;
+      if (mapRefreshPending) {
+        mapRefreshPending = false;
+        refreshWorldMap();
+      }
+    });
+}
 
 /**
  * 连接世界同步通道(arch §7):连接即收全量快照,此后每 tick 快照覆盖,
@@ -67,6 +90,8 @@ export function connectWorld(): Socket {
       applyRecipes(message.event.recipes);
     } else if (message.event.type === 'character.hosting_changed') {
       applyHosting(message.event.characterId, message.event.hosted, message.event.mode);
+    } else if (message.event.type === 'world.map_changed') {
+      refreshWorldMap();
     }
   });
   return socket;

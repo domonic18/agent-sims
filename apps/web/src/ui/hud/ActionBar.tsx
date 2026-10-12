@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  constructionBlueprints,
   countWorkTargets,
   getActivityDefinition,
+  getItem,
   GATHER_TASKS,
   isGatherTask,
   MAINTENANCE_TASKS,
   type ActivityDefinition,
+  type BuildBlueprint,
   type WorkTaskId,
   type WorldSnapshotMessage,
 } from '@sims/shared';
 import { SidePanel } from '../SidePanel';
 import { findPlaceByRef, type CharacterView } from '../side-panel/place';
 import type { GoAndDoPending, RunIntent } from '../side-panel/useGoAndDo';
+import { pushToast } from '../../store/toastStore';
 import { useWorldStore } from '../../store/worldStore';
 import { activityChip } from './activityChip';
 
@@ -118,6 +122,8 @@ export function ActionBar({
   startWorkTask,
 }: ActionBarProps): JSX.Element | null {
   const map = useWorldStore((state) => state.map);
+  const buildDraft = useWorldStore((state) => state.buildDraft);
+  const setBuildDraft = useWorldStore((state) => state.setBuildDraft);
   const [invOpen, setInvOpen] = useState(false);
 
   if (character === null || snapshot === null) return null;
@@ -152,6 +158,41 @@ export function ActionBar({
       onPick: () => void startWorkTask(task),
     };
   };
+
+  // 建造菜单(S2批2,仅镇核心世界):蓝图不合格置灰;选定进选区模式(画布点击/拖画落单)
+  const storage = snapshot.storage;
+  const buildItem = (bp: BuildBlueprint) => {
+    const knowledgeOk = character.knowledge >= bp.requiredKnowledge;
+    const afford =
+      bp.kind === 'fence'
+        ? (storage['wood'] ?? 0) >= 1
+        : Object.entries(bp.materials).every(([id, need]) => (storage[id] ?? 0) >= need);
+    const mats = Object.entries(bp.materials)
+      .map(([id, need]) => `${getItem(id)?.name ?? id}×${need}`)
+      .join(' ');
+    return {
+      key: bp.id,
+      text: bp.kind === 'fence' ? `${bp.label}(拖画条形)` : `${bp.label} ${bp.size!.w}×${bp.size!.h}`,
+      hint:
+        bp.kind === 'fence'
+          ? `每格扣 ${mats} · 工时 ${bp.fenceWork!.baseMinutes}+${bp.fenceWork!.minutesPerCell}/格 · ${bp.fenceWork!.wagePerCell}币/格 · 知识≥${bp.requiredKnowledge}`
+          : `单仓扣 ${mats} · 工时 ${bp.durationMinutes}分 · ${bp.wage}币 · 知识≥${bp.requiredKnowledge}`,
+      disabled: dead || !knowledgeOk || !afford,
+      onPick: () => {
+        setBuildDraft({ blueprintId: bp.id });
+        pushToast(
+          true,
+          bp.kind === 'fence'
+            ? `建造${bp.label}:在画布拖画条形,ESC 取消`
+            : `建造${bp.label}:单击画布落 ${bp.size!.w}×${bp.size!.h} 占地,ESC 取消`,
+        );
+      },
+    };
+  };
+  const buildMenuItems =
+    snapshot.storageSpot !== null
+      ? constructionBlueprints(snapshot.gameType).map((bp) => buildItem(bp))
+      : [];
 
   return (
     <div className="px-box hud-actions">
@@ -216,6 +257,24 @@ export function ActionBar({
           disabled={dead}
           items={(Object.keys(MAINTENANCE_TASKS) as WorkTaskId[]).map((task) => taskItem(task))}
         />
+        {buildMenuItems.length > 0 && (
+          <Menu
+            label="🏗 建造 ▾"
+            title="选择建造蓝图(材料从镇核心单仓扣除)"
+            disabled={dead}
+            items={buildMenuItems}
+          />
+        )}
+        {buildDraft !== null && (
+          <button
+            type="button"
+            className="px-btn on"
+            title="点击取消建造选区(ESC 同效)"
+            onClick={() => setBuildDraft(null)}
+          >
+            🏗 选区中…
+          </button>
+        )}
         <button
           type="button"
           className={`px-btn${invOpen ? ' on' : ''}`}

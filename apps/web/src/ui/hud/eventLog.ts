@@ -48,6 +48,10 @@ const CATEGORY_OF: Record<WorldEvent['type'], EventLogCategory> = {
   'work_task.cancelled': 'work',
   'work_task.completed': 'work',
   'craft.completed': 'work',
+  'construction.placed': 'work',
+  'construction.completed': 'work',
+  'construction.cancelled': 'work',
+  'world.map_changed': 'world',
   'social.chat': 'social',
   'social.encounter': 'social',
   'friendship.formed': 'social',
@@ -258,6 +262,36 @@ export function eventLogLabel(event: WorldEvent, nameOf: (id: string) => string)
         characterId: event.characterId,
       };
     }
+    case 'construction.placed':
+      return {
+        icon: '🏗️',
+        text: `${nameOf(event.characterId)} 接单施工(${event.blueprintId})`,
+        tone: 'info',
+        characterId: event.characterId,
+      };
+    case 'construction.completed': {
+      const who = nameOf(event.characterId);
+      return {
+        icon: '✅',
+        text: event.placeId !== null ? `${who} 建成 ${event.placeId},入账 +${event.pay}币` : `${who} 建成围栏,入账 +${event.pay}币`,
+        tone: 'good',
+        characterId: event.characterId,
+      };
+    }
+    case 'construction.cancelled':
+      return {
+        icon: '⚠️',
+        text: `${nameOf(event.characterId)} 施工中断,材料退回单仓`,
+        tone: 'bad',
+        characterId: event.characterId,
+      };
+    case 'world.map_changed':
+      return {
+        icon: '🗺️',
+        text: '小镇布局已更新',
+        tone: 'info',
+        characterId: null,
+      };
     case 'sleep.debt_applied':
       return {
         icon: '😪',
