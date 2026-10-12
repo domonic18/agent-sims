@@ -4,7 +4,7 @@
  * 发布门禁=checkLayout 零硬错误。Cmd/Ctrl+S 保存,Delete 删选中,Esc 取消选中。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { App as AntdApp, Badge, Button, Divider, Input, Tabs, Tooltip, Typography } from 'antd';
+import { App as AntdApp, Badge, Button, Divider, Input, Segmented, Tabs, Tooltip, Typography } from 'antd';
 import {
   ArrowLeftOutlined,
   ExperimentOutlined,
@@ -23,7 +23,7 @@ import { LayerPanel } from './LayerPanel';
 import { HealthPanel } from './HealthPanel';
 import { checkLayout } from './health';
 import { getAtPath } from './history';
-import { selectionPath, useEditor } from './editorStore';
+import { selectionPath, useEditor, type EditorTool } from './editorStore';
 
 export interface MapEditorLaunch {
   mapId: string | null;
@@ -42,6 +42,18 @@ const DELETE_LABELS = {
   decor: '装饰',
 } as const;
 
+/** 数字热键 → 工具(与 ToolPanel.TOOL_HOTKEYS 提示一致) */
+const HOTKEY_TOOLS: Record<string, EditorTool> = {
+  '1': 'select',
+  '2': 'pan',
+  '3': 'place',
+  '4': 'path',
+  '5': 'fence',
+  '6': 'resource',
+  '7': 'decor',
+  '8': 'blocked',
+};
+
 export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; onBack: () => void }) {
   const { message, modal } = AntdApp.useApp();
   const name = useEditor((s) => s.name);
@@ -51,6 +63,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
   const redoCount = useEditor((s) => s.history.redo.length);
   const showGrid = useEditor((s) => s.showGrid);
   const showLabels = useEditor((s) => s.showLabels);
+  const viewMode = useEditor((s) => s.viewMode);
   const [agentOpen, setAgentOpen] = useState(false);
   const loadedRef = useRef(false);
 
@@ -141,6 +154,11 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
         return;
       }
       if (typing) return;
+      const hotkeyTool = HOTKEY_TOOLS[e.key];
+      if (hotkeyTool !== undefined) {
+        useEditor.getState().setTool(hotkeyTool);
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         deleteSelection();
@@ -195,6 +213,15 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
         <Button size="small" onClick={() => useEditor.getState().toggleLabels()} type={showLabels ? 'default' : 'dashed'}>
           名称
         </Button>
+        <Segmented
+          size="small"
+          value={viewMode}
+          onChange={(v) => useEditor.getState().setViewMode(v as 'semantic' | 'real')}
+          options={[
+            { label: '语义视图', value: 'semantic' },
+            { label: '效果视图', value: 'real' },
+          ]}
+        />
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <Tooltip title="与 AI 对话生成/修改地图,改动实时进画布且可撤销">
             <Button size="small" icon={<ExperimentOutlined />} onClick={() => setAgentOpen(true)}>
@@ -254,7 +281,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
         </div>
       </div>
       <Typography.Text type="secondary" style={{ fontSize: 11, marginTop: 4 }}>
-        选择工具:点选对象、拖已选场所平移;矩形工具拖画;滚轮缩放、空格/中键拖拽平移;Cmd/Ctrl+S 保存、Cmd/Ctrl+Z 撤销(Shift 重做)、Delete 删除选中、Esc 取消选中
+        工具热键 1-8;效果视图按游戏贴图渲染实际外观;滚轮缩放、抓手/空格/中键拖拽平移;Cmd/Ctrl+S 保存、Cmd/Ctrl+Z 撤销(Shift 重做)、Delete 删除选中、Esc 取消选中
       </Typography.Text>
       <MapAgentSidebar open={agentOpen} onClose={() => setAgentOpen(false)} />
     </div>

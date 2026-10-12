@@ -1,12 +1,14 @@
 /**
- * 编辑器画布(批B):复用 renderMapDefinition 语义渲染+交互层。
- * 滚轮缩放(光标锚点)/空格或中键平移;按工具分发: 选择命中+拖移场所、
- * 矩形拖画(场所/路径/围栏/堵塞)、单击放置(资源/装饰)。拖拽过程走
+ * 编辑器画布(批B):语义/贴图双渲染+交互层。
+ * 滚轮缩放(光标锚点)/抓手工具、空格或中键平移;按工具分发: 选择命中+拖移
+ * 场所、矩形拖画(场所/路径/围栏/堵塞)、单击放置(资源/装饰)。拖拽过程走
  * applyLive 预览、松手 record 单条命令;离散放置走 commit。
+ * 效果视图走 mapRenderReal(游戏贴图),素材异步装载完成后重绘。
  */
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { PlaceDefinition, ResourceNodeSeed, TileMapDefinition } from '@sims/shared';
 import { renderMapDefinition } from '../mapRender';
+import { ensureTownRenderAssets, renderTownMapReal } from '../mapRenderReal';
 import { getAtPath } from './history';
 import { KIND_PRESETS } from './kinds';
 import { nextPlaceId, selectionPath, useEditor, type Selection } from './editorStore';
@@ -84,12 +86,26 @@ export function EditorCanvas() {
   const hidden = useEditor((s) => s.hidden);
   const showGrid = useEditor((s) => s.showGrid);
   const showLabels = useEditor((s) => s.showLabels);
+  const viewMode = useEditor((s) => s.viewMode);
 
   const [draft, setDraft] = useState<DraftRect | null>(null);
+  const [assetsVersion, setAssetsVersion] = useState(0);
   const spaceRef = useRef(false);
   const panRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const moveRef = useRef<{ index: number; start: TilePos; orig: PlaceDefinition; dx: number; dy: number } | null>(null);
   const [panning, setPanning] = useState(false);
+
+  // 效果视图:按当前文档装载贴图素材,有新图落地才 bump 重绘(失败静默降级色块)
+  useEffect(() => {
+    if (viewMode !== 'real') return;
+    let alive = true;
+    void ensureTownRenderAssets(doc).then((loaded) => {
+      if (alive && loaded) setAssetsVersion((v) => v + 1);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [viewMode, doc]);
 
   // 绘制(可见层过滤后交给共享渲染;叠加草稿与选区)
   useEffect(() => {
@@ -122,7 +138,11 @@ export function EditorCanvas() {
         blockedRects: hidden.blocked ? [] : doc.blockedRects,
         townCore: hidden.townCore ? undefined : doc.townCore,
       };
-      renderMapDefinition(ctx, visible, { tile: view.tile, grid: showGrid, labels: showLabels });
+      if (viewMode === 'real') {
+        renderTownMapReal(ctx, visible, { tile: view.tile, grid: showGrid, labels: showLabels });
+      } else {
+        renderMapDefinition(ctx, visible, { tile: view.tile, grid: showGrid, labels: showLabels });
+      }
 
       if (draft !== null) {
         const r = draftRectOf(draft);
@@ -144,7 +164,7 @@ export function EditorCanvas() {
     const observer = new ResizeObserver(draw);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [doc, view, tool, selection, hidden, showGrid, showLabels, draft]);
+  }, [doc, view, tool, selection, hidden, showGrid, showLabels, draft, viewMode, assetsVersion]);
 
   // 滚轮缩放(光标锚点;React 根节点 wheel 被动化,须原生监听才能 preventDefault)
   useEffect(() => {
@@ -209,7 +229,7 @@ export function EditorCanvas() {
 
   const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>): void => {
     e.currentTarget.setPointerCapture(e.pointerId);
-    if (e.button === 1 || (e.button === 0 && spaceRef.current)) {
+    if (e.button === 1 || (e.button === 0 && (spaceRef.current || tool === 'pan'))) {
       panRef.current = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy };
       setPanning(true);
       return;
@@ -367,7 +387,7 @@ export function EditorCanvas() {
     }
   };
 
-  const cursor = panning ? 'grabbing' : tool === 'select' ? 'default' : 'crosshair';
+  const cursor = panning ? 'grabbing' : tool === 'pan' ? 'grab' : tool === 'select' ? 'default' : 'crosshair';
 
   return (
     <div

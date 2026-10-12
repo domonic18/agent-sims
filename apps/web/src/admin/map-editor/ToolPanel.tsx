@@ -1,21 +1,46 @@
 /**
  * 工具面板(批B):工具切换+按工具的子选项(场所 kind 调色板/装饰组/资源种),
- * 附操作提示。全部状态走 editorStore,画布直接读取。
+ * 附操作提示。全部状态走 editorStore,画布直接读取。工具用图标网格呈现
+ * (悬浮提示带数字热键),抓手平移供纯查看。
  */
-import { Segmented, Typography } from 'antd';
+import {
+  BgColorsOutlined,
+  BorderOuterOutlined,
+  DragOutlined,
+  GoldOutlined,
+  HomeOutlined,
+  NodeIndexOutlined,
+  SelectOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
+import { Segmented, Tooltip, Typography } from 'antd';
+import type { ReactElement } from 'react';
 import type { ResourceNode } from '@sims/shared';
 import { useEditor, type EditorTool } from './editorStore';
 import { KIND_ORDER, KIND_PRESETS, kindColor } from './kinds';
 
-const TOOLS: { value: EditorTool; label: string }[] = [
-  { value: 'select', label: '选择' },
-  { value: 'place', label: '场所' },
-  { value: 'path', label: '路径' },
-  { value: 'fence', label: '围栏' },
-  { value: 'resource', label: '资源' },
-  { value: 'decor', label: '装饰' },
-  { value: 'blocked', label: '堵塞' },
+const TOOLS: { value: EditorTool; label: string; icon: ReactElement }[] = [
+  { value: 'select', label: '选择', icon: <SelectOutlined /> },
+  { value: 'pan', label: '抓手', icon: <DragOutlined /> },
+  { value: 'place', label: '场所', icon: <HomeOutlined /> },
+  { value: 'path', label: '路径', icon: <NodeIndexOutlined /> },
+  { value: 'fence', label: '围栏', icon: <BorderOuterOutlined /> },
+  { value: 'resource', label: '资源', icon: <GoldOutlined /> },
+  { value: 'decor', label: '装饰', icon: <BgColorsOutlined /> },
+  { value: 'blocked', label: '堵塞', icon: <StopOutlined /> },
 ];
+
+/** 数字热键(与 MapEditorPanel 全局 keydown 一致) */
+export const TOOL_HOTKEYS: Readonly<Record<EditorTool, string>> = {
+  select: '1',
+  pan: '2',
+  place: '3',
+  path: '4',
+  fence: '5',
+  resource: '6',
+  decor: '7',
+  blocked: '8',
+};
 
 const DECOR_GROUPS = [
   { value: 'trees', label: '树' },
@@ -36,6 +61,7 @@ const RESOURCE_KINDS: { value: ResourceNode['kind']; label: string }[] = [
 
 const HINTS: Record<EditorTool, string> = {
   select: '点选对象;再点一次已选场所可拖拽整体平移(家具随动),Delete 删除',
+  pan: '拖拽平移画布纯查看(滚轮缩放;任意工具下中键/按住空格同样可拖)',
   place: '在画布拖画占地(或单击落默认尺寸);门洞与入口自动补在底边',
   path: '拖画铺装矩形(主街/广场)',
   fence: '拖画围栏矩形',
@@ -56,7 +82,34 @@ export function ToolPanel() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <Segmented block options={TOOLS} value={tool} onChange={(v) => setTool(v as EditorTool)} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+        {TOOLS.map(({ value, label, icon }) => {
+          const active = tool === value;
+          return (
+            <Tooltip key={value} title={`${label}(${TOOL_HOTKEYS[value]})`}>
+              <button
+                type="button"
+                onClick={() => setTool(value)}
+                aria-label={label}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '6px 0',
+                  fontSize: 15,
+                  cursor: 'pointer',
+                  borderRadius: 4,
+                  border: active ? '1px solid #ffcd75' : '1px solid #2b3157',
+                  background: active ? 'rgba(255,205,117,0.14)' : 'transparent',
+                  color: active ? '#ffcd75' : '#94b0c2',
+                }}
+              >
+                {icon}
+              </button>
+            </Tooltip>
+          );
+        })}
+      </div>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         {HINTS[tool]}
       </Typography.Text>

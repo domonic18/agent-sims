@@ -20,12 +20,16 @@ import {
 
 export type EditorTool =
   | 'select'
+  | 'pan'
   | 'place'
   | 'path'
   | 'fence'
   | 'resource'
   | 'decor'
   | 'blocked';
+
+/** 画布视图模式:semantic=语义色块(编辑),real=游戏贴图效果(所见即所玩) */
+export type EditorViewMode = 'semantic' | 'real';
 
 /** 点状装饰组([x,y] 元组数组,单击放格;props/flats 复杂对象 v1 不编辑) */
 export type DecorPointGroup = 'trees' | 'lamps' | 'flowers' | 'bushes';
@@ -66,6 +70,7 @@ interface EditorState {
   resourceKind: ResourceNode['kind'];
   selection: Selection | null;
   view: Viewport;
+  viewMode: EditorViewMode;
   showGrid: boolean;
   showLabels: boolean;
   hidden: Record<Exclude<LayerKey, 'grid'>, boolean>;
@@ -79,6 +84,7 @@ interface EditorState {
   setResourceKind(kind: ResourceNode['kind']): void;
   select(selection: Selection | null): void;
   setView(patch: Partial<Viewport>): void;
+  setViewMode(mode: EditorViewMode): void;
   toggleGrid(): void;
   toggleLabels(): void;
   toggleLayer(key: Exclude<LayerKey, 'grid'>): void;
@@ -132,6 +138,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   resourceKind: 'berry_bush',
   selection: null,
   view: { tile: 24, ox: 0, oy: 0 },
+  viewMode: 'semantic',
   showGrid: true,
   showLabels: true,
   hidden: {
@@ -163,6 +170,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setResourceKind: (resourceKind) => set({ resourceKind }),
   select: (selection) => set({ selection }),
   setView: (patch) => set((s) => ({ view: { ...s.view, ...patch } })),
+  setViewMode: (viewMode) => set({ viewMode }),
   toggleGrid: () => set((s) => ({ showGrid: !s.showGrid })),
   toggleLabels: () => set((s) => ({ showLabels: !s.showLabels })),
   toggleLayer: (key) => set((s) => ({ hidden: { ...s.hidden, [key]: !s.hidden[key] } })),
