@@ -79,12 +79,20 @@ export interface MapAgentThreadListResponse {
   items: MapAgentThreadItem[];
 }
 
+/** write_todos 执行计划项(状态机 pending → in_progress → completed) */
+export interface MapAgentTodo {
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+}
+
 export interface MapAgentThreadDetail {
   threadId: string;
   mapId: string | null;
   title: string;
   /** LangChainMessage 投影(assistant-ui 可累积形状) */
   messages: Record<string, unknown>[];
+  /** 线程执行计划快照(checkpointer state.todos;null=无计划) */
+  todos: MapAgentTodo[] | null;
 }
 
 /** POST /threads/:id/runs 请求体(SSE 响应) */

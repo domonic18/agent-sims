@@ -12,7 +12,7 @@ import { mapAgentThreads, maps } from '../db/schema/index.js';
 import { recordTokenUsage } from '../llm/usage.js';
 import { getMapAgent } from '../map-agent/index.js';
 import { beginThreadDoc, endThreadDoc } from '../map-agent/doc-store.js';
-import { serializeMessage, serializeUpdates, type CollectedUsage } from '../map-agent/serialize.js';
+import { serializeMessage, serializeTodos, serializeUpdates, type CollectedUsage } from '../map-agent/serialize.js';
 
 const createSchema = z.object({ mapId: z.string().uuid().nullish() });
 
@@ -59,16 +59,18 @@ export function registerMapAgentRoutes(app: FastifyInstance, handle: DbHandle): 
     const [row] = await handle.db.select().from(mapAgentThreads).where(eq(mapAgentThreads.id, id)).limit(1);
     if (!row) return await reply.code(404).send({ error: '线程不存在' });
     let messages: Record<string, unknown>[] = [];
+    let todos: unknown = null;
     try {
       const agent = await getMapAgent(handle);
       const state = await agent.getState({ configurable: { thread_id: id } });
       const history = (state.values as { messages?: unknown[] }).messages ?? [];
       messages = history.map(serializeMessage);
+      todos = serializeTodos((state.values as { todos?: unknown }).todos);
     } catch (err) {
       // checkpointer 未就绪/模型未配置时线程列表仍可用,历史降级为空
       request.log.warn({ err }, 'map-agent 历史加载降级');
     }
-    return await reply.send({ threadId: row.id, mapId: row.mapId, title: row.title, messages });
+    return await reply.send({ threadId: row.id, mapId: row.mapId, title: row.title, messages, todos });
   });
 
   app.delete('/api/admin/map-agent/threads/:id', async (request, reply) => {

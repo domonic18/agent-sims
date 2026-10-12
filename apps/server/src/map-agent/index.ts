@@ -4,6 +4,7 @@
  */
 import { Pool } from 'pg';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
+import { todoListMiddleware } from 'langchain';
 import { createDeepAgent } from 'deepagents';
 import type { DbHandle } from '../db/client.js';
 import { env } from '../config/env.js';
@@ -39,6 +40,9 @@ export async function getMapAgent(handle: DbHandle): Promise<MapAgent> {
       const agent = createDeepAgent({
         model,
         tools: createMapTools(),
+        // 复杂任务执行计划(write_todos 工具):todos 进 graph state,
+        // 经 updates SSE 通道透传给前端执行计划条
+        middleware: [todoListMiddleware()],
         systemPrompt: buildMapAgentSystemPrompt(),
         checkpointer,
         name: 'map-agent',

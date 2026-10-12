@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { serializeMessage, serializeUpdates, type CollectedUsage } from './serialize.js';
+import { serializeMessage, serializeTodos, serializeUpdates, type CollectedUsage } from './serialize.js';
 
 describe('serializeMessage', () => {
   it('投影 human 消息(type/content/id)', () => {
@@ -43,5 +43,29 @@ describe('serializeUpdates', () => {
     expect(usage.completionTokens).toBe(3);
     expect(serializeUpdates({ __end__: undefined } as unknown as Record<string, unknown>, usage).__end__).toBeUndefined();
     expect(serializeUpdates('nope', usage)).toEqual({});
+  });
+
+  it('todos 状态随非消息 patch 原样透传(前端执行计划数据源)', () => {
+    const usage: CollectedUsage = { promptTokens: 0, completionTokens: 0 };
+    const todos = [{ content: '生成地图', status: 'completed' }, { content: '修复体检', status: 'in_progress' }];
+    const out = serializeUpdates({ tools: { todos, messages: [{ getType: () => 'tool', content: 'ok' }] } }, usage);
+    expect((out.tools as { todos: unknown }).todos).toEqual(todos);
+  });
+});
+
+describe('serializeTodos', () => {
+  it('合法清单投影;空/畸形返回 null', () => {
+    expect(
+      serializeTodos([
+        { content: '生成地图', status: 'completed' },
+        { content: '修复体检警告', status: 'in_progress' },
+      ]),
+    ).toEqual([
+      { content: '生成地图', status: 'completed' },
+      { content: '修复体检警告', status: 'in_progress' },
+    ]);
+    expect(serializeTodos([])).toBeNull();
+    expect(serializeTodos(null)).toBeNull();
+    expect(serializeTodos([{ content: '', status: 'pending' }, { content: '坏', status: 'x' }, 'nope'])).toBeNull();
   });
 });

@@ -45,6 +45,22 @@ export interface CollectedUsage {
   completionTokens: number;
 }
 
+export type SerializedTodo = { content: string; status: 'pending' | 'in_progress' | 'completed' };
+
+/** write_todos 状态 → 前端执行计划条载荷(空/畸形返回 null,前端视为无计划) */
+export function serializeTodos(todos: unknown): SerializedTodo[] | null {
+  if (!Array.isArray(todos)) return null;
+  const out: SerializedTodo[] = [];
+  for (const t of todos) {
+    if (typeof t !== 'object' || t === null) continue;
+    const { content, status } = t as { content?: unknown; status?: unknown };
+    if (typeof content !== 'string' || content === '') continue;
+    if (status !== 'pending' && status !== 'in_progress' && status !== 'completed') continue;
+    out.push({ content, status });
+  }
+  return out.length > 0 ? out : null;
+}
+
 /** updates 帧载荷({node: {messages: [...]}})提取 usage 并投影为可转发 JSON */
 export function serializeUpdates(updates: unknown, usage: CollectedUsage): Record<string, unknown> {
   if (typeof updates !== 'object' || updates === null) return {};
