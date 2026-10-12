@@ -39,6 +39,8 @@ interface ChatTask {
   characterId?: string | null;
   maxTokens?: number;
   temperature?: number;
+  /** anthropic 轨显式关 thinking(思考型模型默认开启,评审类低延迟场景用) */
+  thinking?: 'disabled';
 }
 
 /** 四槽位唯一模型出口:按槽位配置分发协议适配器,每次调用落 token_usage。
@@ -125,7 +127,12 @@ export class ModelRouter {
             ? await chatViaAnthropic(
                 cfg,
                 messages,
-                { maxTokens: maxTokens ?? undefined, temperature: task.temperature, timeoutMs: env.LLM_TIMEOUT_MS },
+                {
+                  maxTokens: maxTokens ?? undefined,
+                  temperature: task.temperature,
+                  timeoutMs: env.LLM_TIMEOUT_MS,
+                  ...(task.thinking !== undefined ? { thinking: task.thinking } : {}),
+                },
                 this.fetchImpl,
               )
             : cfg.protocol === 'openai'

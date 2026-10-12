@@ -71,6 +71,8 @@ export interface LlmCallOptions {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  /** anthropic 轨显式关 thinking(思考型模型默认开启,与延迟敏感场景冲突时用) */
+  thinking?: 'disabled';
 }
 
 export class LlmError extends Error {

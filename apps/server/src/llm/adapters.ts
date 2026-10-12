@@ -156,6 +156,7 @@ export async function chatViaAnthropic(
       ...(system !== '' ? { system } : {}),
       messages: serializeAnthropicMessages(messages),
       ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+      ...(opts.thinking === 'disabled' ? { thinking: { type: 'disabled' } } : {}),
     },
     opts.timeoutMs,
     fetchImpl,
@@ -163,7 +164,11 @@ export async function chatViaAnthropic(
     content?: Array<{ type?: string; text?: string }>;
     usage?: { input_tokens?: number; output_tokens?: number };
   };
-  const content = (data.content ?? [])
+  // bigmodel 等网关有「HTTP 200 + 错误正文」形态(无 content 数组),须显式识别而非静默当成空回包
+  if (!Array.isArray(data.content)) {
+    throw new LlmError(cfg.slot, `网关返回错误: ${JSON.stringify(data).slice(0, 300)}`);
+  }
+  const content = data.content
     .filter((block) => block.type === 'text')
     .map((block) => block.text ?? '')
     .join('');

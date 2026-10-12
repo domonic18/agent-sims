@@ -112,6 +112,25 @@ describe('chatViaAnthropic', () => {
     const body = (await calls[0]!.json()) as { max_tokens: number };
     expect(body.max_tokens).toBe(1024);
   });
+
+  it('HTTP 200 + 网关错误正文(无 content 数组)按 LlmError 抛出', async () => {
+    const { impl } = mockFetch(200, { code: 500, msg: '404 NOT_FOUND', success: false });
+    await expect(
+      chatViaAnthropic(cfg('anthropic'), [{ role: 'user', content: 'x' }], { maxTokens: 64 }, impl),
+    ).rejects.toThrow(LlmError);
+  });
+
+  it('thinking=disabled 请求体带 thinking 关闭参数', async () => {
+    const { impl, calls } = mockFetch(200, { content: [{ type: 'text', text: 'ok' }], usage: {} });
+    await chatViaAnthropic(
+      cfg('anthropic'),
+      [{ role: 'user', content: 'x' }],
+      { maxTokens: 64, thinking: 'disabled' },
+      impl,
+    );
+    const body = (await calls[0]!.json()) as { thinking?: { type: string } };
+    expect(body.thinking).toEqual({ type: 'disabled' });
+  });
 });
 
 describe('chatViaSystemOne', () => {
