@@ -110,22 +110,41 @@ type AdminTab =
   | 'prompts'
   | 'settings';
 
+/** 菜单规范: 条目一律四字命名,按功能五组(运营/模型/素材/观测/系统) */
 const NAV_ITEMS: MenuProps['items'] = [
   {
     type: 'group',
     label: '运营',
     children: [
       { key: 'world', icon: <GlobalOutlined />, label: '世界管理' },
-      { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
+      { key: 'maps', icon: <EnvironmentOutlined />, label: '地图管理' },
       { key: 'params', icon: <ControlOutlined />, label: '世界参数' },
       { key: 'recipes', icon: <ExperimentOutlined />, label: '世界配方' },
-      { key: 'maps', icon: <EnvironmentOutlined />, label: '地图库' },
-      { key: 'usage', icon: <BarChartOutlined />, label: 'Token 用量' },
+    ],
+  },
+  {
+    type: 'group',
+    label: '模型',
+    children: [
+      { key: 'models', icon: <RobotOutlined />, label: '模型配置' },
+      { key: 'prompts', icon: <ProfileOutlined />, label: '提示词库' },
+    ],
+  },
+  {
+    type: 'group',
+    label: '素材',
+    children: [
       { key: 'assets', icon: <PictureOutlined />, label: '素材管理' },
-      { key: 'anim', icon: <PlayCircleOutlined />, label: '动画演示器' },
+      { key: 'anim', icon: <PlayCircleOutlined />, label: '动画预览' },
+    ],
+  },
+  {
+    type: 'group',
+    label: '观测',
+    children: [
       { key: 'traces', icon: <NodeIndexOutlined />, label: '决策追踪' },
+      { key: 'usage', icon: <BarChartOutlined />, label: '用量统计' },
       { key: 'logs', icon: <FileTextOutlined />, label: '运行日志' },
-      { key: 'prompts', icon: <ProfileOutlined />, label: '提示词' },
     ],
   },
   {
@@ -215,13 +234,13 @@ function AdminShell() {
     },
     params: { title: '世界参数', desc: '全局数值与系统配置', render: () => <SysConfigPanel /> },
     recipes: { title: '世界配方', desc: '采集·制作·出售链路配方', render: () => <RecipesPanel /> },
-    maps: { title: '地图库', desc: '自定义地图管理·体检发布', render: () => <MapLibraryPanel /> },
-    usage: { title: 'Token 用量', desc: '模型消耗统计与调用流水', render: () => <TokenUsagePanel /> },
+    maps: { title: '地图管理', desc: '自定义地图管理·体检发布', render: () => <MapLibraryPanel /> },
+    usage: { title: '用量统计', desc: '模型消耗统计与调用流水', render: () => <TokenUsagePanel /> },
     assets: { title: '素材管理', desc: '素材库分类·审核与发布', render: () => <AssetsPanel /> },
-    anim: { title: '动画演示器', desc: '角色动画帧预览', render: () => <AnimPreviewPanel /> },
+    anim: { title: '动画预览', desc: '角色动画帧预览', render: () => <AnimPreviewPanel /> },
     traces: { title: '决策追踪', desc: 'Agent 决策链与 want 生命周期', render: () => <AgentTracePanel /> },
     logs: { title: '运行日志', desc: '技术与审计日志检索', render: () => <LogsPanel /> },
-    prompts: { title: '提示词', desc: '当前生效的提示词模板', render: () => <PromptsPanel /> },
+    prompts: { title: '提示词库', desc: '当前生效的提示词模板', render: () => <PromptsPanel /> },
     settings: { title: '账户安全', desc: '登录密码管理', render: () => <SettingsPanel username={username} /> },
   };
 

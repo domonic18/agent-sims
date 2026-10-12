@@ -347,7 +347,7 @@ export function WorldPanel() {
                           <Select
                             placeholder={maps === null ? '加载中…' : '选择地图'}
                             notFoundContent={
-                              maps === null ? '加载中…' : '暂无已发布地图——先到「地图库」创建并发布'
+                              maps === null ? '加载中…' : '暂无已发布地图——先到「地图管理」创建并发布'
                             }
                             options={(maps ?? []).map((m) => ({
                               value: m.id,

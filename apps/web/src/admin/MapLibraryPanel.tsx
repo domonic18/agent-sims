@@ -309,7 +309,7 @@ export function MapLibraryPanel() {
     <Flex vertical gap={16}>
       {error && <Alert type="error" showIcon message={error} />}
       <Card
-        title="地图库"
+        title="地图管理"
         extra={
           <Space>
             <Segmented

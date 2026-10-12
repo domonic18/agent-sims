@@ -191,7 +191,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
     }
     modal.confirm({
       title: '有未保存的修改',
-      content: '返回地图库将丢弃这些改动,确定返回?',
+      content: '返回地图管理将丢弃这些改动,确定返回?',
       okText: '丢弃并返回',
       cancelText: '继续编辑',
       onOk: onBack,
