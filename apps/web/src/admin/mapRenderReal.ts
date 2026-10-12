@@ -171,6 +171,11 @@ function loadImage(entry: ManifestEntry): Promise<void> {
  * 仍能看到布局。
  */
 export async function ensureTownRenderAssets(map: TileMapDefinition): Promise<boolean> {
+  return ensureSprites([...neededSlugs(map)]);
+}
+
+/** 按 slug 集合装载素材进缓存(工具面板缩略图与整图渲染共用),返回是否有新图 */
+export async function ensureSprites(slugs: ReadonlyArray<string>): Promise<boolean> {
   if (entriesBySlug === null) {
     try {
       entriesBySlug = await fetchManifestEntries();
@@ -179,7 +184,7 @@ export async function ensureTownRenderAssets(map: TileMapDefinition): Promise<bo
     }
   }
   const pending: Promise<void>[] = [];
-  for (const slug of neededSlugs(map)) {
+  for (const slug of slugs) {
     if (imageCache.has(slug)) continue;
     const entry = entriesBySlug.get(slug);
     if (entry !== undefined) pending.push(loadImage(entry));
@@ -187,6 +192,11 @@ export async function ensureTownRenderAssets(map: TileMapDefinition): Promise<bo
   if (pending.length === 0) return false;
   await Promise.all(pending);
   return true;
+}
+
+/** 缓存内取贴图(未装载返回 null;调用方自降级为语义色块) */
+export function getSpriteImage(slug: string): HTMLImageElement | null {
+  return imageCache.get(slug) ?? null;
 }
 
 // ---- 绘制原语(与 terrain.ts 四原语一一对应;tile=16 基准等比缩放) ----

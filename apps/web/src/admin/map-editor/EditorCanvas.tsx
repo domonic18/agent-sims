@@ -4,9 +4,10 @@
  * 空格或中键平移;按工具分发: 选择命中+直接拖拽平移(场所整体或屋内单件
  * 家具,use 格随动)、矩形拖画(场所/路径/围栏/堵塞)、单击放置(资源/装饰)。
  * 拖拽过程走 applyLive 预览、松手 record 单条命令;离散放置走 commit。
+ * 体检问题随 doc 实时画在画布上(硬错误红实线/警告琥珀虚线,单格问题精确到格)。
  * 效果视图走 mapRenderReal(游戏贴图),素材异步装载完成后重绘。
  */
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Button, Tooltip } from 'antd';
 import { ExpandOutlined, ZoomInOutlined, ZoomOutOutlined } from '@ant-design/icons';
 import type { FurnitureDefinition, PlaceDefinition, ResourceNodeSeed, TileMapDefinition } from '@sims/shared';
@@ -14,6 +15,7 @@ import { furnitureLabel } from '@sims/shared';
 import { renderMapDefinition } from '../mapRender';
 import { ensureTownRenderAssets, renderTownMapReal } from '../mapRenderReal';
 import { getAtPath } from './history';
+import { checkLayout, issueOverlays } from './health';
 import { KIND_PRESETS } from './kinds';
 import { hitTest } from './hitTest';
 import { nextPlaceId, selectionPath, useEditor, type Selection } from './editorStore';
@@ -98,6 +100,9 @@ export function EditorCanvas() {
   const viewMode = useEditor((s) => s.viewMode);
   const fitTick = useEditor((s) => s.fitTick);
 
+  // 体检问题 → 画布红色标示(与右侧面板同一份 checkLayout 纯函数,随 doc 实时重算)
+  const overlays = useMemo(() => issueOverlays(doc, checkLayout(doc).findings), [doc]);
+
   const [draft, setDraft] = useState<DraftRect | null>(null);
   const [assetsVersion, setAssetsVersion] = useState(0);
   const spaceRef = useRef(false);
@@ -174,6 +179,21 @@ export function EditorCanvas() {
         renderMapDefinition(ctx, visible, { tile: view.tile, grid: showGrid, labels: showLabels });
       }
 
+      // 体检问题标示:硬错误红色实线、警告琥珀虚线(修复后随 doc 实时消账)
+      for (const o of overlays) {
+        const px = o.x * view.tile;
+        const py = o.y * view.tile;
+        const pw = o.w * view.tile;
+        const ph = o.h * view.tile;
+        ctx.fillStyle = o.level === 'error' ? 'rgba(255,77,79,0.20)' : 'rgba(250,173,20,0.14)';
+        ctx.fillRect(px, py, pw, ph);
+        ctx.strokeStyle = o.level === 'error' ? '#ff4d4f' : '#faad14';
+        ctx.lineWidth = 2;
+        if (o.level === 'warning') ctx.setLineDash([5, 3]);
+        ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
+        ctx.setLineDash([]);
+      }
+
       if (draft !== null) {
         const r = draftRectOf(draft);
         ctx.strokeStyle = '#f4f4f4';
@@ -194,7 +214,7 @@ export function EditorCanvas() {
     const observer = new ResizeObserver(draw);
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [doc, view, tool, selection, hidden, showGrid, showLabels, draft, viewMode, assetsVersion]);
+  }, [doc, view, tool, selection, hidden, showGrid, showLabels, draft, viewMode, assetsVersion, overlays]);
 
   // 滚轮缩放(光标锚点+累计阈值降敏;React 根节点 wheel 被动化,须原生监听才能 preventDefault)
   useEffect(() => {

@@ -28,6 +28,10 @@ export interface HealthFinding {
   placeIds?: string[];
   /** 关联家具序号(该场所 furniture 数组下标,定位可直达单件家具) */
   furnitureIndex?: number;
+  /** 关联资源节点序号(resources 数组下标) */
+  resourceIndex?: number;
+  /** 问题锚定格(入口/门洞类单格问题,画布红色标示用) */
+  cell?: { x: number; y: number };
 }
 
 export interface DensityEstimate {
@@ -107,6 +111,8 @@ export function checkLayout(definition: TileMapDefinition): HealthResult {
       message: issue.message,
       placeIds: issue.placeId !== undefined ? [issue.placeId] : undefined,
       furnitureIndex: issue.furnitureIndex,
+      resourceIndex: issue.resourceIndex,
+      cell: issue.cell,
     });
   }
 
@@ -225,4 +231,48 @@ export function checkLayout(definition: TileMapDefinition): HealthResult {
     structure,
     density: { areaRatio, anchorCount, closePairs, minPairDistance, tier },
   };
+}
+
+/** 画布问题标示矩形(tile 坐标):错误红色实线/警告琥珀虚线的绘制依据 */
+export interface HealthOverlay {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  level: 'error' | 'warning';
+}
+
+/**
+ * findings → 画布叠加矩形(纯函数):单格问题(cell)精确到格,家具问题取家具
+ * 占地,场所问题取场所矩形,资源问题取节点格;同格同级去重防叠画加深。
+ */
+export function issueOverlays(definition: TileMapDefinition, findings: HealthFinding[]): HealthOverlay[] {
+  const overlays = new Map<string, HealthOverlay>();
+  const push = (rect: { x: number; y: number; w: number; h: number }, level: 'error' | 'warning'): void => {
+    if (rect.x < 0 || rect.y < 0 || rect.x >= definition.width || rect.y >= definition.height) return;
+    const overlay: HealthOverlay = { x: rect.x, y: rect.y, w: rect.w, h: rect.h, level };
+    overlays.set(`${overlay.x},${overlay.y},${overlay.w},${overlay.h},${level}`, overlay);
+  };
+  for (const f of findings) {
+    if (f.cell !== undefined) {
+      push({ x: f.cell.x, y: f.cell.y, w: 1, h: 1 }, f.level);
+      continue;
+    }
+    if (f.resourceIndex !== undefined) {
+      const res = definition.resources?.[f.resourceIndex];
+      if (res !== undefined) push({ x: res.x, y: res.y, w: 1, h: 1 }, f.level);
+      continue;
+    }
+    const placeId = f.placeIds?.[0];
+    if (placeId === undefined) continue;
+    const place = definition.places.find((p) => p.id === placeId);
+    if (place === undefined) continue;
+    if (f.furnitureIndex !== undefined) {
+      const furn = place.furniture?.[f.furnitureIndex];
+      if (furn !== undefined) push(furn, f.level);
+      continue;
+    }
+    push(place, f.level);
+  }
+  return [...overlays.values()];
 }

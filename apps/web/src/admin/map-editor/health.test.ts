@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TileMapDefinition } from '@sims/shared';
-import { checkLayout } from './health.js';
+import { checkLayout, issueOverlays, type HealthFinding } from './health.js';
 
 /** 合法基准图:一住宅(带门)一咖啡馆(带门),两入口相距 5 格 */
 function baseDoc(): TileMapDefinition {
@@ -111,5 +111,35 @@ describe('布局体检', () => {
     const res = findingsOf('resource', doc);
     expect(res).toHaveLength(1);
     expect(res[0]!.placeIds).toEqual(['home-1']); // (5,6)→(23,16)=28;(9,5)→(23,16)=25
+  });
+
+  it('issueOverlays:cell 单格/家具占地/场所矩形/资源格各归位,同格同级去重', () => {
+    const doc = baseDoc();
+    doc.resources = [{ kind: 'rock', x: 20, y: 15 }];
+    const findings: HealthFinding[] = [
+      { level: 'error', code: 'structure', message: '入口', placeIds: ['home-1'], cell: { x: 5, y: 6 } },
+      { level: 'error', code: 'structure', message: '家具', placeIds: ['home-1'], furnitureIndex: 0 },
+      { level: 'warning', code: 'spacing', message: '间距', placeIds: ['cafe-1'] },
+      { level: 'error', code: 'structure', message: '资源', resourceIndex: 0 },
+      // 与第一条同格同级 → 去重;同格异级 → 保留
+      { level: 'error', code: 'structure', message: '入口重复', placeIds: ['home-1'], cell: { x: 5, y: 6 } },
+      { level: 'warning', code: 'structure', message: '入口异级', placeIds: ['home-1'], cell: { x: 5, y: 6 } },
+    ];
+    const overlays = issueOverlays(doc, findings);
+    expect(overlays).toContainEqual({ x: 5, y: 6, w: 1, h: 1, level: 'error' });
+    expect(overlays).toContainEqual({ x: 5, y: 6, w: 1, h: 1, level: 'warning' });
+    expect(overlays).toContainEqual({ x: 4, y: 3, w: 1, h: 1, level: 'error' }); // 家具占地
+    expect(overlays).toContainEqual({ x: 8, y: 2, w: 4, h: 3, level: 'warning' }); // cafe-1 场所矩形
+    expect(overlays).toContainEqual({ x: 20, y: 15, w: 1, h: 1, level: 'error' }); // 资源格
+    expect(overlays.filter((o) => o.x === 5 && o.y === 6)).toHaveLength(2);
+  });
+
+  it('issueOverlays:越界格与未知 placeId 丢弃', () => {
+    const doc = baseDoc();
+    const findings: HealthFinding[] = [
+      { level: 'error', code: 'structure', message: '越界', cell: { x: -1, y: 0 } },
+      { level: 'error', code: 'structure', message: '未知场所', placeIds: ['ghost'] },
+    ];
+    expect(issueOverlays(doc, findings)).toHaveLength(0);
   });
 });

@@ -1,19 +1,24 @@
 /**
  * 工具选项面板(问题1重构后):工具格已迁至 ToolRail,这里只承载当前工具
  * 的上下文选项(场所 kind 调色板/装饰组/资源种)+操作提示。
+ * 资源/装饰选项带真实贴图缩略图(效果视图同源素材,缺图降级语义色点),
+ * 所见即所放,不用拖上画布才知道内容。
  */
+import { useEffect, useRef, useState } from 'react';
 import { Typography } from 'antd';
 import type { ResourceNode } from '@sims/shared';
+import { ensureSprites, getSpriteImage, NODE_SPRITES } from '../mapRenderReal';
+import { TILE_SLUG } from '../../game/assets';
 import { useEditor, type EditorTool } from './editorStore';
 import { KIND_ORDER, KIND_PRESETS, kindColor } from './kinds';
 import { TOOL_HOTKEYS, TOOLS } from './ToolRail';
 
-const DECOR_GROUPS = [
-  { value: 'trees', label: '树' },
-  { value: 'lamps', label: '灯' },
-  { value: 'flowers', label: '花' },
-  { value: 'bushes', label: '灌木' },
-] as const;
+const DECOR_GROUPS: { value: 'trees' | 'lamps' | 'flowers' | 'bushes'; label: string; slug: string; color: string }[] = [
+  { value: 'trees', label: '树', slug: 'tree-a', color: '#38b764' },
+  { value: 'lamps', label: '灯', slug: 'lamp', color: '#ffcd75' },
+  { value: 'flowers', label: '花', slug: TILE_SLUG.flowerA, color: '#ef7d57' },
+  { value: 'bushes', label: '灌木', slug: TILE_SLUG.bush, color: '#a7f070' },
+];
 
 const RESOURCE_KINDS: { value: ResourceNode['kind']; label: string }[] = [
   { value: 'berry_bush', label: '浆果丛' },
@@ -35,6 +40,70 @@ const HINTS: Record<EditorTool, string> = {
   decor: '单击放置点状装饰(1×1,纯视觉)',
   blocked: '拖画障碍矩形(池塘/喷泉等不可行走区)',
 };
+
+/** 贴图缩略图:manifest 装载后画真实 sprite,失败降级语义色点(与画布同色) */
+function SpriteThumb({ slug, color, size = 26 }: { slug: string; color: string; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    // 无论 loaded 归属哪次调用,只要缓存里有图就重绘(并发调用/StrictMode 下
+    // loaded=false 可能只是别的调用方已把图装进缓存)
+    void ensureSprites([slug]).then(() => {
+      if (alive && getSpriteImage(slug) !== null) setVersion((v) => v + 1);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [slug]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas === null) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx === null) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    ctx.imageSmoothingEnabled = false;
+    const img = getSpriteImage(slug);
+    if (img !== null) {
+      const scale = Math.min(size / img.naturalWidth, size / img.naturalHeight);
+      const w = img.naturalWidth * scale;
+      const h = img.naturalHeight * scale;
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+    } else {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size * 0.28, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }, [slug, color, size, version]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ width: size, height: size, flexShrink: 0, imageRendering: 'pixelated' }}
+    />
+  );
+}
+
+const OPTION_STYLE = (active: boolean): React.CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '4px 6px',
+  fontSize: 12,
+  cursor: 'pointer',
+  textAlign: 'left',
+  borderRadius: 4,
+  border: active ? '1px solid #41a6f6' : '1px solid transparent',
+  background: active ? '#1c2f4a' : 'transparent',
+  color: 'inherit',
+});
 
 export function ToolPanel() {
   const tool = useEditor((s) => s.tool);
@@ -67,18 +136,7 @@ export function ToolPanel() {
               key={kind}
               type="button"
               onClick={() => setPlaceKind(kind)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '4px 6px',
-                fontSize: 12,
-                cursor: 'pointer',
-                borderRadius: 4,
-                border: placeKind === kind ? '1px solid #41a6f6' : '1px solid transparent',
-                background: placeKind === kind ? '#1c2f4a' : 'transparent',
-                color: 'inherit',
-              }}
+              style={OPTION_STYLE(placeKind === kind)}
             >
               <i style={{ width: 10, height: 10, flexShrink: 0, background: kindColor(kind) }} />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -95,17 +153,10 @@ export function ToolPanel() {
               key={g.value}
               type="button"
               onClick={() => setDecorGroup(g.value)}
-              style={{
-                padding: '4px 6px',
-                fontSize: 12,
-                cursor: 'pointer',
-                borderRadius: 4,
-                border: decorGroup === g.value ? '1px solid #41a6f6' : '1px solid transparent',
-                background: decorGroup === g.value ? '#1c2f4a' : 'transparent',
-                color: 'inherit',
-              }}
+              style={OPTION_STYLE(decorGroup === g.value)}
             >
-              {g.label}
+              <SpriteThumb slug={g.slug} color={g.color} />
+              <span>{g.label}</span>
             </button>
           ))}
         </div>
@@ -117,18 +168,10 @@ export function ToolPanel() {
               key={r.value}
               type="button"
               onClick={() => setResourceKind(r.value)}
-              style={{
-                padding: '4px 6px',
-                fontSize: 12,
-                textAlign: 'left',
-                cursor: 'pointer',
-                borderRadius: 4,
-                border: resourceKind === r.value ? '1px solid #41a6f6' : '1px solid transparent',
-                background: resourceKind === r.value ? '#1c2f4a' : 'transparent',
-                color: 'inherit',
-              }}
+              style={OPTION_STYLE(resourceKind === r.value)}
             >
-              {r.label}
+              <SpriteThumb slug={NODE_SPRITES[r.value] ?? 'plant'} color={r.value === 'berry_bush' ? '#b13e53' : '#ef7d57'} />
+              <span>{r.label}</span>
             </button>
           ))}
         </div>

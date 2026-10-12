@@ -59,6 +59,8 @@ export interface MapIssue {
   furnitureIndex?: number;
   /** 关联资源节点序号(resources 数组下标) */
   resourceIndex?: number;
+  /** 问题锚定格(入口/门洞类单格问题,编辑器画布红色标示用) */
+  cell?: { x: number; y: number };
 }
 
 /**
@@ -84,6 +86,7 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
       issues.push({
         code: 'entrance',
         placeId: place.id,
+        cell: { x, y },
         message: `场所 ${place.id} 入口非法: (${x},${y}) 须在占地外且可行走`,
       });
     }
@@ -103,6 +106,7 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
       issues.push({
         code: 'door',
         placeId: place.id,
+        cell: { x: door.x, y: door.y },
         message: `场所 ${place.id} 门洞非法: (${door.x},${door.y}) 须在占地边缘`,
       });
       return;
@@ -111,6 +115,7 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
       issues.push({
         code: 'door',
         placeId: place.id,
+        cell: { x: door.x, y: door.y },
         message: `场所 ${place.id} 门洞非法: (${door.x},${door.y}) 须与入口 (${place.entrance.x},${place.entrance.y}) 四邻相接`,
       });
     }
@@ -118,6 +123,7 @@ export function validateMapDefinition(definition: TileMapDefinition): MapIssue[]
       issues.push({
         code: 'door',
         placeId: place.id,
+        cell: { x: door.x, y: door.y },
         message: `场所 ${place.id} 门洞非法: (${door.x},${door.y}) 被障碍覆盖`,
       });
     }
