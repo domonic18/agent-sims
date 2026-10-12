@@ -1,24 +1,19 @@
-/** 助手 Thread 视图(批C):消息流+问题卡+输入框;历史加载骨架与运行中指示。 */
+/** 助手 Thread 视图:执行计划条+消息流+问题卡+输入框;历史加载骨架与运行中跳点。 */
 import { ComposerPrimitive, ThreadPrimitive, useAuiState } from '@assistant-ui/react';
 import { AssistantMessage, UserMessage } from './Messages';
 import { MapAgentQuestionCard } from './QuestionCard';
+import { TodoListBar } from './TodoListBar';
 
 function RunningIndicator() {
   return (
     <ThreadPrimitive.If running>
       <div style={{ marginBottom: 12, paddingLeft: 12 }} aria-label="助手正在处理">
-        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', height: 10 }}>
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                background: '#6b7280',
-                animation: 'bounce 1s infinite',
-                animationDelay: `${i * 160}ms`,
-              }}
+              className="sims-agent-dot"
+              style={{ width: 6, height: 6, borderRadius: 3, background: '#94b0c2', animationDelay: `${i * 160}ms` }}
             />
           ))}
         </div>
@@ -31,6 +26,7 @@ export function MapAgentThread() {
   const isLoading = useAuiState((s) => s.thread.isLoading);
   return (
     <ThreadPrimitive.Root style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <TodoListBar />
       <ThreadPrimitive.Viewport
         autoScroll
         style={{ flex: 1, overflowY: 'auto', padding: '12px 12px 4px', minHeight: 0 }}
@@ -40,13 +36,14 @@ export function MapAgentThread() {
             {[140, 220, 180].map((w, i) => (
               <div
                 key={i}
+                className="sims-agent-pulse"
                 style={{
                   height: 14,
                   width: w,
                   marginBottom: 10,
                   borderRadius: 4,
                   background: 'rgba(255,255,255,0.08)',
-                  animation: 'pulse 1.4s infinite',
+                  animationDelay: `${i * 120}ms`,
                 }}
               />
             ))}
@@ -76,7 +73,7 @@ export function MapAgentThread() {
           margin: '0 12px 12px',
           padding: 8,
           borderRadius: 8,
-          border: '1px solid #2b3157',
+          border: '1px solid #343a58',
           background: 'rgba(255,255,255,0.04)',
         }}
       >
@@ -88,7 +85,7 @@ export function MapAgentThread() {
             border: 'none',
             outline: 'none',
             background: 'transparent',
-            color: '#e6e8ef',
+            color: '#f4f4f4',
             fontSize: 13,
             resize: 'none',
           }}
@@ -100,8 +97,9 @@ export function MapAgentThread() {
             padding: '5px 12px',
             fontSize: 12,
             cursor: 'pointer',
-            background: '#5e6ad2',
-            color: '#fff',
+            background: '#ffcd75',
+            color: '#1a1c2c',
+            fontWeight: 600,
           }}
         >
           发送

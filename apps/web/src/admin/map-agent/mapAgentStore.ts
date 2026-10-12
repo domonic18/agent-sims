@@ -4,7 +4,7 @@
  * 经 getState() 写入,组件订阅读取——与 ai-invest assistant store 同模式。
  */
 import { create } from 'zustand';
-import type { MapAgentThreadItem } from '@sims/shared';
+import type { MapAgentTodo, MapAgentThreadItem } from '@sims/shared';
 
 export interface AgentQuestionOption {
   value: string;
@@ -18,17 +18,22 @@ export interface AgentQuestion {
   default: string | null;
 }
 
+export type { MapAgentTodo };
+
 interface MapAgentState {
   open: boolean;
   threadId: string | undefined;
   question: AgentQuestion | null;
   threads: MapAgentThreadItem[];
+  /** write_todos 执行计划(updates 通道实时推进;null=本线程无计划) */
+  todos: MapAgentTodo[] | null;
 
   openDrawer(): void;
   closeDrawer(): void;
   switchThread(threadId: string | undefined): void;
   setQuestion(question: AgentQuestion | null): void;
   setThreads(items: MapAgentThreadItem[]): void;
+  setTodos(todos: MapAgentTodo[] | null): void;
 }
 
 export const useMapAgent = create<MapAgentState>((set) => ({
@@ -36,11 +41,13 @@ export const useMapAgent = create<MapAgentState>((set) => ({
   threadId: undefined,
   question: null,
   threads: [],
+  todos: null,
 
   openDrawer: () => set({ open: true }),
   closeDrawer: () => set({ open: false }),
-  // 切线程/新对话一并清掉残留问题卡与 pending 流(线程上下文变了)
-  switchThread: (threadId) => set({ threadId, question: null }),
+  // 切线程/新对话一并清掉残留问题卡与执行计划(线程上下文变了)
+  switchThread: (threadId) => set({ threadId, question: null, todos: null }),
   setQuestion: (question) => set({ question }),
   setThreads: (threads) => set({ threads }),
+  setTodos: (todos) => set({ todos }),
 }));

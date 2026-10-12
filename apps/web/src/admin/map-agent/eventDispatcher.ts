@@ -4,9 +4,23 @@
  * 入编辑器撤销栈(path=[])——人工 Cmd/Ctrl+Z 一键撤销 AI 的整轮修改。
  * 注册表驱动、幂等;Provider 与 runtimeAdapter 不各自接线。
  */
-import type { TileMapDefinition } from '@sims/shared';
+import type { MapAgentTodo, TileMapDefinition } from '@sims/shared';
 import { useEditor } from '../map-editor/editorStore';
 import { useMapAgent, type AgentQuestion } from './mapAgentStore';
+
+/** write_todos 状态抽取(宽松:非空 {content,status} 才收;空清单视为无计划) */
+export function parseAgentTodos(value: unknown): MapAgentTodo[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: MapAgentTodo[] = [];
+  for (const raw of value) {
+    if (typeof raw !== 'object' || raw === null) continue;
+    const { content, status } = raw as { content?: unknown; status?: unknown };
+    if (typeof content !== 'string' || content === '') continue;
+    if (status !== 'pending' && status !== 'in_progress' && status !== 'completed') continue;
+    out.push({ content, status });
+  }
+  return out.length > 0 ? out : null;
+}
 
 /** ask_user 事件 → 问题卡(宽松 parse:字段畸形不渲染) */
 export function parseAgentQuestion(event: unknown): AgentQuestion | null {
@@ -66,10 +80,12 @@ export function dispatchAgentCustomEvent(_eventType: string, data: unknown): voi
   }
 }
 
-/** updates 通道兜底:工具消息的 ask_user 标记(custom 丢失时仍出问题卡) */
+/** updates 通道兜底:write_todos 状态推进执行计划;ask_user 工具标记出问题卡 */
 export function dispatchAgentUpdates(updates: unknown): void {
   if (typeof updates !== 'object' || updates === null) return;
   for (const patch of Object.values(updates as Record<string, unknown>)) {
+    const todos = parseAgentTodos((patch as { todos?: unknown } | null)?.todos);
+    if (todos !== null) useMapAgent.getState().setTodos(todos);
     const messages = (patch as { messages?: unknown } | null)?.messages;
     if (!Array.isArray(messages)) continue;
     for (const message of messages) {

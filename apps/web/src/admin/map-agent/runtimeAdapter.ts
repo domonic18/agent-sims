@@ -20,6 +20,7 @@ import {
   streamMapAgentRun,
 } from '../api';
 import { useEditor } from '../map-editor/editorStore';
+import { useMapAgent } from './mapAgentStore';
 import { dispatchAgentCustomEvent, dispatchAgentUpdates } from './eventDispatcher';
 
 /** LangChainMessage 内容 → 纯文本(string 或 text 分片数组) */
@@ -103,6 +104,8 @@ export function createMapAgentRuntimeAdapter(): MapAgentRuntimeAdapter {
     threadListAdapter,
     load: async (threadId) => {
       const detail = await fetchMapAgentThread(threadId);
+      // 执行计划随线程历史水合(live 推进走 updates 通道;此处恢复存量)
+      useMapAgent.getState().setTodos(detail.todos);
       return { messages: detail.messages as never };
     },
     stream: async function* (messages, config) {

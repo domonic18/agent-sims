@@ -2,7 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { TileMapDefinition } from '@sims/shared';
 import { useEditor } from '../map-editor/editorStore';
 import { useMapAgent } from './mapAgentStore';
-import { applyAgentDoc, dispatchAgentCustomEvent, dispatchAgentUpdates, parseAgentQuestion } from './eventDispatcher.js';
+import {
+  applyAgentDoc,
+  dispatchAgentCustomEvent,
+  dispatchAgentUpdates,
+  parseAgentQuestion,
+  parseAgentTodos,
+} from './eventDispatcher.js';
 
 function baseDoc(): TileMapDefinition {
   return {
@@ -31,7 +37,7 @@ const questionEvent = {
 
 beforeEach(() => {
   baseLaunch();
-  useMapAgent.setState({ open: false, threadId: undefined, question: null, threads: [] });
+  useMapAgent.setState({ open: false, threadId: undefined, question: null, threads: [], todos: null });
 });
 
 describe('parseAgentQuestion', () => {
@@ -98,6 +104,27 @@ describe('dispatchAgentCustomEvent', () => {
 });
 
 describe('dispatchAgentUpdates', () => {
+  it('updates 补丁里的 todos 推进执行计划;畸形项被过滤', () => {
+    dispatchAgentUpdates({
+      tools: {
+        todos: [
+          { content: '生成地图', status: 'completed' },
+          { content: '修复体检警告', status: 'in_progress' },
+        ],
+        messages: [{ type: 'tool', tool_call_id: 't1' }],
+      },
+    });
+    expect(useMapAgent.getState().todos).toEqual([
+      { content: '生成地图', status: 'completed' },
+      { content: '修复体检警告', status: 'in_progress' },
+    ]);
+    dispatchAgentUpdates({ tools: { todos: [{ content: '坏', status: 'x' }, 'nope'] } });
+    expect(useMapAgent.getState().todos).toEqual([
+      { content: '生成地图', status: 'completed' },
+      { content: '修复体检警告', status: 'in_progress' },
+    ]);
+  });
+
   it('updates 里 ask_user 工具调用兜底出问题卡', () => {
     dispatchAgentUpdates({
       model: {
@@ -117,5 +144,14 @@ describe('dispatchAgentUpdates', () => {
     dispatchAgentUpdates(null);
     dispatchAgentUpdates({ tools: { messages: 'bad' } });
     expect(useMapAgent.getState().question).toBeNull();
+  });
+});
+
+describe('parseAgentTodos', () => {
+  it('合法清单原样收;空数组/非数组/全畸形返回 null', () => {
+    expect(parseAgentTodos([{ content: 'a', status: 'pending' }])).toEqual([{ content: 'a', status: 'pending' }]);
+    expect(parseAgentTodos([])).toBeNull();
+    expect(parseAgentTodos('todos')).toBeNull();
+    expect(parseAgentTodos([{ content: '', status: 'completed' }])).toBeNull();
   });
 });

@@ -1,5 +1,11 @@
-/** 助手消息气泡(批C):MessagePrimitive.Content 渲染文本;工具调用细节 v1 不展示。 */
+/**
+ * 助手消息气泡(对齐 ai-invest):用户纯文本右对齐;助手 markdown 渲染
+ * (Text 组件)+ 工具调用卡(tools.Fallback)+ 流式闪烁光标。
+ */
 import { MessagePrimitive, useAuiState } from '@assistant-ui/react';
+import type { ToolCallMessagePartProps } from '@assistant-ui/react';
+import { MarkdownText } from './MarkdownText';
+import { ToolCallBlock } from './ToolCallBlock';
 
 export function UserMessage() {
   return (
@@ -9,8 +15,8 @@ export function UserMessage() {
           maxWidth: '85%',
           padding: '8px 12px',
           borderRadius: '10px 10px 2px 10px',
-          background: 'rgba(94,106,210,0.28)',
-          color: '#e6e8ef',
+          background: 'rgba(255,205,117,0.16)',
+          color: '#f4f4f4',
           fontSize: 13,
           lineHeight: 1.55,
           whiteSpace: 'pre-wrap',
@@ -23,9 +29,16 @@ export function UserMessage() {
   );
 }
 
+function AssistantText({ text }: { text: string }) {
+  return <MarkdownText text={text} />;
+}
+
+function ToolCall({ toolName, args, result }: ToolCallMessagePartProps) {
+  return <ToolCallBlock toolName={toolName} args={args} result={result} />;
+}
+
 export function AssistantMessage() {
-  const isLast = useAuiState((s) => s.message.isLast);
-  const isRunning = useAuiState((s) => s.thread.isRunning);
+  const isRunning = useAuiState((s) => s.message.status?.type === 'running');
   return (
     <div style={{ display: 'flex', marginBottom: 12 }}>
       <div
@@ -33,19 +46,15 @@ export function AssistantMessage() {
           maxWidth: '92%',
           padding: '8px 12px',
           borderRadius: '10px 10px 10px 2px',
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid #2b3157',
-          color: '#c9cdd4',
+          background: 'rgba(255,255,255,0.05)',
+          border: '1px solid #343a58',
           fontSize: 13,
           lineHeight: 1.55,
-          whiteSpace: 'pre-wrap',
           wordBreak: 'break-word',
         }}
       >
-        <MessagePrimitive.Content />
-        {isLast !== undefined && isRunning !== undefined && isLast && isRunning && (
-          <span style={{ color: '#6b7280' }}> ▍</span>
-        )}
+        <MessagePrimitive.Content components={{ Text: AssistantText, tools: { Fallback: ToolCall } }} />
+        {isRunning === true && <span className="sims-agent-caret" style={{ marginLeft: 2, width: 7, height: 14, background: '#ffcd75' }}>▍</span>}
       </div>
     </div>
   );
