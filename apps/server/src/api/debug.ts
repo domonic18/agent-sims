@@ -2,6 +2,12 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { runIntent } from '../intents/execute.js';
 import type { ClientRegistry } from '../socket/clients.js';
+import {
+  debugBuildFence,
+  debugBuildPlace,
+  debugRemoveBuiltFence,
+  debugRemoveBuiltPlace,
+} from '../world/construction.js';
 import type { Simulation } from '../world/simulation.js';
 import { generateTownMap } from '../world/worldgen/generate.js';
 
@@ -20,6 +26,31 @@ const spawnBodySchema = z.object({
 });
 
 const reviveBodySchema = z.object({ characterId: z.string().min(1) });
+
+// 建造层(S2批1):place 按图纸尺寸落建筑,fence/remove 显式矩形
+const rectFields = {
+  x: z.number().int(),
+  y: z.number().int(),
+  w: z.number().int().min(1),
+  h: z.number().int().min(1),
+} as const;
+
+const builtBodySchema = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('place'),
+    blueprintId: z.string().min(1),
+    x: z.number().int(),
+    y: z.number().int(),
+  }),
+  z.object({ op: z.literal('fence'), ...rectFields }),
+  z.object({ op: z.literal('removePlace'), id: z.string().min(1) }),
+  z.object({ op: z.literal('removeFence'), ...rectFields }),
+]);
+
+const storageBodySchema = z.object({
+  itemId: z.string().min(1),
+  count: z.number().int().min(1),
+});
 
 function parseError(reply: FastifyReply, message: string) {
   return reply.code(400).send({ error: message });
@@ -114,5 +145,41 @@ export function registerDebugRoutes(
       return parseError(reply, result.message);
     }
     return await reply.send({ ...result, state: sim.snapshot() });
+  });
+
+  // 建造层(S2批1):走完整评估链(选区/结构/连通),与批2 requestBuild 同门禁
+  app.post('/debug/built', async (request, reply) => {
+    const parsed = builtBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return parseError(reply, issue ? `${issue.path.join('.')}: ${issue.message}` : '请求体不合法');
+    }
+    const body = parsed.data;
+    const result =
+      body.op === 'place'
+        ? debugBuildPlace(sim, body.blueprintId, body.x, body.y)
+        : body.op === 'fence'
+          ? debugBuildFence(sim, body)
+          : body.op === 'removePlace'
+            ? debugRemoveBuiltPlace(sim, body.id)
+            : debugRemoveBuiltFence(sim, body);
+    if (!result.ok) {
+      return reply
+        .code(400)
+        .send({ error: result.issues[0]?.message ?? '建造被拒绝', issues: result.issues });
+    }
+    return await reply.send({ ok: true, built: sim.built });
+  });
+
+  // 单仓注料(S2批1 走查用;批2 接 store_item/take_item 分流)
+  app.post('/debug/storage', async (request, reply) => {
+    const parsed = storageBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      return parseError(reply, issue ? `${issue.path.join('.')}: ${issue.message}` : '请求体不合法');
+    }
+    const { itemId, count } = parsed.data;
+    sim.storage[itemId] = (sim.storage[itemId] ?? 0) + count;
+    return await reply.send({ ok: true, storage: sim.storage });
   });
 }

@@ -7,6 +7,7 @@ export * from './admin.js';
 export * from './asset-manifest.js';
 export * from './activities.js';
 export * from './constants.js';
+export * from './construction.js';
 export * from './events.js';
 export * from './intents.js';
 export * from './inspect.js';

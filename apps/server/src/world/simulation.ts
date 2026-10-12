@@ -1,6 +1,8 @@
 import type {
   ActivityDefinition,
+  BuiltState,
   CharacterArrivedEvent,
+  ConstructionSite,
   MaintenanceSpot,
   ResourceNode,
   SocialEncounterEvent,
@@ -38,6 +40,7 @@ import {
   stopActivity,
 } from './activity.js';
 import { GameClock } from './clock.js';
+import { applyBuilt } from './construction.js';
 import {
   applyHealthTick,
   applyVitalDecay,
@@ -93,6 +96,10 @@ export interface SimulationArchive {
   maintenanceSpots: Array<[string, MaintenanceSpot]>;
   resourceNodes: Array<[string, ResourceNode]>;
   shopStock: Array<[string, number]>;
+  /** 建造层(S2批1):旧档缺省回空——地图不入档,由 config.map 重建后重放 built */
+  built?: BuiltState;
+  constructionSites?: Array<[string, ConstructionSite]>;
+  storage?: Record<string, number>;
 }
 
 /**
@@ -116,6 +123,15 @@ export class Simulation {
   /** 商店货架余量(食物经济 2026-10-07):key = 货架 itemId;售罄即止不补货,
    * 构造/reset 按 SHOP_INITIAL_FOOD_STOCK 重置(与 resourceNodes 恢复语义同构) */
   readonly shopStock = new Map<string, number>();
+  /** 建造层(S2批1):基础图(config.map)与建造产物解耦——setMap 默认记录
+   * 基础图,applyBuilt 以 asBase:false 落合并图,后续建造始终在 base 上叠加 */
+  baseDefinition: TileMapDefinition = TOWN_MAP;
+  /** 建造产物声明层:places/fences 相对基础图的增量(空 = 与基础图同) */
+  built: BuiltState = { places: [], fences: [], nextPlaceSeq: 1 };
+  /** 在建工单(S2批2 启用;批1 仅类型与存档通道) */
+  readonly constructionSites = new Map<string, ConstructionSite>();
+  /** 镇核心单仓(S2批2 启用;批1 仅存档通道) */
+  storage: Record<string, number> = {};
   /** 世界事件总线:离散事件与控制变更即时分发,感知/同步层订阅 */
   readonly events = new EventBus<WorldEvent>();
   tick = 0;
@@ -149,7 +165,10 @@ export class Simulation {
     return this._map;
   }
 
-  setMap(definition: TileMapDefinition): void {
+  /** 注入世界地图;asBase(缺省 true)同时记录为基础图——applyBuilt 落合并图时
+   * 传 false,保证建造层始终叠加在 config.map 之上而非合并图之上 */
+  setMap(definition: TileMapDefinition, opts: { asBase?: boolean } = {}): void {
+    if (opts.asBase ?? true) this.baseDefinition = definition;
     this._map = TileMap.fromDefinition(definition);
     this._rebuildResourceNodes();
   }
@@ -189,6 +208,9 @@ export class Simulation {
     this.socials.clear();
     this.maintenanceSpots.clear();
     this.encounterCooldown.clear();
+    this.built = { places: [], fences: [], nextPlaceSeq: 1 };
+    this.constructionSites.clear();
+    this.storage = {};
     this._rebuildResourceNodes();
     this._initShopStock();
     this.tick = 0;
@@ -461,6 +483,11 @@ export class Simulation {
         [string, ResourceNode]
       >,
       shopStock: [...this.shopStock.entries()],
+      built: JSON.parse(JSON.stringify(this.built)) as BuiltState,
+      constructionSites: JSON.parse(JSON.stringify([
+        ...this.constructionSites.entries(),
+      ])) as Array<[string, ConstructionSite]>,
+      storage: { ...this.storage },
     };
   }
 
@@ -475,6 +502,16 @@ export class Simulation {
     this.maintenanceSpots.clear();
     this.resourceNodes.clear();
     this.shopStock.clear();
+    this.constructionSites.clear();
+    // 建造层重放(S2批1)须先于资源存量灌回:applyBuilt→setMap 会把资源节点
+    // 重建为满仓,之后 resourceNodes 档案覆盖才不丢枯竭现场(与调用方
+    // reset→setMap→restoreArchive 的顺序同理)
+    this.built = JSON.parse(
+      JSON.stringify(archive.built ?? { places: [], fences: [], nextPlaceSeq: 1 }),
+    ) as BuiltState;
+    if (this.built.places.length > 0 || this.built.fences.length > 0) {
+      applyBuilt(this);
+    }
     this.tick = archive.tick;
     this.clock.restore(archive.clockGameMinutes);
     this.paused = archive.paused;
@@ -500,6 +537,10 @@ export class Simulation {
     for (const [key, value] of archive.shopStock) {
       this.shopStock.set(key, value);
     }
+    for (const [key, value] of archive.constructionSites ?? []) {
+      this.constructionSites.set(key, JSON.parse(JSON.stringify(value)) as ConstructionSite);
+    }
+    this.storage = { ...(archive.storage ?? {}) };
     for (const character of archive.characters) {
       this.characters.set(character.id, JSON.parse(JSON.stringify(character)) as WorldCharacter);
     }
