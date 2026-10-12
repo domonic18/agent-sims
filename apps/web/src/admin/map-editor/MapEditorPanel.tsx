@@ -37,6 +37,7 @@ export interface MapEditorLaunch {
 
 const DELETE_LABELS = {
   place: '场所',
+  furniture: '家具',
   path: '铺装',
   fence: '围栏',
   resource: '资源',
@@ -290,7 +291,7 @@ export function MapEditorPanel({ launch, onBack }: { launch: MapEditorLaunch; on
         </div>
       </div>
       <Typography.Text type="secondary" style={{ fontSize: 11, marginTop: 4 }}>
-        工具热键 1-8;效果视图按游戏贴图渲染实际外观;滚轮缩放、抓手/空格/中键拖拽平移;Cmd/Ctrl+S 保存、Cmd/Ctrl+Z 撤销(Shift 重做)、Delete 删除选中、Esc 取消选中
+        工具热键 1-8;效果视图按游戏贴图渲染实际外观;滚轮缩放(右下角 +/−/适应 按钮)、抓手/空格/中键拖拽平移;Cmd/Ctrl+S 保存、Cmd/Ctrl+Z 撤销(Shift 重做)、Delete 删除选中、Esc 取消选中
       </Typography.Text>
       <MapAgentSidebar open={agentOpen} onClose={() => setAgentOpen(false)} />
     </div>

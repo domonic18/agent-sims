@@ -26,7 +26,7 @@ const RESOURCE_KINDS: { value: ResourceNode['kind']; label: string }[] = [
 ];
 
 const HINTS: Record<EditorTool, string> = {
-  select: '点选对象;再点一次已选场所可拖拽整体平移(家具随动),Delete 删除',
+  select: '点选对象;拖拽移动场所整体(家具随动)或屋内单件家具(使用格随动),Delete 删除',
   pan: '拖拽平移画布纯查看(滚轮缩放;任意工具下中键/按住空格同样可拖)',
   place: '在画布拖画占地(或单击落默认尺寸);门洞与入口自动补在底边',
   path: '拖画铺装矩形(主街/广场)',

@@ -37,6 +37,7 @@ export type DecorPointGroup = 'trees' | 'lamps' | 'flowers' | 'bushes';
 
 export type Selection =
   | { kind: 'place'; id: string }
+  | { kind: 'furniture'; placeId: string; index: number }
   | { kind: 'path'; index: number }
   | { kind: 'fence'; index: number }
   | { kind: 'resource'; index: number }
@@ -71,6 +72,8 @@ interface EditorState {
   resourceKind: ResourceNode['kind'];
   selection: Selection | null;
   view: Viewport;
+  /** loadMap 时自增,画布订阅后整图居中适配视口 */
+  fitTick: number;
   viewMode: EditorViewMode;
   showGrid: boolean;
   showLabels: boolean;
@@ -115,6 +118,12 @@ export function selectionPath(doc: TileMapDefinition, selection: Selection): Pat
       const index = doc.places.findIndex((p) => p.id === selection.id);
       return index >= 0 ? ['places', index] : null;
     }
+    case 'furniture': {
+      const index = doc.places.findIndex((p) => p.id === selection.placeId);
+      if (index < 0) return null;
+      if (selection.index >= (doc.places[index]!.furniture?.length ?? 0)) return null;
+      return ['places', index, 'furniture', selection.index];
+    }
     case 'path':
       return ['paths', selection.index];
     case 'fence':
@@ -139,6 +148,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   resourceKind: 'berry_bush',
   selection: null,
   view: { tile: 24, ox: 0, oy: 0 },
+  fitTick: 0,
   viewMode: 'semantic',
   showGrid: true,
   showLabels: true,
@@ -155,7 +165,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   history: createHistory(),
 
   loadMap: (init) =>
-    set({
+    set((s) => ({
       mapId: init.mapId,
       name: init.name,
       doc: normalizeDefinition(init.definition),
@@ -163,7 +173,8 @@ export const useEditor = create<EditorState>((set, get) => ({
       selection: null,
       history: createHistory(),
       view: { tile: init.definition.width > 64 ? 16 : 24, ox: 0, oy: 0 },
-    }),
+      fitTick: s.fitTick + 1,
+    })),
   setName: (name) => set({ name, dirty: true }),
   setTool: (tool) => set({ tool, selection: null }),
   setPlaceKind: (placeKind) => set({ placeKind }),

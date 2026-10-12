@@ -1,12 +1,13 @@
 /**
- * 属性面板(批B):按选区类型编辑对象字段。所有变更走 commit 且带 coalesce
- * 键(逐键输入合并为一条 undo 命令);家具以整场所 update 提交。
+ * 属性面板(批B+问题1重构):按选区类型编辑对象字段,每次只呈现选中对象的
+ * 字段(家具级点选有独立精简面板,不再整屋堆叠)。所有变更走 commit 且带
+ * coalesce 键(逐键输入合并为一条 undo 命令);家具直接编辑自身节点。
  */
 import { Button, Input, InputNumber, Select, Typography } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
-import { ACTIVITY_IDS, type PlaceDefinition } from '@sims/shared';
-import { FURNITURE_KINDS, FURNITURE_LABELS } from '@sims/shared';
-import { getAtPath } from './history';
+import { ACTIVITY_IDS, type FurnitureDefinition, type PlaceDefinition } from '@sims/shared';
+import { FURNITURE_KINDS, FURNITURE_LABELS, furnitureLabel } from '@sims/shared';
+import { getAtPath, type Path } from './history';
 import { selectionPath, useEditor } from './editorStore';
 import { placeKindOf } from './kinds';
 
@@ -97,8 +98,26 @@ function PlaceForm({ place, index }: { place: PlaceDefinition; index: number }) 
   };
 
   const furniture = place.furniture ?? [];
-  const updateFurniture = (next: PlaceDefinition['furniture'], label: string, key?: string): void =>
-    update({ furniture: next }, label, key);
+  const addBed = (): void => {
+    const before = doc.places[index];
+    if (before === undefined) return;
+    commit({
+      kind: 'add',
+      label: '加床铺',
+      path: ['places', index, 'furniture', furniture.length],
+      before: null,
+      after: {
+        kind: 'bed',
+        x: before.x + 1,
+        y: before.y + 1,
+        w: 1,
+        h: 1,
+        activityId: 'rest',
+        use: { x: before.x + 1, y: before.y + 2 },
+      },
+    });
+    select({ kind: 'furniture', placeId: before.id, index: furniture.length });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
@@ -172,79 +191,112 @@ function PlaceForm({ place, index }: { place: PlaceDefinition; index: number }) 
       <div>
         <div style={{ ...ROW, justifyContent: 'space-between' }}>
           <Typography.Text type="secondary">家具({furniture.length})</Typography.Text>
-          <Button
-            size="small"
-            onClick={() =>
-              updateFurniture(
-                [
-                  ...furniture,
-                  { kind: 'bed', x: place.x + 1, y: place.y + 1, w: 1, h: 1, activityId: 'rest', use: { x: place.x + 1, y: place.y + 2 } },
-                ],
-                '加家具',
-              )
-            }
-          >
+          <Button size="small" onClick={addBed}>
             加床铺起步
           </Button>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}>
-          {furniture.map((f, fi) => {
-            const key = `furn:${place.id}:${fi}`;
-            const usePt = f.use ?? { x: f.x, y: f.y + f.h };
-            const patch = (fp: Partial<(typeof f)>): void =>
-              updateFurniture(furniture.map((it, i) => (i === fi ? { ...it, ...fp } : it)), '改家具', key);
-            return (
-              <div key={fi} style={{ border: '1px solid #2b3157', borderRadius: 4, padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={ROW}>
-                  <Select
-                    size="small"
-                    value={f.kind}
-                    style={{ width: 110 }}
-                    options={FURNITURE_KINDS.map((k) => ({ value: k, label: FURNITURE_LABELS[k] ?? k }))}
-                    onChange={(v) => patch({ kind: v })}
-                  />
-                  <NumField label="X" value={f.x} onChange={(v) => patch({ x: v })} />
-                  <NumField label="Y" value={f.y} onChange={(v) => patch({ y: v })} />
-                  <Button
-                    size="small"
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => updateFurniture(furniture.filter((_, i) => i !== fi), '删家具')}
-                  />
-                </div>
-                <div style={ROW}>
-                  <NumField label="W" value={f.w} min={1} onChange={(v) => patch({ w: v })} />
-                  <NumField label="H" value={f.h} min={1} onChange={(v) => patch({ h: v })} />
-                  <Select
-                    size="small"
-                    value={f.activityId}
-                    style={{ width: 110 }}
-                    placeholder="活动"
-                    options={ACTIVITY_IDS.map((a) => ({ value: a, label: a }))}
-                    onChange={(v) => patch({ activityId: v })}
-                  />
-                </div>
-                <div style={ROW}>
-                  <span style={{ fontSize: 12, color: '#94b0c2' }}>使用格</span>
-                  <NumField
-                    label="X"
-                    value={usePt.x}
-                    onChange={(v) => patch({ use: { x: v, y: usePt.y } })}
-                  />
-                  <NumField
-                    label="Y"
-                    value={usePt.y}
-                    onChange={(v) => patch({ use: { x: usePt.x, y: v } })}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          屋内物品请在画布单独点选/拖拽,选中后在此精简编辑
+        </Typography.Text>
       </div>
       <Button danger size="small" icon={<DeleteOutlined />} onClick={removePlace}>
         删除场所
+      </Button>
+    </div>
+  );
+}
+
+/** 家具独立面板(问题1):只呈现选中单件家具的字段 */
+function FurnitureForm({
+  place,
+  furn,
+  placeIndex,
+  furnIndex,
+}: {
+  place: PlaceDefinition;
+  furn: FurnitureDefinition;
+  placeIndex: number;
+  furnIndex: number;
+}) {
+  const doc = useEditor((s) => s.doc);
+  const commit = useEditor((s) => s.commit);
+  const select = useEditor((s) => s.select);
+  const path: Path = ['places', placeIndex, 'furniture', furnIndex];
+  const coalesce = (f: string): string => `furn:${place.id}:${furnIndex}:${f}`;
+  const update = (patch: Partial<FurnitureDefinition>, label: string, key?: string): void => {
+    commit({
+      kind: 'update',
+      label,
+      path,
+      before: furn,
+      after: { ...furn, ...patch },
+      ...(key !== undefined ? { coalesce: key } : {}),
+    });
+  };
+  const label = furnitureLabel(furn.kind);
+  const usePt = furn.use ?? { x: furn.x, y: furn.y + furn.h };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 12 }}>
+      <div style={ROW}>
+        <span style={{ color: '#94b0c2' }}>家具 · {label}</span>
+        <span style={{ color: '#566c86' }}>{place.name}</span>
+      </div>
+      <div style={ROW}>
+        <span style={{ fontSize: 12, color: '#94b0c2', width: 30 }}>种类</span>
+        <Select
+          size="small"
+          value={furn.kind}
+          style={{ width: 130 }}
+          options={FURNITURE_KINDS.map((k) => ({ value: k, label: FURNITURE_LABELS[k] ?? k }))}
+          onChange={(v) => update({ kind: v }, '改家具种类', coalesce('kind'))}
+        />
+      </div>
+      <RectFields
+        rect={furn}
+        maxWidth={doc.width}
+        maxHeight={doc.height}
+        onChange={(patch) => update(patch, '改家具占地', coalesce(`rect:${Object.keys(patch)[0]}`))}
+      />
+      <div>
+        <Typography.Text type="secondary">活动(使用家具触发的行为)</Typography.Text>
+        <div style={{ marginTop: 2 }}>
+          <Select
+            size="small"
+            value={furn.activityId}
+            style={{ width: '100%' }}
+            placeholder="未关联活动"
+            allowClear
+            options={ACTIVITY_IDS.map((a) => ({ value: a, label: a }))}
+            onChange={(v) => update({ activityId: v }, '改活动', coalesce('act'))}
+          />
+        </div>
+      </div>
+      <div>
+        <Typography.Text type="secondary">使用格(邻接占地的可行走格)</Typography.Text>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, auto)', gap: 4, marginTop: 2 }}>
+          <NumField
+            label="X"
+            value={usePt.x}
+            onChange={(v) => update({ use: { x: v, y: usePt.y } }, '改使用格', coalesce('ux'))}
+          />
+          <NumField
+            label="Y"
+            value={usePt.y}
+            onChange={(v) => update({ use: { x: usePt.x, y: v } }, '改使用格', coalesce('uy'))}
+          />
+        </div>
+      </div>
+      <Button
+        danger
+        size="small"
+        icon={<DeleteOutlined />}
+        onClick={() => {
+          commit({ kind: 'remove', label: `删${label}`, path, before: furn, after: null });
+          select({ kind: 'place', id: place.id });
+        }}
+      >
+        删除家具
       </Button>
     </div>
   );
@@ -271,6 +323,22 @@ export function PropertiesPanel() {
   if (selection.kind === 'place') {
     const index = path[1] as number;
     return <PlaceForm place={obj as PlaceDefinition} index={index} />;
+  }
+
+  if (selection.kind === 'furniture') {
+    const placeIndex = path[1] as number;
+    const place = doc.places[placeIndex];
+    if (place === undefined) {
+      return <Typography.Text type="secondary">对象已被删除</Typography.Text>;
+    }
+    return (
+      <FurnitureForm
+        place={place}
+        furn={obj as FurnitureDefinition}
+        placeIndex={placeIndex}
+        furnIndex={path[3] as number}
+      />
+    );
   }
 
   if (selection.kind === 'path' || selection.kind === 'fence' || selection.kind === 'blocked') {
