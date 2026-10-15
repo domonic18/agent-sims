@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { REVIVE_WINDOW_MINUTES } from '@sims/shared';
 import { Simulation } from './simulation.js';
-import { currentWorldParams } from '../config/balance.js';
+import { BALANCE, currentWorldParams } from '../config/balance.js';
 
 describe('Simulation 模拟核心', () => {
   it('advanceTicks 每 tick 推进 1 游戏分钟', () => {
@@ -261,6 +261,8 @@ describe('生死机制(M3.6f 体力区段)', () => {
     const { sim, events } = simWithMort();
     sim.character('mort').score = 100;
     sim.character('mort').energy = 0.1;
+    sim.character('mort').coins = 3; // 破产态(死亡悠悠球典型处境)
+    sim.character('mort').housing = { propertyId: 'home-a', ownership: 'rent', paidThroughDay: 1 };
     sim.advanceTicks(6); // 死亡(扣减挂起)
     expect(sim.character('mort').score).toBeCloseTo(100, 5);
     // 锚定实际死亡时刻推到届满前 1 分钟,隔离复活后剩余 tick 的待机代谢
@@ -272,6 +274,9 @@ describe('生死机制(M3.6f 体力区段)', () => {
     expect(mort.alive).toBe(true);
     expect(mort.energy).toBe(100);
     expect(mort.score).toBeCloseTo(80, 5); // ×(1-0.2) 生效
+    // 复活救济(2026-10-15 死亡悠悠球): 补到贫困线+续 1 天租约,给「吃上饭→睡上觉」自救起点
+    expect(mort.coins).toBe(BALANCE.POVERTY_COIN_LINE);
+    expect(mort.housing!.paidThroughDay).toBe(sim.clock.day + 1);
     expect(mort.diedAtGameMinutes).toBeNull();
     expect(events.some((e) => e.type === 'character.auto_revived')).toBe(true);
     expect(() => sim.debugRevive('mort')).toThrow(/尚存活/);

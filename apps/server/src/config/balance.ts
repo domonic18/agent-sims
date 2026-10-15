@@ -164,6 +164,7 @@ export interface BalanceConfig {
   DRIVE_EARN_URGENCY: number;
   DRIVE_SLEEP_NIGHT_URGENCY: number;
   DRIVE_SLEEP_DAY_URGENCY: number;
+  DRIVE_SLEEP_DEBT_BOOST: number;
   DRIVE_TTL_MINUTES: number;
   /** 事件 want(E6.2 respond→冲动):响应注册表产出 intent 改 want——
    * 救人查看档+好感加权(关心的人多赶一分),道谢走 socialize 赴约档 */
@@ -301,15 +302,19 @@ export const BALANCE: BalanceConfig = {
   JEV_IMPULSE_TTL_MINUTES: 120,
   JEV_CONFIDENCE_MIN: 0.35,
   // E6.2 rule→驱力:压力→urgency 评分竞争,不再直执——
-  // 进食 0.75+亏空爬坡 ≤0.95(饿得越狠越压过一切);直采 0.8(店买不到的逃生档);
-  // 谋生 0.7(贫困档,可被高优 plan 让位);睡 0.85 夜/0.7 昼(夜间压过计划,
-  // 白天犯困让位要事);半衰 90 分,压力持续则巡检重发
+  // 进食 0.75+亏空爬坡 ≤0.95(饿得越狠越压过一切);直采 0.8×1.3(店买不到的逃生档);
+  // 谋生 0.7×1.5(贫困档,可被高优 plan 让位);睡 0.85 夜/0.7 昼(夜间压过计划,
+  // 白天犯困让位要事;缺觉惩罚生效中再 ×DEBT_BOOST,见下);半衰 90 分,压力持续则巡检重发
   DRIVE_EAT_URGENCY_BASE: 0.75,
   DRIVE_EAT_URGENCY_SCALE: 0.2,
   DRIVE_FORAGE_URGENCY: 0.8,
   DRIVE_EARN_URGENCY: 0.7,
   DRIVE_SLEEP_NIGHT_URGENCY: 0.85,
   DRIVE_SLEEP_DAY_URGENCY: 0.7,
+  // 缺觉困意加压(2026-10-15 死亡悠悠球):缺觉惩罚生效中者夜间 sleep urgency
+  // ×1.4=1.19,压过 earn 1.05/forage 1.04——贫困者「越穷越不睡、越不睡越穷」
+  // 的竞标死锁出口;白天不加压,作息仍归夜睡
+  DRIVE_SLEEP_DEBT_BOOST: 1.4,
   DRIVE_TTL_MINUTES: 90,
   // E6.2 respond→冲动 want:救人查看 0.85+好感/100×0.1(陌生人也看,挚友飞奔);
   // 获救道谢 0.9 走 socialize(经 S1 会合协议当面聊);半衰 60 分(人没救到/已散场自然消退)

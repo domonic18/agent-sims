@@ -155,6 +155,13 @@ export function reviveCharacter(
   character.health = injuryWake ? BALANCE.SURVIVAL_INJURY_REVIVE_HEALTH : BALANCE.VITAL_MAX;
   character.diedAtGameMinutes = null;
   if (source === 'timeout') {
+    // 苏醒救济(2026-10-15 死亡悠悠球):超时自动复活只回数值不清贫困——0 金币+
+    // 过期租约会让同一死循环原地重启(实证 2.6 游戏日/次);补到贫困线+续 1 天
+    // 租约,给足「吃上饭→睡上觉→睡回正循环」的自救起点
+    character.coins = Math.max(character.coins, BALANCE.POVERTY_COIN_LINE);
+    if (character.housing !== null) {
+      character.housing.paidThroughDay = Math.max(character.housing.paidThroughDay, sim.clock.day + 1);
+    }
     const event: CharacterAutoRevivedEvent = {
       type: 'character.auto_revived',
       characterId: character.id,

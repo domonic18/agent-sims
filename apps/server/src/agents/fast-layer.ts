@@ -14,6 +14,7 @@ import {
   JOB_CATEGORIES,
   getPropertyDefinition,
   ITEMS,
+  PROPERTY_IDS,
   resourceNodeLabel,
   type ActivityDefinition,
   type GameType,
@@ -24,8 +25,23 @@ import {
 import { BALANCE } from '../config/balance.js';
 import type { DayIntents, Want } from './cognition.js';
 import type { WorldCharacter } from '../world/character.js';
+import { debtFactor } from '../world/settlement.js';
 import { hasBackpackRoomForGather } from '../world/work-task.js';
 import type { MemoryLlm } from './memory-writer.js';
+
+/** 锚点占位(fast 层口径):坐标+归属场所+家具档位——露宿兜底须按场所过滤住宅、
+ * 按档位确认长椅;调度器 anchorsAt 直传 map.activityAnchors 同源字段 */
+export interface AnchorSpot {
+  x: number;
+  y: number;
+  placeId: string;
+  kind: string;
+}
+
+/** 住宅场所即房产登记地(home-a 等):露宿兜底不得指进别人/自己未租的公寓 */
+function isResidentialPlace(placeId: string): boolean {
+  return (PROPERTY_IDS as readonly string[]).includes(placeId);
+}
 
 /** jev 冲动 want 载荷(E6 统一意图架构,System 1 输出):jev 不再直执——
  * 概率采样产出冲动,调度泵写入意图存储(origin=impulse)后立即重入 wantSelect
@@ -178,16 +194,25 @@ function forageChannelAvailable(char: WorldCharacter, world: RuleWorldQueries): 
   return (world.nearestEdibleNode?.({ x: char.x, y: char.y }) ?? null) !== null;
 }
 
-/** 就寝通道可用性(D3/E1):回床(居所+租约有效+床锚点)或公园长椅,总有一条落点 */
+/** 就寝通道可用性(D3/E1):回床(居所+租约有效+床锚点)或露宿长椅(任意非住宅场所,
+ * 2026-10-15 死亡悠悠球实证:原硬编码 'park' 在无 park 的 survival 地图恒空,
+ * 无床者睡眠通道全断),总有一条落点 */
 function sleepyChannelAvailable(
   char: WorldCharacter,
   day: number,
-  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+  anchorsOf: (activityId: string, placeId: string | null) => AnchorSpot[],
 ): boolean {
   const homePlaceId = char.housing === null ? undefined : getPropertyDefinition(char.housing.propertyId)?.placeId;
   const beds =
     homePlaceId !== undefined && isLeaseValid(char.housing, day) ? anchorsOf('sleep', homePlaceId) : [];
-  return beds.length > 0 || anchorsOf('rest', 'park').length > 0;
+  return beds.length > 0 || homelessBenchAnchors(anchorsOf).length > 0;
+}
+
+/** 露宿长椅锚点(非住宅场所的 bench):兜底通道唯一候选,driveDecide 与执行分支同源 */
+function homelessBenchAnchors(
+  anchorsOf: (activityId: string, placeId: string | null) => AnchorSpot[],
+): AnchorSpot[] {
+  return anchorsOf('sleep', null).filter((a) => a.kind === 'bench' && !isResidentialPlace(a.placeId));
 }
 
 /** 驱力巡检(E6.2 rule→驱力,零模型):恒稳态压力→驱力 want 载荷(origin=drive)。
@@ -198,7 +223,7 @@ export function driveDecide(
   char: WorldCharacter,
   day: number,
   minuteOfDay: number,
-  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+  anchorsOf: (activityId: string, placeId: string | null) => AnchorSpot[],
   world: RuleWorldQueries = {},
 ): DrivePressure[] {
   if (!char.alive || char.collapsed) return [];
@@ -233,9 +258,16 @@ export function driveDecide(
   const night = minuteOfDay >= BALANCE.NIGHT_START_MINUTE || minuteOfDay < BALANCE.NIGHT_END_MINUTE;
   const sleepyLine = night ? BALANCE.SLEEPY_NIGHT_ENERGY : BALANCE.SLEEPY_DAY_ENERGY;
   if (char.energy <= sleepyLine && sleepyChannelAvailable(char, day, anchorsOf)) {
+    // 缺觉困意加压(E6.2/2026-10-15 死亡悠悠球):缺觉惩罚生效中(=昨夜没睡、产出正被打折)
+    // 的角色,夜间困意压过谋生/直采(0.85×1.4=1.19 > earn 1.05/forage 1.04)——否则
+    // 越穷越不睡、越不睡产出越低,贫困死锁永无出口;白天不加压(作息仍归夜睡)
+    const gameMinutes = (day - BALANCE.START_DAY) * BALANCE.DAY_MINUTES + minuteOfDay;
+    const sleepDeprived = debtFactor(char, gameMinutes) < 1;
     pressures.push({
       activityId: 'sleep',
-      urgency: night ? BALANCE.DRIVE_SLEEP_NIGHT_URGENCY : BALANCE.DRIVE_SLEEP_DAY_URGENCY,
+      urgency: night
+        ? BALANCE.DRIVE_SLEEP_NIGHT_URGENCY * (sleepDeprived ? BALANCE.DRIVE_SLEEP_DEBT_BOOST : 1)
+        : BALANCE.DRIVE_SLEEP_DAY_URGENCY,
       why: night ? '夜深了,困得睁不开眼' : '困意上头,得歇会儿',
     });
   }
@@ -317,7 +349,7 @@ function driveExecution(
   day: number,
   night: boolean,
   map: TileMapDefinition,
-  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+  anchorsOf: (activityId: string, placeId: string | null) => AnchorSpot[],
   world: WantWorldQueries,
 ): DriveExecution | null {
   switch (want.activityId) {
@@ -434,18 +466,20 @@ function driveExecution(
           };
         }
       }
-      // 长椅兜底(E1 租约感知):睡不了整觉但能回体力,消灭撞床循环
-      const benches = anchorsOf('rest', 'park');
+      // 露宿兜底(E1 租约感知/2026-10-15 死亡悠悠球):非住宅长椅——起 sleep 活动
+      // (bench ∈ SLEEP_ANCHOR_KINDS)才能计入睡眠账本清缺觉债,原 rest 起活动
+      // 永不清债+原硬编码 'park' 在 survival 地图恒空,兜底名存实亡
+      const benches = homelessBenchAnchors(anchorsOf);
       if (benches.length === 0) return { bubble: '', stuck: true };
       if (onSpot(char, benches)) {
         return {
-          intent: { type: 'start_activity', characterId: char.id, activityId: 'rest' },
-          bubble: night ? '夜深了回不了家,公园长椅上眯一晚' : '困了,长椅上歇会儿',
+          intent: { type: 'start_activity', characterId: char.id, activityId: 'sleep' },
+          bubble: night ? '夜深了回不了家,长椅上将就一晚' : '困了,长椅上打个盹',
         };
       }
       return {
         intent: { type: 'move_to', characterId: char.id, x: benches[0]!.x, y: benches[0]!.y },
-        bubble: '困了,去公园长椅歇会儿',
+        bubble: '困了,去长椅上歇会儿',
       };
     }
     default:
@@ -769,7 +803,7 @@ export function wantSelect(
   intents: DayIntents | null | undefined,
   day: number,
   map: TileMapDefinition,
-  anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }>,
+  anchorsOf: (activityId: string, placeId: string | null) => AnchorSpot[],
   bias: Readonly<Record<string, number>> = {},
   world: WantWorldQueries = {},
   debug?: { candidates: WantCandidateDebug[] },

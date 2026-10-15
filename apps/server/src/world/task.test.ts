@@ -240,6 +240,23 @@ describe('work_task 采集两岗(M-G.6)', () => {
     expect(events.some((e) => e.type === 'work_task.completed')).toBe(true);
   });
 
+  it('缺觉保底 1 件(2026-10-15 死亡悠悠球): 单件产出 floor(1×0.7)=0 曾归零死锁,保底后仍得 1', () => {
+    const { sim } = simWithGatherer();
+    sim.character('mow').sleepDebtEndGameMinutes = sim.clock.gameMinutes + 10_000;
+    // 借用浆果丛坐标(可达性已证)换苹果树: pick_apple 单件产出 apple×1
+    sim.resourceNodes.set('apple:5:27', {
+      id: 'apple:5:27',
+      kind: 'apple_tree' as const,
+      x: 5,
+      y: 27,
+      charges: NODE_MAX_CHARGES.apple_tree!,
+      respawnAtDay: null,
+    });
+    sim.requestWorkTask('mow', 'apple:5:27');
+    sim.advanceTicks(60);
+    expect(sim.character('mow').backpack.apple).toBe(1);
+  });
+
   it('存量采竭与跨日重生: 3 次采完记 respawnAtDay,次日 00:00 翻滚回满', () => {
     const { sim } = simWithGatherer();
     const node = sim.resourceNodes.get('berry_bush:5:27')!;

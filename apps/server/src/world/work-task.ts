@@ -292,7 +292,8 @@ export function completeWorkTask(ctx: WorkTaskCompletionContext): 'ok' | 'cancel
  * 原只挂在 construction want 执行分支,LLM 见镇情差料理性不排建造→单仓恒空的
  * 鸡生蛋断点在此打通(与施工「材料不经背包」同哲学);仓满容积闸溢出留背包。
  * wheat/scrap 等 material 类制作原料照旧入背包(灶台/木工台经背包消费,入仓
- * 即断供)。缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(有意);
+ * 即断供)。缺觉日(M-G.2)产出 floor(count×系数) 但保底 1 件(2026-10-15 死亡
+ * 悠悠球:归零式没收曾让零睡眠采集者收入恒 0,复活也无法自救);
  * 以物代薪 pay=0 */
 function completeGather({ sim, character, task, targetId, debtFactor }: WorkTaskCompletionContext): 'ok' {
   const node = sim.resourceNodes.get(targetId)!;
@@ -300,8 +301,9 @@ function completeGather({ sim, character, task, targetId, debtFactor }: WorkTask
     if (yieldDef.chance !== undefined && sim.rng() >= yieldDef.chance) {
       continue;
     }
-    const count = Math.floor(yieldDef.count * debtFactor);
-    if (count <= 0) continue;
+    // 缺觉折扣保底 1 件(2026-10-15 死亡悠悠球):floor(count×系数) 对单件产出
+    // (苹果 1)恒为 0,叠加零睡眠即采集收入死锁——产出可打折,不可整单没收
+    const count = Math.max(1, Math.floor(yieldDef.count * debtFactor));
     if (CONSTRUCTION_MATERIALS.has(yieldDef.itemId)) {
       const freeByVolume = BALANCE.STORAGE_VOLUME_LIMIT - inventoryVolume(sim.storage);
       const stored = Math.min(count, Math.max(freeByVolume, 0));

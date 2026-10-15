@@ -10,6 +10,7 @@ import {
   jevDecide,
   rentDecision,
   wantSelect,
+  type AnchorSpot,
   type Decision,
   type DrivePressure,
   type JevContext,
@@ -115,18 +116,18 @@ describe('rentDecision(房租即时结算,账单不是行为)', () => {
 });
 
 describe('driveDecide(E6.2 驱力巡检,压力→urgency 不产动作)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const noAnchors = (): AnchorSpot[] => [];
   const decideP = (
     c: WorldCharacter,
     minuteOfDay = NOON,
     world: RuleWorldQueries = {},
-    anchorsOf: (activityId: string, placeId: string | null) => Array<{ x: number; y: number }> = noAnchors,
+    anchorsOf: (activityId: string, placeId: string | null) => AnchorSpot[] = noAnchors,
   ): DrivePressure[] => driveDecide(c, DAY, minuteOfDay, anchorsOf, world);
   const byId = (ps: DrivePressure[], id: string): DrivePressure | undefined =>
     ps.find((p) => p.activityId === id);
   const housing = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY + 5 };
-  const beds = [{ x: 5, y: 6 }];
-  const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+  const beds: AnchorSpot[] = [{ x: 5, y: 6, placeId: 'home-a', kind: 'bed' }];
+  const homeAnchors = (activityId: string, placeId: string | null): AnchorSpot[] =>
     activityId === 'sleep' && placeId === 'home-a' ? beds : [];
 
   it('数值健康 → 零压力;失能(死亡/虚脱)→ 零压力', () => {
@@ -180,6 +181,29 @@ describe('driveDecide(E6.2 驱力巡检,压力→urgency 不产动作)', () => {
     expect(byId(dayNap, 'sleep')?.urgency).toBe(BALANCE.DRIVE_SLEEP_DAY_URGENCY);
 
     expect(byId(decideP(char({ energy: 70, housing }), NIGHT, {}, homeAnchors), 'sleep')).toBeUndefined();
+  });
+
+  it('缺觉夜升档(2026-10-15 死亡悠悠球): 债务生效夜 sleep 0.85×1.4 压过 earn 1.05;白天不升档', () => {
+    const debtUntil = (DAY - 1) * BALANCE.DAY_MINUTES + NIGHT + BALANCE.DAY_MINUTES;
+    const inDebt = char({
+      energy: BALANCE.SLEEPY_NIGHT_ENERGY,
+      coins: 0,
+      housing,
+      sleepDebtEndGameMinutes: debtUntil,
+    });
+    const night = decideP(inDebt, NIGHT, {}, homeAnchors);
+    expect(byId(night, 'sleep')?.urgency).toBe(
+      BALANCE.DRIVE_SLEEP_NIGHT_URGENCY * BALANCE.DRIVE_SLEEP_DEBT_BOOST,
+    );
+    expect(byId(night, 'sleep')!.urgency).toBeGreaterThan(byId(night, 'earn')!.urgency);
+    // 白天困倦照旧 0.7:债务只救夜眠,不劫持日间节律
+    const day = decideP(
+      char({ energy: 22, coins: 0, housing, sleepDebtEndGameMinutes: debtUntil }),
+      NOON,
+      {},
+      homeAnchors,
+    );
+    expect(byId(day, 'sleep')?.urgency).toBe(BALANCE.DRIVE_SLEEP_DAY_URGENCY);
   });
 
   it('饥饿+困倦并存 → 两条压力都在(评分竞争,非互斥);rent 不产压力(即时结算)', () => {
@@ -381,8 +405,8 @@ describe('jevDecide(systemone choice 候选选一)', () => {
 });
 
 describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', () => {
-  const studyAnchors = [{ x: 11, y: 12 }];
-  const anchorsOf = (activityId: string): Array<{ x: number; y: number }> =>
+  const studyAnchors: AnchorSpot[] = [{ x: 11, y: 12, placeId: 'library', kind: 'desk' }];
+  const anchorsOf = (activityId: string): AnchorSpot[] =>
     activityId === 'study' ? studyAnchors : [];
 
   it('无意图/异日意图 → null(意图不越日生效)', () => {
@@ -593,7 +617,7 @@ describe('wantSelect(意图执行,慢层产 want 快层评分择条两段式)', 
 });
 
 describe('wantSelect explore want(散列目标,want 内粘性)', () => {
-  const anchorsOf = (): Array<{ x: number; y: number }> => [];
+  const anchorsOf = (): AnchorSpot[] => [];
   const exploreDay = intents(3, [{ activityId: 'explore', urgency: 0.9, id: 'w3-0' }]);
   const targetOf = (key: string) =>
     exploreTarget(key, ['park', 'shop', 'restaurant', 'gym', 'library', 'office'], TOWN_MAP);
@@ -640,7 +664,7 @@ describe('wantSelect explore want(散列目标,want 内粘性)', () => {
 });
 
 describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const noAnchors = (): AnchorSpot[] => [];
 
   it('采集 want(E4 两段式):远处 move_to 邻位/贴身 work_task;无节点本轮跳过;知识 0 放行', () => {
     const day = intents(1, [{ activityId: 'gather_berry', urgency: 0.9, why: '采点浆果' }]);
@@ -679,8 +703,8 @@ describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () =
 
   it('制作 want:验料就绪+到站→craft;缺料跳过;不在站点先前往', () => {
     const day = intents(1, [{ activityId: 'craft_berry_pie', urgency: 0.9, why: '烤个派' }]);
-    const stove = [{ x: 20, y: 21 }];
-    const stoveAnchors = (activityId: string): Array<{ x: number; y: number }> =>
+    const stove: AnchorSpot[] = [{ x: 20, y: 21, placeId: 'home-a', kind: 'stove' }];
+    const stoveAnchors = (activityId: string): AnchorSpot[] =>
       activityId === 'craft_berry_pie' ? stove : [];
     const ready = { recipeReady: () => true };
 
@@ -719,7 +743,7 @@ describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () =
 });
 
 describe('wantSelect 卖货 want(E4 变现通路)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const noAnchors = (): AnchorSpot[] => [];
   const day = intents(1, [{ activityId: 'sell_goods', urgency: 0.9, why: '卖点货换钱' }]);
   const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
 
@@ -755,7 +779,7 @@ describe('wantSelect 卖货 want(E4 变现通路)', () => {
 });
 
 describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const noAnchors = (): AnchorSpot[] => [];
 
   it('远处熟人: move_to 对方当前位置寻人,wantId 带出', () => {
     const day = intents(1, [
@@ -948,9 +972,9 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
 });
 
 describe('wantSelect 驱力分支(E6.2 rule→驱力,伪活动 id 专属执行)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
-  const beds = [{ x: 5, y: 6 }];
-  const homeAnchors = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
+  const noAnchors = (): AnchorSpot[] => [];
+  const beds: AnchorSpot[] = [{ x: 5, y: 6, placeId: 'home-a', kind: 'bed' }];
+  const homeAnchors = (activityId: string, placeId: string | null): AnchorSpot[] =>
     activityId === 'sleep' && placeId === 'home-a' ? beds : [];
   const shopXY = { x: SHOP_ENTRANCE.x, y: SHOP_ENTRANCE.y + 1 }; // 店内
 
@@ -1023,16 +1047,26 @@ describe('wantSelect 驱力分支(E6.2 rule→驱力,伪活动 id 专属执行)'
     expect(done!.doneWantIds).toEqual(['w1-0']);
   });
 
-  it('sleep want 租约失效 → 公园长椅兜底(两段式 rest,不再撞床)', () => {
+  it('sleep want 租约失效 → 露宿长椅兜底(两段式 sleep,计入睡眠账本可清缺觉债)', () => {
     const expired = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY - 1 };
-    const parkBench = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
-      activityId === 'rest' && placeId === 'park' ? [{ x: 7, y: 8 }] : [];
+    const parkBench = (activityId: string, placeId: string | null): AnchorSpot[] =>
+      activityId === 'sleep' && placeId === null ? [{ x: 7, y: 8, placeId: 'camping-a', kind: 'bench' }] : [];
     const day = intents(1, [{ activityId: 'sleep', urgency: 0.85, origin: 'drive', why: '困了' }]);
     const go = wantSelect(char({ energy: 40, housing: expired }), day, 1, TOWN_MAP, parkBench, {}, { night: true });
     expect(go!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 7, y: 8 });
 
     const sit = wantSelect(char({ x: 7, y: 8, energy: 40, housing: expired }), day, 1, TOWN_MAP, parkBench, {}, { night: true });
-    expect(sit!.intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'rest' });
+    expect(sit!.intent).toEqual({ type: 'start_activity', characterId: 'char-1', activityId: 'sleep' });
+  });
+
+  it('sleep want 露宿兜底:住宅长椅/沙发不算数(防指进无租公寓),只有野外 bench 可栖', () => {
+    const expired = { propertyId: 'home-a', ownership: 'rent' as const, paidThroughDay: DAY - 1 };
+    const homeBench = (activityId: string, placeId: string | null): AnchorSpot[] =>
+      activityId === 'sleep' && placeId === null ? [{ x: 7, y: 8, placeId: 'home-b', kind: 'bench' }] : [];
+    const day = intents(1, [{ activityId: 'sleep', urgency: 0.85, origin: 'drive', why: '困了' }]);
+    const stuck = wantSelect(char({ energy: 40, housing: expired }), day, 1, TOWN_MAP, homeBench, {}, { night: true });
+    expect(stuck!.action).toBe('continue');
+    expect(stuck!.abandonedWantIds).toEqual(['w1-0']);
   });
 
   it('forage want:远节点 move_to 邻位;无节点 stuck→abandoned(写侧重评改道)', () => {
@@ -1048,8 +1082,8 @@ describe('wantSelect 驱力分支(E6.2 rule→驱力,伪活动 id 专属执行)'
   });
 
   it('驱力豁免体力闸与非驱力 id 拦截:体力 10 的 sleep want 照常执行;词汇表外 drive want 废弃', () => {
-    const parkBench = (activityId: string, placeId: string | null): Array<{ x: number; y: number }> =>
-      activityId === 'rest' && placeId === 'park' ? [{ x: 7, y: 8 }] : [];
+    const parkBench = (activityId: string, placeId: string | null): AnchorSpot[] =>
+      activityId === 'sleep' && placeId === null ? [{ x: 7, y: 8, placeId: 'camping-a', kind: 'bench' }] : [];
     const day = intents(1, [{ activityId: 'sleep', urgency: 0.7, origin: 'drive', why: '困了' }]);
     const decision = wantSelect(char({ energy: 10 }), day, 1, TOWN_MAP, parkBench, {}, { night: false });
     expect(decision!.action).toBe('react');
@@ -1063,8 +1097,8 @@ describe('wantSelect 驱力分支(E6.2 rule→驱力,伪活动 id 专属执行)'
 });
 
 describe('wantSelect 执行契约(E6.3: 在契免评续做+显式抢占)', () => {
-  const studyAnchors = [{ x: 11, y: 12 }];
-  const anchorsOf = (activityId: string): Array<{ x: number; y: number }> =>
+  const studyAnchors: AnchorSpot[] = [{ x: 11, y: 12, placeId: 'library', kind: 'desk' }];
+  const anchorsOf = (activityId: string): AnchorSpot[] =>
     activityId === 'study' ? studyAnchors : [];
 
   it('在契(doing)免评续做:挑战者小幅领先不换王,复合行为不被逐拍拆散', () => {
@@ -1130,7 +1164,7 @@ describe('wantSelect 执行契约(E6.3: 在契免评续做+显式抢占)', () =>
 });
 
 describe('wantSelect 救援 want(E6.2 triage respond→冲动)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const noAnchors = (): AnchorSpot[] => [];
 
   it('目标倒地:move_to 过去看;到场/已起/人没了→doneWantIds 收口', () => {
     const day = intents(1, [
@@ -1172,7 +1206,7 @@ describe('wantSelect 救援 want(E6.2 triage respond→冲动)', () => {
 });
 
 describe('wantSelect 建造 want(S2-A 自主建造:选址搜索+足料 build/缺料存仓)', () => {
-  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const noAnchors = (): AnchorSpot[] => [];
   const RECT = { x: 20, y: 20, w: 7, h: 5 };
   /** survival 世界查询桩:足料=survival 单仓满料,选址恒 RECT,站位恒外圈 (27,25) */
   const world = (over: Partial<WantWorldQueries> = {}): WantWorldQueries => ({

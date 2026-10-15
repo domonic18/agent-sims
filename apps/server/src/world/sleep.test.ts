@@ -37,14 +37,27 @@ const TO_0600_D2 = 1320; // → 1800
 const TO_2200_D2 = 2280; // → 2760
 
 describe('sleep 入睡校验(M-G.2)', () => {
-  it('自家床可睡(anchorKind=bed);公园长椅非 sleep 档位不可睡', () => {
+  it('自家床可睡(anchorKind=bed);长椅 sleep 兜底放行(2026-10-15 死亡悠悠球:无家可归夜宿长椅)', () => {
     const bed = anchorUseKind('home-a', 'bed');
     const { sim } = simWith('mow', bed.x, bed.y); // 首个生成 → home-a
     sim.requestStartActivity('mow', 'sleep');
     expect(sim.character('mow').activity).toMatchObject({ activityId: 'sleep', anchorKind: 'bed' });
     const bench = anchorUseKind('park', 'bench');
     sim.spawnCharacter('paula', bench.x, bench.y, 'paula'); // 第二个生成 → home-b,站公园长椅
-    expect(() => sim.requestStartActivity('paula', 'sleep')).toThrow(/床旁/);
+    sim.requestStartActivity('paula', 'sleep');
+    expect(sim.character('paula').activity).toMatchObject({ activityId: 'sleep', anchorKind: 'bench' });
+  });
+
+  it('长椅兜底睡足窗口(死亡悠悠球修复): 账本认 activityId=sleep 不认档位,240 分不缺觉', () => {
+    const bench = anchorUseKind('park', 'bench');
+    const { sim, events } = simWith('mow', bench.x, bench.y);
+    sim.advanceTicks(TO_2200_D1);
+    sim.requestStartActivity('mow', 'sleep');
+    sim.advanceTicks(240);
+    sim.requestStopActivity('mow');
+    sim.advanceTicks(TO_0600_D2 - TO_2200_D1 - 240);
+    expect(events.some((e) => e.type === 'sleep.debt_applied')).toBe(false);
+    expect(events.some((e) => e.type === 'sleep.settled' && e.sleptMinutes === 240)).toBe(true);
   });
 
   it('他人公寓床拒绝(床位归属),租约过期拒绝', () => {

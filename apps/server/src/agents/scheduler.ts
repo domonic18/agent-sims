@@ -34,6 +34,7 @@ import {
   jevDecide,
   rentDecision,
   wantSelect,
+  type AnchorSpot,
   type Decision,
   type ImpulseWant,
   type JevContext,
@@ -188,12 +189,12 @@ export class AgentScheduler {
   }
 
   /** 锚点解析(快层用):活动使用格,可按场所过滤 */
-  private anchorsAt(): (activityId: string, placeId: string | null) => Array<{ x: number; y: number }> {
+  private anchorsAt(): (activityId: string, placeId: string | null) => AnchorSpot[] {
     return (activityId, placeId) =>
       this.deps.sim.map
         .activityAnchors(activityId)
         .filter((a) => placeId === null || a.placeId === placeId)
-        .map((a) => ({ x: a.x, y: a.y }));
+        .map((a) => ({ x: a.x, y: a.y, placeId: a.placeId, kind: a.kind }));
   }
 
   /** 驱力层世界查询(E1 依赖注入;E6.2 前 rule 层):货架余量/最近可食节点/活动倾向分(贫困选岗保人设) */
