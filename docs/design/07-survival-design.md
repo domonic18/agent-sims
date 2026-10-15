@@ -87,7 +87,8 @@
    - follow-up: S2 建造消耗三件套(木材/石料/金属)+共享仓储;**S3 僵尸波次以镇界围栏+豁口为防线基础**(僵尸自镇外进攻,出口即防线缺口,围栏破损点=进攻突破口,复用 M-G.5 修理工体系)
 2. **S2 合成与制造**: 配方表/craft/place;庇护所建造闭环
    - **已交付(2026-10-12,S2 三批 feat(feat server 8d0f8e3/web a95d3de/批3 本批)+plan/03)**: ①建造层——`BuiltState`(places+fences)与基础图纯拼接(definitionWithBuilt),applyBuilt 唯一落图口(重建阻塞层/锚点/围栏格,资源存量跨 setMap 保留),debug 直落与玩家工单走同一评估链 evaluateBuildPlacement(尺寸/越界/重叠/道路/结构/连通);②建造工单流(work_task 式)——requestBuild 校验链(蓝图解析→模式→存活/互斥→知识门槛→体力→选区→单仓预检→站位足迹圈外防困)→扣仓料建单→寻路→stepConstruction 逐分钟(在途不计时,到位按时长快照)→完工盖章 applyBuilt+按单入账;中断经 finishActivity 钩子退料销单无薪(诚实原则同 craft);③镇核心单仓——storage 共享仓储(deposit/withdraw 须站实体格或四邻),采集产出卖货之外新增**存仓供料**通路,蓝图从仓扣料;④web——建造菜单(ActionBar 蓝图下拉,fence 拖画条形/place 单击落图,ESC 取消)、在建工地/围栏渲染 construction-view、InspectCard 单仓卡(存量+容积+存取控件);⑤数值与参数(04 §5.7)——四蓝图(住宅/咖啡馆/商店/围栏)全 survival+知识 6 班,世界参数三件 CONSTRUCTION_KNOWLEDGE_GATE/CONSTRUCTION_TIME_SCALE/STORAGE_VOLUME_LIMIT 入 construction 组热调;⑥测试——construction 23 用例(校验链/工时工资/中断退料/参数热调)+web 快照字段;门禁全绿+容器走查(ESC 取消/Lab 落单/参数开关/蓝图冒烟,清单 docs/qa/07)
-   - follow-up: agent 自主建造可行性验证(托管角色自发攒料→接单施工,当前建造仅玩家经 ActionBar/Lab 下单);**S3 僵尸波次以镇界围栏+豁口为防线基础**(僵尸自镇外进攻,出口即防线缺口,围栏破损点=进攻突破口,复用 M-G.5 修理工体系+玩家建造围栏加固)
+   - **已交付(2026-10-12,S2-A 三批,plan/01 变更记录)**: agent 自主建造可行性验证通过——托管角色晨间慢思考按镇情自发排建造 want(townNeeds 增 survival 镇情: 单仓存量/可建蓝图/差料/知识门槛,零新增 LLM 调用),`Want.blueprintId` 脑内携带蓝图(不出快照协议);执行层确定性选址 `suggestBuildRect`(镇核心外扩环带扫描,复用 evaluateBuildPlacement 全门禁,LLM 不碰坐标),wantSelect 增 construction 分支(蓝图无效/无选址废弃,低体力/缺料跳过,足料 move_to→build 两段式,缺料背包有建材 move_to 单仓→store_item 两段式);采(chop_tree 工单)→存(store_item 入单仓)→建(build 扣料建单→施工→完工落地)跨块闭环+中断退料销单+growth 世界候选期废弃,集成测试 agent-build-chain(零真 LLM/零 DB)+build-suggest 5 用例
+   - follow-up: **S3 僵尸波次以镇界围栏+豁口为防线基础**(僵尸自镇外进攻,出口即防线缺口,围栏破损点=进攻突破口,复用 M-G.5 修理工体系+玩家建造围栏加固);围栏段自主布局(fence 类蓝图无 size,选址搜索不适用)随 S3 警备度耦合再议
 3. **S3 僵尸波次**: 波次调度/僵尸 AI/战斗/防守成败结算(实体分层与行为架构预研见 §8)
 4. **S4 合作与平衡**: agent 分工协商/波次曲线调优/生存奖励
 
