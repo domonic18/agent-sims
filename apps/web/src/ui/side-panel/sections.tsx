@@ -23,6 +23,7 @@ import {
 } from '@sims/shared';
 import { formatCoins } from '../../format';
 import { pushToast } from '../../store/toastStore';
+import { useWorldStore } from '../../store/worldStore';
 import { activityAnchors, findPlaceByRef } from './place';
 import type { CharacterView } from './place';
 import type { GoAndDoPending, RunIntent } from './useGoAndDo';
@@ -214,9 +215,11 @@ export function SocialSection({
   const dead = !character.alive;
   const moving = character.pathRemaining > 0;
   const others = snapshot.characters.filter((c) => c.id !== character.id);
+  const chatAllowed = useWorldStore((s) => s.rules?.allowChat ?? true);
   return (
     <section className="panel-section">
       <h3>社交 · 同处一地可闲聊</h3>
+      {!chatAllowed && <p className="hint">世界规则已关闭闲聊</p>}
       {others.length === 0 ? (
         <p className="hint">世界暂无其他角色</p>
       ) : (
@@ -239,11 +242,13 @@ export function SocialSection({
                 </span>
                 <button
                   type="button"
-                  disabled={moving || dead || !near || !other.alive}
+                  disabled={moving || dead || !near || !other.alive || !chatAllowed}
                   title={
-                    near
-                      ? `与 ${other.name} 闲聊(每日前 ${CHAT_DAILY_GAINED} 次有收益,之后无增益)`
-                      : `距离太远,走近点再聊(曼哈顿 ≤ ${SOCIAL_CHAT_DISTANCE})`
+                    !chatAllowed
+                      ? '世界规则已关闭闲聊'
+                      : near
+                        ? `与 ${other.name} 闲聊(每日前 ${CHAT_DAILY_GAINED} 次有收益,之后无增益)`
+                        : `距离太远,走近点再聊(曼哈顿 ≤ ${SOCIAL_CHAT_DISTANCE})`
                   }
                   onClick={() =>
                     void run({
