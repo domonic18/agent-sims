@@ -104,8 +104,13 @@ export const REST_RATES_BY_KIND: Record<RestAnchorKind, { energy: number }> = {
   bench: { energy: 0.12 },
 };
 
-/** 可作 sleep 锚点的家具档位(M-G.2 睡眠):仅床;新增档位(如帐篷)须同步扩 REST_RATES_BY_KIND */
-export const SLEEP_ANCHOR_KINDS = ['bed'] as const satisfies readonly FurnitureKind[];
+/**
+ * 可作 sleep 锚点的家具档位(M-G.2 睡眠):床+长椅。新增档位(如帐篷)须同步扩
+ * REST_RATES_BY_KIND。2026-10-15 死亡悠悠球实证:仅床时「长椅兜底」在
+ * start_activity sleep 处被 anchorAt 抛「须站在床旁」,无床者睡眠通道全断
+ * (缺觉→产出打折→更穷的死锁),长椅(REST_RATES_BY_KIND.bench 已有档位)入列。
+ */
+export const SLEEP_ANCHOR_KINDS = ['bed', 'bench'] as const satisfies readonly FurnitureKind[];
 
 export type SleepAnchorKind = (typeof SLEEP_ANCHOR_KINDS)[number];
 

@@ -7,10 +7,10 @@ describe('furnitureServesActivity(M-G.2 锚点绑定泛化)', () => {
     expect(furnitureServesActivity('workout', 'treadmill', 'workout')).toBe(true);
   });
 
-  it('sleep 复用绑 rest 的床,不命中沙发/长椅', () => {
+  it('sleep 复用绑 rest 的床/长椅(SLEEP_ANCHOR_KINDS 兜底,2026-10-15 死亡悠悠球),不命中沙发', () => {
     expect(furnitureServesActivity('rest', 'bed', 'sleep')).toBe(true);
+    expect(furnitureServesActivity('rest', 'bench', 'sleep')).toBe(true);
     expect(furnitureServesActivity('rest', 'sofa', 'sleep')).toBe(false);
-    expect(furnitureServesActivity('rest', 'bench', 'sleep')).toBe(false);
   });
 
   it('rest 不因 sleep 扩展误命中其他绑定,sleep 不命中非 rest 绑定', () => {
@@ -19,8 +19,8 @@ describe('furnitureServesActivity(M-G.2 锚点绑定泛化)', () => {
   });
 });
 
-describe('TOWN_MAP sleep 锚点(床在自家公寓,公园长椅不可睡)', () => {
-  it('床格命中 sleep 锚点,长椅/沙发格不命中', () => {
+describe('TOWN_MAP sleep 锚点(床+长椅兜底,沙发除外)', () => {
+  it('床格/长椅格命中 sleep 锚点,沙发格不命中', () => {
     const homeA = TOWN_MAP.places.find((p) => p.id === 'home-a')!;
     const bed = homeA.furniture!.find((f) => f.kind === 'bed')!;
     expect(bed.use).toBeDefined();
@@ -34,6 +34,9 @@ describe('TOWN_MAP sleep 锚点(床在自家公寓,公园长椅不可睡)', () =
     const park = TOWN_MAP.places.find((p) => p.id === 'park')!;
     const bench = park.furniture!.find((f) => f.kind === 'bench')!;
     expect(bench.use).toBeDefined();
-    expect(findActivityAnchorAt(TOWN_MAP, 'sleep', bench.use!.x, bench.use!.y)).toBeNull();
+    expect(findActivityAnchorAt(TOWN_MAP, 'sleep', bench.use!.x, bench.use!.y)).toMatchObject({
+      placeId: 'park',
+      kind: 'bench',
+    });
   });
 });

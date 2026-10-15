@@ -195,11 +195,10 @@ describe('在位判定与锚点收集(TD-1 谓词上提)', () => {
     expect(findPlaceByRef(TOWN_MAP, 'no-such')).toBeNull();
   });
 
-  it('activityAnchors: sleep 只收床(rest 档位谓词),label 用家具标签,rest 收床/沙发/长椅', () => {
+  it('activityAnchors: sleep 收床+长椅(SLEEP_ANCHOR_KINDS),label 用家具标签,rest 收床/沙发/长椅', () => {
     const sleep = activityAnchors(TOWN_MAP, 'sleep');
     expect(sleep.length).toBeGreaterThan(0);
-    expect(sleep.every((a) => a.kind === 'bed')).toBe(true);
-    expect(sleep.every((a) => a.label === '床')).toBe(true);
+    expect(new Set(sleep.map((a) => a.kind))).toEqual(new Set(['bed', 'bench']));
     const rest = activityAnchors(TOWN_MAP, 'rest');
     expect(new Set(rest.map((a) => a.kind))).toEqual(new Set(['bed', 'sofa', 'bench']));
   });
