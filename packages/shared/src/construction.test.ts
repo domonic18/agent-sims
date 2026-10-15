@@ -5,9 +5,12 @@ import {
   entrancesConnected,
   evaluateBuildPlacement,
   getBuildBlueprint,
+  requiredConstructionEnergy,
   stampBuiltPlace,
   type BuiltState,
 } from './construction.js';
+import { getActivityDefinition } from './activities.js';
+import { LOW_ENERGY_THRESHOLD } from './constants.js';
 import { blockedRectsOf, validateMapDefinition } from './map-validate.js';
 import { TOWN_MAP, type BlockedRect, type TileMapDefinition } from './town-map.js';
 
@@ -60,6 +63,16 @@ describe('蓝图注册表', () => {
   it('getBuildBlueprint 命中与未命中', () => {
     expect(getBuildBlueprint('build_cafe')?.kind).toBe('place');
     expect(getBuildBlueprint('build_tower')).toBeNull();
+  });
+
+  it('接单体力线(R4): 时长×施工能耗率+低体力阈值,want 预检与 requestBuild 同公式', () => {
+    const rate = Math.abs(getActivityDefinition('construction')?.effects.energy ?? 0);
+    expect(rate).toBe(0.05); // S2-B R5 定档:总耗 24 在「采集日+待机」健康区间内
+    const home = getBuildBlueprint('build_home')!;
+    expect(requiredConstructionEnergy(home)).toBe(home.durationMinutes * rate + LOW_ENERGY_THRESHOLD);
+    expect(requiredConstructionEnergy(home)).toBe(44);
+    const fence = getBuildBlueprint('build_fence')!;
+    expect(requiredConstructionEnergy(fence)).toBe(LOW_ENERGY_THRESHOLD); // 0 工时=只卡低体力线
   });
 });
 

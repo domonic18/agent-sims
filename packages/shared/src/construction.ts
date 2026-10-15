@@ -16,6 +16,8 @@ import type {
   TileMapDefinition,
 } from './town-map.js';
 import { blockedRectsOf, validateMapDefinition } from './map-validate.js';
+import { getActivityDefinition } from './activities.js';
+import { LOW_ENERGY_THRESHOLD } from './constants.js';
 
 /** 建造蓝图 id(v1 子集;塔防等新类型随 S3 扩枚举) */
 export type BuildBlueprintId = 'build_home' | 'build_cafe' | 'build_shop' | 'build_fence';
@@ -116,10 +118,27 @@ export function getBuildBlueprint(id: string): BuildBlueprint | null {
   return BUILD_BLUEPRINTS.find((b) => b.id === id) ?? null;
 }
 
+/** 接单体力线(S2-B R4 双路径同口径):蓝图施工时长×施工能耗率+低体力阈值。
+ * want 预检(fast-layer,不足继续持有 want 改日)与权威门(requestBuild,不足
+ * 硬拒)共用一条公式——2026-10-13 镇A实证两处口径漂移会导致接单即废单 */
+export function requiredConstructionEnergy(blueprint: BuildBlueprint): number {
+  const rate = Math.abs(getActivityDefinition('construction')?.effects.energy ?? 0);
+  return blueprint.durationMinutes * rate + LOW_ENERGY_THRESHOLD;
+}
+
 /** 模式门控后的可建蓝图(gameTypes 含该模式才开放) */
 export function constructionBlueprints(gameType: GameType): BuildBlueprint[] {
   return BUILD_BLUEPRINTS.filter((b) => b.gameTypes.includes(gameType));
 }
+
+/**
+ * 建造建材集合(从蓝图材料表派生,S2-C N1):采集收口直入单仓的物品口径——
+ * 单仓是建造材料仓,只有蓝图消费的料入仓。wheat/scrap 等同属 material 类但是
+ * 制作链原料(经背包→灶台/木工台消费),不入仓,否则制作链断供。
+ */
+export const CONSTRUCTION_MATERIALS: ReadonlySet<string> = new Set(
+  BUILD_BLUEPRINTS.flatMap((b) => Object.keys(b.materials)),
+);
 
 /** 建造产物声明层:与 TileMapDefinition 同构的增量(基础图之外的 places/fences) */
 export interface BuiltState {

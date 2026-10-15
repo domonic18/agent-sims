@@ -159,7 +159,9 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     name: '就餐',
     placeIds: ['restaurant'],
     durationMinutes: 30,
-    effects: { energy: 0.05, score: 0.2, coins: -0.4 },
+    // 就餐恢复(2026-10-13 数值复查): 0.05→0.2——原值一顿仅 +1.5,相对采集班
+    // -0.15/分形同虚设(观察镇实证:连吃 18 顿仍体力赤字);现一顿 +6≈一个面包
+    effects: { energy: 0.2, score: 0.2, coins: -0.4 },
     interruptibility: 'none',
   },
   {
@@ -319,14 +321,18 @@ export const ACTIVITY_DEFINITIONS: readonly ActivityDefinition[] = [
     effects: { energy: -0.05, score: 0.05, coins: 0 },
   },
   // 建造施工(S2批2,plan/03):无场所锚点,须经 build 意图接单(扣料建单+寻路);
-  // 时长/薪酬不走本表与速率——按在建工单快照结算(durationOverride+按单入账)
+  // 时长/薪酬不走本表与速率——按在建工单快照结算(durationOverride+按单入账)。
+  // low 可打断性(S2-A):480 分长活动,仅强事件值得进中断评估(省 systemOne 日预算)
+  // 能耗 0.05/分(S2-B R5 定档):住宅 480 分总耗 24——采集一日(-11)+待机衰减(-18)
+  // 后仍余 ~47,0.15 档总耗 72>一夜净恢复必然虚脱(2026-10-13 镇A w1-4 十连败实证)
   {
     id: 'construction',
     name: '施工',
     placeIds: [],
     durationMinutes: 15,
-    effects: { energy: -0.15, score: 0, coins: 0 },
+    effects: { energy: -0.05, score: 0, coins: 0 },
     category: 'build',
+    interruptibility: 'low',
   },
 ];
 
