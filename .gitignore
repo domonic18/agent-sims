@@ -19,6 +19,7 @@ dist/
 build/
 .next/
 *.log
+*.tsbuildinfo
 
 # IDE / 系统
 .DS_Store
