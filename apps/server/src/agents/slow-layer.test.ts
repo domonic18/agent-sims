@@ -178,6 +178,36 @@ describe('parseIntents(工具入参→wants)', () => {
       { id: 'w5-2', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.5, status: 'pending', createdAtMin: 500 },
     ]);
   });
+
+  it('蓝图(S2-A):construction+合法蓝图 id 解析为 blueprintId;非法/缺蓝图整行跳过;非 construction 忽略蓝图', () => {
+    const parsed = parseIntents(
+      {
+        wants: [
+          { activity: 'construction', urgency: 0.6, why: '给镇上盖住宅', blueprint: 'build_home' },
+          { activity: 'construction', urgency: 0.6, why: '想建城堡', blueprint: 'build_castle' },
+          { activity: 'construction', urgency: 0.6, why: '就是想建点啥' },
+          { activity: 'work', urgency: 0.5, why: '挣钱', blueprint: 'build_home' },
+        ],
+      },
+      DAY,
+      500,
+    );
+    if (!parsed.ok) throw new Error(`校验失败 ${parsed.reason}`);
+    expect(parsed.value).toEqual([
+      {
+        id: 'w5-0',
+        activityId: 'construction',
+        why: '给镇上盖住宅',
+        origin: 'plan',
+        urgency: 0.6,
+        status: 'pending',
+        createdAtMin: 500,
+        blueprintId: 'build_home',
+      },
+      // 非 construction 的 blueprint 一律忽略,保留 want(与 target 同口径)
+      { id: 'w5-1', activityId: 'work', why: '挣钱', origin: 'plan', urgency: 0.5, status: 'pending', createdAtMin: 500 },
+    ]);
+  });
 });
 
 describe('fallbackIntents(个性化回落)', () => {
@@ -197,9 +227,21 @@ describe('fallbackIntents(个性化回落)', () => {
     }
   });
 
-  it('无 bias 时也能产出(全白名单候选)', () => {
+  it('无 bias 时也能产出(全白名单候选);construction 不进 fallback(S2-A)', () => {
     const wants = fallbackIntents(DAY, 500, {});
     expect(wants.length).toBeGreaterThanOrEqual(3);
+    expect(wants.some((w) => w.activityId === 'construction')).toBe(false);
+  });
+
+  it('禁聊世界剥 socialize(产生入口闸:回落计划同样不产社交 want)', () => {
+    const wants = fallbackIntents(
+      DAY,
+      500,
+      { socialize: 1, study: 1, work: 1, stroll: 1, sell_goods: 1 },
+      false,
+    );
+    expect(wants.length).toBeGreaterThanOrEqual(3);
+    expect(wants.some((w) => w.activityId === 'socialize')).toBe(false);
   });
 });
 
@@ -286,6 +328,19 @@ describe('composeIntents(慢层意图生成)', () => {
     const { intents } = await composeIntents(llm, handle, char({}), { day: DAY, gameMinutes: 500 });
     expect(intents.source).toBe('fallback');
     expect(intents.wants.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('禁聊世界(ctx.chatAllowed=false):LLM 输出的 socialize 行被剥,词表/菜单不含闲聊', async () => {
+    const s = llmStub({
+      chatContent:
+        '{"wants":[{"activity":"socialize","urgency":0.9,"why":"找阿泽聊聊"},{"activity":"work","urgency":0.6,"why":"挣钱"}]}',
+    });
+    const { intents } = await composeIntents(s.llm, s.handle, char({}), { day: DAY, gameMinutes: 500 }, {
+      chatAllowed: false,
+    });
+    expect(intents.source).toBe('llm');
+    expect(intents.wants.map((w) => w.activityId)).toEqual(['work']);
+    expect(s.chatMessages[1]!.content).not.toContain('(socialize)');
   });
 
   it('无住房角色的状态行提示居无定所;租客带房源名', async () => {

@@ -89,6 +89,8 @@ export interface Want {
   /** 赴约地点(E3 聚会邀约):仅带 target 的 socialize want 可携带——执行改「到老地方等」
    * (各自去约定场所门口自然会合),替代双向实时坐标追逐(走廊互换死锁根因) */
   meetingPlaceId?: string;
+  /** 建造蓝图(S2-A 自主建造):仅 construction want 携带,值=蓝图 id;选址归执行分支确定性搜索 */
+  blueprintId?: string;
   why: string;
   urgency: number;
   /** 过期时刻(游戏分钟,可选):冲动/事件 want 的半衰期;到期未执行废弃 */
@@ -191,6 +193,7 @@ function hydrate(saved: unknown): PersistedInnerState {
                   ? { targetCharacterId: w.targetCharacterId }
                   : {}),
                 ...(typeof w.meetingPlaceId === 'string' ? { meetingPlaceId: w.meetingPlaceId } : {}),
+                ...(typeof w.blueprintId === 'string' ? { blueprintId: w.blueprintId } : {}),
                 ...(typeof w.expiresAtMin === 'number' ? { expiresAtMin: w.expiresAtMin } : {}),
               } satisfies Want,
             ];
@@ -245,21 +248,33 @@ export const innerState = {
   moodOf(characterId: string): MoodState | undefined {
     return innerStates.get(characterId)?.mood;
   },
-  /** 慢层产出当日意图集(E6 合并语义:替换 plan-origin,保留其他来源的在途 want——
-   * 冲动不被晨间重规划顶掉;跨日整体替换) */
+  /** 慢层产出当日意图集(E6 合并语义):跨日整体替换;同日替换(fallback 限率重试)
+   * 保留 doing 不论 origin——在途执行的 want 被换源即孤儿化(活动在跑,收口找不到
+   * want),非 plan 来源的 pending(冲动)也不被晨间重规划顶掉;保留侧 id 已被
+   * 执行/追账引用,新计划行撞 id 时让名改名 */
   setIntents(characterId: string, intents: DayIntents): void {
     const state = this.ensure(characterId);
     const cur = state.intents;
-    state.intents =
-      cur !== null && cur.day === intents.day
-        ? {
-            ...intents,
-            wants: [
-              ...intents.wants,
-              ...cur.wants.filter((w) => w.origin !== 'plan' && (w.status === 'pending' || w.status === 'doing')),
-            ],
-          }
-        : intents;
+    if (cur === null || cur.day !== intents.day) {
+      state.intents = intents;
+      return;
+    }
+    const kept = cur.wants.filter(
+      (w) => w.status === 'doing' || (w.origin !== 'plan' && w.status === 'pending'),
+    );
+    const taken = new Set(kept.map((w) => w.id));
+    const fresh = intents.wants.map((w) => {
+      if (!taken.has(w.id)) {
+        taken.add(w.id);
+        return w;
+      }
+      let n = 1;
+      while (taken.has(`${w.id}x${n}`)) n += 1;
+      const id = `${w.id}x${n}`;
+      taken.add(id);
+      return { ...w, id };
+    });
+    state.intents = { ...intents, wants: [...fresh, ...kept] };
   },
   /** 清空意图(拒绝退避 3 连/托管变更/角色下线):快层回退数值压力决策 */
   clearIntents(characterId: string): void {

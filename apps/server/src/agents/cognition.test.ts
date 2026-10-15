@@ -86,6 +86,30 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
     expect(innerState.get('char-1')!.intents!.wants).toHaveLength(0);
   });
 
+  it('setIntents 合并语义(R2): 同日替换保留 doing 不论 origin(fallback 替换不孤儿化),撞 id 新行让名', () => {
+    innerState.setIntents('char-1', {
+      day: 3,
+      source: 'fallback',
+      wants: [
+        { id: 'w3-2', activityId: 'work', origin: 'plan', why: '挣钱', urgency: 0.7, status: 'doing', createdAtMin: 100 },
+        { id: 'w3-0', activityId: 'stroll', origin: 'plan', why: '散步', urgency: 0.3, status: 'pending', createdAtMin: 100 },
+      ],
+    });
+    innerState.setIntents('char-1', {
+      day: 3,
+      source: 'llm',
+      wants: [
+        { id: 'w3-0', activityId: 'study', origin: 'plan', why: '学习', urgency: 0.6, status: 'pending', createdAtMin: 200 },
+        { id: 'w3-1', activityId: 'work', origin: 'plan', why: '再挣钱', urgency: 0.6, status: 'pending', createdAtMin: 200 },
+      ],
+    });
+    const wants = innerState.get('char-1')!.intents!.wants;
+    // 在途 doing 保留(活动在跑,收口要找得到 want);pending 的 fallback 行被真计划替换
+    expect(wants.map((w) => w.id).sort()).toEqual(['w3-0', 'w3-1', 'w3-2']);
+    expect(wants.find((w) => w.id === 'w3-0')!.why).toBe('学习'); // 新行占原 id
+    expect(wants.find((w) => w.id === 'w3-2')!.status).toBe('doing');
+  });
+
   it('persistedOf 只含持久化四字段(focus/intents/lastEvaluation/pendingInvitation)且为深拷贝', () => {
     const state = innerState.ensure('char-1');
     state.focus = { text: '想去做工', sinceMin: 50 };
@@ -130,7 +154,16 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
         day: 1,
         source: 'llm',
         wants: [
-          { id: 'w2', activityId: 'rest', why: '累了', urgency: 0.5, status: 'pending', createdAtMin: 30 },
+          {
+            id: 'w2',
+            activityId: 'construction',
+            why: '盖住宅',
+            urgency: 0.5,
+            status: 'pending',
+            createdAtMin: 30,
+            blueprintId: 'build_home',
+          },
+          { id: 'w3', activityId: 'stroll', why: '走', urgency: 0.3, status: 'pending', createdAtMin: 30, blueprintId: 42 }, // 脏 blueprintId 剥掉
           { id: 'bad', activityId: 42, why: '坏了', urgency: 0.5, status: 'pending', createdAtMin: 30 }, // 脏条目剔除
         ],
       },
@@ -140,9 +173,11 @@ describe('innerState 统一内心状态(D2 地基,D3 intents)', () => {
     const state = innerState.get('char-1')!;
     expect(state.focus).toEqual({ text: '想休息', sinceMin: 30 });
     expect(state.intents!.day).toBe(1);
-    expect(state.intents!.wants).toHaveLength(1);
+    expect(state.intents!.wants).toHaveLength(2);
     expect(state.intents!.wants[0]!.id).toBe('w2');
     expect(state.intents!.wants[0]!.origin).toBe('plan'); // E6 前落库无 origin:兜底 plan
+    expect(state.intents!.wants[0]!.blueprintId).toBe('build_home'); // S2-A 兜回
+    expect(state.intents!.wants[1]!.blueprintId).toBeUndefined(); // 非 string 剥掉
     expect(state.lastEvaluation).toEqual({ activityId: 'work', verdict: 'bad', reason: '太累', atMin: 40 });
     expect(state.mood.valence).toBe(-0.5);
     innerState.restore('char-1', {

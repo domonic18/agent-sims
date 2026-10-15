@@ -104,7 +104,9 @@ describe('generateConversation 自然终止多轮(E3)', () => {
     const { llm, speakers } = scriptedLlm(Array.from({ length: 8 }, () => ({ ...turn })));
     const session = await converse(llm);
     expect(session!.lines).toHaveLength(BALANCE.CHAT_MAX_ROUNDS);
-    expect(speakers).toEqual(['a', 'b', 'a', 'b']);
+    expect(speakers).toEqual(
+      Array.from({ length: BALANCE.CHAT_MAX_ROUNDS }, (_, i) => (i % 2 === 0 ? 'a' : 'b')),
+    );
   });
 
   it('邀约: 发起方台词顺带 invitation 被采纳;听者轮的邀约被忽略', async () => {

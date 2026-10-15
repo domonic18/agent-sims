@@ -4,7 +4,17 @@ import type {
   SocialChatEvent,
   WorldEvent,
 } from '@sims/shared';
-import { getActivityDefinition, resourceNodeLabel, SHOP_ITEMS, TOWN_MAP } from '@sims/shared';
+import {
+  constructionBlueprints,
+  getBuildBlueprint,
+  getActivityDefinition,
+  getItem,
+  resourceNodeLabel,
+  SHOP_ITEMS,
+  TOWN_MAP,
+} from '@sims/shared';
+import { standTileNearRect, suggestBuildRect } from '../world/build-suggest.js';
+import { deriveStorageSpot } from '../world/construction.js';
 import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characterImpressions, memories } from '../db/schema/memory.js';
@@ -64,6 +74,10 @@ const RULE_CONTINUE_SAMPLE = 20;
 /** triage ignore 的 trace 采样周期(每 N 次记 1 次;门①消化近半事件,防洪水) */
 const TRIAGE_IGNORE_SAMPLE = 10;
 const CHECK_TICK_MS = 2_000;
+/** 同日计划重投的真实时间间隔(毫秒/角色):防 LLM 故障日重试风暴(R2/R3) */
+const REGEN_RETRY_INTERVAL_MS = 30_000;
+/** 同日计划重投每日上限(次/角色):最坏 4 角色×3 次慢调用/日,可接受 */
+const REGEN_RETRY_DAILY_LIMIT = 3;
 
 export interface AgentSchedulerDeps {
   sim: Simulation;
@@ -99,6 +113,11 @@ export class AgentScheduler {
   /** 空闲起点(E9 执行恢复):角色「有 doing want 但无活动无移动」的起始 gameMinutes */
   private readonly idleSince = new Map<string, number>();
   private readonly planning = new Set<string>();
+  /** fallback 限率重试簿记(R2):角色→{日,当日已试次数,最近尝试真实时刻} */
+  private readonly fallbackRetry = new Map<
+    string,
+    { day: number; count: number; lastAt: number }
+  >();
   private readonly registry = new ResponseRegistry();
   /** ⑤ 预算簿记(scheduler 独占写,triage 只读快照):日/当日次数/最近评估时刻 */
   private readonly assessBudget = new Map<
@@ -164,9 +183,7 @@ export class AgentScheduler {
           block: `${block}(${AUTONOMY_CHECK_INTERVAL_MINUTES}min)`,
           want: true,
         });
-        continue;
       }
-      this.socialLoop.idleSocialStep(char, 'threshold');
     }
   }
 
@@ -222,7 +239,21 @@ export class AgentScheduler {
       night:
         sim.clock.minuteOfDay >= BALANCE.NIGHT_START_MINUTE ||
         sim.clock.minuteOfDay < BALANCE.NIGHT_END_MINUTE,
+      chatAllowed: () => sim.chatAllowed(),
       bias: biasOf(hosting.get(char.id)?.compiled ?? null),
+      gameType: sim.gameType,
+      storageCount: (itemId) => sim.storage[itemId] ?? 0,
+      storageSpot: () => deriveStorageSpot(sim.map.definition),
+      suggestRect: (blueprintId) => {
+        const blueprint = getBuildBlueprint(blueprintId);
+        return blueprint === null ? null : suggestBuildRect(sim.baseDefinition, sim.built, blueprint);
+      },
+      standNearRect: (rect) =>
+        // 选区外圈站位(与 nearestNodeOf 同口径:可行走+findPath 可达双验,
+        // 裸钳位撞围栏/墙体被 move_to 硬拒,3 连拒清意图)
+        standTileNearRect(rect, char, (x, y) =>
+          sim.map.isWalkable(x, y) && findPath(sim.map, char, { x, y }) !== null,
+        ),
     };
   }
 
@@ -277,6 +308,43 @@ export class AgentScheduler {
     if (litter > 0) upkeep.push(`杂物×${litter}`);
     if (fence > 0) upkeep.push(`围栏破损×${fence}`);
     if (upkeep.length > 0) parts.push(`待维护:${upkeep.join('/')}`);
+    // 建造镇情(S2-A 自主建造):蓝图开放的世界追加单仓存量/可建清单/差料——
+    // 数据全部由蓝图注册表+物品表生成零手抄;growth 无蓝图(constructionBlueprints
+    // 为空)天然整段跳过,零模式字面量
+    const blueprints = constructionBlueprints(sim.gameType).filter((b) => b.kind === 'place');
+    if (blueprints.length > 0) {
+      parts.push(`单仓:${describeStorage(sim.storage, blueprints)}`);
+      // 差料按全镇可投料口径(2026-10-13 走查改造):单仓+存活角色背包合计;
+      // S2-C N1 后建材采集直入单仓,背包侧通常为 0(仅仓满溢出残留),差料数字
+      // 即单仓缺口;幽灵不计数(不再行动,料不可投)
+      const carried = new Map<string, number>();
+      for (const c of sim.characters.values()) {
+        if (!c.alive) continue;
+        for (const [id, n] of Object.entries(c.backpack)) {
+          carried.set(id, (carried.get(id) ?? 0) + n);
+        }
+      }
+      const totalOf = (id: string): number => (sim.storage[id] ?? 0) + (carried.get(id) ?? 0);
+      const gateOn = BALANCE.CONSTRUCTION_KNOWLEDGE_GATE === 1;
+      const buildable = blueprints.map((b) => {
+        const mats = Object.entries(b.materials)
+          .map(([id, n]) => `${getItem(id)?.name ?? id}${n}`)
+          .join('');
+        const have = Object.entries(b.materials)
+          .filter(([id]) => totalOf(id) > 0)
+          .map(([id]) => `${getItem(id)?.name ?? id}×${totalOf(id)}`)
+          .join('/');
+        const short = Object.entries(b.materials)
+          .filter(([id, n]) => totalOf(id) < n)
+          .map(([id, n]) => `${getItem(id)?.name ?? id}×${n - totalOf(id)}`)
+          .join('/');
+        const gate = gateOn && b.requiredKnowledge > 0 ? `,需学${b.requiredKnowledge}班` : '';
+        const haveSeg = have !== '' ? `;全镇已有${have}` : '';
+        const gap = short !== '' ? `,还差${short}` : ';料已攒齐';
+        return `${b.label}(${mats}${gate}${haveSeg}${gap})`;
+      });
+      parts.push(`可建(construction;建材采集后自动入仓,料齐即可接单施工):${buildable.join(';')}`);
+    }
     parts.push('上岗:服务员/售货员/馆员(时薪1.0,知识≥3),杂工(0.8);采集/制作所得可去商店卖货(sell_goods)换钱');
     return parts.join(';');
   }
@@ -415,7 +483,7 @@ export class AgentScheduler {
       this.apply(char, want, 'eventbus', { event: event.type, want: true });
       return;
     }
-    const socialCandidates = this.socialLoop.idleSocialStep(char, 'eventbus');
+    const socialCandidates = this.socialLoop.socialCandidates(char);
     // 驱力 want 已接上执行(角色在移动/活动中)则本轮不惊动 jev(省一次白烧调用)
     if (char.activity !== null || char.path.length > 0) return;
     const last = this.jevLastAt.get(char.id) ?? Number.NEGATIVE_INFINITY;
@@ -810,14 +878,40 @@ export class AgentScheduler {
       },
       nowGameMinutes: sim.clock.gameMinutes,
       gameDay: sim.clock.day,
+      chatAllowed: sim.chatAllowed(),
     };
   }
 
-  /** 无当日意图即异步生成(slow 槽,2s 检查每次兜底;自治开启当轮即有意图) */
+  /** 同日重投限率器(R2/R3 共用):真实时间 ≥30s 间隔+每日 ≤3 次,防 LLM 故障日
+   * 重试风暴(最坏 4 角色×3 次慢调用/日);成功经 setIntents 合并整体替换旧计划 */
+  private consumeRegenRetry(characterId: string, day: number): boolean {
+    const state = this.fallbackRetry.get(characterId);
+    const cur =
+      state === undefined || state.day !== day
+        ? { day, count: 0, lastAt: Number.NEGATIVE_INFINITY }
+        : state;
+    if (cur.count >= REGEN_RETRY_DAILY_LIMIT) return false;
+    const now = Date.now();
+    if (now - cur.lastAt < REGEN_RETRY_INTERVAL_MS) return false;
+    this.fallbackRetry.set(characterId, { day, count: cur.count + 1, lastAt: now });
+    return true;
+  }
+
+  /** 无当日意图即异步生成(slow 槽,2s 检查每次兜底;自治开启当轮即有意图;
+   * 当日计划退化为 fallback/全废弃时限率重投) */
   private ensureIntents(char: WorldCharacter): void {
     if (this.planning.has(char.id)) return;
-    const existing = innerState.get(char.id)?.intents;
-    if (existing?.day === this.deps.sim.clock.day) return;
+    const today = this.deps.sim.clock.day;
+    const existing = innerState.get(char.id)?.intents ?? null;
+    if (existing !== null && existing.day === today) {
+      // 当日已有计划:仅两种退化态重投——降级计划(R2:晨间交付契约)与全废弃日
+      // (R3:3 连拒改单 want 废弃后的残局,不清整日但要能重排);全部 done 是自然
+      // 完成不重排
+      const degenerate =
+        existing.source === 'fallback' ||
+        (existing.wants.length > 0 && existing.wants.every((w) => w.status === 'abandoned'));
+      if (!degenerate || !this.consumeRegenRetry(char.id, today)) return;
+    }
     this.planning.add(char.id);
     const previous = existing?.day === this.deps.sim.clock.day - 1 ? existing : null;
     // 昨天的约定(E3 聚会邀约):次晨兑现一次——prompt 注入+确定性前置赴约 want
@@ -852,21 +946,24 @@ export class AgentScheduler {
           hosting.set(char.id, { ...hosted, compiled });
         }
         if (due !== null) {
-          intents.wants.unshift({
-            id: `w${intents.day}-inv`,
-            activityId: 'socialize',
-            origin: 'plan',
-            why: `赴约:${due.note}`,
-            urgency: 0.9,
-            status: 'pending',
-            createdAtMin: this.deps.sim.clock.gameMinutes,
-            targetCharacterId: due.withId,
-            // 赴约地点会合(E3):执行走「到老地方等」而非跨图追人(走廊互换死锁根因);
-            // 候场超时废弃改道,不吊死整天
-            meetingPlaceId: due.placeId,
-            expiresAtMin: this.deps.sim.clock.gameMinutes + BALANCE.MEETING_WAIT_MINUTES,
-          });
-          innerState.ensure(char.id).pendingInvitation = null; // 兑现一次
+          // 禁聊世界:约定不兑现直接清账(不 unshift 赴约 want,也不吊着过期邀约)
+          if (this.deps.sim.chatAllowed()) {
+            intents.wants.unshift({
+              id: `w${intents.day}-inv`,
+              activityId: 'socialize',
+              origin: 'plan',
+              why: `赴约:${due.note}`,
+              urgency: 0.9,
+              status: 'pending',
+              createdAtMin: this.deps.sim.clock.gameMinutes,
+              targetCharacterId: due.withId,
+              // 赴约地点会合(E3):执行走「到老地方等」而非跨图追人(走廊互换死锁根因);
+              // 候场超时废弃改道,不吊死整天
+              meetingPlaceId: due.placeId,
+              expiresAtMin: this.deps.sim.clock.gameMinutes + BALANCE.MEETING_WAIT_MINUTES,
+            });
+          }
+          innerState.ensure(char.id).pendingInvitation = null; // 兑现一次(禁聊世界=丢弃)
         }
         innerState.setIntents(char.id, intents);
         persistInnerState(this.deps.handle, char.id);
@@ -1182,16 +1279,20 @@ export class AgentScheduler {
   }
 
   /** 判定落地:continue 走采样 trace;react 执行意图+气泡+全量 trace */
+  /** 意图执行统一出口:返回意图是否被权威校验链接受(reject 反馈给社交管线
+   * 结算在途 want,R3) */
   private apply(
     char: WorldCharacterLike,
     decision: Decision,
     trigger: TraceEntry['trigger'],
     perception: Record<string, unknown>,
-  ): void {
+  ): boolean {
     if (decision.action === 'continue') {
       const count = (this.continueCount.get(char.id) ?? 0) + 1;
       this.continueCount.set(char.id, count);
-      if (count % RULE_CONTINUE_SAMPLE === 0) {
+      // R6 观测修复:带 wantId 的 continue 必记 trace(施工 energy_low 跳过十连败
+      // 曾因 1/20 采样险些不可诊断);无因 continue 保持采样防洪水
+      if (decision.wantId !== undefined || count % RULE_CONTINUE_SAMPLE === 0) {
         this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
           trigger,
           perception,
@@ -1204,7 +1305,7 @@ export class AgentScheduler {
           ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
         });
       }
-      return;
+      return true;
     }
     if (decision.chatWith !== undefined) {
       // E6:socialize want 贴身——聊天交还社交管线生成对话(簿记/light 槽生成在
@@ -1230,7 +1331,7 @@ export class AgentScheduler {
           trigger === 'threshold' ? 'threshold' : 'eventbus',
         );
       }
-      return;
+      return true;
     }
     const result = this.runIntentFn(this.deps.sim, decision.intent);
     if (result.ok) {
@@ -1243,17 +1344,28 @@ export class AgentScheduler {
         gameMinutes: this.deps.sim.clock.gameMinutes,
       });
     } else if (decision.layer === 'plan') {
-      // 意图被校验链拒绝:短退避,连续达上限清当日意图重生成(局部重规划)
+      // 意图被校验链拒绝:短退避,连续达上限废弃被拒 want(R3 反馈一致性:清整日=
+      // 无辜 want 连坐,镇A实证一天计划被废≈3 天白跑);wantId 缺失的罕见路径保留
+      // 清整日兜底,重投由全废弃日解锁接管
       const rejects = (this.intentRejects.get(char.id) ?? 0) + 1;
       this.intentRejects.set(char.id, rejects);
       this.intentBackoff(char.id);
       if (rejects >= INTENT_MAX_CONSECUTIVE_REJECTS) {
-        innerState.clearIntents(char.id);
-        persistInnerState(this.deps.handle, char.id);
         this.intentRejects.delete(char.id);
+        if (decision.wantId !== undefined) {
+          this.abandonWants(char.id, [decision.wantId]);
+        } else {
+          innerState.clearIntents(char.id);
+          persistInnerState(this.deps.handle, char.id);
+        }
         this.trace.record(char.id, this.deps.sim.clock.gameMinutes, {
           trigger: 'day_rollover',
-          perception: { replan: true, rejects, rejectReason: result.message },
+          perception: {
+            replan: true,
+            rejects,
+            rejectReason: result.message,
+            ...(decision.wantId !== undefined ? { abandonedWant: decision.wantId } : {}),
+          },
           decision: { layer: 'slow', conclusion: 'continue' },
         });
       }
@@ -1271,12 +1383,22 @@ export class AgentScheduler {
       },
       ...(decision.wantId !== undefined ? { wantId: decision.wantId } : {}),
     });
+    return result.ok;
   }
 }
 
 interface WorldCharacterLike {
   id: string;
   name: string;
+}
+
+/** 单仓存量行(S2-A 镇情):按蓝图材料并集列库存,只列与建造相关的物料 */
+function describeStorage(
+  storage: Record<string, number>,
+  blueprints: ReadonlyArray<{ materials: Record<string, number> }>,
+): string {
+  const ids = [...new Set(blueprints.flatMap((b) => Object.keys(b.materials)))];
+  return ids.map((id) => `${getItem(id)?.name ?? id}×${storage[id] ?? 0}`).join('/');
 }
 
 function intentSummary(intent: unknown): string {

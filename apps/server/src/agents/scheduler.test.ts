@@ -11,6 +11,7 @@ import type { Simulation } from '../world/simulation.js';
 import type { CharacterActivity, WorldCharacter } from '../world/character.js';
 import type { AgentDecisionMessage } from '@sims/shared';
 import type { MemoryLlm } from './memory-writer.js';
+import { BALANCE } from '../config/balance.js';
 import { AgentScheduler, AUTONOMY_CHECK_INTERVAL_MINUTES, JEV_COOLDOWN_MINUTES } from './scheduler.js';
 
 const CHAR_ID = 'char-1';
@@ -85,6 +86,11 @@ interface HarnessOpts {
   resourceNodes?: Array<[string, { id: string; kind: string; x: number; y: number; charges: number | null; respawnAtDay: number | null }]>;
   /** 用真 TileMap(含 isWalkable/寻路)替换无地形 mock——节点寻址类测试必开 */
   useTileMap?: boolean;
+  /** 世界模式与单仓存量(S2-A 建造镇情测试用;缺省 growth 语义=蓝图不开放) */
+  gameType?: 'growth' | 'survival';
+  storage?: Record<string, number>;
+  /** 世界规则·聊天开关(批1 单一事实源;缺省 true) */
+  chatAllowed?: boolean;
 }
 
 function harness(
@@ -106,6 +112,8 @@ function harness(
   let eventHandler: ((event: WorldEvent) => void) | null = null;
   const sim = {
     clock,
+    gameType: opts?.gameType,
+    storage: opts?.storage ?? {},
     map:
       opts?.useTileMap === true
         ? TileMap.fromDefinition(TOWN_MAP)
@@ -120,6 +128,10 @@ function harness(
     resourceNodes: new Map(opts?.resourceNodes ?? []),
     maintenanceSpots: new Map<string, never>(),
     recipe: () => null,
+    // E8 偶遇分流停步(协议机械动作,同 rent 直执先例):桩世界无位移可停
+    requestStopMove: () => {},
+    // E6.4/E8/triage 上下文读的世界规则开关(批1 单一事实源谓词)
+    chatAllowed: () => opts?.chatAllowed ?? true,
     events: {
       subscribe: (fn: (event: WorldEvent) => void) => {
         eventHandler = fn;
@@ -363,6 +375,46 @@ describe('AgentScheduler(D3 意图执行)', () => {
     h.scheduler.dispose();
   });
 
+  it('fallback 限率重试(R2): 当日降级计划补投真计划,source=llm 后不再重试', async () => {
+    let fail = true;
+    let calls = 0;
+    const flakyLlm: Partial<MemoryLlm> = {
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        calls += 1;
+        if (fail) return Promise.reject(new Error('slow 槽未配置'));
+        const parsed = parse({ wants: [{ activity: 'study', urgency: 0.8, why: '真想去学点东西' }] });
+        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+        return Promise.resolve(parsed.value);
+      },
+    };
+    const h = harness(480, char({}), flakyLlm);
+    await vi.advanceTimersByTimeAsync(2_000); // 首次生成→慢槽故障→降级 fallback
+    expect(innerState.get(CHAR_ID)?.intents?.source).toBe('fallback');
+    fail = false;
+    await vi.advanceTimersByTimeAsync(2_000); // 下一拍重投(首次不限率)
+    expect(innerState.get(CHAR_ID)?.intents?.source).toBe('llm');
+    expect(innerState.get(CHAR_ID)?.intents?.wants[0]?.why).toBe('真想去学点东西');
+    fail = true;
+    await vi.advanceTimersByTimeAsync(120_000); // 真计划在位:再久也不重投
+    expect(calls).toBe(2);
+    h.scheduler.dispose();
+  });
+
+  it('fallback 重投封顶: 30s 真实间隔+每日 3 次,之后不再烧慢槽', async () => {
+    let calls = 0;
+    const deadLlm: Partial<MemoryLlm> = {
+      chatStructured: () => {
+        calls += 1;
+        return Promise.reject(new Error('slow 槽未配置'));
+      },
+    };
+    const h = harness(480, char({}), deadLlm);
+    await vi.advanceTimersByTimeAsync(2_000); // 首次生成
+    await vi.advanceTimersByTimeAsync(140_000); // ~32s/36s→重投…封顶后长推不动
+    expect(calls).toBe(4); // 1 首次 + 3 重投
+    h.scheduler.dispose();
+  });
+
   it('意图两段式:高分 want 先 move_to 合法场所入口,执行即标 doing', async () => {
     const studyPlaces = ['library', 'home-a']
       .map((id) => TOWN_MAP.places.find((p) => p.id === id)!)
@@ -432,7 +484,7 @@ describe('AgentScheduler(D3 意图执行)', () => {
     h.scheduler.dispose();
   });
 
-  it('意图被拒:30 分退避,连续 3 拒清当日意图并记 replan trace', async () => {
+  it('意图被拒:30 分退避,连续 3 拒废弃被拒 want 不清整日(R3 反馈一致性)', async () => {
     const h = harness(480, char({}), studyIntentsLlm, {
       runIntent: (() => ({ ok: false, message: '知识不足,须先学习' })) as unknown as typeof runIntent,
     });
@@ -444,7 +496,43 @@ describe('AgentScheduler(D3 意图执行)', () => {
     const planReacts = h.traceRows.filter((r) => (r.decision as { layer?: string }).layer === 'plan');
     expect(planReacts.length).toBe(3); // 退避吞掉 510/540 两块
     expect(h.traceRows.some((r) => (r.perception as { replan?: boolean }).replan === true)).toBe(true);
-    expect(innerState.get(CHAR_ID)?.intents).toBeNull(); // 第 3 拒后已清,待重生成
+    // 第 3 拒:被拒 want 单独废弃,容器与当日计划保留(无辜 want 不连坐)
+    expect(innerState.get(CHAR_ID)?.intents).not.toBeNull();
+    expect(innerState.get(CHAR_ID)?.intents?.wants[0]?.status).toBe('abandoned');
+    h.scheduler.dispose();
+  });
+
+  it('全废弃日解锁(R3): wants 全 abandoned 视同无意图,限率重排新计划', async () => {
+    const h = harness(480, char({}), studyIntentsLlm);
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [{ id: 'w0-0', activityId: 'work', why: '黄了', origin: 'plan', urgency: 0.8, status: 'abandoned', createdAtMin: 480 }],
+    });
+    await vi.advanceTimersByTimeAsync(2_000); // 2s 拍:全废弃→重投(首次不限率)
+    const intents = innerState.get(CHAR_ID)!.intents!;
+    expect(intents.wants.some((w) => w.status === 'pending' && w.activityId === 'study')).toBe(true);
+    h.scheduler.dispose();
+  });
+
+  it('全完成日不重排: done 是自然完成,剩余时间交驱力/jev,不烧慢槽', async () => {
+    let calls = 0;
+    const countingLlm: Partial<MemoryLlm> = {
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        calls += 1;
+        const parsed = parse({ wants: [{ activity: 'study', urgency: 0.8, why: '想学点东西' }] });
+        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+        return Promise.resolve(parsed.value);
+      },
+    };
+    const h = harness(480, char({}), countingLlm);
+    innerState.setIntents(CHAR_ID, {
+      day: 0,
+      source: 'llm',
+      wants: [{ id: 'w0-0', activityId: 'work', why: '挣完了', origin: 'plan', urgency: 0.8, status: 'done', createdAtMin: 480 }],
+    });
+    await vi.advanceTimersByTimeAsync(6_000); // 三拍:全 done 不触发重投
+    expect(calls).toBe(0);
     h.scheduler.dispose();
   });
 
@@ -779,6 +867,36 @@ describe('AgentScheduler(C3 事件响应层,10-cognition §7.1)', () => {
     expect(chat?.lines![0]).toBe('小事一桩,别放心上');
     h.scheduler.dispose();
   });
+
+  it('禁聊世界道谢静音: allowChat=false 时不产道谢 want 也不召唤(产生入口闸)', async () => {
+    const h = harness(480, char({}), undefined, {
+      chatAllowed: false,
+      extraCharacters: [char({ id: 'rescuer-1', name: '阿泽', x: 31, y: 30 })],
+    });
+    const sim = (h.scheduler as unknown as { deps: { sim: { socials: Map<string, unknown> } } }).deps.sim;
+    sim.socials.set(`${CHAR_ID}|rescuer-1`, {
+      fromId: CHAR_ID,
+      toId: 'rescuer-1',
+      familiarity: 30,
+      affinity: 60,
+      chatDay: 0,
+      chatCount: 0,
+      formedNotified: false,
+    });
+    innerState.setIntents(CHAR_ID, { day: 0, source: 'llm', wants: [] });
+    h.onEvent({
+      type: 'work_task.accepted',
+      characterId: 'rescuer-1',
+      targetId: CHAR_ID,
+      task: 'rescue',
+      tick: 479,
+    } as WorldEvent);
+    h.onEvent({ type: 'character.revived', characterId: CHAR_ID, tick: 480 } as WorldEvent);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.intents).toHaveLength(0);
+    expect(innerState.get(CHAR_ID)!.intents!.wants.filter((w) => w.origin === 'event')).toHaveLength(0);
+    h.scheduler.dispose();
+  });
 });
 
 describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
@@ -836,14 +954,27 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     },
   };
 
-  it('动机点火(E6.4 布尔门槛): 同地熟人+冷却外→驱力 want→召唤,应答方执行生成,trace 记 motive=social', async () => {
+  /** 相遇事件(世界层 E8 检测产物):距离/冷却已由检测端保证,分流只看接收性与意愿 */
+  function encounterEvent(): WorldEvent {
+    return {
+      type: 'social.encounter',
+      aId: CHAR_ID,
+      bId: 'other-1',
+      tick: 1,
+      x: 30,
+      y: 30,
+    } as WorldEvent;
+  }
+
+  it('偶遇冲动(S2-C): 无意愿纯共处→字典序小者发起召唤,应答方执行生成,trace 留痕', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
     withResponder();
-    await vi.advanceTimersByTimeAsync(2_000); // 阈值巡检块 0
+    h.onEvent(encounterEvent());
+    await vi.advanceTimersByTimeAsync(2_000);
     const intent = h.intents[0] as
       | { type: string; targetId: string; lines?: string[] }
       | undefined;
@@ -855,24 +986,18 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     const wantTrace = h.traceRows.find(
       (r) => (r.decision as { intent?: string }).intent === 'want:socialize',
     );
-    expect(wantTrace).toBeDefined(); // E6: 动机先写驱力 want;E6.2 首触只召唤零模型
-    const react = h.traceRows.find(
-      (r) =>
-        (r.perception as { motive?: string; llm?: boolean }).motive === 'social' &&
-        (r.perception as { llm?: boolean }).llm === true,
-    );
-    expect(react).toBeDefined();
-    expect((react!.decision as { layer: string }).layer).toBe('rule');
+    expect(wantTrace).toBeDefined(); // E8 偶遇冲动:召唤写对方 event want(S2-C 点火退役后零模型生欲唯一口)
     h.scheduler.dispose();
   });
 
-  it('LLM 失败回落模板双句: 点火不丢失,lines 均为非空模板', async () => {
+  it('LLM 失败回落模板双句: 偶遇冲动链路不丢失,lines 均为非空模板', async () => {
     const h = harness(480, char({}), undefined, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
     withResponder();
+    h.onEvent(encounterEvent());
     await vi.advanceTimersByTimeAsync(2_000);
     const intent = h.intents[0] as { type: string; lines?: string[] } | undefined;
     expect(intent?.type).toBe('chat');
@@ -889,26 +1014,30 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     h.scheduler.dispose();
   });
 
-  it('同对冷却: 点火后 30 分内静默(E2 60→30),冷却过再点;jev 冷却不受影响', async () => {
+  it('同对冷却: 偶遇冲动聊后冷却分内静默(2026-10-13 降档 240),冷却过再遇再聊', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
     withRelation(h);
     withEmptyIntents();
     withResponder();
+    h.onEvent(encounterEvent());
     await vi.advanceTimersByTimeAsync(2_000);
     expect(h.intents).toHaveLength(1);
     h.onEvent(chatEvent(1, 'other-1')); // social.chat 回执结算 doing want(桩不发事件,手动补)
-    h.clock.gameMinutes += 15;
+    const cooldown = BALANCE.SOCIAL_PAIR_COOLDOWN_MINUTES;
+    h.clock.gameMinutes += Math.floor(cooldown / 2);
+    h.onEvent(encounterEvent());
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(1); // 冷却中
-    h.clock.gameMinutes += 15;
+    expect(h.intents).toHaveLength(1); // 冷却中:冲动被同对冷却闸住
+    h.clock.gameMinutes += cooldown - Math.floor(cooldown / 2);
+    h.onEvent(encounterEvent());
     await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(2); // 恰好 30 分:冷却过再点火
+    expect(h.intents).toHaveLength(2); // 恰好满冷却:冷却过再遇再聊
     h.scheduler.dispose();
   });
 
-  it('每日主动上限闸已废(E6.4): 跨出对冷却即可反复点火,频率由对冷却自限', async () => {
+  it('每日主动上限闸已废(E6.4): 跨出对冷却即再遇再聊,频率由对冷却自限', async () => {
     const h = harness(480, char({}), dialogueLlm, {
       extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
     });
@@ -916,11 +1045,12 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     withEmptyIntents();
     withResponder();
     for (let i = 0; i < 3; i += 1) {
-      if (i > 0) h.clock.gameMinutes += 60; // 跨出同对冷却
+      if (i > 0) h.clock.gameMinutes += BALANCE.SOCIAL_PAIR_COOLDOWN_MINUTES; // 跨出同对冷却
+      h.onEvent(encounterEvent());
       await vi.advanceTimersByTimeAsync(2_000);
       h.onEvent(chatEvent(10 + i, 'other-1')); // 结算本轮 doing want
     }
-    // 3 轮全部点火成功:无日预算拦截,聊天频率唯一受 SOCIAL_PAIR_COOLDOWN 约束
+    // 3 轮全部聊成:无日预算拦截,聊天频率唯一受 SOCIAL_PAIR_COOLDOWN 约束
     expect(h.intents.filter((i) => i.type === 'chat')).toHaveLength(3);
     h.scheduler.dispose();
   });
@@ -942,32 +1072,6 @@ describe('AgentScheduler(C4 自治社交,10-cognition §7.2)', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(h.intents).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 50, y: 50 }]);
     expect(h.bubbles[0]?.text).toContain('找苏晚聊聊');
-    h.scheduler.dispose();
-  });
-
-  it('走散两段式(E6): 对方被拽远,冷却过再点火写寻人 want→move_to 寻人,不隔空聊天', async () => {
-    const h = harness(480, char({}), dialogueLlm, {
-      extraCharacters: [char({ id: 'other-1', name: '苏晚', x: 31, y: 30 })],
-    });
-    withRelation(h);
-    withEmptyIntents();
-    withResponder();
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect(h.intents).toHaveLength(1);
-    h.onEvent(chatEvent(1, 'other-1')); // 结算首轮 doing want
-    h.clock.gameMinutes += 60;
-    // 对方被拽远:动机仍会再点火(E6 驱力),执行走两段式寻人而非隔空聊天
-    const other = char({ id: 'other-1', name: '苏晚', x: 60, y: 60 });
-    (h.scheduler as unknown as { deps: { sim: { characters: Map<string, WorldCharacter> } } }).deps.sim.characters.set(
-      'other-1',
-      other,
-    );
-    await vi.advanceTimersByTimeAsync(2_000);
-    // 阿测侧:再点火不隔空聊,写寻人 move_to(苏晚动机对等也会反向寻人,各看各的)
-    const mine = h.intents.filter((i) => i.characterId === CHAR_ID);
-    expect(mine).toEqual([{ type: 'move_to', characterId: CHAR_ID, x: 60, y: 60 }]);
-    // 全程无第二次隔空聊天:chat 意图只有首轮召唤应答那一场
-    expect(h.intents.filter((i) => i.type === 'chat')).toHaveLength(1);
     h.scheduler.dispose();
   });
 });
@@ -1091,6 +1195,104 @@ describe('AgentScheduler(E3 聚会邀约)', () => {
     await vi.advanceTimersByTimeAsync(2_000);
     expect(innerState.get(CHAR_ID)!.intents!.wants[0]!.id).toBe('w0-0');
     expect(innerState.get(CHAR_ID)!.pendingInvitation).toMatchObject({ day: 0 }); // 留待次日
+    h.scheduler.dispose();
+  });
+
+  it('禁聊世界邀约丢弃: allowChat=false 次晨不前置 socialize want,台账兑现即清(产生入口闸)', async () => {
+    const seen: string[] = [];
+    const h = harness(1440 + 480, char({}), intentsLlm(seen), { chatAllowed: false }); // 次日 08:00
+    innerState.ensure(CHAR_ID).pendingInvitation = {
+      placeId: 'park',
+      note: '晒太阳',
+      withId: 'npc-1',
+      day: 0,
+    };
+    await vi.advanceTimersByTimeAsync(2_000);
+    const wants = innerState.get(CHAR_ID)!.intents!.wants;
+    expect(wants.find((w) => w.activityId === 'socialize')).toBeUndefined();
+    expect(innerState.get(CHAR_ID)!.pendingInvitation).toBeNull(); // 丢弃,不跨日悬挂
+    h.scheduler.dispose();
+  });
+});
+
+describe('AgentScheduler(townNeeds 建造镇情,S2-A)', () => {
+  const gateBackup = BALANCE.CONSTRUCTION_KNOWLEDGE_GATE;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    autonomy.enable(CHAR_ID);
+    BALANCE.CONSTRUCTION_KNOWLEDGE_GATE = 1;
+  });
+  afterEach(() => {
+    BALANCE.CONSTRUCTION_KNOWLEDGE_GATE = gateBackup;
+    autonomy.disable(CHAR_ID);
+    hosting.delete(CHAR_ID);
+    innerState.clear(CHAR_ID);
+    vi.useRealTimers();
+  });
+
+  /** rest 意图桩,截获 prompt 全文(验镇情行) */
+  const captureLlm = (seen: string[]): Partial<MemoryLlm> => ({
+    chatStructured: (_slot, messages, _tool, _task, parse) => {
+      seen.push(messages[messages.length - 1]!.content);
+      const parsed = parse({ wants: [{ activity: 'rest', urgency: 0.5, why: '歇着' }] });
+      if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+      return Promise.resolve(parsed.value);
+    },
+  });
+
+  it('蓝图开放世界:镇情含单仓存量/可建清单/全镇口径差料与知识门槛提示,数据零手抄', async () => {
+    const seen: string[] = [];
+    const h = harness(480, char({}), captureLlm(seen), {
+      gameType: 'survival',
+      storage: { wood: 7, stone: 3, metal: 4, bread: 2 },
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    const prompt = seen[0] ?? '';
+    expect(prompt).toContain('单仓:木材×7/石料×3/金属×4');
+    expect(prompt).toContain(
+      '住宅(木材12石料8金属4,需学6班;全镇已有木材×7/石料×3/金属×4,还差木材×5/石料×5)',
+    );
+    expect(prompt).toContain(
+      '商店(木材8石料8金属2,需学6班;全镇已有木材×7/石料×3/金属×4,还差木材×1/石料×5)',
+    );
+    expect(prompt).toContain('可建(construction;建材采集后自动入仓,料齐即可接单施工)');
+    h.scheduler.dispose();
+  });
+
+  it('全镇口径差料:背包计入已有,幽灵背包剔除,攒齐即示「料已攒齐」', async () => {
+    const seen: string[] = [];
+    const h = harness(480, char({ backpack: { wood: 4 } }), captureLlm(seen), {
+      gameType: 'survival',
+      storage: { wood: 7, stone: 3, metal: 4 },
+      extraCharacters: [char({ id: 'ghost-1', name: '故人', alive: false, backpack: { wood: 99 } })],
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    const prompt = seen[0] ?? '';
+    // 木材 7(单仓)+4(阿筑背包)=11,幽灵 99 不计
+    expect(prompt).toContain('住宅(木材12石料8金属4,需学6班;全镇已有木材×11/石料×3/金属×4,还差木材×1/石料×5)');
+    h.scheduler.dispose();
+  });
+
+  it('门槛关闭世界:无需学提示,全镇攒齐时示「料已攒齐」(门槛=0 走查口径)', async () => {
+    BALANCE.CONSTRUCTION_KNOWLEDGE_GATE = 0;
+    const seen: string[] = [];
+    const h = harness(480, char({}), captureLlm(seen), {
+      gameType: 'survival',
+      storage: { wood: 99, stone: 99, metal: 99 },
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    const prompt = seen[0] ?? '';
+    expect(prompt).not.toContain('需学');
+    expect(prompt).toContain('住宅(木材12石料8金属4;全镇已有木材×99/石料×99/金属×99;料已攒齐)');
+    h.scheduler.dispose();
+  });
+
+  it('蓝图未开放世界:镇情无建造段(growth 零字面量分流)', async () => {
+    const seen: string[] = [];
+    const h = harness(480, char({}), captureLlm(seen), { gameType: 'growth', storage: { wood: 9 } });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(seen[0]).not.toContain('单仓:');
+    expect(seen[0]).not.toContain('可建');
     h.scheduler.dispose();
   });
 });

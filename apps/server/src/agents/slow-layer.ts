@@ -1,4 +1,4 @@
-import { getActivityDefinition, getPropertyDefinition } from '@sims/shared';
+import { BUILD_BLUEPRINTS, getActivityDefinition, getPropertyDefinition } from '@sims/shared';
 import { eq } from 'drizzle-orm';
 import type { DbHandle } from '../db/client.js';
 import { characters } from '../db/schema/index.js';
@@ -15,11 +15,13 @@ import type { MemoryLlm } from './memory-writer.js';
  * 计划-实际偏差自动成为记忆素材。睡眠不进意图,由困倦压力(ruleSleepy)接管。
  */
 
-/** 意图活动白名单(E1 生产经济扩容;E4 增卖货):8 基础活动 + 服务三岗 +
- * 采集四岗(growth 适用节点)+ 制作四配方 + 卖货。带 category 的岗位经知识门槛
- * 预检;采集经 work_task 通路(节点寻址)、制作经 craft 通路(验料)、卖货经
- * sell_item 通路(在店变现),wantSelect 择条时分流;
- * sleep 由困倦压力驱动不进意图,socialize 聊天由动机引擎驱动 */
+/** 意图活动白名单(E1 生产经济扩容;E4 增卖货;S2-A 增生存采集三岗+建造):8 基础活动
+ * + 服务三岗 + 采集七岗 + 制作四配方 + 卖货 + 建造。带 category 的岗位经知识门槛
+ * 预检;采集经 work_task 通路(节点寻址)、制作经 craft 通路(验料)、建造经 build
+ * 通路(蓝图+选址搜索),wantSelect 择条时分流;
+ * sleep 由困倦压力驱动不进意图,socialize 聊天由动机引擎驱动;
+ * 生存采集三岗/建造在 growth 无节点/无蓝图开放,候选期自然跳过(gatherTarget null/
+ * 无合法选址),词表不分级 */
 export const INTENT_ACTIVITY_IDS = [
   'study',
   'work',
@@ -36,12 +38,22 @@ export const INTENT_ACTIVITY_IDS = [
   'scavenge',
   'pick_apple',
   'harvest_wheat',
+  'chop_tree',
+  'mine_rock',
+  'salvage_metal',
   'craft_berry_pie',
   'craft_bread',
   'craft_sandwich',
   'craft_repair_kit',
   'sell_goods',
+  'construction',
 ] as const;
+
+/** 建造蓝图可选项(S2-A,LLM 选蓝图;place 类先行,围栏自主布局随 S3):
+ * enum 源自蓝图注册表,新增蓝图自动进词表零双写 */
+const BUILD_BLUEPRINT_PLACE_IDS: readonly string[] = BUILD_BLUEPRINTS.filter(
+  (b) => b.kind === 'place',
+).map((b) => b.id);
 
 const EVIDENCE_LIMIT = 6;
 
@@ -62,6 +74,9 @@ export interface IntentsContext {
   acquaintances?: AcquaintanceBrief | null;
   /** 昨天的约定(E3 聚会邀约):一句话邀约事由,注入 prompt 促成赴约 want */
   invitation?: string;
+  /** 世界规则·聊天开关(缺省 true):false 时 socialize 移出词表/枚举/菜单,
+   * 规划层从源头不产社交 want(执行层校验仅兜底,2026-10-13 镇A实证) */
+  chatAllowed?: boolean;
 }
 
 /** 熟人简报(E2):调度泵从关系表+印象表+社交簿记拼装 */
@@ -218,6 +233,18 @@ const ACTIVITY_MENU = INTENT_ACTIVITY_IDS.map((id) => {
   return `${def?.name ?? id}(${id})`;
 }).join('、');
 
+/** 意图菜单按世界规则裁剪(禁聊世界剥 socialize;方针编译菜单不裁——bias 对
+ * 不存在的活动无副作用) */
+function intentMenu(chatAllowed: boolean): string {
+  if (chatAllowed) return ACTIVITY_MENU;
+  return INTENT_ACTIVITY_IDS.filter((id) => id !== 'socialize')
+    .map((id) => {
+      const def = getActivityDefinition(id);
+      return `${def?.name ?? id}(${id})`;
+    })
+    .join('、');
+}
+
 /** want 状态的人类可读标签(昨日对照/面板共用) */
 export const WANT_STATUS_LABEL: Record<Want['status'], string> = {
   pending: '未做',
@@ -242,7 +269,8 @@ const URGENCY_SUBJECTIVE_MIN = 0.3;
 const URGENCY_SUBJECTIVE_MAX = 0.7;
 
 /** 意图工具规格(结构化输出):activity 白名单,urgency 0.3~0.7 主观档,why 一句第一人称理由 */
-function intentsTool(): StructuredToolSpec {
+function intentsTool(chatAllowed: boolean): StructuredToolSpec {
+  const ids = chatAllowed ? [...INTENT_ACTIVITY_IDS] : INTENT_ACTIVITY_IDS.filter((id) => id !== 'socialize');
   return {
     name: 'submit_day_intents',
     description: '提交今天真正想做的几件事(3~6 条,不必覆盖全天)',
@@ -256,10 +284,15 @@ function intentsTool(): StructuredToolSpec {
             type: 'object',
             required: ['activity', 'urgency', 'why'],
             properties: {
-              activity: { type: 'string', enum: [...INTENT_ACTIVITY_IDS] },
+              activity: { type: 'string', enum: ids },
               target: {
                 type: 'string',
                 description: '想找谁(可选,仅 activity=socialize 时填熟人名字)',
+              },
+              blueprint: {
+                type: 'string',
+                enum: [...BUILD_BLUEPRINT_PLACE_IDS],
+                description: '想建什么(可选,仅 activity=construction 时填蓝图 id)',
               },
               urgency: {
                 type: 'number',
@@ -280,6 +313,7 @@ function intentsTool(): StructuredToolSpec {
  * 剔除非法行(活动不在白名单/urgency 非数字),urgency 截断到主观档 0.3~0.7(E7),
  * why 缺省兜「随性而为」;
  * target 人名经 resolveTarget 解析为熟人 id,解析不了剥掉 target 保留 want(E2);
+ * blueprint 仅 construction 收且须为合法蓝图 id,否则整行跳过(S2-A);
  * wants 缺失非数组或无有效行判失败(触发带错重试,调用方回落 fallback)。 */
 export function parseIntents(
   raw: unknown,
@@ -309,6 +343,13 @@ export function parseIntents(
       activity === 'socialize' && target !== null
         ? resolveTarget?.(target) ?? undefined
         : undefined;
+    // 蓝图(S2-A):仅 construction 且枚举合法才收;无蓝图建造 want 必然废弃→整行不收
+    // (与 target 解析失败剥 target 保留 want 的口径区分:target 可空,blueprint 不可空)
+    const blueprint =
+      typeof r.blueprint === 'string' && r.blueprint.trim() !== '' ? r.blueprint.trim() : null;
+    if (activity === 'construction') {
+      if (blueprint === null || !(BUILD_BLUEPRINT_PLACE_IDS as readonly string[]).includes(blueprint)) continue;
+    }
     wants.push({
       id: `w${day}-${wants.length}`,
       activityId: activity,
@@ -318,6 +359,7 @@ export function parseIntents(
       status: 'pending',
       createdAtMin: nowMin,
       ...(targetCharacterId !== undefined ? { targetCharacterId } : {}),
+      ...(activity === 'construction' && blueprint !== null ? { blueprintId: blueprint } : {}),
     });
   }
   if (wants.length === 0) {
@@ -343,6 +385,9 @@ const FALLBACK_WHY: Record<string, readonly string[]> = {
   scavenge: ['拾荒堆里说不定有宝贝', '去淘点废料回来'],
   pick_apple: ['树上的苹果该摘了', '摘个苹果又甜又顶饿'],
   harvest_wheat: ['麦子黄了,割回去做面包', '收点小麦攒着'],
+  chop_tree: ['砍点木头回来,盖房子用得上', '镇上缺木料,去林子里出把力'],
+  mine_rock: ['敲点石料攒着,早晚用得上', '石头硬,但镇里等着用'],
+  salvage_metal: ['废铁堆里淘点金属回来', '旧料回炉,比新料省钱'],
   craft_berry_pie: ['浆果攒够了,烤个派', '新鲜浆果派出炉想想就香'],
   craft_bread: ['小麦烤成面包才顶饱', '就馋那一口面包香'],
   craft_sandwich: ['面包夹苹果,凑一顿好的', '做个三明治当干粮'],
@@ -350,10 +395,17 @@ const FALLBACK_WHY: Record<string, readonly string[]> = {
 };
 
 /** 回落意图(LLM 不可用/输出非法):按 bias 分+随机扰动排序取 3~4 条,
- * avoid(bias=-1)活动绝不出现;urgency 随倾向分浮动(主观档 clamp,E7)——个性化替代同款模板 */
-export function fallbackIntents(day: number, nowMin: number, bias: Readonly<Record<string, number>>): Want[] {
+ * avoid(bias=-1)活动绝不出现;construction 不进 fallback(S2-A:失败日无镇情
+ * 评估兜底,排建造不合理,仅随 LLM 晨间规划入队);禁聊世界剥 socialize;urgency
+ * 随倾向分浮动(主观档 clamp,E7)——个性化替代同款模板 */
+export function fallbackIntents(
+  day: number,
+  nowMin: number,
+  bias: Readonly<Record<string, number>>,
+  chatAllowed = true,
+): Want[] {
   const candidates = INTENT_ACTIVITY_IDS
-    .filter((id) => (bias[id] ?? 0) > -1)
+    .filter((id) => id !== 'construction' && (chatAllowed || id !== 'socialize') && (bias[id] ?? 0) > -1)
     .map((id) => ({ id, score: (bias[id] ?? 0) + Math.random() * 0.8 }))
     .sort((a, b) => b.score - a.score)
     .slice(0, 3 + Math.floor(Math.random() * 2));
@@ -439,7 +491,7 @@ function buildIntentsMessages(
         status_line: `状态: 金币 ${char.coins},体力 ${char.energy},健康 ${char.health},知识 ${char.knowledge},${housingLine(char)}。`,
         context_lines: contextLines.join('\n'),
         memory_lines: memoryLines,
-        activity_menu: ACTIVITY_MENU,
+        activity_menu: intentMenu(ctx?.chatAllowed !== false),
         submit_line: '请调用 submit_day_intents 工具提交今天想做的事。',
       }),
     },
@@ -522,19 +574,23 @@ export async function composeIntents(
     }
   }
   const bias = biasOf(compiled);
+  const chatAllowed = ctx?.chatAllowed !== false;
   try {
     const wants = await llm.chatStructured(
       'slow',
       buildIntentsMessages(char, evidence, clock.day, { ...ctx, compiled }),
-      intentsTool(),
+      intentsTool(chatAllowed),
       { taskType: 'agent.day_intents', characterId: char.id, temperature: 0.9 },
       (raw) => parseIntents(raw, clock.day, clock.gameMinutes, ctx?.acquaintances?.resolve),
     );
-    const kept = wants.filter((w) => (bias[w.activityId] ?? 0) > -1);
+    // 禁聊世界兜底过滤(枚举已排除,防个别 provider 忽略 enum 仍吐 socialize)
+    const kept = wants.filter(
+      (w) => (bias[w.activityId] ?? 0) > -1 && (chatAllowed || w.activityId !== 'socialize'),
+    );
     return {
       intents: {
         day: clock.day,
-        wants: kept.length > 0 ? kept : fallbackIntents(clock.day, clock.gameMinutes, bias),
+        wants: kept.length > 0 ? kept : fallbackIntents(clock.day, clock.gameMinutes, bias, chatAllowed),
         source: kept.length > 0 ? 'llm' : 'fallback',
       },
       bias,
@@ -542,7 +598,11 @@ export async function composeIntents(
     };
   } catch {
     return {
-      intents: { day: clock.day, wants: fallbackIntents(clock.day, clock.gameMinutes, bias), source: 'fallback' },
+      intents: {
+        day: clock.day,
+        wants: fallbackIntents(clock.day, clock.gameMinutes, bias, chatAllowed),
+        source: 'fallback',
+      },
       bias,
       compiled,
     };

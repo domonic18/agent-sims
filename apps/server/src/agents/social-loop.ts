@@ -1,6 +1,5 @@
 import {
   findPlaceAt,
-  getActivityDefinition,
   pickChatLine,
   type SocialEncounterEvent,
 } from '@sims/shared';
@@ -21,9 +20,9 @@ import type { TraceEntry, TraceRecorder } from './trace.js';
 /** summon_wait trace 采样周期(每 N 次记 1 次;会合挂起是常态等待,防洪水) */
 const SOCIAL_WAIT_TRACE_SAMPLE = 10;
 
-/** 社交点火固定紧迫度(E6.4 简化):动机不再打分,与生存 want 的竞争全交
- * wantSelect——生存压力高时社交让位是正确语义 */
-const SOCIALIZE_WANT_URGENCY = 0.5;
+/** 闲适集活动(S2-C 生产保护,03-social §14):在契活动只有这些可被搭话打断;
+ * 岗位/采集/建造/医疗/学习在契一律不打扰 */
+const SOCIAL_IDLE_ACTIVITY_IDS = ['rest', 'stroll', 'explore', 'workout'];
 
 /** 过闸社交候选(E6.4 布尔门槛产物;desire 打分已废,异地候选供 jev 直觉提示) */
 export interface SocialCandidate {
@@ -49,22 +48,22 @@ export interface SocialLoopDeps {
     decision: Decision,
     trigger: TraceEntry['trigger'],
     perception: Record<string, unknown>,
-  ) => void;
+  ) => boolean;
   executeWants: (char: WorldCharacter, trigger: 'threshold' | 'eventbus') => void;
 }
 
 /**
  * 自治社交管线(10-cognition §7.2 C4,自 AgentScheduler 抽出):
  * 共处破冰(acquaintanceStep,零模型)——同场所陌生对攒面熟度自动相识,解
- * 「关系只能由聊天创建」的冷启动死锁;空闲角色跑布尔门槛点火(E6.4 简化,
- * 动机引擎 desire 打分退场)——已认识(fam>0)+关系不嫌弃(affinity>-30)+
- * 同对冷却外即候选,按 affinity 择优写 socialize want(origin=drive,urgency
- * 固定)入意图存储并即时择条,聊天/寻人执行全归 wantSelect 唯一执行器
- * (两段式:远处 move_to 寻人、贴身 chatWith 路回本管线)。候选同时返回给
- * jev 池(异地者供直觉决定要不要专程去找 TA)。
- * 一次至多点火一人。聊后即时印象 upsert(character_impressions)。
- * 簿记:同对最近聊天时刻(双角色排序 key)——唯一防刷闸 SOCIAL_PAIR_COOLDOWN
- * 的计时源(E6.4 起日预算/收益封顶闸废除,聊天频率由对冷却+生存节奏自限)。
+ * 「关系只能由聊天创建」的冷启动死锁;共处分流(onEncounter,零模型)——
+ * 计划沟通(在途 want 相遇即聊)与偶遇冲动(S2-C:无意愿纯共处,同对冷却外
+ * 即召唤)两路进会合协议;空闲点火发生器已退役(S2-C,03-social §14——社交
+ * 只从计划/偶遇/共事间隙自然发生,不再凭空生欲),socialCandidates 仅作查询
+ * 供 JEV 事件驱动冲动喂池。聊天/寻人执行全归 wantSelect 唯一执行器(两段式:
+ * 远处 move_to 寻人、贴身 chatWith 路回本管线)。
+ * 聊后即时印象 upsert(character_impressions)。
+ * 簿记:同对最近聊天时刻(双角色排序 key)——同对冷却 SOCIAL_PAIR_COOLDOWN
+ * 的计时源(E6.4 起日预算/收益封顶闸废除,聊天频率由对冷却+物理共处自限)。
  * E6.2 两阶段会合协议(E6.2-S1):贴身 chatWith 不再直接烧模型——阶段一**召唤**
  * (零模型):写对方 event want(origin=event「回应X的搭话」,带半衰期)并建会合
  * 台账,对方在自己的 wantSelect 里自行决定应答(该 want 赢得评分,经其执行链直接
@@ -166,60 +165,6 @@ export class SocialLoop {
     }
   }
 
-  idleSocialStep(
-    char: WorldCharacter,
-    trigger: 'threshold' | 'eventbus',
-  ): SocialCandidate[] {
-    const { sim } = this.deps;
-    if (!char.alive || char.collapsed) return [];
-    const candidates = this.socialCandidates(char);
-    if (candidates.length === 0) return [];
-    // E6.4 布尔门槛点火(E6 动机引擎降为驱力生成器再简化)——候选按 affinity
-    // 择优写 socialize want(origin=drive)入意图存储;执行归 wantSelect 唯一
-    // 执行器(两段式:远处 move_to 寻人,贴身 chatWith 路回 executeChatWant)。
-    // 异地熟人也点火:纯偶遇式社交在分散小镇永远凑不齐共处,寻人正是会合
-    // 协议的存在意义。同目标在途 want 不重复写(每步都跑,防 want 刷屏);
-    // 无当日意图容器不写。
-    const fire = [...candidates].sort(
-      (a, b) => b.affinity - a.affinity || a.targetId.localeCompare(b.targetId),
-    )[0];
-    if (
-      fire !== undefined &&
-      !this.hasSocialWant(char.id, fire.targetId) &&
-      innerState.get(char.id)?.intents?.day === sim.clock.day
-    ) {
-      const intents = innerState.get(char.id)!.intents!;
-      const why =
-        fire.affinity >= 65 ? `想去找${fire.name}聊聊,你们很投缘` : `想找${fire.name}聊聊天`;
-      const want = {
-        id: `w${sim.clock.day}-d${sim.clock.gameMinutes}`,
-        activityId: 'socialize',
-        origin: 'drive' as const,
-        targetCharacterId: fire.targetId,
-        why,
-        urgency: SOCIALIZE_WANT_URGENCY,
-        status: 'pending' as const,
-        createdAtMin: sim.clock.gameMinutes,
-      };
-      intents.wants.push(want);
-      persistInnerState(this.deps.handle, char.id);
-      this.deps.trace.record(char.id, sim.clock.gameMinutes, {
-        trigger,
-        perception: {
-          motive: 'social',
-          want: want.id,
-          target: fire.targetId,
-          affinity: fire.affinity,
-          coLocated: fire.chatReady ? 'near' : fire.samePlace ? 'same' : 'far',
-        },
-        decision: { layer: 'plan', conclusion: 'react', intent: 'want:socialize', bubble: why },
-        wantId: want.id,
-      });
-      this.deps.executeWants(char, trigger);
-    }
-    return candidates;
-  }
-
   /** 同目标 socialize want 在途(pending/doing)判定:动机重复点火去重 */
   private hasSocialWant(characterId: string, targetId: string): boolean {
     const intents = innerState.get(characterId)?.intents;
@@ -247,12 +192,13 @@ export class SocialLoop {
     );
   }
 
-  /** 点火候选(E6.4 布尔门槛):已认识(familiarity>0)且对方存活、关系不嫌弃
-   * (affinity>-30)、同对冷却外;拼两档同地(chatReady 贴身/samePlace 同场未近)。
-   * desire 打分已废——聊不聊由共处与冷却决定,关系好坏交给 affinity 排序与
-   * 聊天结算的相性系数表达 */
-  private socialCandidates(char: WorldCharacter): SocialCandidate[] {
+  /** 社交候选(E6.4 布尔门槛遗产,S2-C 后仅作查询):已认识(familiarity>0)且
+   * 对方存活、关系不嫌弃(affinity>-30)、同对冷却外;拼两档同地(chatReady 贴身/
+   * samePlace 同场未近)。原「空闲即点火」已退役(无情境欲望发生器,03-social
+   * §14)——现仅供 JEV 事件驱动冲动喂池,不再自行写 want */
+  socialCandidates(char: WorldCharacter): SocialCandidate[] {
     const { sim } = this.deps;
+    if (!sim.chatAllowed()) return []; // 世界规则禁聊:产生入口静音(E6.4/JEV/E8 共用)
     const now = sim.clock.gameMinutes;
     const candidates: SocialCandidate[] = [];
     const selfPlace = findPlaceAt(sim.map.definition, char.x, char.y)?.id ?? null;
@@ -374,6 +320,11 @@ export class SocialLoop {
     trigger: 'threshold' | 'eventbus',
   ): Promise<void> {
     const { sim } = this.deps;
+    if (!sim.chatAllowed()) {
+      // 规则中途关闭:在途聊天 want 直接废弃不悬挂(走位/会合台账随愿消亡)
+      this.releaseWant(char.id, wantId, 'abandoned');
+      return;
+    }
     const target = sim.characters.get(targetId);
     if (target === undefined || !target.alive || target.collapsed) {
       this.releaseWant(char.id, wantId, 'abandoned');
@@ -434,14 +385,17 @@ export class SocialLoop {
   }
 
   /**
-   * 路上相遇消化(E8):世界层 tick 级 social.encounter 的认知侧分流。相遇是快于
-   * 决策采样(15 游戏分/块)的瞬时事实——采样式贴身判定对相向而行两人命中率仅
-   * ~7%,「路上碰见却各自走到目的地」的追逐循环由此而来。按意愿分流,零模型:
-   * 任一方有指向对方的在途 socialize want=想聊——双方停步进既有会合协议(双向
-   * 都想聊时 id 字典序小者为发起方,谁发起只决定协议角色,不影响都想聊的事实);
-   * 双方都无意愿=擦肩而过(正确行为,高频零惊动);任一方不可打断活动(睡觉/
-   * 进餐)或非自治=不打扰。停步是「见面停下来说话」的物理表达(协议机械动作,
-   * 同 rent 即时结算先例;双方 want 真实存在于意图存储,执行仍归 wantSelect)。
+   * 共处消化(E8→S2-C 偶遇冲动):世界层 tick 级 social.encounter 的认知侧分流。
+   * 相遇是快于决策采样(15 游戏分/块)的瞬时事实——采样式贴身判定对相向而行两人
+   * 命中率仅 ~7%,「路上碰见却各自走到目的地」的追逐循环由此而来。按社交来源
+   * 分流(03-social §14),零模型:
+   * ① 计划沟通:任一方有指向对方的在途 socialize want=想聊,进既有会合协议
+   *   (双向都想聊时 id 字典序小者为发起方,谁发起只决定协议角色);
+   * ② 临时冲动:双方都无意愿的纯共处=偶遇即冲动,同对冷却外即召唤(聊不聊的
+   *   另一半归应答方 wantSelect 评分自裁);
+   * 生产保护:任一方在契生产活动(岗位/采集/建造/学习)一律不打扰,可搭话仅限
+   * 空闲或闲适集活动;停步是「见面停下来说话」的物理表达(协议机械动作,双方
+   * want 真实存在于意图存储,执行仍归 wantSelect)。
    */
   onEncounter(event: SocialEncounterEvent): void {
     const { sim } = this.deps;
@@ -450,11 +404,24 @@ export class SocialLoop {
     if (a === undefined || b === undefined) return;
     if (!a.alive || !b.alive || a.collapsed || b.collapsed) return;
     if (!autonomy.has(a.id) || !autonomy.has(b.id)) return;
+    if (!SocialLoop.isChatReceptive(a) || !SocialLoop.isChatReceptive(b)) return;
     const aSeeks = this.hasSocialWant(a.id, b.id);
     const bSeeks = this.hasSocialWant(b.id, a.id);
-    if (!aSeeks && !bSeeks) return;
-    if (SocialLoop.isUntouchable(a) || SocialLoop.isUntouchable(b)) return;
-    const initiator = aSeeks && bSeeks ? (a.id < b.id ? a : b) : aSeeks ? a : b;
+    let initiator: WorldCharacter;
+    if (aSeeks || bSeeks) {
+      initiator = aSeeks && bSeeks ? (a.id < b.id ? a : b) : aSeeks ? a : b;
+    } else {
+      // 偶遇冲动(S2-C §14):无情境欲望发生器已退役,冲动只从物理共处发生——
+      // 世界规则允许(产生入口闸,架构强制项 8)+同对冷却外(节奏自限)
+      if (!sim.chatAllowed()) return;
+      if (
+        sim.clock.gameMinutes - this.pairLastAt(a.id, b.id) <
+        BALANCE.SOCIAL_PAIR_COOLDOWN_MINUTES
+      ) {
+        return;
+      }
+      initiator = a.id < b.id ? a : b;
+    }
     const target = initiator === a ? b : a;
     const key = [a.id, b.id].sort().join('|');
     if (this.rendezvous.has(key) || this.generating.has(key)) return;
@@ -491,12 +458,11 @@ export class SocialLoop {
     this.summon(initiator, target, 'eventbus');
   }
 
-  /** 不可打断活动(睡觉/进餐):相遇不打扰——别人在睡凑上去聊不合常理 */
-  private static isUntouchable(c: WorldCharacter): boolean {
-    return (
-      c.activity !== null &&
-      (getActivityDefinition(c.activity.activityId)?.interruptibility ?? 'high') === 'none'
-    );
+  /** 可搭话判定(S2-C 生产保护):无活动,或闲适集活动(rest/stroll/explore/
+   * workout)在契——睡觉/进餐(interruptibility='none' 旧闸)与岗位/采集/建造/
+   * 学习(生产活动)一并不接待:别人干活凑上去聊不合常理 */
+  private static isChatReceptive(c: WorldCharacter): boolean {
+    return c.activity === null || SOCIAL_IDLE_ACTIVITY_IDS.includes(c.activity.activityId);
   }
 
   /**
@@ -512,6 +478,7 @@ export class SocialLoop {
     trigger: 'threshold' | 'eventbus',
   ): void {
     const { sim } = this.deps;
+    if (!sim.chatAllowed()) return; // 禁聊世界:召唤链(E8/道谢直呼)入口静默
     const key = [char.id, target.id].sort().join('|');
     if (!autonomy.has(target.id)) {
       this.deps.trace.record(char.id, sim.clock.gameMinutes, {
@@ -640,7 +607,7 @@ export class SocialLoop {
     }
     const lines = conversation !== null ? [...conversation.lines] : [];
     while (lines.length < 2) lines.push(pickChatLine(relation.familiarity));
-    this.deps.apply(
+    const accepted = this.deps.apply(
       char,
       {
         layer: 'rule',
@@ -657,6 +624,21 @@ export class SocialLoop {
         llm: conversation !== null,
       },
     );
+    if (!accepted) {
+      // R3 反馈一致性:chat 意图被权威校验链拒绝(禁聊世界兜底/距离翻转等)——
+      // 冷却降级短窗+双向 want 废弃,不再悬挂 doing 干等过期(镇A 35 个 socialize
+      // 悬挂实证);会合/生成台账由 executeChatWant 的 finally 统一收口
+      this.downgradeWalkedAway(initiatorId, partnerId);
+      this.releaseSocialWant(char.id, target.id, 'abandoned');
+      this.releaseSocialWant(target.id, char.id, 'abandoned');
+      this.deps.trace.record(char.id, sim.clock.gameMinutes, {
+        trigger,
+        perception: { motive: 'social', chatRejected: true, target: target.id, want: wantId ?? undefined },
+        decision: { layer: 'rule', conclusion: 'continue' },
+        ...(wantId !== null ? { wantId } : {}),
+      });
+      return;
+    }
     if (conversation?.invitation !== null && conversation?.invitation !== undefined) {
       this.bookInvitation(char.id, target.id, conversation.invitation);
     }

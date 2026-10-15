@@ -21,6 +21,7 @@ function ctx(overrides: Partial<TriageContext> = {}): TriageContext {
     budget: { day: -1, assessedToday: 0, lastAssessAt: Number.NEGATIVE_INFINITY, assessedKeys: new Set() },
     nowGameMinutes: 480,
     gameDay: 0,
+    chatAllowed: true,
     ...overrides,
   };
 }

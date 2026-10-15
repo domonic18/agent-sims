@@ -71,6 +71,7 @@ function intents(day: number, wants: Array<Partial<DayIntents['wants'][number]> 
       createdAtMin: w.createdAtMin ?? 480,
       ...(w.targetCharacterId !== undefined ? { targetCharacterId: w.targetCharacterId } : {}),
       ...(w.meetingPlaceId !== undefined ? { meetingPlaceId: w.meetingPlaceId } : {}),
+      ...(w.blueprintId !== undefined ? { blueprintId: w.blueprintId } : {}),
       ...(w.expiresAtMin !== undefined ? { expiresAtMin: w.expiresAtMin } : {}),
     })),
   };
@@ -663,6 +664,19 @@ describe('wantSelect E1 三通路(采集直发/制作验料/知识门槛)', () =
     expect(wantSelect(char({ knowledge: 5 }), day, 1, TOWN_MAP, noAnchors)).toBeNull();
   });
 
+  it('背包装不下最坏产出:候选期跳过(pending 保留)——满包采集不接单不被拒', () => {
+    // 容量判定与 work_task 接单预检同源;缺此拦截满包采集 want 高 urgency 每块赢
+    // 每块被拒,3 连拒清整日意图,存仓出口(construction 分支)永无调度窗口
+    const day = intents(1, [{ activityId: 'gather_berry', urgency: 0.9, why: '采点浆果' }]);
+    const full = char({ knowledge: 0, backpack: { scrap: 7 } }); // 7/8 格,浆果最坏产出 2 格装不下
+    expect(
+      wantSelect(full, day, 1, TOWN_MAP, noAnchors, {}, {
+        nearestNode: () => ({ id: 'berry_bush:31:30', x: 31, y: 30 }),
+      }),
+    ).toBeNull();
+    expect(day.wants[0]!.status).toBe('pending');
+  });
+
   it('制作 want:验料就绪+到站→craft;缺料跳过;不在站点先前往', () => {
     const day = intents(1, [{ activityId: 'craft_berry_pie', urgency: 0.9, why: '烤个派' }]);
     const stove = [{ x: 20, y: 21 }];
@@ -917,6 +931,20 @@ describe('wantSelect 人指向社交(E2 寻人/让位)', () => {
     expect(decision!.abandonedWantIds).toContain('w1-0');
     expect(decision!.intent).toBeUndefined();
   });
+
+  it('禁聊世界残留 want 收口: chatAllowed=false 时 socialize want 废弃不执行(规则中途关闭兜底)', () => {
+    const day = intents(1, [
+      { activityId: 'socialize', urgency: 0.9, targetCharacterId: 'npc-9' },
+    ]);
+    const decision = wantSelect(char({ x: 8, y: 12 }), day, 1, TOWN_MAP, noAnchors, {}, {
+      positionOf: (id) => (id === 'npc-9' ? { x: 9, y: 12, name: '铁牛' } : null),
+      chatAllowed: () => false,
+    });
+    expect(decision!.action).toBe('continue');
+    expect(decision!.abandonedWantIds).toContain('w1-0');
+    expect(decision!.chatWith).toBeUndefined();
+    expect(decision!.intent).toBeUndefined();
+  });
 });
 
 describe('wantSelect 驱力分支(E6.2 rule→驱力,伪活动 id 专属执行)', () => {
@@ -1140,5 +1168,151 @@ describe('wantSelect 救援 want(E6.2 triage respond→冲动)', () => {
     });
     expect(low!.action).toBe('react');
     expect(low!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 20, y: 20 });
+  });
+});
+
+describe('wantSelect 建造 want(S2-A 自主建造:选址搜索+足料 build/缺料存仓)', () => {
+  const noAnchors = (): Array<{ x: number; y: number }> => [];
+  const RECT = { x: 20, y: 20, w: 7, h: 5 };
+  /** survival 世界查询桩:足料=survival 单仓满料,选址恒 RECT,站位恒外圈 (27,25) */
+  const world = (over: Partial<WantWorldQueries> = {}): WantWorldQueries => ({
+    gameType: 'survival',
+    storageCount: () => 99,
+    storageSpot: () => ({ x: 10, y: 12 }),
+    suggestRect: () => RECT,
+    standNearRect: () => ({ x: 27, y: 25 }),
+    ...over,
+  });
+  const want = (blueprintId: string | undefined): DayIntents =>
+    intents(1, [{ activityId: 'construction', urgency: 0.6, why: '给镇上盖住宅', blueprintId }]);
+  /** 满体力角色(默认 80 过住宅 480 分钟施工线 44 但余量不大,用例取 95 求稳):走分支深处的用例一律用它 */
+  const fit = (over: Partial<WorldCharacter> = {}): WorldCharacter =>
+    char({ knowledge: 6, energy: 95, ...over });
+
+  it('候选期废弃:蓝图缺失/非法/模式未开放(缺省 growth)→ abandoned;足料判定不过 → pending 跳过', () => {
+    const missing = wantSelect(char({ knowledge: 6 }), want(undefined), 1, TOWN_MAP, noAnchors, {}, world());
+    expect(missing!.abandonedWantIds).toEqual(['w1-0']);
+    const bogus = wantSelect(char({ knowledge: 6 }), want('build_castle'), 1, TOWN_MAP, noAnchors, {}, world());
+    expect(bogus!.abandonedWantIds).toEqual(['w1-0']);
+    // gameType 缺省=growth 语义:build_home 仅 survival 开放,整条废弃
+    const closed = wantSelect(char({ knowledge: 6 }), want('build_home'), 1, TOWN_MAP, noAnchors);
+    expect(closed!.abandonedWantIds).toEqual(['w1-0']);
+    // 缺料且背包无建材:不进评分池(返回 null,want pending 保留等采集)
+    const starved = wantSelect(char({ knowledge: 6 }), want('build_home'), 1, TOWN_MAP, noAnchors, {}, {
+      gameType: 'survival',
+      storageCount: () => 0,
+    });
+    expect(starved).toBeNull();
+  });
+
+  it('知识门槛:门槛开(默认)知识不足跳过;门槛关 0 班放行', () => {
+    const short = wantSelect(char({ knowledge: 3 }), want('build_home'), 1, TOWN_MAP, noAnchors, {}, world());
+    expect(short).toBeNull();
+    const backup = BALANCE.CONSTRUCTION_KNOWLEDGE_GATE;
+    BALANCE.CONSTRUCTION_KNOWLEDGE_GATE = 0;
+    try {
+      const opened = wantSelect(char({ x: 27, y: 22, knowledge: 0, energy: 95 }), want('build_home'), 1, TOWN_MAP, noAnchors, {}, world());
+      expect(opened!.intent?.type).toBe('build');
+    } finally {
+      BALANCE.CONSTRUCTION_KNOWLEDGE_GATE = backup;
+    }
+  });
+
+  it('足料贴身 → build 意图(蓝图+选区左上);足料远 → move_to 外圈站位', () => {
+    // (27,22) 距选区 20..26×20..24 曼哈顿距离 1=贴身;体力 95 撑满 480 分钟施工
+    const near = wantSelect(char({ x: 27, y: 22, knowledge: 6, energy: 95 }), want('build_home'), 1, TOWN_MAP, noAnchors, {}, world());
+    expect(near!.action).toBe('react');
+    expect(near!.intent).toEqual({
+      type: 'build',
+      characterId: 'char-1',
+      blueprintId: 'build_home',
+      x: 20,
+      y: 20,
+    });
+    expect(near!.bubble).toContain('住宅');
+
+    // (30,30) 远:外圈站位搜索返回 (27,25)(离 from 最近的环点)
+    const far = wantSelect(fit(), want('build_home'), 1, TOWN_MAP, noAnchors, {}, world());
+    expect(far!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 27, y: 25 });
+    expect(far!.bubble).toContain('工地');
+  });
+
+  it('外圈无可站立格(围死)→ no_stand_tile 本轮跳过(pending 保留,不撞 move_to 硬拒)', () => {
+    const sealed = wantSelect(fit(), want('build_home'), 1, TOWN_MAP, noAnchors, {}, world({
+      standNearRect: () => null,
+    }));
+    expect(sealed!.action).toBe('continue');
+    expect(sealed!.reason).toBe('no_stand_tile');
+    expect(sealed!.abandonedWantIds).toBeUndefined();
+  });
+
+  it('选址失败(suggestRect null)→ no_build_spot 废弃', () => {
+    const none = wantSelect(char({ knowledge: 6 }), want('build_home'), 1, TOWN_MAP, noAnchors, {}, world({
+      suggestRect: () => null,
+    }));
+    expect(none!.action).toBe('continue');
+    expect(none!.reason).toBe('no_build_spot');
+    expect(none!.abandonedWantIds).toEqual(['w1-0']);
+  });
+
+  it('体力不足以撑满施工时长 → 本轮跳过(pending 保留,不中途虚脱废单)', () => {
+    // 门槛值(20)过线但撑不满 480 分钟×0.05=24(整单线 44):中途虚脱=退料销单+倒地损血
+    const tired = wantSelect(
+      char({ x: 27, y: 22, knowledge: 6, energy: BALANCE.LOW_ENERGY_THRESHOLD }),
+      want('build_home'),
+      1,
+      TOWN_MAP,
+      noAnchors,
+      {},
+      world(),
+    );
+    expect(tired!.action).toBe('continue');
+    expect(tired!.reason).toBe('energy_low');
+    expect(tired!.abandonedWantIds).toBeUndefined();
+    // 过门槛但不满时长线(40<44)同样跳过
+    const mid = wantSelect(
+      char({ x: 27, y: 22, knowledge: 6, energy: 40 }),
+      want('build_home'),
+      1,
+      TOWN_MAP,
+      noAnchors,
+      {},
+      world(),
+    );
+    expect(mid!.reason).toBe('energy_low');
+  });
+
+  it('缺料但背包有建材 → 存仓两段式:远 move_to 单仓/贴身 store_item 整叠入仓', () => {
+    const shortWorld = world({ storageCount: () => 0 });
+    const far = wantSelect(fit({ backpack: { wood: 3 } }), want('build_home'), 1, TOWN_MAP, noAnchors, {}, shortWorld);
+    expect(far!.intent).toEqual({ type: 'move_to', characterId: 'char-1', x: 10, y: 12 });
+    expect(far!.bubble).toContain('单仓');
+
+    const near = wantSelect(
+      fit({ x: 10, y: 13, backpack: { wood: 3 } }),
+      want('build_home'),
+      1,
+      TOWN_MAP,
+      noAnchors,
+      {},
+      shortWorld,
+    );
+    expect(near!.intent).toEqual({
+      type: 'store_item',
+      characterId: 'char-1',
+      itemId: 'wood',
+      count: 3,
+      target: 'storage',
+    });
+  });
+
+  it('缺料背包有但无单仓(growth 图无镇核心)→ storage_missing 本轮跳过', () => {
+    const none = wantSelect(fit({ backpack: { wood: 3 } }), want('build_home'), 1, TOWN_MAP, noAnchors, {}, world({
+      storageCount: () => 0,
+      storageSpot: () => null,
+    }));
+    expect(none!.action).toBe('continue');
+    expect(none!.reason).toBe('storage_missing');
+    expect(none!.abandonedWantIds).toBeUndefined();
   });
 });

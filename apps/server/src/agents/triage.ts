@@ -75,6 +75,8 @@ export interface TriageContext {
   };
   nowGameMinutes: number;
   gameDay: number;
+  /** 世界规则·聊天开关(false=社交类响应 want 不产,如获救道谢) */
+  chatAllowed: boolean;
 }
 
 /** 响应注册表查询(triage 与注册表解耦,避免循环依赖;实现在 responses.ts) */

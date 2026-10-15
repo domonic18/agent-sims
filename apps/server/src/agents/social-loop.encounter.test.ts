@@ -90,16 +90,104 @@ afterEach(() => {
   }
 });
 
-describe('路上相遇消化(E8 意愿分流)', () => {
-  it('双方无社交意愿=擦肩而过:不停步、不点火、零 trace', () => {
+describe('共处消化(E8 意愿分流→S2-C 偶遇冲动)', () => {
+  it('偶遇冲动(S2-C):双方无意愿纯共处,字典序小者发起,对方收到应答 event want', () => {
     const { sim, loop, executeWants, traceCalls, at } = harness();
+    const day = sim.clock.day;
+    innerState.setIntents('aaaa1111', { day, source: 'llm', wants: [] });
+    innerState.setIntents('bbbb2222', { day, source: 'llm', wants: [] });
+    sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
+    sim.requestMoveTo('bbbb2222', at.x, at.y);
+    loop.onEncounter(encounter('aaaa1111', 'bbbb2222'));
+    // 停步:见面停下来说话
+    expect(sim.character('aaaa1111').path).toHaveLength(0);
+    expect(sim.character('bbbb2222').path).toHaveLength(0);
+    // 会合台账建立,发起方=甲(字典序小);乙收到应答 want 并被即时重评
+    expect(loop.summonAwaiting('aaaa1111', 'bbbb2222')).toBe(true);
+    const wants = innerState.get('bbbb2222')!.intents!.wants;
+    const reply = wants.find((w) => w.origin === 'event' && w.targetCharacterId === 'aaaa1111');
+    expect(reply).toBeDefined();
+    expect(executeWants).toHaveBeenCalledWith(sim.character('bbbb2222'), 'eventbus');
+    expect(traceCalls.some((c) => c.characterId === 'aaaa1111' && c.entry.decision.conclusion === 'react')).toBe(true);
+  });
+
+  it('偶遇冲动同对冷却内不发生:刚聊过不打扰,擦肩而过零动作', () => {
+    const { sim, loop, executeWants, at } = harness();
+    const day = sim.clock.day;
+    innerState.setIntents('aaaa1111', { day, source: 'llm', wants: [] });
+    innerState.setIntents('bbbb2222', { day, source: 'llm', wants: [] });
+    // 预置同对冷却:白盒注入簿记时刻(真实路径=聊后 bookSocial)
+    const book = loop as unknown as { socialPairLastAt: Map<string, number> };
+    book.socialPairLastAt.set(['aaaa1111', 'bbbb2222'].sort().join('|'), sim.clock.gameMinutes);
     sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
     sim.requestMoveTo('bbbb2222', at.x, at.y);
     loop.onEncounter(encounter('aaaa1111', 'bbbb2222'));
     expect(sim.character('aaaa1111').path.length).toBeGreaterThan(0);
     expect(sim.character('bbbb2222').path.length).toBeGreaterThan(0);
     expect(executeWants).not.toHaveBeenCalled();
-    expect(traceCalls).toHaveLength(0);
+  });
+
+  it('偶遇冲动禁聊世界不发生(产生入口闸,架构强制项 8)', () => {
+    const { sim, loop, executeWants, at } = harness();
+    const day = sim.clock.day;
+    innerState.setIntents('aaaa1111', { day, source: 'llm', wants: [] });
+    innerState.setIntents('bbbb2222', { day, source: 'llm', wants: [] });
+    sim.setRules({ allowChat: false });
+    sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
+    sim.requestMoveTo('bbbb2222', at.x, at.y);
+    loop.onEncounter(encounter('aaaa1111', 'bbbb2222'));
+    expect(sim.character('aaaa1111').path.length).toBeGreaterThan(0);
+    expect(sim.character('bbbb2222').path.length).toBeGreaterThan(0);
+    expect(executeWants).not.toHaveBeenCalled();
+  });
+
+  it('生产保护(S2-C):对方在契生产活动(采集)不接待搭话,想聊也各走各路', () => {
+    const { sim, loop, executeWants, at } = harness();
+    const day = sim.clock.day;
+    const now = sim.clock.gameMinutes;
+    innerState.setIntents('aaaa1111', {
+      day,
+      source: 'llm',
+      wants: [socializeWant('bbbb2222', now)],
+    });
+    innerState.setIntents('bbbb2222', { day, source: 'llm', wants: [] });
+    sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
+    sim.requestMoveTo('bbbb2222', at.x, at.y);
+    sim.character('bbbb2222').activity = {
+      activityId: 'gather_berry',
+      elapsed: 5,
+      anchorKind: null,
+      targetId: 'node-1',
+    };
+    loop.onEncounter(encounter('aaaa1111', 'bbbb2222'));
+    expect(sim.character('aaaa1111').path.length).toBeGreaterThan(0);
+    expect(sim.character('bbbb2222').path.length).toBeGreaterThan(0);
+    expect(executeWants).not.toHaveBeenCalled();
+  });
+
+  it('生产保护口径:闲适集活动(rest)在契可被打断——照常进会合', () => {
+    const { sim, loop, executeWants, at } = harness();
+    const day = sim.clock.day;
+    const now = sim.clock.gameMinutes;
+    innerState.setIntents('aaaa1111', {
+      day,
+      source: 'llm',
+      wants: [socializeWant('bbbb2222', now)],
+    });
+    innerState.setIntents('bbbb2222', { day, source: 'llm', wants: [] });
+    sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
+    sim.requestMoveTo('bbbb2222', at.x, at.y);
+    sim.character('bbbb2222').activity = {
+      activityId: 'rest',
+      elapsed: 10,
+      anchorKind: null,
+      targetId: null,
+    };
+    loop.onEncounter(encounter('aaaa1111', 'bbbb2222'));
+    expect(sim.character('aaaa1111').path).toHaveLength(0);
+    expect(sim.character('bbbb2222').path).toHaveLength(0);
+    expect(loop.summonAwaiting('aaaa1111', 'bbbb2222')).toBe(true);
+    expect(executeWants).toHaveBeenCalledTimes(1);
   });
 
   it('单向意愿:双方停步进会合,发起方=有愿方,对方收到应答 event want', () => {

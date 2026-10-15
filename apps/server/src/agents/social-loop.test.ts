@@ -23,7 +23,7 @@ function loopWith(sim: Simulation, events: WorldEvent[] = []): SocialLoop {
     handle: {} as never,
     llm: {} as never,
     trace: { record: () => {} } as never,
-    apply: () => {},
+    apply: () => true,
     executeWants: () => {},
   });
 }
@@ -185,6 +185,7 @@ function captureLoop(
   sim: Simulation,
   handle: DbHandle,
   llm: Partial<MemoryLlm> = {},
+  accept: () => boolean = () => true,
 ): { loop: SocialLoop; applied: Array<{ intent: { type: string } & Record<string, unknown>; bubble?: string }>; traces: Array<Record<string, unknown>> } {
   const applied: Array<{ intent: { type: string } & Record<string, unknown>; bubble?: string }> = [];
   const traces: Array<Record<string, unknown>> = [];
@@ -206,6 +207,7 @@ function captureLoop(
     apply: (_char, decision, _trigger, perception) => {
       applied.push(decision as never);
       traces.push({ perception });
+      return accept(); // 缺省恒接受(权威链在单测中放行);拒绝结算走专项桩
     },
     executeWants: () => {}, // 调度泵即时择条在单测中不接(fast-layer 测试覆盖)
   });
@@ -274,14 +276,14 @@ const flush = async (): Promise<void> => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
-describe('SocialLoop.idleSocialStep E6.4(布尔门槛点火/走散不罚/即时印象)', () => {
+describe('SocialLoop.socialCandidates(候选查询,S2-C 空闲点火退役后仅 JEV 喂池)', () => {
   afterEach(() => {
     autonomy.disable('b');
     innerState.clear('a');
     innerState.clear('b');
   });
 
-  it('布尔门槛点火(E6.4): 已认识+共处+冷却外写 socialize want(origin=drive),不再直执聊天/走近', () => {
+  it('候选查询: 已认识+共处+冷却外即候选,只查询不生欲(无情境欲望发生器已退役)', () => {
     const sim = new Simulation();
     sim.spawnCharacter('a', 8, 10, '甲'); // 同在 home-a(x3-14/y4-11)内,相距 3 格
     sim.spawnCharacter('b', 5, 10, '乙');
@@ -289,38 +291,13 @@ describe('SocialLoop.idleSocialStep E6.4(布尔门槛点火/走散不罚/即时�
     const { loop, applied } = captureLoop(sim, persistHandle());
     innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
 
-    const candidates = loop.idleSocialStep(sim.character('a'), 'threshold');
+    const candidates = loop.socialCandidates(sim.character('a'));
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.samePlace).toBe(true);
-    expect(applied).toHaveLength(0); // 执行归 wantSelect 唯一执行器,动机只写 want
-    const want = innerState.get('a')!.intents!.wants[0]!;
-    expect(want).toMatchObject({
-      activityId: 'socialize',
-      origin: 'drive',
-      targetCharacterId: 'b',
-      urgency: 0.5, // E6.4 固定紧迫度,与生存 want 的竞争归 wantSelect
-      status: 'pending',
-    });
-    expect(want.why).toContain('乙');
+    expect(candidates[0]!.targetId).toBe('b');
+    expect(applied).toHaveLength(0); // 执行归 wantSelect 唯一执行器
+    expect(innerState.get('a')!.intents!.wants).toHaveLength(0); // 查询不写 want
     expect(loop.lastChatAtBetween('a', 'b')).toBe(Number.NEGATIVE_INFINITY); // 聊天落地才算主动
-  });
-
-  it('同目标在途 want 去重:动机重复点火不重复写', () => {
-    const sim = new Simulation();
-    sim.spawnCharacter('a', 8, 10, '甲');
-    sim.spawnCharacter('b', 5, 10, '乙');
-    relate(sim, 'a', 'b');
-    const { loop } = captureLoop(sim, persistHandle());
-    innerState.setIntents('a', {
-      day: sim.clock.day,
-      source: 'llm',
-      wants: [
-        { id: 'd0', activityId: 'socialize', origin: 'drive', targetCharacterId: 'b', why: '想找乙聊聊', urgency: 0.8, status: 'pending', createdAtMin: 0 },
-      ],
-    });
-
-    loop.idleSocialStep(sim.character('a'), 'threshold');
-    expect(innerState.get('a')!.intents!.wants).toHaveLength(1); // 未追加
   });
 
   it('E6.4 布尔门槛: 嫌弃关系(affinity≤-30)不点火——不找厌恶的人', () => {
@@ -335,11 +312,11 @@ describe('SocialLoop.idleSocialStep E6.4(布尔门槛点火/走散不罚/即时�
     const { loop } = captureLoop(sim, persistHandle());
     innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
 
-    expect(loop.idleSocialStep(sim.character('a'), 'threshold')).toHaveLength(0);
+    expect(loop.socialCandidates(sim.character('a'))).toHaveLength(0);
     expect(innerState.get('a')!.intents!.wants).toHaveLength(0);
   });
 
-  it('E6.4 布尔门槛: 同对冷却内不点火——唯一防刷闸(日预算/收益封顶闸已废)', () => {
+  it('E6.4 布尔门槛: 同对冷却内不进候选——唯一防刷闸(日预算/收益封顶闸已废)', () => {
     const sim = new Simulation();
     sim.spawnCharacter('a', 8, 12, '甲');
     sim.spawnCharacter('b', 9, 12, '乙');
@@ -358,10 +335,35 @@ describe('SocialLoop.idleSocialStep E6.4(布尔门槛点火/走散不罚/即时�
     void loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→commit 簿记=冷却起点
     expect(loop.lastChatAtBetween('a', 'b')).toBe(sim.clock.gameMinutes);
 
-    // 刚聊过:冷却内候选清零,不重复点火
+    // 刚聊过:冷却内候选清零(want 容器按 R2 合并语义保留在途 doing 行)
     innerState.setIntents('a', { day: sim.clock.day, source: 'llm', wants: [] });
-    expect(loop.idleSocialStep(sim.character('a'), 'threshold')).toHaveLength(0);
-    expect(innerState.get('a')!.intents!.wants).toHaveLength(0);
+    expect(loop.socialCandidates(sim.character('a'))).toHaveLength(0);
+    expect(
+      innerState.get('a')!.intents!.wants.filter((w) => w.status === 'pending'),
+    ).toHaveLength(0);
+  });
+
+  it('禁聊世界静音: allowChat=false 候选清零+在途 want 收口废弃(产生入口闸)', () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 10, '甲');
+    sim.spawnCharacter('b', 5, 10, '乙');
+    relate(sim, 'a', 'b');
+    sim.setRules({ allowChat: false });
+    const { loop } = captureLoop(sim, persistHandle());
+    innerState.setIntents('a', {
+      day: sim.clock.day,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'b', why: '找乙聊聊', urgency: 0.9, status: 'doing', createdAtMin: 0 },
+      ],
+    });
+
+    // 产生入口闸:候选清零不写 want
+    expect(loop.socialCandidates(sim.character('a'))).toHaveLength(0);
+    // 执行闸:在途 doing want 收口废弃(不召唤不生成)
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold');
+    expect(innerState.get('a')!.intents!.wants[0]!.status).toBe('abandoned');
+    expect(loop.summonAwaiting('a', 'b')).toBe(false);
   });
 
   it('走散降级: 生成期间对方被拽走→trace walkedAway+冷却短窗+计数返还+want 回 pending,期满重试成功', async () => {
@@ -572,6 +574,41 @@ describe('SocialLoop.idleSocialStep E6.4(布尔门槛点火/走散不罚/即时�
     expect(loop.summonAwaiting('a', 'b')).toBe(false); // 散场
     expect(innerState.get('a')!.intents!.wants[0]!.status).toBe('abandoned');
     expect(traces.some((t) => (t.perception as { summonTimeout?: boolean }).summonTimeout)).toBe(true);
+  });
+
+  it('chat 意图被拒结算(R3): 双向 want 废弃+冷却降级短窗,不悬挂 doing 干等过期', async () => {
+    const sim = new Simulation();
+    sim.spawnCharacter('a', 8, 12, '甲');
+    sim.spawnCharacter('b', 9, 12, '乙');
+    relate(sim, 'a', 'b');
+    const dialogueLlm: Partial<MemoryLlm> = {
+      chatStructured: (_slot, _messages, _tool, _task, parse) => {
+        const parsed = parse({ line: '客气了', wantsMore: false });
+        if (!parsed.ok) return Promise.reject(new Error(`桩: 校验失败 ${parsed.reason}`));
+        return Promise.resolve(parsed.value);
+      },
+    };
+    const { loop, applied, traces } = captureLoop(sim, persistHandle(), dialogueLlm, () => false);
+    innerState.setIntents('a', {
+      day: sim.clock.day,
+      source: 'llm',
+      wants: [
+        { id: 'w0', activityId: 'socialize', origin: 'plan', targetCharacterId: 'b', why: '找乙聊聊', urgency: 0.9, status: 'doing', createdAtMin: 0 },
+      ],
+    });
+    summonable(sim);
+
+    void loop.executeChatWant(sim.character('a'), 'b', 'w0', 'threshold'); // 召唤
+    await loop.executeChatWant(sim.character('b'), 'a', null, 'threshold'); // 应答→生成→chat 被权威链拒
+    expect(applied[0]?.intent.type).toBe('chat'); // 生成照常落地,拒在执行校验
+    expect(innerState.get('a')!.intents!.wants[0]!.status).toBe('abandoned');
+    expect(traces.some((t) => (t.perception as { chatRejected?: boolean }).chatRejected)).toBe(true);
+    // 冷却降级短窗(E2 走散同款不罚重试)
+    expect(loop.lastChatAtBetween('a', 'b')).toBe(
+      sim.clock.gameMinutes -
+        (BALANCE.SOCIAL_PAIR_COOLDOWN_MINUTES - BALANCE.SOCIAL_RETRY_COOLDOWN_MINUTES),
+    );
+    expect(loop.summonAwaiting('a', 'b')).toBe(false); // 会合散场
   });
 });
 

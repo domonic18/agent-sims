@@ -4,7 +4,9 @@ import {
   findPlaceAt,
   findPlaceByRef,
   GATHER_TASKS,
+  getBuildBlueprint,
   getActivityDefinition,
+  requiredConstructionEnergy,
   getItem,
   getRecipe,
   isLeaseValid,
@@ -14,6 +16,7 @@ import {
   ITEMS,
   resourceNodeLabel,
   type ActivityDefinition,
+  type GameType,
   type Intent,
   type PlaceDefinition,
   type TileMapDefinition,
@@ -21,6 +24,7 @@ import {
 import { BALANCE } from '../config/balance.js';
 import type { DayIntents, Want } from './cognition.js';
 import type { WorldCharacter } from '../world/character.js';
+import { hasBackpackRoomForGather } from '../world/work-task.js';
 import type { MemoryLlm } from './memory-writer.js';
 
 /** jev 冲动 want 载荷(E6 统一意图架构,System 1 输出):jev 不再直执——
@@ -256,9 +260,8 @@ export function driveSatisfied(
     }
     default:
       // 非驱力词汇活动 id(socialize 等真实活动)不属驱力收口范畴——曾有
-      // default:true 把 idleSocialStep 点火的 drive 源社交 want 在写入后一个
-      // fast 步就结算 done,聊天执行链永远拿不到它(对话结构性零落地),
-      // hasSocialWant 去重随之失效变 2 秒点火循环;其终裁归 social.chat/寻人失败
+      // default:true 把社交 want 在写入后一个 fast 步就结算 done,聊天执行链
+      // 永远拿不到它(对话结构性零落地);其终裁归 social.chat/寻人失败
       return false;
   }
 }
@@ -801,10 +804,38 @@ export function wantSelect(
       abandoned.push(w.id);
       return false;
     }
+    // 建造 want(S2-A 自主建造):无锚点无场所(工地由执行分支即时搜索),候选期做
+    // 廉价可行性预检——蓝图无效/模式未开放当场废弃;知识门槛按蓝图值(门槛开关
+    // 关闭时 0 班可建,绕过 category 通用预检);足料或背包有建材才进评分池,
+    // 否则 pending 保留(补料靠同排采集 wants,饿着仲裁白占窗口)
+    if (w.activityId === 'construction') {
+      const blueprint = w.blueprintId === undefined ? null : getBuildBlueprint(w.blueprintId);
+      if (blueprint === null || !blueprint.gameTypes.includes(world.gameType ?? 'growth')) {
+        abandoned.push(w.id);
+        return false;
+      }
+      if (BALANCE.CONSTRUCTION_KNOWLEDGE_GATE === 1 && char.knowledge < blueprint.requiredKnowledge) {
+        return false;
+      }
+      const stocked = Object.entries(blueprint.materials).every(
+        ([id, n]) => (world.storageCount?.(id) ?? 0) >= n,
+      );
+      const carried = Object.keys(blueprint.materials).some((id) => (char.backpack[id] ?? 0) > 0);
+      return stocked || carried;
+    }
     if (knowledgeShort(char, definition)) return false; // 门槛不够先跳过(pending 保留,学成再干)
-    if (w.activityId === 'socialize' && w.targetCharacterId !== undefined) return true; // 人指向寻人不看场所
+    if (w.activityId === 'socialize') {
+      if (world.chatAllowed?.() === false) {
+        abandoned.push(w.id); // 世界规则禁聊:在途残留 want 收口废弃(规则中途关闭兜底)
+        return false;
+      }
+      if (w.targetCharacterId !== undefined) return true; // 人指向寻人不看场所
+    }
     if (gatherNodeKind(w.activityId) !== null) {
-      return gatherTarget(w.activityId, char, world) !== null; // 无可采节点先跳过
+      // 无可采节点/背包装不下最坏产出先跳过(pending 保留)——容量判定与 work_task
+      // 接单预检同源;缺此拦截满包采集 want 每块赢每块被拒,3 连拒清整日意图,
+      // 存仓出口(construction 分支)永无调度窗口(2026-10-12 走查镇死循环实证)
+      return gatherTarget(w.activityId, char, world) !== null && hasBackpackRoomForGather(char, w.activityId);
     }
     if (isCraftActivity(w.activityId)) {
       return world.recipeReady !== undefined
@@ -1137,6 +1168,101 @@ export function wantSelect(
       bubble: `${picked.why},去${placePart}`,
     };
   }
+  // 建造 want(S2-A 自主建造):选址确定性搜索(scheduler 注入 suggestBuildRect,
+  // 零 rng)→足料两段式 build(远先挪到选区外圈,贴身 build——站位/防困/扣料
+  // requestBuild 权威自管);缺料转存仓两段式(蓝图只认单仓料,背包建材整叠入仓,
+  // 即时意图无事件回响,下一块重入再存);体力线复用建造门禁值,低体力本轮跳过
+  if (picked.activityId === 'construction') {
+    const blueprint = picked.blueprintId === undefined ? null : getBuildBlueprint(picked.blueprintId);
+    if (blueprint === null) {
+      return {
+        layer: 'plan',
+        action: 'continue',
+        reason: 'blueprint_invalid',
+        abandonedWantIds: [...abandoned, picked.id],
+        wantId: picked.id,
+      };
+    }
+    const rect = world.suggestRect?.(blueprint.id) ?? null;
+    if (rect === null) {
+      return {
+        layer: 'plan',
+        action: 'continue',
+        reason: 'no_build_spot',
+        abandonedWantIds: [...abandoned, picked.id],
+        wantId: picked.id,
+      };
+    }
+    // 体力预检与 requestBuild 权威门共用一条公式(shared requiredConstructionEnergy):
+    // 只卡接单阈值会中途虚脱→废单退料+倒地损血(2026-10-12 终验镇两连废单实证)
+    if (char.energy <= requiredConstructionEnergy(blueprint)) {
+      return { layer: 'plan', action: 'continue', reason: 'energy_low', wantId: picked.id, ...extra };
+    }
+    const label = blueprint.label;
+    if (Object.entries(blueprint.materials).every(([id, n]) => (world.storageCount?.(id) ?? 0) >= n)) {
+      // 距选区曼哈顿距离(选区外一格=贴身)
+      const dx = Math.max(rect.x - char.x, char.x - (rect.x + rect.w - 1), 0);
+      const dy = Math.max(rect.y - char.y, char.y - (rect.y + rect.h - 1), 0);
+      if (dx + dy > 1) {
+        // 远:先挪到选区外圈最近可站立位(站位搜索验可行走,到达经 arrived 重入再 build;
+        // 裸钳位会撞围栏/墙体被 move_to 硬拒,3 连拒清整日意图)
+        const stand = world.standNearRect?.(rect) ?? null;
+        if (stand === null) {
+          return { layer: 'plan', action: 'continue', reason: 'no_stand_tile', ...extra, wantId: picked.id };
+        }
+        return {
+          layer: 'plan',
+          action: 'react',
+          wantId: picked.id,
+          ...extra,
+          intent: { type: 'move_to', characterId: char.id, x: stand.x, y: stand.y },
+          bubble: `${picked.why},去${label}工地`,
+        };
+      }
+      return {
+        layer: 'plan',
+        action: 'react',
+        wantId: picked.id,
+        ...extra,
+        intent: { type: 'build', characterId: char.id, blueprintId: blueprint.id, x: rect.x, y: rect.y },
+        bubble: `${picked.why},开工${label}`,
+      };
+    }
+    const carried = Object.keys(blueprint.materials).find((id) => (char.backpack[id] ?? 0) > 0);
+    if (carried !== undefined) {
+      const spot = world.storageSpot?.() ?? null;
+      if (spot === null) {
+        return { layer: 'plan', action: 'continue', reason: 'storage_missing', wantId: picked.id, ...extra };
+      }
+      const name = getItem(carried)?.name ?? carried;
+      if (Math.abs(char.x - spot.x) + Math.abs(char.y - spot.y) > 1) {
+        return {
+          layer: 'plan',
+          action: 'react',
+          wantId: picked.id,
+          ...extra,
+          intent: { type: 'move_to', characterId: char.id, x: spot.x, y: spot.y },
+          bubble: `${picked.why},先把${name}送单仓`,
+        };
+      }
+      return {
+        layer: 'plan',
+        action: 'react',
+        wantId: picked.id,
+        ...extra,
+        intent: {
+          type: 'store_item',
+          characterId: char.id,
+          itemId: carried,
+          count: char.backpack[carried] ?? 1,
+          target: 'storage',
+        },
+        bubble: `${picked.why},把${name}入单仓`,
+      };
+    }
+    // 缺料且背包无:候选期已滤,防御态本轮跳过(pending 保留)
+    return { layer: 'plan', action: 'continue', reason: 'materials_missing', wantId: picked.id, ...extra };
+  }
   // 卖货 want(E4 生产经济闭环):背包有带价物——在店 sell_item 整叠变现/店外先去
   // 商店;空背包本轮跳过(pending 保留,采到货再变现)
   if (picked.activityId === 'sell_goods') {
@@ -1229,6 +1355,20 @@ export interface WantWorldQueries {
   posOfAny?: (characterId: string) => { x: number; y: number; name: string; alive: boolean } | null;
   /** 活动倾向分(E6.2 驱力 earn 分支贫困选岗保人设) */
   bias?: Readonly<Record<string, number>>;
+  /** 当前世界模式(S2-A 建造 want 蓝图门控;缺省 growth=蓝图未开放语义) */
+  gameType?: GameType;
+  /** 单仓存量(S2-A 建造足料判定;缺省 0=永远缺料,只走存仓/等待路径) */
+  storageCount?: (itemId: string) => number;
+  /** 镇核心单仓实体格(S2-A 存仓两段式目标;null=无单仓,growth 同蓝图门控天然封闭) */
+  storageSpot?: () => { x: number; y: number } | null;
+  /** 建造选址搜索(S2-A,scheduler 注入 suggestBuildRect 保持 base+built 真源;
+   * null=无合法选区,want 废弃) */
+  suggestRect?: (blueprintId: string) => { x: number; y: number; w: number; h: number } | null;
+  /** 选区站位搜索(S2-A,scheduler 注入 standTileNearRect 验可行走;null=外圈围死,
+   * 本轮跳过——裸钳位会撞不可走格被 move_to 硬拒,3 连拒清意图) */
+  standNearRect?: (rect: { x: number; y: number; w: number; h: number }) => { x: number; y: number } | null;
+  /** 世界规则·聊天开关(S2-B 产生入口闸兜底:false=socialize 残留 want 候选期废弃) */
+  chatAllowed?: () => boolean;
 }
 
 /** 采集岗→节点 kind(GATHER_TASKS 表驱动;非采集活动返回 null) */

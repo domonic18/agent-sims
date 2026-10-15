@@ -66,12 +66,13 @@ export class ResponseRegistry {
   }
 
   /** 自己获救:找恩人道谢(instant 门控)——人指向社交 want,带 target 走
-   * 两阶段会合管线生成对话;恩人不在则无从谢起 */
+   * 两阶段会合管线生成对话;恩人不在则无从谢起;禁聊世界不产(产生入口闸) */
   private thanksRescuer(
     event: Extract<WorldEvent, { type: 'character.revived' }>,
     ctx: TriageContext,
   ): ResponseAction | null {
     if (event.characterId !== ctx.characterId) return null;
+    if (!ctx.chatAllowed) return null;
     const rescuerId = this.rescueBy.get(ctx.characterId);
     if (rescuerId === undefined) return null;
     const pos = ctx.positionOf(rescuerId);
