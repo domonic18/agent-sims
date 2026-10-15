@@ -43,7 +43,8 @@ export function checkDeath(sim: Simulation, character: WorldCharacter): void {
  * 意图门禁只放行休息/睡觉/进食,体力回升即爬起。健康照跑饥饿线,可滑向重伤休整。
  */
 export function checkCollapse(sim: Simulation, character: WorldCharacter): void {
-  clearCollapseIfRecovered(character);
+  // 被动缓释爬起线=进食线(喂食通道在 eatItem 内即时解除,阈值 0)
+  clearCollapseIfRecovered(character, BALANCE.HUNGER_EAT_ENERGY);
   if (!character.alive || character.energy > 0) {
     return;
   }

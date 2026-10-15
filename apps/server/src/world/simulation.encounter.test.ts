@@ -73,18 +73,18 @@ describe('路上相遇检测(E8 tick 级连续观测)', () => {
     expect(seen).toHaveLength(2);
   });
 
-  it('双方静止不触发(静止共处是生活常态);单方移动路过贴身带触发', () => {
+  it('静止共处同样触发(S2-C 共处即相遇),冷却内不重复,过期后再发', () => {
     const sim = new Simulation(rng);
     const at = straightRun(sim);
     sim.spawnCharacter('aaaa1111', at.x, at.y, '甲');
     sim.spawnCharacter('bbbb2222', at.x + 2, at.y, '乙');
     const seen = collectEncounters(sim);
-    sim.advanceTicks(5);
-    expect(seen).toHaveLength(0);
-    // 甲动身离开:至少一方在移动即相遇
-    sim.requestMoveTo('aaaa1111', at.x + 6, at.y);
     sim.advanceTicks(1);
-    expect(seen).toHaveLength(1);
+    expect(seen).toHaveLength(1); // 同屋各干各的也是「碰见」——偶遇冲动的物理源
+    sim.advanceTicks(5);
+    expect(seen).toHaveLength(1); // 冷却内持续共处不重复惊动
+    sim.advanceTicks(BALANCE.ENCOUNTER_COOLDOWN_MINUTES);
+    expect(seen).toHaveLength(2); // 冷却过期,持续共处算新一次相遇
   });
 
   it('死亡角色不参与检测', () => {

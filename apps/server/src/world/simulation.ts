@@ -42,6 +42,7 @@ import {
 import { GameClock } from './clock.js';
 import { applyBuilt, deriveStorageSpot, requestBuild, stepConstruction } from './construction.js';
 import {
+  applyCollapseRecovery,
   applyHealthTick,
   applyVitalDecay,
   reviveCharacter,
@@ -464,6 +465,14 @@ export class Simulation {
     return (this.recipes as Record<string, RecipeDef>)[id] ?? null;
   }
 
+  /** 聊天开关谓词(世界规则单一事实源):社交类 want 的产生入口(晨间白名单/
+   * E6.4 点火/JEV/E8 召唤/赴约/道谢)一律先问这里,意图执行层校验仅兜底——
+   * 闸错层的规则等于没有(2026-10-13 镇A实证:只在执行层拦,规划层盲产生,
+   * 死循环 127 次拒绝) */
+  chatAllowed(): boolean {
+    return this.rules.allowChat;
+  }
+
   /** 配方全集替换(建世界/恢复灌入深拷贝,与存档对象隔离;admin 编辑走本入口) */
   setRecipes(recipes: Record<CraftRecipeId, RecipeDef>): void {
     this.recipes = cloneRecipes(recipes);
@@ -617,9 +626,14 @@ export class Simulation {
       settleSleep(this);
     }
     for (const character of this.characters.values()) {
-      // 净速率模型(M3.6g):活动数值已含代谢,仅待机走基础代谢衰减
+      // 净速率模型(M3.6g):活动数值已含代谢,仅待机走基础代谢衰减;
+      // 倒地例外走缓释恢复(替代衰减,回进食线爬起,防野外倒地死锁)
       if (character.activity === null) {
-        applyVitalDecay(character, 1);
+        if (character.collapsed) {
+          applyCollapseRecovery(character, 1);
+        } else {
+          applyVitalDecay(character, 1);
+        }
       }
       const arrived = stepMovement(character, BALANCE.WALK_SPEED_TILES_PER_MINUTE);
       if (arrived) {
@@ -688,11 +702,12 @@ export class Simulation {
   }
 
   /**
-   * 路上相遇检测(E8,tick 级连续观测):决策层 15 游戏分采样看不见快于采样粒度的
+   * 共处检测(E8,tick 级连续观测):决策层 15 游戏分采样看不见快于采样粒度的
    * 相遇(相向而行交错窗口≈1 游戏分,命中率≈7%),「瞬时物理事实」归世界层连续观测、
    * 经事件桥接离散决策层(与 character.arrived 同构)。触发三条件: 双方存活、距离
-   * 进入贴身带、同对冷却外;双方都站定不动不触发(静止共处是生活常态,移动交错才是
-   * 相遇)。零认知信息:世界只报告「两人靠近了」,聊不聊归认知层分流。
+   * 进入贴身带、同对冷却外(静止共处同样算共处——同屋各干各的也是「碰见」,
+   * 冷却防重复惊动,S2-C 社交来源自然化后遭遇冲动正是靠它发生)。零认知信息:
+   * 世界只报告「两人靠近了」,聊不聊归认知层分流。
    */
   private _detectEncounters(): void {
     const now = this.clock.gameMinutes;
@@ -701,7 +716,6 @@ export class Simulation {
       for (let j = i + 1; j < alive.length; j++) {
         const a = alive[i]!;
         const b = alive[j]!;
-        if (a.path.length === 0 && b.path.length === 0) continue;
         const distance = Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
         if (distance > BALANCE.ENCOUNTER_DISTANCE) continue;
         const key = [a.id, b.id].sort().join('|');

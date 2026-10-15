@@ -1,4 +1,5 @@
 import {
+  CONSTRUCTION_MATERIALS,
   GATHER_TASKS,
   getItem,
   inventoryVolume,
@@ -8,6 +9,7 @@ import {
   REVIVE_WINDOW_MINUTES,
   WORK_TARGETS,
   isGatherTask,
+  type GatherTaskDef,
   type GatherTaskId,
   type JobCategoryId,
   type WorkTaskAcceptedEvent,
@@ -146,12 +148,32 @@ function taskCategory(task: WorkTaskId): JobCategoryId {
     : MAINTENANCE_TASKS[task].category;
 }
 
-/** 采集接单背包预检:按最坏产出总体积校验(附带概率产出按必得计) */
-function ensureBackpackRoomForYields(character: WorldCharacter, task: GatherTaskId): void {
-  const worst = GATHER_TASKS[task].yields.reduce(
-    (sum, y) => sum + y.count * (getItem(y.itemId)?.volume ?? 0),
+/** 采集岗背包容量预检(纯判定,wantSelect 候选期过滤与 work_task 接单预检同源):
+ * 最坏产出总体积(附带概率产出按必得计;建造建材除外——S2-C N1 直入单仓不经
+ * 背包)是否装得下——缺此判定,满包采集 want 高 urgency 每块赢每块被拒,3 连拒
+ * 清整日意图,存仓出口永无调度窗口 */
+export function hasBackpackRoomForGather(
+  character: Pick<WorldCharacter, 'backpack'>,
+  activityId: string,
+): boolean {
+  const task = (GATHER_TASKS as Record<string, GatherTaskDef | undefined>)[activityId];
+  if (task === undefined) return false;
+  const worst = backpackYieldVolume(task);
+  return inventoryVolume(character.backpack) + worst <= BALANCE.BACKPACK_VOLUME_LIMIT;
+}
+
+/** 背包侧最坏产出体积:建造建材(CONSTRUCTION_MATERIALS)直入单仓不占背包 */
+function backpackYieldVolume(task: GatherTaskDef): number {
+  return task.yields.reduce(
+    (sum, y) =>
+      CONSTRUCTION_MATERIALS.has(y.itemId) ? sum : sum + y.count * (getItem(y.itemId)?.volume ?? 0),
     0,
   );
+}
+
+/** 采集接单背包预检:按最坏产出总体积校验(附带概率产出按必得计) */
+function ensureBackpackRoomForYields(character: WorldCharacter, task: GatherTaskId): void {
+  const worst = backpackYieldVolume(GATHER_TASKS[task]);
   const used = inventoryVolume(character.backpack);
   if (used + worst > BALANCE.BACKPACK_VOLUME_LIMIT) {
     throw new Error(
@@ -264,17 +286,35 @@ export function completeWorkTask(ctx: WorkTaskCompletionContext): 'ok' | 'cancel
   return WORK_TASK_COMPLETIONS[ctx.task](ctx);
 }
 
-/** 采集完成(design/09 §2):产出逐项 roll 入背包,节点扣存量,枯竭按热调
+/** 采集完成(design/09 §2):产出逐项 roll,节点扣存量,枯竭按热调
  * NODE_RESPAWN_DAYS 记重生日(次日 00:00 计,1=次日回满)。
- * 缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(有意);以物代薪 pay=0 */
+ * 建造建材直入单仓不经背包(S2-C N1,集合自蓝图材料表派生)——「存入单仓」
+ * 原只挂在 construction want 执行分支,LLM 见镇情差料理性不排建造→单仓恒空的
+ * 鸡生蛋断点在此打通(与施工「材料不经背包」同哲学);仓满容积闸溢出留背包。
+ * wheat/scrap 等 material 类制作原料照旧入背包(灶台/木工台经背包消费,入仓
+ * 即断供)。缺觉日(M-G.2)产出 floor(count×系数)——单件产出可能为 0(有意);
+ * 以物代薪 pay=0 */
 function completeGather({ sim, character, task, targetId, debtFactor }: WorkTaskCompletionContext): 'ok' {
   const node = sim.resourceNodes.get(targetId)!;
   for (const yieldDef of GATHER_TASKS[task as GatherTaskId].yields) {
     if (yieldDef.chance !== undefined && sim.rng() >= yieldDef.chance) {
       continue;
     }
-    character.backpack[yieldDef.itemId] =
-      (character.backpack[yieldDef.itemId] ?? 0) + Math.floor(yieldDef.count * debtFactor);
+    const count = Math.floor(yieldDef.count * debtFactor);
+    if (count <= 0) continue;
+    if (CONSTRUCTION_MATERIALS.has(yieldDef.itemId)) {
+      const freeByVolume = BALANCE.STORAGE_VOLUME_LIMIT - inventoryVolume(sim.storage);
+      const stored = Math.min(count, Math.max(freeByVolume, 0));
+      if (stored > 0) {
+        sim.storage[yieldDef.itemId] = (sim.storage[yieldDef.itemId] ?? 0) + stored;
+      }
+      if (stored < count) {
+        character.backpack[yieldDef.itemId] =
+          (character.backpack[yieldDef.itemId] ?? 0) + (count - stored);
+      }
+    } else {
+      character.backpack[yieldDef.itemId] = (character.backpack[yieldDef.itemId] ?? 0) + count;
+    }
   }
   if (node.charges !== null) {
     node.charges -= 1;

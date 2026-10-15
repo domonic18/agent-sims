@@ -118,6 +118,9 @@ export interface BalanceConfig {
   SURVIVAL_HEALTH_RECOVER_LINE: number;
   SURVIVAL_HEALTH_RECOVER_PER_MIN: number;
   SURVIVAL_INJURY_REVIVE_HEALTH: number;
+  /** 倒地缓释恢复(2026-10-13 数值复查,替代倒地待机衰减): 慢于长椅(0.12)——
+   * 躺地不该胜过小憩;爬起线复用 HUNGER_EAT_ENERGY,回线即能自理不即刻复倒 */
+  COLLAPSED_RECOVER_PER_MIN: number;
   /** 世界创建批量出生点(M3.6k):公寓门前广场开阔带,按序轮询;不可行走时跳过 */
   SPAWN_SPOTS: readonly Readonly<{ x: number; y: number }>[];
   /** 社交 v1(social-design/numerical-design §社交): chat 收益=基础值×递减×相性 */
@@ -254,6 +257,7 @@ export const BALANCE: BalanceConfig = {
   SURVIVAL_HEALTH_RECOVER_LINE: 60,
   SURVIVAL_HEALTH_RECOVER_PER_MIN: 0.02,
   SURVIVAL_INJURY_REVIVE_HEALTH: 30,
+  COLLAPSED_RECOVER_PER_MIN: 0.1,
   SPAWN_SPOTS: [
     { x: 8, y: 12 },
     { x: 9, y: 12 },
@@ -277,9 +281,13 @@ export const BALANCE: BalanceConfig = {
   ENCOUNTER_DISTANCE,
   ENCOUNTER_COOLDOWN_MINUTES,
   MEETING_WAIT_MINUTES,
-  CHAT_MAX_ROUNDS: 4,
+  // 社交降档(2026-10-13 营造观察镇实证):同对冷却 30→240、对话硬上限 4→2——
+  // 一条在途 socialize want 即让全天相遇经 E8 连锁成聊,叠加对话 LLM 真实延迟被
+  // 时间倍率放大(16x 下单场 ~3 游戏时),建造/采集 want 全天让位;E6.4「先简后加」
+  // 顺序下先拧唯一防刷闸与轮数,不动机制
+  CHAT_MAX_ROUNDS: 2,
   FAMILIARITY_DECAY_PER_DAY: 1,
-  SOCIAL_PAIR_COOLDOWN_MINUTES: 30,
+  SOCIAL_PAIR_COOLDOWN_MINUTES: 240,
   SOCIAL_RETRY_COOLDOWN_MINUTES: 10,
   // E6.2 会合协议:召唤 want 紧迫度 0.9(赴约档——应答通常压过日常安排,但可被更高
   // 评分让位=婉拒);半衰 90 分(对方一直没空,召唤自然消退);发起方 120 分放弃

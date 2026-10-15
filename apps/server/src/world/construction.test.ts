@@ -205,6 +205,18 @@ describe('建造流程(S2批2)', () => {
     expect(sim.character('b1').activity).toBeNull();
   });
 
+  it('体力不足整单施工拒绝(R4 权威门): 时长×能耗率+低体力阈值,与 want 预检同公式', () => {
+    const sim = survivalSim();
+    spawnBuilder(sim, 'b1');
+    sim.character('b1').energy = 43; // 住宅整单线 480×0.05+20=44,差 1 点即拒
+    seedStorage(sim, { wood: 12, stone: 8, metal: 4 });
+    const rect = findFreeRect(TOWN_MAP, 7, 5);
+    expect(() => requestBuild(sim, 'b1', 'build_home', rect.x, rect.y)).toThrow(/体力不够整单施工/);
+    expect(sim.constructionSites.size).toBe(0); // 零残留
+    expect(sim.storage['wood']).toBe(12); // 零扣料
+    expect(sim.character('b1').activity).toBeNull();
+  });
+
   it('growth 模式与知识门槛拒绝', () => {
     const growth = new Simulation();
     growth.setMap(TOWN_MAP);

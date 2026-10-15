@@ -88,11 +88,23 @@ export function ensureNotCollapsed(character: WorldCharacter): void {
   }
 }
 
-/** 虚脱解除(numerical §2.3): 体力回升即爬起——进食即时解除,休息在 tick 末解除 */
-export function clearCollapseIfRecovered(character: WorldCharacter): void {
-  if (character.collapsed && character.energy > 0) {
+/**
+ * 虚脱解除(numerical §2.3): 体力回升即爬起——喂食即时解除(阈值 0);
+ * 被动缓释(倒地休整)由 tick 检查传入进食线,爬起即能自理不即刻复倒。
+ */
+export function clearCollapseIfRecovered(character: WorldCharacter, standEnergy = 0): void {
+  if (character.collapsed && character.energy > standEnergy) {
     character.collapsed = false;
   }
+}
+
+/**
+ * 倒地缓释恢复(2026-10-13 数值复查): 倒地角色替代待机衰减缓释回体力——
+ * 原设计「体力回升即爬起」在野外不可达(移动被拒+代理层禁用+原地无锚点恢复
+ * 恒 0),只能躺至饥饿损耗死亡;爬起线=进食线,回线后驱动全可用且脱饥饿区。
+ */
+export function applyCollapseRecovery(character: WorldCharacter, gameMinutes: number): void {
+  character.energy = clampVital(character.energy + BALANCE.COLLAPSED_RECOVER_PER_MIN * gameMinutes);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { REVIVE_WINDOW_MINUTES, TOWN_MAP, type WorldEvent } from '@sims/shared';
+import { BALANCE } from '../config/balance.js';
 import { Simulation } from './simulation.js';
 
 /** 场所内指定 kind 锚点的使用格(虚脱矩阵用公园长椅) */
@@ -112,6 +113,23 @@ describe('生存健康数值(M-S/S1)', () => {
     expect(mow.energy).toBeCloseTo(4, 5); // 苹果 +4
     sim.requestMoveTo('mow', bench.x + 1, bench.y);
     expect(mow.path.length).toBeGreaterThan(0);
+  });
+
+  it('倒地缓释(2026-10-13 数值复查): +0.1/分回进食线爬起,饥饿损耗照跑但不再死锁', () => {
+    const { sim, events } = survivalSim();
+    sim.spawnCharacter('mow', 8, 12, '小满');
+    sim.character('mow').energy = 0.05;
+    sim.advanceTicks(6);
+    const lying = sim.character('mow');
+    expect(lying.collapsed).toBe(true); // 缓释未到爬起线(30),维持倒地(防 1 分眩晕循环)
+    expect(lying.energy).toBeGreaterThan(0); // 缓释已启动(+0.1/分替代待机衰减)
+    sim.advanceTicks(400); // 0→30 需 ~300 分钟缓释
+    const mow = sim.character('mow');
+    expect(mow.collapsed).toBe(false); // 回进食线爬起
+    expect(mow.alive).toBe(true); // 全程饥饿损耗 ~-9 hp,不再滑向死亡
+    expect(mow.energy).toBeGreaterThan(BALANCE.SURVIVAL_HUNGER_ENERGY_LINE);
+    expect(mow.health).toBeGreaterThan(85);
+    expect(events.some((e) => e.type === 'character.died')).toBe(false);
   });
 
   it('超时苏醒: 健康/体力回恢复线 30,得分保留不扣(growth 才 ×0.8,04 §2.5)', () => {

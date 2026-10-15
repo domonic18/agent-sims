@@ -23,11 +23,11 @@ import type {
   WorldMapChangedEvent,
 } from '@sims/shared';
 import {
-  LOW_ENERGY_THRESHOLD,
   definitionWithBuilt,
   evaluateBuildPlacement,
   getBuildBlueprint,
   getItem,
+  requiredConstructionEnergy,
   stampBuiltPlace,
 } from '@sims/shared';
 import type { Point } from './pathfinding.js';
@@ -104,9 +104,12 @@ export function requestBuild(
       `${character.name} 知识不足: 建造需学习 ${blueprint.requiredKnowledge} 班(当前 ${character.knowledge})`,
     );
   }
-  if (character.energy <= LOW_ENERGY_THRESHOLD) {
+  // 权威体力门(S2-B R4):整单施工耗尽线(时长×能耗率+低体力阈值),与 want
+  // 预检同一条公式(requiredConstructionEnergy)——中途虚脱=废单退料+倒地损血
+  const energyLine = requiredConstructionEnergy(blueprint);
+  if (character.energy <= energyLine) {
     throw new Error(
-      `${character.name} 体力过低(${Math.floor(character.energy)}≤${LOW_ENERGY_THRESHOLD}),先休息再接单`,
+      `${character.name} 体力不够整单施工(${Math.floor(character.energy)}≤${Math.ceil(energyLine)}),先休息再接单`,
     );
   }
   const rect = resolveBuildRect(blueprint, x, y, w, h);

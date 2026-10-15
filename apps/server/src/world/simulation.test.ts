@@ -308,12 +308,12 @@ describe('生死机制(M3.6f 体力区段)', () => {
       variant: 0,
     });
     expect(() => sim.requestWorkTask('mort', 'litter:10:14')).toThrow(/虚脱/);
-    // 喂食(numerical §2.3): 体力回升立即解除
+    // 喂食(numerical §2.3): 体力回升立即解除(倒地首分钟缓释已 +0.1)
     sim.character('mort').backpack = { apple: 1 };
     sim.requestEatItem('mort', 'apple'); // +4 体力
     const mort = sim.character('mort');
     expect(mort.collapsed).toBe(false);
-    expect(mort.energy).toBeCloseTo(4, 5);
+    expect(mort.energy).toBeCloseTo(4.1, 5);
     sim.requestMoveTo('mort', 9, 12); // 爬起后可行动
     expect(mort.path.length).toBeGreaterThan(0);
   });
